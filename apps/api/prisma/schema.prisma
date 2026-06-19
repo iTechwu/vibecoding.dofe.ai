@@ -243,3 +243,84 @@ model CountryCode {
   @@index([code])
   @@map("country_code")
 }
+
+// ============================================================================
+// Loops - Issue intake and workflow index
+// ============================================================================
+
+model LoopIssue {
+  id                 String    @id @db.VarChar(80)
+  title              String    @db.VarChar(160)
+  body               String    @db.Text
+  status             String    @db.VarChar(40)
+  priority           String    @db.VarChar(10)
+  sourceChannel      String    @map("source_channel") @db.VarChar(40)
+  sourceKind         String    @default("web_form") @map("source_kind") @db.VarChar(40)
+  submitterProvider  String    @default("dev") @map("submitter_provider") @db.VarChar(40)
+  submitterId        String    @map("submitter_id") @db.VarChar(120)
+  submitterName      String    @map("submitter_name") @db.VarChar(120)
+  targetRepo         String    @map("target_repo") @db.Text
+  acceptanceCriteria Json      @map("acceptance_criteria")
+  rawPayloadRef      String    @map("raw_payload_ref") @db.Text
+  createdAt          DateTime  @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @map("updated_at") @db.Timestamptz(6)
+  closedAt           DateTime? @map("closed_at") @db.Timestamptz(6)
+  isDeleted          Boolean   @default(false) @map("is_deleted")
+  deletedAt          DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  intakes LoopIssueIntake[]
+  state   LoopState?
+
+  @@index([status, updatedAt(sort: Desc)])
+  @@index([submitterId, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@map("loop_issue")
+}
+
+model LoopIssueIntake {
+  id                String    @id @db.VarChar(100)
+  issueId           String    @map("issue_id") @db.VarChar(80)
+  sourceChannel     String    @map("source_channel") @db.VarChar(40)
+  sourceKind        String    @map("source_kind") @db.VarChar(40)
+  submitterProvider String    @map("submitter_provider") @db.VarChar(40)
+  submitterId       String    @map("submitter_id") @db.VarChar(120)
+  submitterName     String    @map("submitter_name") @db.VarChar(120)
+  message           String    @db.Text
+  rawPayload        Json      @map("raw_payload")
+  rawPayloadRef     String    @map("raw_payload_ref") @db.Text
+  status            String    @db.VarChar(40)
+  createdAt         DateTime  @map("created_at") @db.Timestamptz(6)
+  isDeleted         Boolean   @default(false) @map("is_deleted")
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  issue LoopIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+  @@index([createdAt(sort: Desc)])
+  @@map("loop_issue_intake")
+}
+
+model LoopState {
+  id               String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  issueId          String    @unique @map("issue_id") @db.VarChar(80)
+  phase            String    @db.VarChar(60)
+  round            Int       @default(1)
+  specVersion      String    @default("v0") @map("spec_version") @db.VarChar(20)
+  shardsTotal      Int       @default(0) @map("shards_total")
+  shardsDone       Int       @default(0) @map("shards_done")
+  shardsInProgress Int       @default(0) @map("shards_in_progress")
+  reloopCount      Int       @default(0) @map("reloop_count")
+  costTokens       Int       @default(0) @map("cost_tokens")
+  costCalls        Int       @default(0) @map("cost_calls")
+  paused           Boolean   @default(false)
+  finalized        Boolean   @default(false)
+  globalVerdict    String?   @map("global_verdict") @db.VarChar(40)
+  updatedAt        DateTime  @map("updated_at") @db.Timestamptz(6)
+  isDeleted        Boolean   @default(false) @map("is_deleted")
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  issue LoopIssue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([phase, updatedAt(sort: Desc)])
+  @@map("loop_state")
+}

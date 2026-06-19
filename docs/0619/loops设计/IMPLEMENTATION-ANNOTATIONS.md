@@ -2,6 +2,63 @@
 
 > 标注口径：本文件记录本轮代码实施后的真实状态。`done` 表示已落到代码且可调用；`partial` 表示 MVP 骨架已落地但仍有明确缺口；`not-started` 表示文档要求尚未实施。
 
+## 最终归档（TASK-08 / 2026-06-19）
+
+```yaml
+archive_round: TASK-08
+impl_status: partial
+test_status: partial
+verdict: needs-work
+source_of_truth: ".loops 文件与 log.jsonl 仍为文档真相源；DB 目前只完成 schema 草案，尚未成为可用索引"
+verified_at: 2026-06-19
+```
+
+### 最终状态矩阵
+
+| 范围 | 状态 | 代码/文档位置 | 最终判断 |
+| --- | --- | --- | --- |
+| v1 边界固化 | done | `03-工作流设计.md`, `08-数据存储设计.md`, `09-实施路线图.md`, `todo/TASK-00...` | 已明确 v1 不做真实登录/SSO、飞书、真实远端 PR、多 worker 生产并发，`.loops` 仍为真相源。 |
+| DB schema | partial | `apps/api/prisma/schema.prisma` | 已存在 `LoopIssue`、`LoopIssueIntake`、`LoopState` Prisma model；未看到迁移/生成物验证与 Loops DB Service。 |
+| DB Service / DB 读写 | not-started | `apps/api/src/modules/loops/**` | Loops 模块未注入 DB Service，也没有 `LoopIssue`/`LoopState` 表读写；API/Service 层没有直接 Prisma 访问，符合“不直连 Prisma”，但核心入库能力未完成。 |
+| Contract / API 表面 | partial | `packages/contracts/src/schemas/loops.schema.ts`, `packages/contracts/src/api/loops.contract.ts`, `apps/api/src/modules/loops/loops.controller.ts` | Zod-first contract、`POST /loops/issues`、分页 `GET /loops/issues` 已存在；submitter 虽为可选 schema，但服务端仍依赖 `submitterId/submitterName` 或前端 mock 值，且列表仍来自 `.loops` 而非 DB。 |
+| `.loops` 文档真相源 | done | `apps/api/src/modules/loops/loops-file-store.service.ts`, `.loops/config.yaml` | Issue/Intake/State/Spec/Shard/Test/Review/Annotation/log/Notification 等文件存储与 doctor 文件检查可用。 |
+| DB + `.loops` 双写 | not-started | `apps/api/src/modules/loops/loops.service.ts` | `createIssue` 只写 `.loops`，未写 DB Issue/Intake/LoopState；未实现 `LoopsPersistenceService` 或等价双写编排。 |
+| Web 无登录提交 | partial | `apps/web/app/loops/new`, `apps/web/app/loops`, `apps/web/lib/api/loops.ts` | Web 页面无显式登录守卫，提交后跳详情；但表单仍展示 Submitter ID/Name mock 字段，队列数据来自文件 backed API，不是 DB 索引。 |
+| Loop 生命周期文件状态 | partial | `apps/api/src/modules/loops/loops.service.ts`, `loops-file-store.service.ts` | Spec、decompose、runLoop、global-review、reloop、finalize 能同步 `.loops/state.json`；没有同步 DB `LoopState` / `LoopIssue.status`。 |
+| Loop 完成 CLOSED/finalized | partial | `LoopsService.finalize`, `LoopsFileStoreService.writeFinalization` | 文件侧可 CLOSED/finalized 并写终态标注/收敛 PR record；DB 侧 CLOSED/finalized 未实现。 |
+| Doctor 一致性 | partial | `LoopsFileStoreService.doctor`, `pnpm loops:doctor` | 文件完整性、shard/annotation/finalized 终态检查可用；DB 与 `.loops` 一致性检查未实现。 |
+| Smoke / 质量门禁 | partial | `pnpm loops:doctor`, `pnpm loops:status`, 文档回填 | 当前验证了 CLI doctor/status 可运行；未完成“无登录提交 -> DB 入库 -> Loop CLOSED”的可重复 DB 冒烟。 |
+| SSO / 飞书 / 真实 PR | not-started | `TASK-09`, 设计文档 v1 裁剪说明 | 未误纳入 v1；后续阶段继续推进。 |
+
+### TASK 汇总
+
+| Task | 状态 | 归档结论 |
+| --- | --- | --- |
+| TASK-00 | done | v1 范围、DB 与 `.loops` 边界、后置项口径已写入设计文档。 |
+| TASK-01 | partial | Prisma model 已有；DB Service、迁移/生成验证、Loops DB 查询写入未完成。 |
+| TASK-02 | partial | Contract/API surface 基本存在；服务端默认 submitter 与 DB-backed list/detail 边界未完成。 |
+| TASK-03 | not-started | 未实现 DB + `.loops` 双写持久化服务。 |
+| TASK-04 | partial | Web 无登录/mock 提交流程可用骨架存在；仍有 mock submitter 字段与 DB 缺口。 |
+| TASK-05 | not-started | Loop 生命周期未同步 DB 状态。 |
+| TASK-06 | partial | `.loops` doctor 可用；DB 一致性 doctor 未完成。 |
+| TASK-07 | partial | CLI doctor/status 已验证；DB 入库闭环 smoke 未完成。 |
+| TASK-08 | done | 已完成最终审查、文档归档与任务回填。 |
+| TASK-09 | done | 后置项清单清楚，未把 SSO/飞书/真实 PR 纳入 v1。 |
+
+### 本轮验证记录
+
+- `rg -n "prisma\\.read|prisma\\.write|new Prisma|PrismaService|loopIssue|loopState|LoopIssueIntake" apps/api/src/modules/loops apps/api/src apps/api/libs -g '!**/*.map'`：未发现 Loops 模块直接 Prisma 访问，也未发现 Loops DB Service 读写入口。
+- `pnpm loops:doctor`：通过；输出 `ok=true`，当前 `.loops` root 存在，`loops=0`、`issues=0`、`problems=[]`。
+- `pnpm loops:status`：通过；输出 `issues=0`、`loops=[]`。
+- 修复验证前阻断：`scripts/loops-cli.ts` 的 `status` 命令已适配当前分页 `LoopListResponse`，避免 ts-node 编译时阻断 doctor/status。
+
+### 下一阶段入口
+
+1. 先补 `LoopsDbService` 或接入项目生成的 DB Service，封装 `LoopIssue`、`LoopIssueIntake`、`LoopState` 的 create/update/list/detail。
+2. 增加 `LoopsPersistenceService`，统一执行 DB + `.loops` 双写，并定义 DB 成功但文件失败时的补偿策略。
+3. 将 `createIssue`、`list`、关键生命周期状态更新切到持久化服务；doctor 增加 DB 与 `.loops` 双向一致性检查。
+4. 再补可重复 smoke：无登录提交、DB 三表存在、刷新队列、闭环 finalize 后 DB 与 `.loops` 都 CLOSED/finalized。
+
 ## 总体状态
 
 ```yaml
@@ -67,6 +124,25 @@ notes: 已完成 M0/M1 的 Web Issue、Spec 审核门禁、基础拆解、.loops
 | commit-per-shard                               | partial     | GitAdapter 已存在，finalize 可生成提交/PR 描述，并在真实 git 操作前校验 targetRepo 白名单；Shard 审查 PASS 转 DONE 后已调用 `gitAdapter.commitShard()` 并记录 `SHARD_COMMIT` 日志；默认 `LOOPS_GIT_COMMIT_PER_SHARD=false` 安全跳过真实提交，远端 PR 打开仍待完善。                                                                                                    |
 | 回环、整体复查、终态标注                       | partial     | 已有 global-review/reloop/finalize API、CLI、Web 操作入口和文件记录；global review 有当前 round 证据门禁和全局回归门禁，非 PASS 自动回环、reloop 最大次数暂停保护、新轮详情隐藏旧轮终态产物和证据记录、finalize 补齐核心文档节点终态标注已落地；关键 E2E/构建矩阵与增量补拆仍待完善。                                                                                                                   |
 | Feishu 入口与通知                              | partial     | 通知记录 MVP 已落地到 `.loops/notifications` 和 Web/CLI 查询；飞书入口、消息卡片审批、飞书反向发送仍按文档后置。                                                                                                                                                                                                                                                       |
+
+## v1 后置项 Registry
+
+> 本节与 `todo/TASK-09-deferred-items-registry.md` 保持一致，用于最终归档时防止把长期目标误标为 v1 必需项。
+
+| 能力 | v1 归档口径 | 建议阶段 |
+| --- | --- | --- |
+| Dofe SSO 登录 | `not-started`；v1 使用无登录 Web 表单或 mock submitter | v1.1 |
+| 用户角色/权限 | `not-started`；v1 使用 targetRepo 白名单和本地开发身份 | v1.1 |
+| 飞书 Issue 入口 | `not-started`；Web 表单覆盖 v1 主链路 | v1.2 |
+| 飞书审批卡片 | `not-started`；Web 审核台覆盖 v1 人工门禁 | v1.2 |
+| 飞书反向通知 | `not-started`；Web/CLI 通知记录作为 MVP | v1.2 |
+| 真实远端 PR 打开 | `not-started`；convergence PR record / GitAdapter 骨架可保留 | v1.3 |
+| 多 Loop 并行队列 | `not-started`；v1 先单 Loop 或手动推进 | v1.3 |
+| 独立 worker 池 | `not-started`；当前 API 内置 Runner 足够验证闭环 | v1.3 |
+| 完整 E2E/build 矩阵 | `not-started`；v1 只要求最小冒烟与 regression commands | v1.2 |
+| 生产级 agent 告警 | `not-started`；v1 只要求失败落日志、状态和通知记录 | v1.3 |
+
+允许保留但不计入 v1 必需验收的骨架：CLI Adapter、commit-per-shard、convergence PR record、notifications record、`max_parallel` / `context_budget` / `max_reloop` 等运行时配置。
 
 ## 对路线图的准确标注
 

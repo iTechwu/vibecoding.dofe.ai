@@ -12,8 +12,15 @@ export class LoopsController {
 
   @TsRestHandler(c.list)
   async list() {
-    return tsRestHandler(c.list, async () => {
-      return success(await this.loopsService.list());
+    return tsRestHandler(c.list, async ({ query }) => {
+      return success(await this.loopsService.list(query));
+    });
+  }
+
+  @TsRestHandler(c.listLegacy)
+  async listLegacy() {
+    return tsRestHandler(c.listLegacy, async ({ query }) => {
+      return success(await this.loopsService.list(query));
     });
   }
 

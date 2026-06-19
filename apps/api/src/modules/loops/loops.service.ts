@@ -6,6 +6,8 @@ import type {
   LoopImplementationRecord,
   LoopInterventionRequest,
   LoopIssue,
+  LoopIssuesQuery,
+  LoopListResponse,
   LoopRecordShardImplementationRequest,
   LoopReviewRecord,
   LoopReviewShardRequest,
@@ -14,6 +16,7 @@ import type {
   LoopShard,
   LoopSpec,
   LoopStateItem,
+  LoopSubmitter,
 } from '@repo/contracts';
 import { LoopsFileStoreService } from './loops-file-store.service';
 import { LoopsRunnerService } from './loops-runner.service';
@@ -30,6 +33,7 @@ import {
   type LoopsCommitShardResult,
   type LoopsGitAdapter,
 } from './adapters/loops-git-adapter.interface';
+import { LoopsPersistenceService } from './loops-persistence.service';
 import { resolveAllowedTargetRepo } from './loops-path-policy.util';
 import { readLoopsRuntimeConfig } from './loops-runtime-config.util';
 
@@ -46,15 +50,16 @@ export class LoopsService {
     private readonly claudeAdapter: LoopsClaudeAdapter,
     @Inject(LOOPS_GIT_ADAPTER)
     private readonly gitAdapter: LoopsGitAdapter,
+    private readonly persistence: LoopsPersistenceService,
   ) {}
 
-  async list() {
-    return this.store.list();
+  async list(query: LoopIssuesQuery): Promise<LoopListResponse> {
+    return this.persistence.list(query);
   }
 
   async getIssue(issueId: string) {
     try {
-      return await this.store.readDetail(issueId);
+      return await this.persistence.readDetail(issueId);
     } catch {
       throw new NotFoundException(`Issue ${issueId} not found`);
     }
@@ -66,6 +71,7 @@ export class LoopsService {
     const intakeId = this.store.intakeId(issueId);
     const rawPayloadRef = `.loops/intakes/${intakeId}.raw.json`;
     const targetRepo = await this.resolveTargetRepo(input.targetRepo);
+    const submitter = this.normalizeSubmitter(input);
     const issue: LoopIssue = {
       id: issueId,
       title: input.title,
@@ -75,8 +81,8 @@ export class LoopsService {
       updated: now,
       sourceChannel: 'web',
       sourceKind: 'web_form',
-      submitterId: input.submitterId,
-      submitterName: input.submitterName,
+      submitterId: submitter.userId,
+      submitterName: submitter.name,
       targetRepo,
       body: input.body,
       acceptanceCriteria: input.acceptanceCriteria,
@@ -87,11 +93,7 @@ export class LoopsService {
       issueId,
       sourceChannel: 'web' as const,
       sourceKind: 'web_form' as const,
-      submitter: {
-        provider: 'dofe-sso' as const,
-        userId: input.submitterId,
-        name: input.submitterName,
-      },
+      submitter,
       rawPayloadRef,
       status: 'NORMALIZED' as const,
       created: now,
@@ -111,8 +113,30 @@ export class LoopsService {
       paused: false,
     };
 
-    await this.store.writeIssue({ issue, intake, state, rawPayload: input });
+    if (this.persistence) {
+      await this.persistence.writeIssue({ issue, intake, state, rawPayload: input });
+    } else {
+      await this.store.writeIssue({ issue, intake, state, rawPayload: input });
+    }
     return { issue, intake, state };
+  }
+
+  private normalizeSubmitter(input: CreateLoopIssueRequest): LoopSubmitter {
+    return {
+      provider: input.submitter?.provider ?? 'dev',
+      userId: input.submitter?.userId ?? input.submitterId ?? 'dev-user',
+      name: input.submitter?.name ?? input.submitterName ?? 'Developer',
+    };
+  }
+
+  private async syncAndRead(issueId: string): Promise<LoopIssueDetail> {
+    const detail = await this.store.readDetail(issueId);
+    if (!this.persistence) {
+      return detail;
+    }
+
+    await this.persistence.syncState(detail.state, detail.issue.status);
+    return this.persistence.readDetail(issueId);
   }
 
   async generateSpec(issueId: string) {
@@ -146,7 +170,7 @@ export class LoopsService {
     };
 
     await this.store.writeSpec(detail.issue, spec, await this.store.enforceCostGuard(state));
-    return this.store.readDetail(issueId);
+    return this.syncAndRead(issueId);
   }
 
   async reviewSpec(issueId: string, request: LoopReviewSpecRequest) {
@@ -190,7 +214,7 @@ export class LoopsService {
       to: spec.status,
       reviewer: request.reviewer,
     });
-    return this.store.readDetail(issueId);
+    return this.syncAndRead(issueId);
   }
 
   async decompose(issueId: string) {
@@ -221,7 +245,7 @@ export class LoopsService {
       annotations,
       state: guardedState,
     });
-    return this.store.readDetail(issueId);
+    return this.syncAndRead(issueId);
   }
 
   async runLoop(issueId: string) {
@@ -246,12 +270,12 @@ export class LoopsService {
       if (shard.estContext >= contextBudget) {
         await this.blockShardForContextBudget(issueId, currentDetail, shard, contextBudget);
         blocked += 1;
-        currentDetail = await this.store.readDetail(issueId);
+        currentDetail = await this.syncAndRead(issueId);
         continue;
       }
       await this.runRunnableShard(issueId, currentDetail, shard);
       advanced += 1;
-      currentDetail = await this.store.readDetail(issueId);
+      currentDetail = await this.syncAndRead(issueId);
       if (currentDetail.state.paused) {
         break;
       }
@@ -266,7 +290,7 @@ export class LoopsService {
         advanced,
         blocked,
       });
-      return this.store.readDetail(issueId);
+      return this.syncAndRead(issueId);
     }
 
     if (blocked > 0) {
@@ -278,7 +302,7 @@ export class LoopsService {
         advanced,
         blocked,
       });
-      return this.store.readDetail(issueId);
+      return this.syncAndRead(issueId);
     }
 
     if (detail.shards.length > 0 && detail.shards.every((item) => item.status === 'DONE')) {
@@ -290,7 +314,7 @@ export class LoopsService {
         shardsInProgress: 0,
         updated: now,
       });
-      return this.store.readDetail(issueId);
+      return this.syncAndRead(issueId);
     }
     throw new BadRequestException('No runnable shard is available');
   }
@@ -322,7 +346,7 @@ export class LoopsService {
           updated: now,
         },
       });
-      return this.store.readDetail(issueId);
+      return this.syncAndRead(issueId);
     }
 
     const regressionRecord = await this.runGlobalRegression(detail);
@@ -356,10 +380,10 @@ export class LoopsService {
           updated: now,
         },
       });
-      return this.store.readDetail(issueId);
+      return this.syncAndRead(issueId);
     }
 
-    const reviewDetail = await this.store.readDetail(issueId);
+    const reviewDetail = await this.syncAndRead(issueId);
     const review = await this.agentAdapter.reviewGlobal({
       issue: reviewDetail.issue,
       spec: reviewDetail.spec,
@@ -418,7 +442,7 @@ export class LoopsService {
         updated: now,
       },
     });
-    return this.store.readDetail(issueId);
+    return this.syncAndRead(issueId);
   }
 
   async reloop(issueId: string, request: { reviewer?: string; notes?: string }) {
@@ -503,7 +527,7 @@ export class LoopsService {
         body: `Global review was ${input.record.verdict}, but max_reloop=${maxReloop} has been reached. The loop was paused for human intervention.`,
         actionHref: `/loops/${input.issueId}`,
       });
-      return this.store.readDetail(input.issueId);
+      return this.syncAndRead(input.issueId);
     }
 
     const nextRound = input.detail.state.round + 1;
@@ -557,7 +581,7 @@ export class LoopsService {
       reloop_count: reloopCount,
       max_reloop: maxReloop,
     });
-    return this.store.readDetail(input.issueId);
+    return this.syncAndRead(input.issueId);
   }
 
   private buildReloopSpec(input: {
@@ -623,11 +647,11 @@ export class LoopsService {
         updated: now,
       },
     });
-    return this.store.readDetail(issueId);
+    return this.syncAndRead(issueId);
   }
 
   async doctor() {
-    return this.store.doctor();
+    return this.persistence ? this.persistence.doctor() : this.store.doctor();
   }
 
   async cost() {
@@ -667,7 +691,7 @@ export class LoopsService {
           updated: now,
         },
       });
-      return this.store.readDetail(issueId);
+      return this.syncAndRead(issueId);
     }
 
     if (request.action === 'resume') {
@@ -683,7 +707,7 @@ export class LoopsService {
           updated: now,
         },
       });
-      return this.store.readDetail(issueId);
+      return this.syncAndRead(issueId);
     }
 
     if (!request.shardId) {
@@ -729,7 +753,7 @@ export class LoopsService {
         updated: now,
       },
     });
-    return this.store.readDetail(issueId);
+    return this.syncAndRead(issueId);
   }
 
   async runShardTests(issueId: string, shardId: string, request?: LoopRunShardTestsRequest) {
@@ -993,7 +1017,7 @@ export class LoopsService {
       shards: nextShards,
       state: nextState,
     });
-    return this.store.readDetail(issueId);
+    return this.syncAndRead(issueId);
   }
 
   private collectGlobalEvidenceIssues(detail: Awaited<ReturnType<LoopsService['getIssue']>>) {
@@ -1237,5 +1261,15 @@ export class LoopsService {
       const message = error instanceof Error ? error.message : 'Invalid targetRepo';
       throw new BadRequestException(message);
     }
+  }
+
+  private async syncAndRead(issueId: string) {
+    const detail = await this.store.readDetail(issueId);
+    if (this.persistence) {
+      const issueStatus = detail.issue.status === 'CLOSED' ? 'CLOSED' : undefined;
+      await this.persistence.syncState(detail.state, issueStatus);
+      return this.persistence.readDetail(issueId);
+    }
+    return detail;
   }
 }

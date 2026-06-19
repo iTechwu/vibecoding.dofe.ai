@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { LoopsDbModule } from '@app/db';
 import { CliLoopsAgentAdapter } from './adapters/cli-loops-agent.adapter';
 import { CliLoopsClaudeAdapter } from './adapters/cli-loops-claude.adapter';
 import { CliLoopsGitAdapter } from './adapters/cli-loops-git.adapter';
@@ -9,14 +10,17 @@ import { LOOPS_CLAUDE_ADAPTER } from './adapters/loops-claude-adapter.interface'
 import { LOOPS_GIT_ADAPTER } from './adapters/loops-git-adapter.interface';
 import { LoopsController } from './loops.controller';
 import { LoopsFileStoreService } from './loops-file-store.service';
+import { LoopsPersistenceService } from './loops-persistence.service';
 import { LoopsRunnerService } from './loops-runner.service';
 import { LoopsService } from './loops.service';
 
 @Module({
+  imports: [LoopsDbModule],
   controllers: [LoopsController],
   providers: [
     LoopsService,
     LoopsFileStoreService,
+    LoopsPersistenceService,
     LoopsRunnerService,
     DeterministicLoopsAgentAdapter,
     DeterministicLoopsClaudeAdapter,

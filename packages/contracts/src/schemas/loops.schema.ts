@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PaginatedResponseSchema, PaginationQuerySchema } from '../base';
 
 export const LoopIssueStatusSchema = z.enum([
   'INTAKE',
@@ -11,6 +12,14 @@ export const LoopIssueStatusSchema = z.enum([
 ]);
 
 export const LoopPrioritySchema = z.enum(['P0', 'P1', 'P2', 'P3']);
+
+export const LoopSubmitterProviderSchema = z.enum(['dev', 'dofe-sso']);
+
+export const LoopSubmitterSchema = z.object({
+  provider: LoopSubmitterProviderSchema,
+  userId: z.string(),
+  name: z.string(),
+});
 
 export const LoopPhaseSchema = z.enum([
   'PHASE_0_INTAKE',
@@ -53,8 +62,15 @@ export const CreateLoopIssueRequestSchema = z.object({
   body: z.string().trim().min(10),
   priority: LoopPrioritySchema.default('P2'),
   acceptanceCriteria: z.array(z.string().trim().min(1)).min(1),
-  submitterId: z.string().trim().min(1).default('mock-user'),
-  submitterName: z.string().trim().min(1).default('Mock User'),
+  submitter: z
+    .object({
+      provider: LoopSubmitterProviderSchema.optional(),
+      userId: z.string().trim().min(1).optional(),
+      name: z.string().trim().min(1).optional(),
+    })
+    .optional(),
+  submitterId: z.string().trim().min(1).optional(),
+  submitterName: z.string().trim().min(1).optional(),
 });
 
 export const LoopIssueSchema = z.object({
@@ -79,11 +95,7 @@ export const LoopIntakeSchema = z.object({
   issueId: z.string(),
   sourceChannel: z.literal('web'),
   sourceKind: z.literal('web_form'),
-  submitter: z.object({
-    provider: z.literal('dofe-sso'),
-    userId: z.string(),
-    name: z.string(),
-  }),
+  submitter: LoopSubmitterSchema,
   rawPayloadRef: z.string(),
   status: z.enum(['RECEIVED', 'NEEDS-CLARIFICATION', 'NORMALIZED', 'REJECTED']),
   created: z.string(),
@@ -405,10 +417,19 @@ export const LoopDetailSchema = z.object({
   convergencePr: LoopConvergencePrSchema.optional(),
 });
 
-export const LoopListResponseSchema = z.object({
-  issues: z.array(LoopIssueSchema),
-  loops: z.array(LoopStateItemSchema),
+export const LoopIssuesQuerySchema = PaginationQuerySchema.extend({
+  status: LoopIssueStatusSchema.optional(),
+  phase: LoopPhaseSchema.optional(),
+  priority: LoopPrioritySchema.optional(),
+  targetRepo: z.string().trim().min(1).optional(),
 });
+
+export const LoopIssueListItemSchema = z.object({
+  issue: LoopIssueSchema,
+  state: LoopStateItemSchema.optional(),
+});
+
+export const LoopListResponseSchema = PaginatedResponseSchema(LoopIssueListItemSchema);
 
 export const LoopIssueCreatedResponseSchema = z.object({
   issue: LoopIssueSchema,
@@ -434,6 +455,9 @@ export const LoopsDoctorResponseSchema = z.object({
   root: z.string(),
   loops: z.number(),
   issues: z.number(),
+  fileProblems: z.array(z.string()).default([]),
+  dbProblems: z.array(z.string()).default([]),
+  consistencyProblems: z.array(z.string()).default([]),
   problems: z.array(z.string()),
 });
 
@@ -450,6 +474,8 @@ export const LoopsResumeResponseSchema = z.object({
 });
 
 export type CreateLoopIssueRequest = z.infer<typeof CreateLoopIssueRequestSchema>;
+export type LoopSubmitterProvider = z.infer<typeof LoopSubmitterProviderSchema>;
+export type LoopSubmitter = z.infer<typeof LoopSubmitterSchema>;
 export type LoopIssue = z.infer<typeof LoopIssueSchema>;
 export type LoopIntake = z.infer<typeof LoopIntakeSchema>;
 export type LoopSpec = z.infer<typeof LoopSpecSchema>;
@@ -475,6 +501,8 @@ export type LoopNotificationsResponse = z.infer<typeof LoopNotificationsResponse
 export type LoopCostItem = z.infer<typeof LoopCostItemSchema>;
 export type LoopCostResponse = z.infer<typeof LoopCostResponseSchema>;
 export type LoopDetail = z.infer<typeof LoopDetailSchema>;
+export type LoopIssuesQuery = z.infer<typeof LoopIssuesQuerySchema>;
+export type LoopIssueListItem = z.infer<typeof LoopIssueListItemSchema>;
 export type LoopListResponse = z.infer<typeof LoopListResponseSchema>;
 export type LoopIssueCreatedResponse = z.infer<typeof LoopIssueCreatedResponseSchema>;
 export type LoopReviewSpecRequest = z.infer<typeof LoopReviewSpecRequestSchema>;

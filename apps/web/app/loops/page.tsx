@@ -18,7 +18,6 @@ export default async function LoopsPage() {
     getLoopLogs({ limit: 8 }),
     getLoopNotifications({ limit: 6 }),
   ]);
-  const stateByIssue = new Map(data.loops.map((loop) => [loop.issueId, loop]));
 
   return (
     <main className="min-h-screen bg-background px-6 py-8">
@@ -133,11 +132,10 @@ export default async function LoopsPage() {
             <span>Phase</span>
             <span>Priority</span>
           </div>
-          {data.issues.length === 0 ? (
+          {data.list.length === 0 ? (
             <div className="px-4 py-10 text-sm text-muted-foreground">No Loops issues yet.</div>
           ) : (
-            data.issues.map((issue) => {
-              const loop = stateByIssue.get(issue.id);
+            data.list.map(({ issue, state }) => {
               return (
                 <Link
                   className="grid grid-cols-[1.5fr_120px_160px_120px] gap-4 border-b px-4 py-4 text-sm last:border-b-0 hover:bg-muted/30"
@@ -149,7 +147,7 @@ export default async function LoopsPage() {
                     <span className="block truncate text-muted-foreground">{issue.targetRepo}</span>
                   </span>
                   <span>{issue.status}</span>
-                  <span>{loop?.phase ?? 'PHASE_0_INTAKE'}</span>
+                  <span>{state?.phase ?? 'PHASE_0_INTAKE'}</span>
                   <span>{issue.priority}</span>
                 </Link>
               );

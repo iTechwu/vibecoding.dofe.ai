@@ -14,8 +14,6 @@ export async function createLoopIssueAction(formData: FormData) {
     body: String(formData.get('body') ?? ''),
     priority: (String(formData.get('priority') ?? 'P2') || 'P2') as 'P0' | 'P1' | 'P2' | 'P3',
     acceptanceCriteria,
-    submitterId: String(formData.get('submitterId') ?? 'mock-user'),
-    submitterName: String(formData.get('submitterName') ?? 'Mock User'),
   });
 
   redirect(`/loops/${result.issue.id}`);

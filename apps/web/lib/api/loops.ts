@@ -13,6 +13,7 @@ import type {
   LoopTestRecord,
   LoopsDoctorResponse,
   LoopIssueCreatedResponse,
+  LoopIssuesQuery,
   LoopListResponse,
   LoopReviewSpecRequest,
   LoopReloopRequest,
@@ -28,9 +29,19 @@ function unwrap<T>(response: DataResponse<T> | T): T {
   return response as T;
 }
 
-export async function listLoops() {
+export async function listLoops(input?: LoopIssuesQuery) {
+  const searchParams = new URLSearchParams();
+  if (input?.limit) searchParams.set('limit', String(input.limit));
+  if (input?.page) searchParams.set('page', String(input.page));
+  if (input?.sort) searchParams.set('sort', input.sort);
+  if (input?.asc) searchParams.set('asc', input.asc);
+  if (input?.status) searchParams.set('status', input.status);
+  if (input?.phase) searchParams.set('phase', input.phase);
+  if (input?.priority) searchParams.set('priority', input.priority);
+  if (input?.targetRepo) searchParams.set('targetRepo', input.targetRepo);
+  const query = searchParams.toString();
   return unwrap(
-    await request.get<DataResponse<LoopListResponse>>('/loops', {
+    await request.get<DataResponse<LoopListResponse>>(`/loops/issues${query ? `?${query}` : ''}`, {
       cacheTime: 0,
     }),
   );

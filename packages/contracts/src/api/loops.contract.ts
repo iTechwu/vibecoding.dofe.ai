@@ -8,6 +8,7 @@ import {
   LoopInterventionRequestSchema,
   LoopImplementationRecordSchema,
   LoopIssueCreatedResponseSchema,
+  LoopIssuesQuerySchema,
   LoopListResponseSchema,
   LoopLogsQuerySchema,
   LoopLogsResponseSchema,
@@ -31,11 +32,21 @@ export const loopsContract = c.router(
   {
     list: {
       method: 'GET',
-      path: '/',
+      path: '/issues',
+      query: LoopIssuesQuerySchema,
       responses: {
         200: ApiResponseSchema(LoopListResponseSchema),
       },
-      summary: 'List Loops issues and state',
+      summary: 'List Loops issues from the DB index surface',
+    },
+    listLegacy: {
+      method: 'GET',
+      path: '/',
+      query: LoopIssuesQuerySchema,
+      responses: {
+        200: ApiResponseSchema(LoopListResponseSchema),
+      },
+      summary: 'List Loops issues and state (legacy route)',
     },
     createIssue: {
       method: 'POST',

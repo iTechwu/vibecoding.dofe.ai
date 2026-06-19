@@ -5,10 +5,10 @@ export default function NewLoopIssuePage() {
   return (
     <main className="min-h-screen bg-background px-6 py-8">
       <div className="mx-auto max-w-3xl">
-        <div className="mb-6 flex items-center justify-between border-b pb-5">
+        <div className="mb-6 flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-medium text-muted-foreground">Web Issue Intake</p>
-            <h1 className="text-3xl font-semibold tracking-normal">New Loops Issue</h1>
+            <h1 className="text-3xl font-semibold tracking-normal text-balance">New Loops Issue</h1>
           </div>
           <Link className="text-sm text-muted-foreground hover:text-foreground" href="/loops">
             Back
@@ -35,7 +35,7 @@ export default function NewLoopIssuePage() {
             />
           </label>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <label className="flex flex-col gap-2 text-sm font-medium">
               Priority
               <select
@@ -48,22 +48,6 @@ export default function NewLoopIssuePage() {
                 <option value="P2">P2</option>
                 <option value="P3">P3</option>
               </select>
-            </label>
-            <label className="flex flex-col gap-2 text-sm font-medium">
-              Submitter ID
-              <input
-                className="h-10 rounded-md border bg-background px-3 text-sm"
-                defaultValue="mock-user"
-                name="submitterId"
-              />
-            </label>
-            <label className="flex flex-col gap-2 text-sm font-medium">
-              Submitter Name
-              <input
-                className="h-10 rounded-md border bg-background px-3 text-sm"
-                defaultValue="Mock User"
-                name="submitterName"
-              />
             </label>
           </div>
 

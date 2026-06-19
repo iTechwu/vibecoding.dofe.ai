@@ -20,12 +20,14 @@ async function main() {
   );
 
   if (command === 'status') {
-    const data = await service.list();
+    const data = await service.list({ page: 1, limit: 20 });
     console.log(
       JSON.stringify(
         {
-          issues: data.issues.length,
-          loops: data.loops,
+          issues: data.total,
+          loops: data.list
+            .map((item) => item.state)
+            .filter((state): state is NonNullable<typeof state> => Boolean(state)),
         },
         null,
         2,

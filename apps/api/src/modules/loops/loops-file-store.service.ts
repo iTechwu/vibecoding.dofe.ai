@@ -31,6 +31,9 @@ export type LoopsDoctorResult = {
   root: string;
   loops: number;
   issues: number;
+  fileProblems: string[];
+  dbProblems: string[];
+  consistencyProblems: string[];
   problems: string[];
 };
 
@@ -247,6 +250,9 @@ export class LoopsFileStoreService {
       root: this.root,
       loops: state.loops.length,
       issues: issues.length,
+      fileProblems: problems,
+      dbProblems: [],
+      consistencyProblems: [],
       problems,
     };
   }
