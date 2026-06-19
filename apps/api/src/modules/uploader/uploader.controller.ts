@@ -94,17 +94,14 @@ export class UploaderController {
 
   @TsRestHandler(c.initMultipart)
   async initMultipart(@Req() req: AuthenticatedRequest) {
-    // @ts-expect-error - ts-rest RC type inference mismatch with strictNullChecks
     return tsRestHandler(c.initMultipart, async ({ body }) => {
       const userId = req.userId;
       const ip = ipUtil.extractIp(req);
 
       // 签名验证
-      const signatureData =
-        this.uploaderService.checkValidateAndReturnSignatureData(userId, body);
+      const signatureData = this.uploaderService.checkValidateAndReturnSignatureData(userId, body);
 
-      const vendor =
-        body.vendor ?? (this.appConfig.defaultVendor as FileBucketVendor);
+      const vendor = body.vendor ?? (this.appConfig.defaultVendor as FileBucketVendor);
       const bucket = await this.fileStorageService.getBucketString(
         body.bucket,
         ip,
@@ -114,11 +111,7 @@ export class UploaderController {
       );
 
       const ext = fileUtil.getFileExtension(body.filename) ?? '';
-      const key = await this.fileStorageService.formatNewKeyString(
-        'private',
-        ext,
-        bucket,
-      );
+      const key = await this.fileStorageService.formatNewKeyString('private', ext, bucket);
 
       // Create file source record
       const fileSource = await this.fileSourceDb.create({
@@ -128,24 +121,19 @@ export class UploaderController {
         fsize: body.fsize,
         mimeType: fileUtil.getMimeType(body.filename),
         ext: ext || undefined,
-        sha256: (body.sha256 ?? signatureData.sha256) ?? undefined,
+        sha256: body.sha256 ?? signatureData.sha256 ?? undefined,
         isUploaded: false,
       });
 
       // Get multipart upload ID
-      const uploadId = await this.fileStorageService.getMultipartUploadId(
-        vendor,
-        bucket,
-        key,
-        ip,
-      );
+      const uploadId = await this.fileStorageService.getMultipartUploadId(vendor, bucket, key, ip);
 
       // Get presigned URL for first part
-      const token = await this.fileStorageService.getPresignedUrl(
-        vendor,
-        bucket,
-        { uploadId, key, partNumber: 1 },
-      );
+      const token = await this.fileStorageService.getPresignedUrl(vendor, bucket, {
+        uploadId,
+        key,
+        partNumber: 1,
+      });
 
       return success({
         token,
@@ -181,17 +169,14 @@ export class UploaderController {
 
   @TsRestHandler(c.getPrivateToken)
   async getPrivateToken(@Req() req: AuthenticatedRequest) {
-    // @ts-expect-error - ts-rest RC type inference mismatch with strictNullChecks
     return tsRestHandler(c.getPrivateToken, async ({ body }) => {
       const userId = req.userId;
       const ip = ipUtil.extractIp(req);
 
       // 签名验证
-      const signatureData =
-        this.uploaderService.checkValidateAndReturnSignatureData(userId, body);
+      const signatureData = this.uploaderService.checkValidateAndReturnSignatureData(userId, body);
 
-      const vendor =
-        body.vendor ?? (this.appConfig.defaultVendor as FileBucketVendor);
+      const vendor = body.vendor ?? (this.appConfig.defaultVendor as FileBucketVendor);
       const bucket = await this.fileStorageService.getBucketString(
         body.bucket,
         ip,
@@ -201,11 +186,7 @@ export class UploaderController {
       );
 
       const ext = fileUtil.getFileExtension(body.filename) ?? '';
-      const key = await this.fileStorageService.formatNewKeyString(
-        'private',
-        ext,
-        bucket,
-      );
+      const key = await this.fileStorageService.formatNewKeyString('private', ext, bucket);
 
       // Create file source record
       const fileSource = await this.fileSourceDb.create({
@@ -215,7 +196,7 @@ export class UploaderController {
         fsize: body.fsize,
         mimeType: fileUtil.getMimeType(body.filename),
         ext: ext || undefined,
-        sha256: (body.sha256 ?? signatureData.sha256) ?? undefined,
+        sha256: body.sha256 ?? signatureData.sha256 ?? undefined,
         isUploaded: false,
       });
 
@@ -228,11 +209,7 @@ export class UploaderController {
         body.locale,
       );
 
-      const config = await this.fileStorageService.getFileServiceConfig(
-        vendor,
-        bucket,
-        ip,
-      );
+      const config = await this.fileStorageService.getFileServiceConfig(vendor, bucket, ip);
 
       return success({
         token: result.token,
@@ -285,10 +262,7 @@ export class UploaderController {
       });
 
       // Get file source and mark as uploaded
-      const fileSource = await this.fileSourceDb.update(
-        { id: body.fileId },
-        { isUploaded: true },
-      );
+      const fileSource = await this.fileSourceDb.update({ id: body.fileId }, { isUploaded: true });
 
       const config = await this.fileStorageService.getFileServiceConfig(
         fileSource.vendor,

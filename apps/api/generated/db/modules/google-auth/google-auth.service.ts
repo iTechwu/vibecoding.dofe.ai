@@ -7,10 +7,7 @@ import type { Prisma, GoogleAuth } from '@prisma/client';
 
 @Injectable()
 export class GoogleAuthService extends TransactionalServiceBase {
-
-  constructor(
-    prisma: PrismaService,
-  ) {
+  constructor(prisma: PrismaService) {
     super(prisma);
   }
 
@@ -40,7 +37,9 @@ export class GoogleAuthService extends TransactionalServiceBase {
   async list(
     where: Prisma.GoogleAuthWhereInput,
     pagination?: {
-      orderBy?: Prisma.GoogleAuthOrderByWithRelationInput|Prisma.GoogleAuthOrderByWithRelationInput[];
+      orderBy?:
+        | Prisma.GoogleAuthOrderByWithRelationInput
+        | Prisma.GoogleAuthOrderByWithRelationInput[];
       limit?: number;
       page?: number;
     },
@@ -111,9 +110,7 @@ export class GoogleAuthService extends TransactionalServiceBase {
   }
 
   @HandlePrismaError(DbOperationType.CREATE)
-  async createMany(
-    data: Prisma.GoogleAuthCreateInput[],
-  ): Promise<{ count: number }> {
+  async createMany(data: Prisma.GoogleAuthCreateManyInput[]): Promise<{ count: number }> {
     return this.getWriteClient().googleAuth.createMany({ data });
   }
 
@@ -126,9 +123,7 @@ export class GoogleAuthService extends TransactionalServiceBase {
   }
 
   @HandlePrismaError(DbOperationType.UPDATE)
-  async upsert(
-    args: Prisma.GoogleAuthUpsertArgs,
-  ): Promise<GoogleAuth> {
+  async upsert(args: Prisma.GoogleAuthUpsertArgs): Promise<GoogleAuth> {
     return this.getWriteClient().googleAuth.upsert(args);
   }
 

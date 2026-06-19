@@ -7,10 +7,7 @@ import type { Prisma, DiscordAuth } from '@prisma/client';
 
 @Injectable()
 export class DiscordAuthService extends TransactionalServiceBase {
-
-  constructor(
-    prisma: PrismaService,
-  ) {
+  constructor(prisma: PrismaService) {
     super(prisma);
   }
 
@@ -40,7 +37,9 @@ export class DiscordAuthService extends TransactionalServiceBase {
   async list(
     where: Prisma.DiscordAuthWhereInput,
     pagination?: {
-      orderBy?: Prisma.DiscordAuthOrderByWithRelationInput|Prisma.DiscordAuthOrderByWithRelationInput[];
+      orderBy?:
+        | Prisma.DiscordAuthOrderByWithRelationInput
+        | Prisma.DiscordAuthOrderByWithRelationInput[];
       limit?: number;
       page?: number;
     },
@@ -111,9 +110,7 @@ export class DiscordAuthService extends TransactionalServiceBase {
   }
 
   @HandlePrismaError(DbOperationType.CREATE)
-  async createMany(
-    data: Prisma.DiscordAuthCreateInput[],
-  ): Promise<{ count: number }> {
+  async createMany(data: Prisma.DiscordAuthCreateManyInput[]): Promise<{ count: number }> {
     return this.getWriteClient().discordAuth.createMany({ data });
   }
 
@@ -126,9 +123,7 @@ export class DiscordAuthService extends TransactionalServiceBase {
   }
 
   @HandlePrismaError(DbOperationType.UPDATE)
-  async upsert(
-    args: Prisma.DiscordAuthUpsertArgs,
-  ): Promise<DiscordAuth> {
+  async upsert(args: Prisma.DiscordAuthUpsertArgs): Promise<DiscordAuth> {
     return this.getWriteClient().discordAuth.upsert(args);
   }
 

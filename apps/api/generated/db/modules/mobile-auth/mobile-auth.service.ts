@@ -7,10 +7,7 @@ import type { Prisma, MobileAuth } from '@prisma/client';
 
 @Injectable()
 export class MobileAuthService extends TransactionalServiceBase {
-
-  constructor(
-    prisma: PrismaService,
-  ) {
+  constructor(prisma: PrismaService) {
     super(prisma);
   }
 
@@ -40,7 +37,9 @@ export class MobileAuthService extends TransactionalServiceBase {
   async list(
     where: Prisma.MobileAuthWhereInput,
     pagination?: {
-      orderBy?: Prisma.MobileAuthOrderByWithRelationInput|Prisma.MobileAuthOrderByWithRelationInput[];
+      orderBy?:
+        | Prisma.MobileAuthOrderByWithRelationInput
+        | Prisma.MobileAuthOrderByWithRelationInput[];
       limit?: number;
       page?: number;
     },
@@ -111,9 +110,7 @@ export class MobileAuthService extends TransactionalServiceBase {
   }
 
   @HandlePrismaError(DbOperationType.CREATE)
-  async createMany(
-    data: Prisma.MobileAuthCreateInput[],
-  ): Promise<{ count: number }> {
+  async createMany(data: Prisma.MobileAuthCreateManyInput[]): Promise<{ count: number }> {
     return this.getWriteClient().mobileAuth.createMany({ data });
   }
 
@@ -126,9 +123,7 @@ export class MobileAuthService extends TransactionalServiceBase {
   }
 
   @HandlePrismaError(DbOperationType.UPDATE)
-  async upsert(
-    args: Prisma.MobileAuthUpsertArgs,
-  ): Promise<MobileAuth> {
+  async upsert(args: Prisma.MobileAuthUpsertArgs): Promise<MobileAuth> {
     return this.getWriteClient().mobileAuth.upsert(args);
   }
 

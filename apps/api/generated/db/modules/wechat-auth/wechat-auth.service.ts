@@ -7,10 +7,7 @@ import type { Prisma, WechatAuth } from '@prisma/client';
 
 @Injectable()
 export class WechatAuthService extends TransactionalServiceBase {
-
-  constructor(
-    prisma: PrismaService,
-  ) {
+  constructor(prisma: PrismaService) {
     super(prisma);
   }
 
@@ -40,7 +37,9 @@ export class WechatAuthService extends TransactionalServiceBase {
   async list(
     where: Prisma.WechatAuthWhereInput,
     pagination?: {
-      orderBy?: Prisma.WechatAuthOrderByWithRelationInput|Prisma.WechatAuthOrderByWithRelationInput[];
+      orderBy?:
+        | Prisma.WechatAuthOrderByWithRelationInput
+        | Prisma.WechatAuthOrderByWithRelationInput[];
       limit?: number;
       page?: number;
     },
@@ -111,9 +110,7 @@ export class WechatAuthService extends TransactionalServiceBase {
   }
 
   @HandlePrismaError(DbOperationType.CREATE)
-  async createMany(
-    data: Prisma.WechatAuthCreateInput[],
-  ): Promise<{ count: number }> {
+  async createMany(data: Prisma.WechatAuthCreateManyInput[]): Promise<{ count: number }> {
     return this.getWriteClient().wechatAuth.createMany({ data });
   }
 
@@ -126,9 +123,7 @@ export class WechatAuthService extends TransactionalServiceBase {
   }
 
   @HandlePrismaError(DbOperationType.UPDATE)
-  async upsert(
-    args: Prisma.WechatAuthUpsertArgs,
-  ): Promise<WechatAuth> {
+  async upsert(args: Prisma.WechatAuthUpsertArgs): Promise<WechatAuth> {
     return this.getWriteClient().wechatAuth.upsert(args);
   }
 

@@ -7,10 +7,7 @@ import type { Prisma, EmailAuth } from '@prisma/client';
 
 @Injectable()
 export class EmailAuthService extends TransactionalServiceBase {
-
-  constructor(
-    prisma: PrismaService,
-  ) {
+  constructor(prisma: PrismaService) {
     super(prisma);
   }
 
@@ -40,7 +37,9 @@ export class EmailAuthService extends TransactionalServiceBase {
   async list(
     where: Prisma.EmailAuthWhereInput,
     pagination?: {
-      orderBy?: Prisma.EmailAuthOrderByWithRelationInput|Prisma.EmailAuthOrderByWithRelationInput[];
+      orderBy?:
+        | Prisma.EmailAuthOrderByWithRelationInput
+        | Prisma.EmailAuthOrderByWithRelationInput[];
       limit?: number;
       page?: number;
     },
@@ -111,9 +110,7 @@ export class EmailAuthService extends TransactionalServiceBase {
   }
 
   @HandlePrismaError(DbOperationType.CREATE)
-  async createMany(
-    data: Prisma.EmailAuthCreateInput[],
-  ): Promise<{ count: number }> {
+  async createMany(data: Prisma.EmailAuthCreateManyInput[]): Promise<{ count: number }> {
     return this.getWriteClient().emailAuth.createMany({ data });
   }
 
@@ -126,9 +123,7 @@ export class EmailAuthService extends TransactionalServiceBase {
   }
 
   @HandlePrismaError(DbOperationType.UPDATE)
-  async upsert(
-    args: Prisma.EmailAuthUpsertArgs,
-  ): Promise<EmailAuth> {
+  async upsert(args: Prisma.EmailAuthUpsertArgs): Promise<EmailAuth> {
     return this.getWriteClient().emailAuth.upsert(args);
   }
 

@@ -163,6 +163,7 @@ function generateService(model) {
   const orderByType = `Prisma.${name}OrderByWithRelationInput`;
   const selectType = `Prisma.${name}Select`;
   const createInput = `Prisma.${name}CreateInput`;
+  const createManyInput = `Prisma.${name}CreateManyInput`;
   const updateInput = `Prisma.${name}UpdateInput`;
   const upsertArgs = `Prisma.${name}UpsertArgs`;
   const additionalType = hasRelations
@@ -300,7 +301,7 @@ ${hasIsDeleted ? `
 ` : ''}
   @HandlePrismaError(DbOperationType.CREATE)
   async createMany(
-    data: ${createInput}[],
+    data: ${createManyInput}[],
   ): Promise<{ count: number }> {
     return this.getWriteClient().${clientName}.createMany({ data });
   }
@@ -439,20 +440,27 @@ function ensureExportsInIndex(generatedKebabs) {
     content = fs.readFileSync(DB_INDEX_PATH, 'utf8');
   }
 
-  const existing = new Set(
-    (content.match(/from\s+['\"]\.\/modules\/([^'"]+)['\"]/g) || []).map(
-      (m) => (m.match(/modules\/([^'"]+)/) || [])[1],
-    ),
+  // Preserve existing module exports (including hand-written ones like `loops`),
+  // merge in the newly generated kebabs, dedup (first-seen wins) and rewrite the
+  // index as a clean list. This is idempotent and prevents duplicate `export *`
+  // lines from repeated generator runs (a prior bug under pnpm/manual edits).
+  const existing = (content.match(/from\s+['"]\.\/modules\/([^'"]+)['"]/g) || []).map(
+    (m) => (m.match(/modules\/([^'"]+)/) || [])[1],
   );
-  const toAdd = generatedKebabs.filter((k) => !existing.has(k));
-  if (toAdd.length === 0) return;
-  const append = toAdd.map((k) => `export * from './modules/${k}';`).join('\n');
-  fs.writeFileSync(
-    DB_INDEX_PATH,
-    content.trimEnd() + '\n' + append + '\n',
-    'utf8',
-  );
-  console.log('generate-db-crud: added exports for', toAdd.join(', '));
+  const ordered = [...existing];
+  for (const k of generatedKebabs) {
+    if (!ordered.includes(k)) ordered.push(k);
+  }
+  const seen = new Set();
+  const deduped = ordered.filter((k) => {
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  const out = deduped.map((k) => `export * from './modules/${k}';`).join('\n') + '\n';
+  if (out === content) return;
+  fs.writeFileSync(DB_INDEX_PATH, out, 'utf8');
+  console.log('generate-db-crud: index exports:', deduped.join(', '));
 }
 
 main();

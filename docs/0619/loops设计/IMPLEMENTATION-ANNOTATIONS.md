@@ -61,8 +61,20 @@ verified_at: 2026-06-19
 ### 下一阶段入口
 
 1. ~~在具备可用 `DATABASE_URL` 的环境执行 DB 运行期验证~~ → **已完成**（`pnpm loops:db-smoke` 3/3 通过，详见上方「DB 运行期验证」）。
-2. 修复既有非 Loops type-check 阻断（生成器 auth CRUD 类型、`@app/db` 导出漂移、uploader `@ts-expect-error`），使 `pnpm quality:gate` 全绿。
+2. 修复既有非 Loops type-check 阻断 → **round 3 已部分完成**（16→7，见下方「Round 3 增量」）；剩 7 条在 `libs/domain/auth`（infra 迁移进行中）。
 3. 推进 TASK-09 后置项：Dofe SSO、角色/权限、飞书入口/审批/通知、真实远端 PR、多 Loop 并行队列、独立 worker 池、完整 E2E/build 矩阵、生产级 agent 告警。
+
+### Round 3 增量（2026-06-19）
+
+针对 [`docs/0619/todo/`](../../../0619/todo/) 的下一轮实施，落地了待实施/待优化中的安全可改项：
+
+- **IMP-1（done）**：`apps/api/scripts/generate-db-crud.js` 的 `createMany` 模板由 `CreateInput[]` 改为 `CreateManyInput[]`，并修正 5 个已生成 auth service；消除 5 条 `TS2322`。
+- **IMP-5（done）**：`generate-db-crud.js` 的 `ensureExportsInIndex` 重写为「解析既有导出（含手写 `loops`）→ 合并 → Set 去重 → 整体重写」，`generated/db/index.ts` 重复导出已清除（10 模块各 1 次）。
+- **IMP-4（done）**：删除 `uploader.controller.ts` 两处多余 `@ts-expect-error`，消除 2 条 `TS2578`。
+- **IMP-2（partial）**：`libs/domain/services/ip-info/*` 的 `CountryCodeModule/Service` 来源由 `@app/db` 重定向到 `@dofe/infra-shared-db`（确有导出、API 一致），消除 2 条。
+- **IMP-6（resolved）**：`app.module.ts` 的 i18n 重构已被作者回退，`path` 错误消失。
+- **OPT-4（done）**：`apps/web/app/loops/new/page.tsx` 的 `targetRepo` 默认值改为服务端解析仓库根 `path.resolve(process.cwd(),'../..')` + `NEXT_PUBLIC_LOOPS_DEFAULT_REPO` 覆盖，去除硬编码绝对路径。
+- **未改（已调研并标注）**：IMP-2 余项（UserInfo 在 `EXCLUDE_MODELS`、FileCdn→FileGcs 待确认）、IMP-3（`ApiErrorCode` 两版本 `.55/.56` 类型同一性）、OPT-1（CLI DB 模式受 ts-node 不解析 `@app/db` 别名限制）——均属 infra 迁移进行中或需引入 `tsconfig-paths`，未擅改，详见 todo。
 
 > 上述 2/3 项的拆解、优先级与建议阶段，已整理到 [`docs/0619/todo/`](../../../0619/todo/)（待实施 / 待优化 / 未落实）。
 

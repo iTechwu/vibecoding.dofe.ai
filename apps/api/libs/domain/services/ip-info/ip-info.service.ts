@@ -16,7 +16,7 @@ import { RedisService } from '@dofe/infra-redis';
 import { FastifyRequest } from 'fastify';
 import { ipUtil, validateUtil, environmentUtil } from '@dofe/infra-utils';
 import { DoFeApp } from '@dofe/infra-common';
-import { CountryCodeService } from '@app/db';
+import { CountryCodeService } from '@dofe/infra-shared-db';
 import { IpInfoClient } from '@dofe/infra-clients';
 
 @Injectable()

@@ -1,5 +1,12 @@
 import Link from 'next/link';
+import path from 'node:path';
 import { createLoopIssueAction } from './actions';
+
+// Resolve the workspace root server-side so the default `targetRepo` is portable
+// across machines (the web app runs from `apps/web`, so the repo root is `../..`).
+// `NEXT_PUBLIC_LOOPS_DEFAULT_REPO` overrides this when set.
+const defaultTargetRepo =
+  process.env.NEXT_PUBLIC_LOOPS_DEFAULT_REPO ?? path.resolve(process.cwd(), '../..');
 
 export default function NewLoopIssuePage() {
   return (
@@ -29,7 +36,7 @@ export default function NewLoopIssuePage() {
             Target Repository
             <input
               className="h-10 rounded-md border bg-background px-3 text-sm"
-              defaultValue="/Users/techwu/Documents/codes/dofe.ai/vibecoding.dofe.ai"
+              defaultValue={defaultTargetRepo}
               name="targetRepo"
               required
             />

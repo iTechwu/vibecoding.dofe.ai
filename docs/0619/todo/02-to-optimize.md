@@ -2,6 +2,18 @@
 
 > Loops v1 已可用且经验证，以下为健壮性、可维护性、可移植性、可观测性的改进空间。均为非阻断项，可在 v1 收尾后按价值/成本推进。
 
+## 本轮（round 3 / 2026-06-19）进度
+
+| 项                                    | 状态        | 说明                                                                                                                                        |
+| ------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| OPT-1 CLI 可选 DB 模式                | ⏳ blocked  | 调研确认：受 ts-node 不解析 `@app/db`/`@prisma/client` 别名限制（jest 可，ts-node 不可）；需引入 `tsconfig-paths` 才能落地                  |
+| OPT-2 DB 写失败补偿/标记              | ⏳ open     | 设计决策项，未改                                                                                                                            |
+| OPT-3 裁剪冗余 per-model 生成 service | 🟡 verified | 确认 `LoopIssueService/LoopStateService/LoopIssueIntakeService` 全局未被引用，但为生成产物（`pnpm db:generate` 会重建），移除意义不大，保留 |
+| OPT-4 Web `targetRepo` 默认值可移植化 | ✅ done     | 改为服务端解析仓库根 `path.resolve(process.cwd(),'../..')` + `NEXT_PUBLIC_LOOPS_DEFAULT_REPO` 覆盖                                          |
+| OPT-5 jest `process.cwd()` 依赖收敛   | 🟡 accepted | 维持 `process.cwd()` 写法（jest 30 ESM 下 `__dirname` 不可用）；约束已记入注释                                                              |
+| OPT-6 统一 persistence 可选分支       | ⏳ open     | 非紧急，下次重构顺带                                                                                                                        |
+| OPT-7 `listLegacy` 路由               | 🟡 verified | 确认 Web 未消费 `GET /loops/`（仅用 `/loops/issues`）；保留以兼容潜在外部调用，后续可标 deprecated                                          |
+
 ## OPT-1 · CLI 增加「可选 DB 模式」【价值：中，成本：中】
 
 - 现状：`scripts/loops-cli.ts` 以 5 参构造 `LoopsService`（不注入 persistence），`loops:doctor`/`loops:status` 走纯文件模式，无法发现 DB 与 `.loops` 的漂移；DB 一致性只能靠起 API server 或 `loops:db-smoke` 验证。

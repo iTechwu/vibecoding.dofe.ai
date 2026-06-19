@@ -9,7 +9,7 @@ import { Module } from '@nestjs/common';
 import { IpInfoService } from './ip-info.service';
 import { ConfigModule } from '@nestjs/config';
 import { RedisModule } from '@dofe/infra-redis';
-import { CountryCodeModule } from '@app/db';
+import { CountryCodeModule } from '@dofe/infra-shared-db';
 import { IpInfoClientModule } from '@dofe/infra-clients';
 
 @Module({
