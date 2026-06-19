@@ -1,0 +1,14 @@
+{
+  "title": "Daily Challenge",
+  "today": "Today's Challenge",
+  "completed": "Completed",
+  "completedMessage": "You've completed today's challenge!",
+  "streak": "Streak",
+  "points": "Points",
+  "reward": "Reward",
+  "hint": "Hint",
+  "skip": "Skip",
+  "progress": "Progress",
+  "days": "{count} day",
+  "days_plural": "{count} days"
+}

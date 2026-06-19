@@ -1,0 +1,479 @@
+# Cursor Rules - DofeAI 项目编码规范
+
+本文件定义了使用 Cursor 或 Claude 进行实时编码（vibecoding）时的前置要求。
+
+## 📋 代码质量标准
+
+所有代码必须遵循以下质量标准：
+
+1. **遵循架构分层规范**
+   - 严格遵循4层架构：API层 → Service层 → DB层/Client层
+   - API层不能直接访问数据库或外部API
+   - Service层通过DB Service访问数据库，通过Client层访问外部API
+   - DB层负责数据访问，Client层负责外部API调用
+
+2. **使用Zod-first验证**
+   - 所有API请求/响应必须使用Zod Schema进行验证
+   - 禁止在Controller或Service层手动进行类型断言
+   - 必须依赖Zod Schema验证确保类型安全
+
+3. **类型安全的API契约**
+   - 使用`@repo/contracts`定义API契约
+   - 使用ts-rest实现前后端类型安全
+   - 后端使用`@ts-rest/nest`，前端使用`@ts-rest/react-query`
+   - 编译时类型检查，运行时Zod验证
+
+4. **统一使用Winston Logger**
+   - 禁止使用NestJS内置的`Logger`
+   - 禁止使用`console.log`、`console.error`等（启动日志除外）
+   - 必须使用Winston Logger（通过`WINSTON_MODULE_PROVIDER`注入）
+   - 统一日志级别：`info`、`warn`、`error`、`debug`
+
+---
+
+## ⚠️ 核心架构规则（必须严格遵守）
+
+在进行任何代码修改之前，AI 助手**必须**严格遵守以下三条核心规则：
+
+1. **禁止在非 DB 层直接进行数据库读写操作**
+   - **允许**：在非 DB 层使用 Prisma 的**类型定义**（如 `Prisma.MeetingRecordUpdateInput`、`Prisma.MeetingRecordWhereInput` 等）
+   - **禁止**：在非 DB 层直接进行数据库读写操作
+   - 只有 DB Service 层（继承 `TransactionalServiceBase` 的服务）可以直接进行数据库读写
+   - Service 层（如 `MeetingService`、`WebhookService`）必须通过 DB Service 的函数进行数据库读写
+   - **禁止在 Service 层**：
+     - 直接使用 `prisma.write`、`prisma.read`
+     - 直接使用 `getWriteClient()`、`getReadClient()`（这些是受保护的方法）
+     - 直接调用 Prisma 的数据库操作方法（如 `updateMany`、`findMany`、`create`、`update`、`delete` 等）
+   - **允许在 Service 层**：
+     - 使用 Prisma 类型定义作为函数参数类型或返回值类型
+     - 使用 Prisma 类型定义构建查询条件对象（传递给 DB Service）
+
+2. **Zod-first：所有 API 必须使用 Zod Schema 进行验证**
+   - 所有 API 请求/响应必须使用 Zod Schema 进行验证
+   - 使用 `tsRestHandler` 时，会自动使用 contract 中定义的 Zod Schema 进行验证
+   - 禁止在 Controller 或 Service 层手动进行类型断言，必须依赖 Zod Schema 验证
+   - Webhook 回调等外部接口也必须使用 Zod Schema 定义
+
+3. **所有外部服务调用必须放在 Client 层，使用 @nestjs/axios**
+   - 所有第三方 API 调用、外部服务集成必须封装在 Client 层（`@dofe/infra-clients` 包）
+   - Client 层必须使用 `@nestjs/axios` 的 `HttpService`，禁止直接使用 `axios`
+   - Service 层（业务逻辑层）不能直接调用外部 API，必须通过 Client 层
+   - Client 层职责：仅负责 HTTP 调用，不包含业务逻辑，不访问数据库
+   - 在 Module 中导入 `HttpModule`，在 Client 中注入 `HttpService`
+   - 使用 `firstValueFrom` 将 RxJS Observable 转换为 Promise
+
+4. **日志记录必须使用 Winston Logger**
+   - **禁止**：使用 NestJS 内置的 `Logger`（`import { Logger } from '@nestjs/common'`）
+   - **禁止**：使用 `console.log`、`console.error`、`console.warn` 等（启动时的日志除外，如 `main.ts`、`app.module.ts`）
+   - **必须**：使用 Winston Logger（通过 `nest-winston` 集成）
+   - **使用方式**：
+     ```typescript
+     import { Injectable, Inject } from '@nestjs/common';
+     import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
+     import { Logger } from 'winston';
+     
+     @Injectable()
+     export class YourService {
+       constructor(
+         @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
+       ) {}
+       
+       someMethod() {
+         this.logger.info('Info message');
+         this.logger.warn('Warning message');
+         this.logger.error('Error message', error);
+         this.logger.debug('Debug message');
+       }
+     }
+     ```
+   - **日志级别**：
+     - `logger.info()` - 一般信息日志（替代 `logger.log()`）
+     - `logger.warn()` - 警告日志
+     - `logger.error()` - 错误日志
+     - `logger.debug()` - 调试日志
+   - **注意**：Winston Logger 已在 `AppModule` 中全局配置，无需在子模块中单独导入 `WinstonModule`
+
+5. **infra / domain 边界（后端 libs 必须遵守）**
+   - **infra**（外部包 `@dofe/infra-*`）：已从 `libs/infra/` 提取至独立仓库 `infra.dofe.ai`，包含 common、clients、prisma、redis、rabbitmq、jwt、utils、i18n、shared-db、shared-services。与产品/领域无关，可复用。**禁止**依赖 `libs/domain/**` 下任何内容。
+   - **domain**（`apps/api/libs/domain/`）：auth、services。与 Dofe 领域/业务流程强相关。**可**依赖 infra。
+   - **依赖方向**：`src` → `domain` → `infra`（`@dofe/infra-*`）。infra 内模块可相互依赖，**不得** import domain。
+   - **导入约定**：统一使用 `@/`、`@app/` 等 tsconfig 路径别名，不得使用相对路径穿越到 domain。
+   - 详见：`apps/api/docs/业务与基础设施拆分方案.md`、`docs/0426/infra/迁移状态.md`。
+
+## ⚠️ 重要：编码前的必读文档
+
+在进行任何代码修改、重构或新功能开发之前，AI 助手**必须**首先阅读并理解以下规范文档：
+
+### 前端开发规范
+
+1. **代码质量与类型定义规范**
+   - 路径：`apps/web/docs/代码质量与类型定义规范.md`
+   - 内容：类型定义规范、类型导入规范、Props 类型定义、工具类型使用、类型检查清单
+   - **必须遵循**：
+     - 使用 `@repo/contracts` 类型（而非本地定义 API 相关类型）
+     - 使用 `type-only` imports（`import type`）
+     - Props 类型使用 `interface`（而非 `React.FC`）
+     - 避免使用 `any` 类型（必要时使用 `unknown`）
+     - 扩展类型使用 `extends` 或交叉类型
+
+2. **前端架构与交互优化方案**
+   - 路径：`apps/web/docs/前端架构与交互优化方案.md`
+   - 内容：架构设计、性能优化方案、代码分割策略、网络请求优化、图片加载优化
+   - **必须遵循**：
+     - 组件拆分策略（大型组件拆分）
+     - 代码分割优化（使用 `next/dynamic`）
+     - 网络请求优化（并行查询、缓存策略）
+     - 图片加载优化（使用 Next.js Image 组件）
+     - 虚拟滚动实现（长列表）
+
+### 后端开发规范
+
+3. **架构分层与事务管理方案**
+   - 路径：`apps/api/docs/架构分层与事务管理方案-new.md`
+   - 内容：架构分层设计、事务管理、错误处理、软删除、批量操作、缓存策略
+   - **必须遵循**：
+     - DB Service 继承 `TransactionalServiceBase`
+     - 使用 `getWriteClient()` / `getReadClient()`（而非直接 `this.prisma.write/read`）
+     - 使用 `@HandlePrismaError` 装饰器处理错误
+     - 跨服务事务使用 `UnitOfWorkService.execute()`
+     - 单服务内事务使用 `@Transactional` 装饰器
+     - **禁止**：API Service 层直接进行数据库读写操作（必须通过 DB Service）
+     - **⚠️ 重要规则 1**：**不要在非 DB 层直接进行数据库读写操作**
+       - **允许**：在非 DB 层使用 Prisma 的**类型定义**（如 `Prisma.MeetingRecordUpdateInput`、`Prisma.MeetingRecordWhereInput` 等）
+       - **禁止**：在非 DB 层直接进行数据库读写操作
+       - 只有 DB Service 层（继承 `TransactionalServiceBase` 的服务）可以直接进行数据库读写
+       - Service 层必须通过 DB Service 的函数进行数据库读写
+       - 禁止在 Service 层直接使用 `prisma.write`、`prisma.read`、`getWriteClient()`、`getReadClient()` 等
+       - 禁止在 Service 层直接调用 Prisma 的数据库操作方法（如 `updateMany`、`findMany`、`create`、`update`、`delete` 等）
+       - **示例**：Service 层可以使用 `Prisma.MeetingRecordUpdateInput` 作为参数类型，但必须调用 `meetingRecordDb.updateMeetingRecord()` 而不是直接调用 `update()`
+
+4. **API 版本兼容方案**
+   - 路径：`apps/api/docs/API版本兼容方案-统一设计.md`
+   - 内容：版本体系设计、Contract 适配器模式、版本校验流程
+   - **必须遵循**：
+     - Web 客户端使用 Generation（代际号）
+     - APP 客户端使用 Contract（合约版本）
+     - 版本校验流程和 Header 协议
+
+5. **业务与基础设施拆分方案（infra/domain 边界）**
+   - 路径：`apps/api/docs/业务与基础设施拆分方案.md`
+   - 内容：libs 按 infra/domain 的目录划分、依赖方向、路径别名、检查清单
+   - **必须遵循**（涉及 `apps/api/libs/` 的修改或新增模块时）：
+     - infra（`@dofe/infra-*` 外部包）**禁止**依赖 domain（`libs/domain/**`）
+     - domain 可依赖 infra；依赖方向为 `src` → `domain` → `@dofe/infra-*`
+     - 使用 tsconfig 中已定义的 `@/`、`@app/` 等路径别名，不写死相对路径穿越
+
+### API 契约设计规范
+
+6. **ts-rest Zod-first REST 协议框架设计方案**
+   - 路径：`docs/ts-rest_Zod-first_REST_协议框架设计方案.md`
+   - 内容：API 契约定义、前后端类型安全、Zod Schema 定义
+   - **必须遵循**：
+     - 使用 `@repo/contracts` 定义 API 契约
+     - 使用 Zod Schema 定义请求/响应结构
+     - 后端使用 `@ts-rest/nest` 实现 Controller
+     - 前端使用 `@ts-rest/react-query` 调用 API
+     - 类型安全：编译时类型检查
+     - **⚠️ 重要规则 2**：**Zod-first**
+       - 所有 API 请求/响应必须使用 Zod Schema 进行验证
+       - 使用 `tsRestHandler` 时，会自动使用 contract 中定义的 Zod Schema 进行验证
+       - 禁止在 Controller 或 Service 层手动进行类型断言，必须依赖 Zod Schema 验证
+       - Webhook 回调等外部接口也必须使用 Zod Schema 定义（如使用 `z.any()` 需有合理原因）
+
+## 编码工作流
+
+### 步骤 1：理解需求
+- 阅读用户请求，理解需要修改的功能或添加的特性
+
+### 步骤 2：查阅规范文档
+- **前端代码修改**：查阅前端规范文档（1-2）
+- **后端代码修改**：查阅后端规范文档（3-5）；涉及 libs 划分或新增模块时必读《业务与基础设施拆分方案》
+- **API 相关修改**：查阅 API 契约设计规范（6）
+
+### 步骤 3：检查现有代码
+- 检查相关文件是否遵循规范
+- 识别需要优化的点（类型定义、代码分割、事务管理等）
+
+### 步骤 4：实施修改
+- 遵循规范文档中的最佳实践
+- 使用规范推荐的模式和工具
+- 确保代码符合架构约束
+- **格式化规范**：
+  - 所有代码必须遵循 `.prettierrc` 中的格式规范
+  - 使用 `import type` 进行类型导入
+  - 使用 `interface` 定义 Props 类型
+  - 避免使用 `any` 类型（必要时使用 `unknown`）
+
+### 步骤 5：验证与测试
+- 检查类型错误（TypeScript）
+- 检查架构约束（ESLint）
+- 验证代码格式化（Prettier）
+- 验证功能正确性
+
+## 代码格式化和质量检查
+
+### ESLint 配置
+
+项目使用 ESLint 进行代码质量检查，前端配置位于 `apps/web/eslint.config.mjs`，后端配置位于 `apps/api/.eslintrc.js`。ESLint 配置：
+
+1. **Prettier 集成**：
+   - 使用 `eslint-plugin-prettier` 强制执行 Prettier 格式化
+   - Prettier 配置从 `.prettierrc` 读取
+   - 所有代码必须符合 Prettier 格式规范
+
+2. **TypeScript 代码质量规则**（基于 `代码质量与类型定义规范.md`）：
+   - 禁止使用 `any` 类型（`@typescript-eslint/no-explicit-any`）
+   - 要求使用 `type-only` imports（`@typescript-eslint/consistent-type-imports`）
+   - 优先使用 `interface` 而不是 `type`（`@typescript-eslint/consistent-type-definitions`）
+   - 禁止未使用的变量（`@typescript-eslint/no-unused-vars`）
+   - 禁止非空断言（`@typescript-eslint/no-non-null-assertion`）
+   - 禁止使用 `@ts-ignore`（`@typescript-eslint/ban-ts-comment`）
+
+### 代码格式化要求
+
+1. **Prettier 配置**（`.prettierrc`）：
+   - `printWidth: 100`
+   - `singleQuote: true`
+   - `semi: true`
+   - `trailingComma: "all"`
+   - `tabWidth: 2`
+   - `useTabs: false`
+   - `arrowParens: "always"`
+
+2. **Vibe Coding 要求**：
+   - 所有生成的代码必须符合 Prettier 格式规范
+   - 使用 `import type` 进行类型导入
+   - 使用 `interface` 定义 Props 类型
+   - 避免使用 `any` 类型
+
+### 运行代码检查
+
+```bash
+# 检查代码质量和格式
+pnpm lint
+
+# 自动修复可修复的问题
+pnpm lint:fix
+
+# 类型检查
+pnpm type-check
+```
+
+## 常见违规模式
+
+### ❌ 前端违规示例
+
+```typescript
+// ❌ 错误：使用 any 类型
+const handleError = (error: any) => { ... }
+
+// ✅ 正确：使用 unknown 类型
+const handleError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : 'Unknown error';
+  // ...
+}
+
+// ❌ 错误：直接导入类型（未使用 type-only）
+import { UserInfo } from '@repo/contracts';
+
+// ✅ 正确：使用 type-only import
+import type { UserInfo } from '@repo/contracts';
+
+// ❌ 错误：使用 React.FC
+const UserCard: React.FC<UserCardProps> = ({ user }) => { ... }
+
+// ✅ 正确：使用 interface 定义 Props
+interface UserCardProps {
+  user: UserInfo;
+}
+export function UserCard({ user }: UserCardProps) { ... }
+```
+
+### ❌ 后端违规示例
+
+```typescript
+// ❌ 错误：API Service 直接进行数据库读写操作
+@Injectable()
+export class UserApiService {
+  constructor(private readonly prisma: PrismaService) {}
+  
+  async getUser(id: string) {
+    // ❌ 错误：直接调用 Prisma 进行数据库查询
+    return this.prisma.write.userInfo.findUnique({ where: { id } });
+  }
+}
+
+// ✅ 正确：通过 DB Service 访问
+@Injectable()
+export class UserApiService {
+  constructor(private readonly userService: UserService) {}
+  
+  async getUser(id: string) {
+    return this.userService.getUserById(id);
+  }
+}
+
+// ❌ 错误：在非 DB Service 层直接进行数据库写入操作
+@Injectable()
+export class UserService {
+  constructor(private readonly prisma: PrismaService) {}
+  
+  async createUser(data: CreateUserInput) {
+    // ❌ 错误：直接调用 Prisma 进行数据库写入
+    return this.prisma.write.userInfo.create({ data });
+  }
+}
+
+// ✅ 正确：在 DB Service 层使用 getWriteClient()（事务感知）
+@Injectable()
+export class UserService extends TransactionalServiceBase {
+  @HandlePrismaError(DbOperationType.CREATE)
+  async createUser(data: CreateUserInput) {
+    // ✅ 正确：DB Service 层可以直接进行数据库操作
+    return this.getWriteClient().userInfo.create({ data });
+  }
+}
+
+// ❌ 错误：Service 层直接进行数据库读写操作
+@Injectable()
+export class MeetingService {
+  constructor(private readonly meetingRecordDb: MeetingRecordService) {}
+  
+  async batchUpdateTranscripts(meetingIds: string[], data: UpdateTranscriptDto) {
+    // ❌ 错误：在 Service 层直接使用 getWriteClient() 和 updateMany（数据库读写操作）
+    await this.meetingRecordDb.getWriteClient().meetingRecord.updateMany({
+      where: { id: { in: meetingIds } },
+      data: { ... }
+    });
+  }
+}
+
+// ✅ 正确：Service 层可以使用 Prisma 类型定义
+@Injectable()
+export class MeetingService {
+  constructor(private readonly meetingRecordDb: MeetingRecordService) {}
+  
+  // ✅ 正确：使用 Prisma 类型定义作为参数类型
+  async updateMeeting(id: string, data: Prisma.MeetingRecordUpdateInput) {
+    // ✅ 正确：通过 DB Service 函数进行数据库读写
+    return await this.meetingRecordDb.updateMeetingRecord(id, data);
+  }
+  
+  // ✅ 正确：使用 Prisma 类型定义构建查询条件（传递给 DB Service）
+  async listMeetings(where: Prisma.MeetingRecordWhereInput) {
+    // ✅ 正确：通过 DB Service 函数进行数据库查询
+    return await this.meetingRecordDb.listMeetingRecords(where, {});
+  }
+}
+
+// ✅ 正确：在 DB Service 层实现批量更新方法
+@Injectable()
+export class MeetingRecordService extends TransactionalServiceBase {
+  @HandlePrismaError(DbOperationType.UPDATE)
+  async batchUpdateTranscripts(meetingIds: string[], data: Prisma.MeetingRecordUpdateInput) {
+    // ✅ 正确：在 DB Service 层使用 Prisma
+    return await this.getWriteClient().meetingRecord.updateMany({
+      where: { id: { in: meetingIds } },
+      data,
+    });
+  }
+}
+
+// ✅ 正确：Service 层调用 DB Service 方法
+@Injectable()
+export class MeetingService {
+  constructor(private readonly meetingRecordDb: MeetingRecordService) {}
+  
+  async batchUpdateTranscripts(meetingIds: string[], data: UpdateTranscriptDto) {
+    // ✅ 正确：通过 DB Service 访问数据库
+    await this.meetingRecordDb.batchUpdateTranscripts(meetingIds, updateData);
+  }
+}
+
+// ❌ 错误：Service 层直接调用外部 API
+@Injectable()
+export class MeetingService {
+  constructor(private readonly httpService: HttpService) {}
+  
+  async fetchExternalData() {
+    // ❌ 错误：Service 层直接调用外部 API
+    const response = await axios.get('https://api.example.com/data');
+    return response.data;
+  }
+}
+
+// ✅ 正确：在 Client 层封装外部 API 调用
+@Injectable()
+export class ExternalApiClient {
+  constructor(private readonly httpService: HttpService) {}
+  
+  async fetchData() {
+    // ✅ 正确：Client 层使用 @nestjs/axios
+    const response = await firstValueFrom(
+      this.httpService.get('https://api.example.com/data')
+    );
+    return response.data;
+  }
+}
+
+// ✅ 正确：Service 层通过 Client 层调用外部 API
+@Injectable()
+export class MeetingService {
+  constructor(private readonly externalApiClient: ExternalApiClient) {}
+  
+  async processData() {
+    // ✅ 正确：通过 Client 层访问外部 API
+    const data = await this.externalApiClient.fetchData();
+    // ... 业务逻辑处理
+  }
+}
+```
+
+## 架构约束检查清单
+
+在进行代码修改前，确认：
+
+### 代码质量标准检查
+- [ ] **遵循架构分层规范** - 是否严格遵循4层架构（API → Service → DB/Client）
+- [ ] **使用Zod-first验证** - 所有API是否使用Zod Schema进行验证
+- [ ] **类型安全的API契约** - 是否使用`@repo/contracts`定义契约，前后端类型是否安全
+- [ ] **统一使用Winston Logger** - 是否使用Winston Logger而非NestJS Logger或console
+
+### 架构约束检查
+- [ ] 是否遵循了架构分层（前端/后端）
+- [ ] 是否使用了正确的类型定义方式
+- [ ] 是否遵循了事务管理模式
+- [ ] 是否使用了正确的错误处理方式
+- [ ] 是否遵循了 API 契约设计规范
+- [ ] 是否避免了已知的违规模式
+- [ ] **⚠️ 是否在非 DB 层直接进行数据库读写**（禁止：Service 层必须通过 DB Service 函数访问数据库，但可以使用 Prisma 类型定义）
+- [ ] **⚠️ 是否使用了 Zod-first 验证**（所有 API 请求/响应必须使用 Zod Schema）
+- [ ] **⚠️ 外部服务调用是否放在 Client 层**（禁止：Service 层不能直接调用外部 API，必须使用 @nestjs/axios）
+- [ ] **⚠️ 是否遵守 infra/domain 边界**（禁止：`@dofe/infra-*` 包不得 import `libs/domain/**`；domain 可依赖 infra）
+
+## 参考文档路径
+
+所有规范文档均位于项目根目录或子目录的 `docs/` 文件夹中：
+
+- `apps/api/docs/业务与基础设施拆分方案.md` - infra/domain 目录划分、依赖方向、路径别名
+- `apps/web/docs/代码质量与类型定义规范.md`
+- `apps/web/docs/前端架构与交互优化方案.md`
+- `apps/api/docs/架构分层与事务管理方案-new.md`
+- `apps/api/docs/API版本兼容方案-统一设计.md`
+- `docs/ts-rest_Zod-first_REST_协议框架设计方案.md`
+- `apps/api/CLAUDE.md` - HTTP Client Usage Rules (@nestjs/axios) 和 Client Layer Architecture
+
+## 参考实现示例
+
+### Client 层实现示例
+
+以下文件展示了如何正确实现 Client 层（位于 `@dofe/infra-clients` 包，通过 `node_modules/@dofe/infra-clients/` 访问源码）：
+
+- `@dofe/infra-clients/src/internal/agentx/agentx-client.service.ts` - AgentX API client（使用 @nestjs/axios）
+- `@dofe/infra-clients/src/internal/ocr/ocr.client.ts` - OCR service client（使用 @nestjs/axios）
+- `@dofe/infra-clients/src/internal/sms/sms-zxjc.client.ts` - SMS service client（使用 @nestjs/axios）
+- `@dofe/infra-clients/src/internal/openspeech/openspeech.client.ts` - 语音识别服务 client
+
+---
+
+**注意**：这些规范文档是项目的核心开发标准，所有代码修改都应该遵循这些规范。如有疑问，请先查阅相关文档，再进行编码。

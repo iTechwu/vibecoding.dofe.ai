@@ -1,0 +1,16 @@
+{
+  "title": "Subscription",
+  "plan": "Plan",
+  "upgrade": "Upgrade",
+  "cancel": "Cancel Subscription",
+  "current": "Current Plan",
+  "billing": "Billing",
+  "history": "Payment History",
+  "features": "Features",
+  "tiers": {
+    "free": "Free",
+    "pro": "Pro",
+    "enterprise": "Enterprise"
+  },
+  "manage": "Manage Subscription"
+}

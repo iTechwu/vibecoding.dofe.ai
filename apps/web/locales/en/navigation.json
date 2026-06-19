@@ -1,0 +1,19 @@
+{
+  "menu": {
+    "home": "Home",
+    "dashboard": "Dashboard",
+    "settings": "Settings",
+    "profile": "Profile",
+    "account": "Account",
+    "search": "Search",
+    "logout": "Sign Out"
+  },
+  "groupMain": "Main",
+  "groupSettings": "Settings",
+  "breadcrumb": {
+    "home": "Home"
+  },
+  "a11y": {
+    "switchLanguage": "Switch language"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "title": "Chat",
+  "placeholder": "Type a message...",
+  "send": "Send",
+  "sending": "Sending...",
+  "typing": "Typing...",
+  "newMessage": "New message",
+  "emptyState": "No messages yet. Start a conversation.",
+  "clearChat": "Clear chat",
+  "loadMore": "Load more",
+  "today": "Today",
+  "yesterday": "Yesterday"
+}

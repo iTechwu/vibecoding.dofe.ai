@@ -1,0 +1,17 @@
+{
+  "title": "Recruitment",
+  "jobDescription": "Job Description",
+  "candidate": "Candidate",
+  "match": "Match",
+  "apply": "Apply",
+  "interview": "Interview",
+  "position": "Position",
+  "status": "Status",
+  "stages": {
+    "screening": "Screening",
+    "interview": "Interview",
+    "offer": "Offer",
+    "hired": "Hired",
+    "rejected": "Rejected"
+  }
+}

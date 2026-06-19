@@ -1,0 +1,13 @@
+{
+  "title": "每日挑战",
+  "today": "今日挑战",
+  "completed": "已完成",
+  "completedMessage": "你已完成今日挑战！",
+  "streak": "连续天数",
+  "points": "积分",
+  "reward": "奖励",
+  "hint": "提示",
+  "skip": "跳过",
+  "progress": "进度",
+  "days": "{count} 天"
+}

@@ -1,0 +1,10 @@
+# pnpm patches directory
+# Use `pnpm patch <package>` to create patches for dependencies that need modifications.
+# Apply patches via the `patchedDependencies` field in root package.json.
+#
+# Example:
+#   pnpm patch eslint-plugin-react@7.37.5
+#   # ... make changes in the extracted directory ...
+#   pnpm patch-commit '<path-to-extracted-directory>'
+#
+# See: https://pnpm.io/cli/patch

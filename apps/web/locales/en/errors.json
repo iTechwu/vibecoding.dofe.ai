@@ -1,0 +1,37 @@
+{
+  "network": {
+    "connectionFailed": "Network connection failed",
+    "timeout": "Request timed out",
+    "serverError": "Server error"
+  },
+  "auth": {
+    "unauthorized": "Unauthorized. Please sign in again.",
+    "forbidden": "Access denied",
+    "sessionExpired": "Session expired"
+  },
+  "general": {
+    "unknown": "An unexpected error occurred",
+    "tryAgain": "Please try again later"
+  },
+  "mutation": {
+    "operationFailed": "Operation failed",
+    "unexpected": "An unexpected error occurred"
+  },
+  "client": {
+    "sessionExpired": "Session expired. Please sign in again.",
+    "requestFailed": "Request failed"
+  },
+  "boundary": {
+    "title": "Something went wrong",
+    "genericMessage": "An unexpected error occurred on this page.",
+    "retry": "Retry"
+  },
+  "versionMismatch": {
+    "title": "New Version Available",
+    "message": "A new version is available. Please refresh to update.",
+    "refreshNow": "Refresh now"
+  },
+  "versionCheck": {
+    "newBuildAvailable": "A new version has been detected. Please refresh the page."
+  }
+}

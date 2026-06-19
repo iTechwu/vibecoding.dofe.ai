@@ -1,0 +1,106 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Package manager
+.pnpm-store/
+pnpm-debug.log*
+.pnpm-debug.log*
+package-lock.json
+yarn.lock
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# TypeScript
+*.tsbuildinfo
+*.js.map
+*.d.ts.map
+
+# Build artifacts in source directories
+packages/*/src/**/*.js
+packages/*/src/**/*.d.ts
+!packages/*/src/**/*.d.cts
+
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+!.env.example
+!.env.sample
+config.json
+
+# Sensitive config files
+apps/api/config.local.yaml
+apps/api/keys/
+*.pem
+*.key
+
+# Logs（脚手架排除：保留除日志外的全部文件，以下不进入版本库）
+logs/
+*.log
+npm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+*.lcov
+
+# Turbo
+.turbo/
+
+# IDE and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.settings/
+
+# OS files
+Thumbs.db
+Desktop.ini
+
+# Cache
+.cache/
+.parcel-cache/
+.eslintcache
+.prettiercache
+.stylelintcache
+
+# Misc
+*.bak
+*.tmp
+*.temp
+.vercel
+.netlify
+.playwright-mcp
+
+# Prisma
+apps/api/prisma/.data/
+apps/api/generated/prisma-client/
+
+# Auto-generated enum schemas (run `pnpm generate:enums` to regenerate)
+packages/contracts/src/schemas/prisma-enums.generated.ts
+
+# Database
+*.sqlite
+*.sqlite3
+*.db
+
+# Claude Code
+.claude/

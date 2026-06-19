@@ -1,0 +1,14 @@
+{
+  "title": "Recommendations",
+  "forYou": "For You",
+  "trending": "Trending",
+  "basedOn": "Based on your activity",
+  "noRecommendations": "No recommendations yet.",
+  "refresh": "Refresh",
+  "dismiss": "Dismiss",
+  "feedback": {
+    "title": "Was this helpful?",
+    "yes": "Yes",
+    "no": "No"
+  }
+}

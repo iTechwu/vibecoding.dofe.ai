@@ -1,0 +1,13 @@
+{
+  "title": "记忆",
+  "save": "保存记忆",
+  "recall": "回忆",
+  "search": "搜索记忆...",
+  "delete": "删除",
+  "empty": "暂无保存的记忆。",
+  "noResults": "未找到相关记忆。",
+  "created": "创建时间",
+  "updated": "更新时间",
+  "tags": "标签",
+  "importance": "重要程度"
+}

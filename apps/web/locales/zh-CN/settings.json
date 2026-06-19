@@ -1,0 +1,21 @@
+{
+  "title": "设置",
+  "general": "通用",
+  "account": "账户",
+  "security": "安全",
+  "notifications": "通知",
+  "hub": {
+    "profileTitle": "个人资料",
+    "profileDesc": "管理昵称、邮箱与头像等个人信息。",
+    "brandTitle": "品牌与外观",
+    "brandDesc": "自定义品牌 Logo 与主题色。",
+    "securityTitle": "安全",
+    "securityDesc": "密码、两步验证与会话管理。",
+    "teamTitle": "团队管理",
+    "teamDesc": "管理团队成员、角色和邀请。",
+    "auditLogsTitle": "审计日志",
+    "auditLogsDesc": "查看系统活动和安全的审计记录。",
+    "billingTitle": "计费管理",
+    "billingDesc": "管理订阅、支付方式和发票。"
+  }
+}

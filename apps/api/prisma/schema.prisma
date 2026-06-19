@@ -1,0 +1,245 @@
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../generated/prisma-client"
+  previewFeatures = ["postgresqlExtensions"]
+  binaryTargets   = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [uuid_ossp(map: "uuid-ossp")]
+}
+
+// ============================================================================
+// User System - 用户系统
+// ============================================================================
+enum SexType {
+  UNKNOWN
+  MALE
+  FEMALE
+
+  @@map("sex_type")
+}
+
+model UserInfo {
+  id           String  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  nickname     String  @default("") @db.VarChar(255)
+  code         String? @unique @db.VarChar(255)
+  avatarFileId String? @map("avatar_file_id") @db.Uuid
+  sex          SexType @default(UNKNOWN)
+  locale       String? @db.VarChar(20)
+  isAnonymity  Boolean @default(false) @map("is_anonymity")
+  isAdmin      Boolean @default(false) @map("is_admin")
+
+  isDeleted Boolean   @default(false) @map("is_deleted")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  // Account Identifiers (登录标识)
+  deviceId      String? @unique @map("device_id") @db.VarChar(255)
+  wechatOpenid  String? @unique @map("wechat_openid") @db.VarChar(255)
+  wechatUnionId String? @unique @map("wechat_union_id") @db.VarChar(255)
+  googleSub     String? @unique @map("google_sub") @db.VarChar(255)
+  discordId     String? @unique @map("discord_id") @db.VarChar(255)
+  mobile        String? @unique @map("mobile") @db.VarChar(40)
+  email         String? @unique @map("email") @db.VarChar(255)
+
+  // Relations
+  avatarFile  FileSource?  @relation(fields: [avatarFileId], references: [id], onDelete: SetNull)
+  wechatAuth  WechatAuth?
+  googleAuth  GoogleAuth?
+  discordAuth DiscordAuth?
+  mobileAuth  MobileAuth?
+  emailAuth   EmailAuth?
+
+  @@index([code])
+  @@index([isDeleted, isAdmin])
+  @@index([createdAt(sort: Desc)])
+  @@index([nickname])
+  @@index([avatarFileId])
+  @@index([deviceId])
+  @@index([wechatOpenid])
+  @@index([googleSub])
+  @@index([discordId])
+  @@index([mobile])
+  @@index([email])
+  @@map("u_user_info")
+}
+
+// ============================================================================
+// Auth Tables - 认证信息表（只存 token/password，不存 userId）
+// ============================================================================
+
+model WechatAuth {
+  openid       String    @unique @db.VarChar(255)
+  sessionKey   String?   @map("session_key") @db.Text
+  refreshToken String?   @map("refresh_token") @db.Text
+  isDeleted    Boolean   @default(false) @map("is_deleted")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  user UserInfo @relation(fields: [openid], references: [wechatOpenid], onDelete: Cascade)
+
+  @@index([openid])
+  @@map("u_wechat_auth")
+}
+
+model GoogleAuth {
+  sub           String    @unique @db.VarChar(255)
+  email         String    @db.VarChar(255)
+  verifiedEmail Boolean   @default(true) @map("verified_email")
+  atHash        String?   @map("at_hash") @db.VarChar(255)
+  name          String?   @db.VarChar(255)
+  picture       String?   @db.Text
+  givenName     String?   @map("given_name") @db.VarChar(255)
+  familyName    String?   @map("family_name") @db.VarChar(255)
+  exp           Int
+  iat           Int
+  isDeleted     Boolean   @default(false) @map("is_deleted")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  user UserInfo @relation(fields: [sub], references: [googleSub], onDelete: Cascade)
+
+  @@index([sub])
+  @@index([email])
+  @@map("u_google_auth")
+}
+
+model DiscordAuth {
+  discordId     String    @unique @map("discord_id") @db.VarChar(255)
+  email         String    @db.VarChar(255)
+  verifiedEmail Boolean   @default(true) @map("verified_email")
+  name          String?   @db.VarChar(255)
+  accessToken   String?   @map("access_token") @db.Text
+  refreshToken  String?   @map("refresh_token") @db.Text
+  isDeleted     Boolean   @default(false) @map("is_deleted")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  user UserInfo @relation(fields: [discordId], references: [discordId], onDelete: Cascade)
+
+  @@index([discordId])
+  @@index([email])
+  @@map("u_discord_auth")
+}
+
+model MobileAuth {
+  mobile    String    @unique @db.VarChar(40)
+  password  String    @db.VarChar(255)
+  verified  Boolean   @default(false)
+  isDeleted Boolean   @default(false) @map("is_deleted")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  user UserInfo @relation(fields: [mobile], references: [mobile], onDelete: Cascade)
+
+  @@index([mobile])
+  @@map("u_mobile_auth")
+}
+
+model EmailAuth {
+  email     String    @unique @db.VarChar(255)
+  password  String    @db.VarChar(255)
+  verified  Boolean   @default(false)
+  isDeleted Boolean   @default(false) @map("is_deleted")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  user UserInfo @relation(fields: [email], references: [email], onDelete: Cascade)
+
+  @@index([email])
+  @@map("u_email_auth")
+}
+
+// ============================================================================
+// File System - 文件系统
+// ============================================================================
+
+enum FileBucketVendor {
+  oss
+  us3
+  qiniu
+  s3
+  gcs
+  tos
+  tencent
+  ksyun
+
+  @@map("file_bucket_vendor")
+}
+
+enum FileEnvType {
+  dev
+  test
+  prod
+  produs
+  prodap
+
+  @@map("file_env_type")
+}
+
+model FileSource {
+  id                        String           @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  isUploaded                Boolean          @default(false) @map("is_uploaded")
+  bucket                    String           @db.VarChar(255)
+  key                       String           @unique @db.Uuid
+  hash                      String?          @db.VarChar(255)
+  thumbImg                  String?          @map("thumb_img") @db.VarChar(255)
+  fsize                     Float            @default(0)
+  mimeType                  String           @default("") @map("mime_type") @db.VarChar(255)
+  type                      Int              @default(0)
+  endUser                   String?          @map("end_user") @db.VarChar(255)
+  status                    Int              @default(0)
+  sha256                    String?          @db.VarChar(255)
+  parts                     Int[]
+  ext                       String           @default("") @db.VarChar(255)
+  expireAt                  DateTime?        @map("expire_at") @db.Timestamptz(6)
+  transitionToIaAt          DateTime?        @map("transition_to_ia_at") @db.Timestamptz(6)
+  transitionToArchiveAt     DateTime?        @map("transition_to_archive_at") @db.Timestamptz(6)
+  transitionToDeepArchiveAt DateTime?        @map("transition_to_deep_archive_at") @db.Timestamptz(6)
+  transitionToArchiveIRAt   DateTime?        @map("transition_to_archive_ir_at") @db.Timestamptz(6)
+  env                       FileEnvType      @default(prod)
+  vendor                    FileBucketVendor @default(us3)
+  region                    String           @default("cn-beijing")
+
+  isDeleted Boolean   @default(false) @map("is_deleted")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  // Relations
+  userAvatars UserInfo[]
+
+  @@index([fsize, sha256])
+  @@index([isDeleted])
+  @@index([isUploaded])
+  @@index([bucket])
+  @@index([key])
+  @@map("f_file_source")
+}
+
+// ============================================================================
+// Country Code - 国家代码（用于 IP 信息）
+// ============================================================================
+
+model CountryCode {
+  id        String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  continent String    @db.VarChar(10) // us, eu, ap, cn
+  code      String    @db.VarChar(10) // 国家代码，如 CN, US, SG
+  isDeleted Boolean   @default(false) @map("is_deleted")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@unique([continent, code])
+  @@index([continent])
+  @@index([code])
+  @@map("country_code")
+}

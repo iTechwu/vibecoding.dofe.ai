@@ -1,0 +1,14 @@
+{
+  "title": "推荐",
+  "forYou": "为你推荐",
+  "trending": "热门",
+  "basedOn": "基于你的活动",
+  "noRecommendations": "暂无推荐内容。",
+  "refresh": "刷新",
+  "dismiss": "忽略",
+  "feedback": {
+    "title": "这对你有帮助吗？",
+    "yes": "是",
+    "no": "否"
+  }
+}

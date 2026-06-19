@@ -1,0 +1,53 @@
+{
+  "name": "@repo/utils",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./array": "./array.util.ts",
+    "./bcrypt": "./bcrypt.util.ts",
+    "./bigint": "./bigint.util.ts",
+    "./json": "./json.util.ts",
+    "./object": "./object.util.ts",
+    "./serialize": "./serialize.util.ts",
+    "./string": "./string.util.ts",
+    "./timer": "./timer.util.ts",
+    "./urlencode": "./urlencode.util.ts",
+    "./validate": "./validate.util.ts"
+  },
+  "scripts": {
+    "build": "echo skip",
+    "dev": "tsc --watch --noEmit",
+    "clean": "rimraf dist",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:cov": "jest --coverage",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@repo/config": "workspace:*",
+    "@repo/constants": "workspace:*",
+    "@repo/types": "workspace:*",
+    "clsx": "^2.1.1",
+    "crypto-js": "^4.2.0",
+    "lodash": "^4.18.1",
+    "moment-timezone": "^0.6.2",
+    "pinyin-pro": "^3.28.1",
+    "tailwind-merge": "^3.6.0",
+    "uuid": "^14.0.0"
+  },
+  "optionalDependencies": {
+    "bcrypt": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/crypto-js": "^4.2.2",
+    "@types/jest": "^30.0.0",
+    "@types/lodash": "^4.17.24",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
+    "typescript": "^6.0.3"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "title": "评估",
+  "score": "分数",
+  "result": "结果",
+  "start": "开始评估",
+  "submit": "提交",
+  "evaluating": "评估中...",
+  "passed": "已通过",
+  "failed": "未通过",
+  "retake": "重新评估",
+  "questions": "问题",
+  "timeRemaining": "剩余时间",
+  "progress": "进度"
+}

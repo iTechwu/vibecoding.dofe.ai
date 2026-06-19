@@ -1,0 +1,17 @@
+{
+  "title": "招聘",
+  "jobDescription": "职位描述",
+  "candidate": "候选人",
+  "match": "匹配度",
+  "apply": "申请",
+  "interview": "面试",
+  "position": "职位",
+  "status": "状态",
+  "stages": {
+    "screening": "筛选中",
+    "interview": "面试中",
+    "offer": "已发Offer",
+    "hired": "已入职",
+    "rejected": "已拒绝"
+  }
+}

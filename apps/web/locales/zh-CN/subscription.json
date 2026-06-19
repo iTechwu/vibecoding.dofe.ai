@@ -1,0 +1,16 @@
+{
+  "title": "订阅",
+  "plan": "套餐",
+  "upgrade": "升级",
+  "cancel": "取消订阅",
+  "current": "当前套餐",
+  "billing": "账单",
+  "history": "支付记录",
+  "features": "功能",
+  "tiers": {
+    "free": "免费版",
+    "pro": "专业版",
+    "enterprise": "企业版"
+  },
+  "manage": "管理订阅"
+}

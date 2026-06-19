@@ -1,0 +1,21 @@
+{
+  "title": "Settings",
+  "general": "General",
+  "account": "Account",
+  "security": "Security",
+  "notifications": "Notifications",
+  "hub": {
+    "profileTitle": "Profile",
+    "profileDesc": "Manage display name, email, and avatar.",
+    "brandTitle": "Brand & appearance",
+    "brandDesc": "Customize brand logo and theme colors.",
+    "securityTitle": "Security",
+    "securityDesc": "Password, two-factor authentication, and sessions.",
+    "teamTitle": "Team",
+    "teamDesc": "Manage team members, roles, and invitations.",
+    "auditLogsTitle": "Audit Logs",
+    "auditLogsDesc": "View system activity and security audit trails.",
+    "billingTitle": "Billing",
+    "billingDesc": "Manage subscription, payment methods, and invoices."
+  }
+}

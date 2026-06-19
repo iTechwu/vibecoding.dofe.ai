@@ -1,0 +1,95 @@
+{
+  "compilerOptions": {
+    // 基础路径
+    "baseUrl": ".",
+
+    // 输出配置
+    "outDir": "./dist",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "ignoreDeprecations": "6.0",
+    "target": "ES2022",
+    "declaration": true,
+    "removeComments": true,
+    "sourceMap": true,
+    "incremental": true,
+
+    // 装饰器支持 (NestJS 必需)
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+
+    // 模块互操作
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+
+    // 类型检查 - 分阶段启用严格模式
+    "strict": false,
+    "strictNullChecks": true,
+    "strictPropertyInitialization": false,
+    "noImplicitAny": true,
+    "strictBindCallApply": true,
+    "strictFunctionTypes": false,
+
+    // 代码质量检查
+    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": false,
+
+    // 性能优化
+    "skipLibCheck": true,
+
+    // 类型定义
+    "types": ["node", "jest"],
+
+    "paths": {
+      "*": ["./*"],
+
+      // === Prisma Client (generated) ===
+      "@prisma/client": ["./generated/prisma-client"],
+      "@prisma/client/*": ["./generated/prisma-client/*"],
+
+      // src 模块路径 (用于跨模块引用)
+      "src/*": ["./src/*"],
+
+      // Monorepo 共享包
+      "@repo/utils": ["../../packages/utils"],
+      "@repo/utils/array": ["../../packages/utils/array.util.ts"],
+      "@repo/utils/string": ["../../packages/utils/string.util.ts"],
+      "@repo/utils/timer": ["../../packages/utils/timer.util.ts"],
+      "@repo/utils/urlencode": ["../../packages/utils/urlencode.util.ts"],
+      "@repo/utils/validate": ["../../packages/utils/validate.util.ts"],
+      "@repo/utils/*": ["../../packages/utils/*"],
+      "@repo/constants": ["../../packages/constants/src"],
+      "@repo/validators": ["../../packages/validators/src"],
+      "@repo/contracts": ["../../packages/contracts/src"],
+      "@repo/contracts/*": ["../../packages/contracts/src/*"],
+
+      // === Generated DB Services (all DB services) ===
+      "@app/db": ["./generated/db"],
+      "@app/db/*": ["./generated/db/modules/*"],
+
+      // === Infra package aliases (used by generated/db modules) ===
+      "@app/prisma": ["node_modules/@dofe/infra-prisma/dist/prisma"],
+      "@app/redis": ["node_modules/@dofe/infra-redis/dist"],
+      "@app/shared-db": ["node_modules/@dofe/infra-shared-db/dist"],
+
+      // === Nest 库别名 @app/*（domain） ===
+      "@app/auth": ["./libs/domain/auth/src"],
+      "@app/auth/*": ["./libs/domain/auth/src/*"],
+      "@app/services": ["./libs/domain/services/src"],
+      "@app/services/*": ["./libs/domain/services/*"],
+
+      // === Nest 库别名 @app/clients（客户端封装层） ===
+      "@app/clients": ["./libs/clients"],
+      "@app/clients/*": ["./libs/clients/*"],
+
+      // === @app/tenant-management/*（stub：scaffold 无租户管理模块） ===
+      "@app/tenant-management/*": ["./generated/stubs/tenant-management/*"]
+    }
+  },
+  "include": ["src/**/*", "libs/domain/**/*", "generated/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

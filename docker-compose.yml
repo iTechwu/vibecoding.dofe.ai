@@ -1,0 +1,158 @@
+# ============================================================================
+# DofeAI - Docker Compose
+# Local development & production-like environment
+# ============================================================================
+# Usage:
+#   Start all services:    docker compose up -d
+#   Start infra only:      docker compose up -d postgres redis rabbitmq
+#   Rebuild after changes: docker compose up -d --build
+#   View logs:             docker compose logs -f api
+#   Stop all:              docker compose down
+#   Reset with data:       docker compose down -v
+# ============================================================================
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+x-healthy: &healthy
+  interval: 10s
+  timeout: 5s
+  retries: 5
+
+services:
+  # ---- Infrastructure ----
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: dofai-postgres
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_USER: dofe
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dofe_dev_2024}
+      POSTGRES_DB: ai_client
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      <<: *healthy
+      test: ["CMD-SHELL", "pg_isready -U dofe -d ai_client"]
+    networks:
+      - backend
+
+  redis:
+    image: redis:7-alpine
+    container_name: dofai-redis
+    restart: unless-stopped
+    logging: *logging
+    command: redis-server --requirepass ${REDIS_PASSWORD:-dofe_dev_2024}
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      <<: *healthy
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-dofe_dev_2024}", "ping"]
+    networks:
+      - backend
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    container_name: dofai-rabbitmq
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      RABBITMQ_DEFAULT_USER: dofe
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-dofe_dev_2024}
+      RABBITMQ_DEFAULT_VHOST: nestjs_xica
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - backend
+
+  # ---- Application Services ----
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: dofai-api
+    restart: unless-stopped
+    init: true
+    logging: *logging
+    ports:
+      - "${API_PORT:-13100}:13100"
+    environment:
+      NODE_ENV: production
+      BASE_HOST: postgres
+      DATABASE_URL: postgresql://dofe:${POSTGRES_PASSWORD:-dofe_dev_2024}@postgres:5432/ai_client?schema=public&timezone=Asia/Shanghai
+      READ_DATABASE_URL: postgresql://dofe:${POSTGRES_PASSWORD:-dofe_dev_2024}@postgres:5432/ai_client?schema=public&timezone=Asia/Shanghai
+      REDIS_URL: redis://:${REDIS_PASSWORD:-dofe_dev_2024}@redis:6379/2
+      RABBITMQ_URL: amqp://dofe:${RABBITMQ_PASSWORD:-dofe_dev_2024}@rabbitmq:5672/nestjs_xica
+    volumes:
+      - ./apps/api/config.local.yaml:/app/config.local.yaml:ro
+      - ./apps/api/keys/config.json:/app/keys/config.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:13100/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - backend
+      - frontend
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: dofai-web
+    restart: unless-stopped
+    init: true
+    logging: *logging
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    environment:
+      NEXT_PUBLIC_SERVER_BASE_URL: http://api:13100
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - frontend
+
+networks:
+  backend:
+    driver: bridge
+    internal: true
+  frontend:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:

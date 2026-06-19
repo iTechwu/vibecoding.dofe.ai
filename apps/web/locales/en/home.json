@@ -1,0 +1,33 @@
+{
+  "hero": {
+    "title": "Welcome to DoFe.AI",
+    "subtitle": "Do For Employee · Do For Enterprise · Do For Empowerment"
+  },
+  "cards": {
+    "documentation": {
+      "title": "📚 Documentation",
+      "description": "Read the docs to learn about the architecture and best practices."
+    },
+    "quickStart": {
+      "title": "🚀 Quick Start",
+      "lineBefore": "Run",
+      "lineAfter": "to start developing locally."
+    },
+    "architecture": {
+      "title": "🏗️ Architecture",
+      "description": "4-layer architecture with type-safe API contracts using ts-rest."
+    },
+    "agents": {
+      "title": "🤖 Agents",
+      "description": "Agent UI is planned; gateway and routing APIs are ready for model traffic today."
+    },
+    "sharedPackages": {
+      "title": "📦 Shared Packages",
+      "description": "UI, utils, types, validators, and contracts shared across apps."
+    },
+    "typeSafety": {
+      "title": "🔒 Type Safety",
+      "description": "Zod 4 validation + ts-rest for end-to-end type safety."
+    }
+  }
+}

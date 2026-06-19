@@ -1,0 +1,13 @@
+{
+  "title": "Memory",
+  "save": "Save Memory",
+  "recall": "Recall",
+  "search": "Search memories...",
+  "delete": "Delete",
+  "empty": "No memories saved yet.",
+  "noResults": "No memories found.",
+  "created": "Created",
+  "updated": "Updated",
+  "tags": "Tags",
+  "importance": "Importance"
+}

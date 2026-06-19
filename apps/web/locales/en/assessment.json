@@ -1,0 +1,14 @@
+{
+  "title": "Assessment",
+  "score": "Score",
+  "result": "Result",
+  "start": "Start Assessment",
+  "submit": "Submit",
+  "evaluating": "Evaluating...",
+  "passed": "Passed",
+  "failed": "Failed",
+  "retake": "Retake",
+  "questions": "Questions",
+  "timeRemaining": "Time remaining",
+  "progress": "Progress"
+}

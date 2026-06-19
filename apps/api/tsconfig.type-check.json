@@ -1,0 +1,34 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "../..",
+    "declaration": false,
+    "declarationMap": false,
+    "incremental": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": [
+    "src/**/*",
+    "src/types/**/*.d.ts",
+    "libs/domain/**/*",
+    "libs/clients/**/*",
+    "generated/**/*",
+    "../../packages/contracts/src/**/*",
+    "../../packages/constants/src/**/*",
+    "../../packages/utils/*.ts",
+    "../../packages/validators/src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test",
+    "**/*.spec.ts",
+    "**/*.test.ts",
+    "**/__tests__/**",
+    "../../packages/**/__tests__/**",
+    "../../packages/**/*.test.ts",
+    "../../packages/**/*.spec.ts"
+  ]
+}

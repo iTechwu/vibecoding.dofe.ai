@@ -1,0 +1,60 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# Build outputs (rebuilt in Docker)
+dist
+**/dist
+.next
+**/.next
+build
+**/build
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Test
+coverage
+**/.coverage
+test-results
+playwright-report
+
+# Environment files (use docker-compose env_file or --env-file)
+.env
+.env.local
+.env.*.local
+**/.env.production
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Git
+.git
+.gitignore
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# Other
+.DS_Store
+*.pem
+.claude
+.turbo
+
+# Sensitive / non-essential files
+apps/api/logs/
+apps/api/keys/
+apps/api/docs/
+docs/
+memory/
+.playwright-mcp/
+scripts/generate-prisma-enums.ts

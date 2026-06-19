@@ -1,0 +1,27 @@
+context_budget: 24000
+max_parallel: 1
+shard_timeout_sec: 900
+max_retry: 2
+max_shard_redo: 3
+max_reloop: 3
+cost:
+  token_cap_per_loop: 5000000
+  call_cap_per_loop: 500
+agents:
+  planner: codex
+  tester: codex
+  implementer: claude-code
+tests:
+  required_before_done: true
+  default_commands:
+    - pnpm test
+    - pnpm lint
+git:
+  commit_per_shard: true
+auth:
+  provider: dofe-sso
+  login_url: https://sso.dofe.ai
+  api_url: https://api.sso.dofe.ai
+integrations:
+  feishu:
+    enabled: false
