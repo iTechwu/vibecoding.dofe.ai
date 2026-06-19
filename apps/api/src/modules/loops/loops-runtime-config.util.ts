@@ -16,6 +16,7 @@ export type LoopsRuntimeConfig = {
   };
   tests: {
     defaultCommands: string[];
+    regressionCommands: string[];
     allowedCommands: string[];
     coverageFloor: {
       lines?: number;
@@ -34,6 +35,7 @@ type ParsedLoopsRuntimeConfig = {
   cost: Partial<LoopsRuntimeConfig['cost']>;
   tests: {
     defaultCommands: string[];
+    regressionCommands: string[];
     allowedCommands: string[];
     coverageFloor: {
       lines?: number;
@@ -55,6 +57,7 @@ const DEFAULT_RUNTIME_CONFIG: LoopsRuntimeConfig = {
   },
   tests: {
     defaultCommands: ['pnpm --version'],
+    regressionCommands: [],
     allowedCommands: [],
     coverageFloor: {},
   },
@@ -80,6 +83,11 @@ export async function readLoopsRuntimeConfig(): Promise<LoopsRuntimeConfig> {
       defaultCommands: parsed.tests.defaultCommands.length
         ? parsed.tests.defaultCommands
         : DEFAULT_RUNTIME_CONFIG.tests.defaultCommands,
+      regressionCommands: parsed.tests.regressionCommands.length
+        ? parsed.tests.regressionCommands
+        : parsed.tests.defaultCommands.length
+          ? parsed.tests.defaultCommands
+          : DEFAULT_RUNTIME_CONFIG.tests.defaultCommands,
       allowedCommands: parsed.tests.allowedCommands.length
         ? parsed.tests.allowedCommands
         : parsed.tests.defaultCommands.length
@@ -99,6 +107,7 @@ function parseLoopsRuntimeConfig(content: string): ParsedLoopsRuntimeConfig {
       cost: {},
       tests: {
         defaultCommands: [],
+        regressionCommands: [],
         allowedCommands: [],
         coverageFloor: {},
       },
@@ -118,6 +127,11 @@ function parseLoopsRuntimeConfig(content: string): ParsedLoopsRuntimeConfig {
         (item): item is string => typeof item === 'string' && item.trim().length > 0,
       )
     : [];
+  const regressionCommands = Array.isArray(tests?.regression_commands)
+    ? tests.regression_commands.filter(
+        (item): item is string => typeof item === 'string' && item.trim().length > 0,
+      )
+    : [];
   const coverageFloor = asRecord(tests?.coverage_floor);
 
   return {
@@ -133,6 +147,7 @@ function parseLoopsRuntimeConfig(content: string): ParsedLoopsRuntimeConfig {
     },
     tests: {
       defaultCommands,
+      regressionCommands,
       allowedCommands,
       coverageFloor: {
         lines: asPercentage(coverageFloor?.lines),

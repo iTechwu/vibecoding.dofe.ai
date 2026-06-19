@@ -16,6 +16,8 @@ tests:
   default_commands:
     - pnpm test
     - pnpm lint
+  regression_commands:
+    - pnpm lint
   allowed_commands:
     - pnpm test
     - pnpm lint

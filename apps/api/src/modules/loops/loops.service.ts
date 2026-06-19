@@ -325,15 +325,50 @@ export class LoopsService {
       return this.store.readDetail(issueId);
     }
 
+    const regressionRecord = await this.runGlobalRegression(detail);
+    if (regressionRecord.status !== 'TEST-PASS') {
+      const now = new Date().toISOString();
+      const record: LoopGlobalReviewRecord = {
+        id: `global-review-${issueId}-r${detail.state.round}-${Date.now()}`,
+        issueId,
+        reviewer: 'system',
+        round: detail.state.round,
+        verdict: 'NEEDS-WORK',
+        issues: regressionRecord.failedTests.map((item) => ({
+          severity: 'major' as const,
+          desc: `Global regression failed: ${item.name}: ${item.reason}`,
+        })),
+        fixInstructions:
+          regressionRecord.fixInstructions.length > 0
+            ? regressionRecord.fixInstructions
+            : ['修复全局回归失败后重新执行整体复查。'],
+        summary: 'Global review blocked: regression tests failed.',
+        created: now,
+      };
+      await this.store.writeGlobalReview({
+        issueId,
+        record,
+        annotations: detail.annotations,
+        state: {
+          ...detail.state,
+          phase: 'PHASE_4_IMPLEMENT',
+          globalVerdict: 'NEEDS-WORK',
+          updated: now,
+        },
+      });
+      return this.store.readDetail(issueId);
+    }
+
+    const reviewDetail = await this.store.readDetail(issueId);
     const review = await this.agentAdapter.reviewGlobal({
-      issue: detail.issue,
-      spec: detail.spec,
-      shards: detail.shards,
-      implementationRecords: detail.implementationRecords,
-      reviewRecords: detail.reviewRecords,
-      testRecords: detail.testRecords,
-      testMatrix: detail.testMatrix,
-      annotations: detail.annotations,
+      issue: reviewDetail.issue,
+      spec: reviewDetail.spec,
+      shards: reviewDetail.shards,
+      implementationRecords: reviewDetail.implementationRecords,
+      reviewRecords: reviewDetail.reviewRecords,
+      testRecords: reviewDetail.testRecords,
+      testMatrix: reviewDetail.testMatrix,
+      annotations: reviewDetail.annotations,
     });
     const now = new Date().toISOString();
     const record: LoopGlobalReviewRecord = {
@@ -347,7 +382,7 @@ export class LoopsService {
       summary: review.summary,
       created: now,
     };
-    const nextAnnotations = detail.annotations.map((annotation) =>
+    const nextAnnotations = reviewDetail.annotations.map((annotation) =>
       annotation.target === issueId
         ? {
             ...annotation,
@@ -365,7 +400,7 @@ export class LoopsService {
     if (review.verdict !== 'PASS') {
       return this.autoReloopAfterGlobalReview({
         issueId,
-        detail,
+        detail: reviewDetail,
         record,
         annotations: nextAnnotations,
         now,
@@ -377,7 +412,7 @@ export class LoopsService {
       record,
       annotations: nextAnnotations,
       state: {
-        ...detail.state,
+        ...reviewDetail.state,
         phase: 'PHASE_8_ANNOTATE',
         globalVerdict: review.verdict,
         updated: now,
@@ -1000,6 +1035,56 @@ export class LoopsService {
     }
 
     return issues;
+  }
+
+  private async runGlobalRegression(detail: LoopIssueDetail) {
+    const config = await readLoopsRuntimeConfig();
+    const record = await this.runner.runShardTests({
+      issueId: detail.issue.id,
+      shardId: '__global__',
+      round: detail.state.round,
+      cwd: detail.issue.targetRepo,
+      request: {
+        commands: config.tests.regressionCommands,
+        runner: 'loops-regression-runner',
+      },
+    });
+    const testStatus: LoopAnnotation['testStatus'] =
+      record.status === 'TEST-PASS' ? 'pass' : 'fail';
+    const verdict: LoopAnnotation['verdict'] =
+      record.status === 'TEST-PASS' ? 'unreviewed' : 'needs-work';
+    const nextAnnotations = detail.annotations.map((annotation) =>
+      annotation.target === detail.issue.id
+        ? {
+            ...annotation,
+            testStatus,
+            verdict,
+            notes:
+              record.status === 'TEST-PASS'
+                ? 'Global regression commands passed before global review.'
+                : 'Global regression commands failed; global review is blocked.',
+          }
+        : annotation,
+    );
+    await this.store.writeTestRecord({
+      issueId: detail.issue.id,
+      shardId: '__global__',
+      record,
+      annotations: nextAnnotations,
+      shards: detail.shards,
+      state: {
+        ...detail.state,
+        phase: record.status === 'TEST-PASS' ? 'PHASE_7_GLOBAL_REVIEW' : 'PHASE_4_IMPLEMENT',
+        updated: new Date().toISOString(),
+      },
+    });
+    await this.store.appendLog({
+      type: 'GLOBAL_REGRESSION',
+      loop: detail.issue.id,
+      status: record.status,
+      commands: record.commands.map((item) => item.command),
+    });
+    return record;
   }
 
   private createIssueId(now: string) {
