@@ -1,15 +1,22 @@
 import Link from 'next/link';
-import { getLoopLogs, getLoopsCost, getLoopsDoctor, listLoops } from '@/lib/api/loops';
+import {
+  getLoopLogs,
+  getLoopNotifications,
+  getLoopsCost,
+  getLoopsDoctor,
+  listLoops,
+} from '@/lib/api/loops';
 import { resumeLoopsAction } from './actions';
 
 export const dynamic = 'force-dynamic';
 
 export default async function LoopsPage() {
-  const [data, doctor, cost, logs] = await Promise.all([
+  const [data, doctor, cost, logs, notifications] = await Promise.all([
     listLoops(),
     getLoopsDoctor(),
     getLoopsCost(),
     getLoopLogs({ limit: 8 }),
+    getLoopNotifications({ limit: 6 }),
   ]);
   const stateByIssue = new Map(data.loops.map((loop) => [loop.issueId, loop]));
 
@@ -67,6 +74,31 @@ export default async function LoopsPage() {
               Resume Interrupted
             </button>
           </form>
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="text-sm font-medium">Recent Notifications</h2>
+            <span className="text-xs text-muted-foreground">
+              {notifications.notifications.length} records
+            </span>
+          </div>
+          <div className="mt-3 flex flex-col divide-y">
+            {notifications.notifications.length === 0 ? (
+              <p className="py-3 text-sm text-muted-foreground">No notifications yet.</p>
+            ) : (
+              notifications.notifications.map((notification) => (
+                <div
+                  className="grid grid-cols-[140px_160px_1fr] gap-3 py-3 text-xs"
+                  key={notification.id}
+                >
+                  <span className="font-medium">{notification.kind}</span>
+                  <span className="text-muted-foreground">{notification.status}</span>
+                  <span className="truncate text-muted-foreground">{notification.title}</span>
+                </div>
+              ))
+            )}
+          </div>
         </section>
 
         <section className="rounded-lg border p-4">

@@ -1,4 +1,6 @@
 import { DeterministicLoopsAgentAdapter } from '../apps/api/src/modules/loops/adapters/deterministic-loops-agent.adapter';
+import { DeterministicLoopsClaudeAdapter } from '../apps/api/src/modules/loops/adapters/deterministic-loops-claude.adapter';
+import { CliLoopsGitAdapter } from '../apps/api/src/modules/loops/adapters/cli-loops-git.adapter';
 import { LoopsFileStoreService } from '../apps/api/src/modules/loops/loops-file-store.service';
 import { LoopsRunnerService } from '../apps/api/src/modules/loops/loops-runner.service';
 import { LoopsService } from '../apps/api/src/modules/loops/loops.service';
@@ -10,6 +12,11 @@ async function main() {
     store,
     new LoopsRunnerService(),
     new DeterministicLoopsAgentAdapter(),
+    new DeterministicLoopsClaudeAdapter(),
+    new CliLoopsGitAdapter({
+      commitPerShard: process.env.LOOPS_GIT_COMMIT_PER_SHARD === 'true',
+      baseBranch: process.env.LOOPS_GIT_BASE_BRANCH ?? 'main',
+    }),
   );
 
   if (command === 'status') {
@@ -43,6 +50,22 @@ async function main() {
     console.log(
       JSON.stringify(
         await service.logs({
+          issueId,
+          limit: Number.isFinite(limit) ? limit : 50,
+        }),
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  if (command === 'notifications') {
+    const issueId = process.argv[3];
+    const limit = Number(process.argv[4] ?? 50);
+    console.log(
+      JSON.stringify(
+        await service.notifications({
           issueId,
           limit: Number.isFinite(limit) ? limit : 50,
         }),
@@ -116,9 +139,55 @@ async function main() {
     return;
   }
 
+  if (command === 'run') {
+    const issueId = process.argv[3];
+    if (!issueId) {
+      throw new Error('issueId is required for run');
+    }
+    console.log(JSON.stringify(await service.runLoop(issueId), null, 2));
+    return;
+  }
+
+  if (command === 'global-review') {
+    const issueId = process.argv[3];
+    if (!issueId) {
+      throw new Error('issueId is required for global-review');
+    }
+    console.log(JSON.stringify(await service.reviewGlobal(issueId), null, 2));
+    return;
+  }
+
+  if (command === 'reloop') {
+    const issueId = process.argv[3];
+    const notes = process.argv.slice(4).join(' ').trim();
+    if (!issueId) {
+      throw new Error('issueId is required for reloop');
+    }
+    console.log(
+      JSON.stringify(
+        await service.reloop(issueId, {
+          reviewer: 'human-cli',
+          notes: notes || undefined,
+        }),
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  if (command === 'finalize') {
+    const issueId = process.argv[3];
+    if (!issueId) {
+      throw new Error('issueId is required for finalize');
+    }
+    console.log(JSON.stringify(await service.finalize(issueId), null, 2));
+    return;
+  }
+
   console.error(`Unknown loops command: ${command}`);
   console.error(
-    'Usage: pnpm loops:status | pnpm loops:doctor | pnpm loops:cost | pnpm loops:logs [issueId] [limit] | pnpm loops:resume | pnpm loops:pause <issueId> | pnpm loops:resume-loop <issueId> | pnpm loops:take <issueId> <shardId> [notes]',
+    'Usage: pnpm loops:status | pnpm loops:doctor | pnpm loops:cost | pnpm loops:logs [issueId] [limit] | pnpm loops:notifications [issueId] [limit] | pnpm loops:resume | pnpm loops:pause <issueId> | pnpm loops:resume-loop <issueId> | pnpm loops:take <issueId> <shardId> [notes] | pnpm loops:run <issueId> | pnpm loops:global-review <issueId> | pnpm loops:reloop <issueId> [notes] | pnpm loops:finalize <issueId>',
   );
   process.exitCode = 1;
 }

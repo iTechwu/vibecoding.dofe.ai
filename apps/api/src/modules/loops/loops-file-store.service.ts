@@ -4,12 +4,15 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import type {
   LoopAnnotation,
+  LoopConvergencePr,
   LoopCostItem,
   LoopDetail,
+  LoopGlobalReviewRecord,
   LoopImplementationRecord,
   LoopIntake,
   LoopIssue,
   LoopLogEntry,
+  LoopNotification,
   LoopReviewRecord,
   LoopShard,
   LoopSpec,
@@ -51,9 +54,17 @@ export class LoopsFileStoreService {
 
   async ensureInitialized() {
     await Promise.all(
-      ['issues', 'intakes', 'specs', 'shards', 'tests', 'runs', 'annotations', 'archive'].map(
-        (dir) => fs.mkdir(path.join(this.root, dir), { recursive: true }),
-      ),
+      [
+        'issues',
+        'intakes',
+        'specs',
+        'shards',
+        'tests',
+        'runs',
+        'annotations',
+        'notifications',
+        'archive',
+      ].map((dir) => fs.mkdir(path.join(this.root, dir), { recursive: true })),
     );
 
     await this.writeJsonIfMissing('state.json', { loops: [] });
@@ -71,7 +82,16 @@ export class LoopsFileStoreService {
     await this.ensureInitialized();
     const issue = await this.readJson<LoopIssue>(`issues/${issueId}.json`);
     const intake = await this.readJson<LoopIntake>(`intakes/${this.intakeId(issueId)}.json`);
-    const spec = await this.readOptionalJson<LoopSpec>(`specs/${issueId}/spec.v1.json`);
+    const state = (await this.readState()).loops.find((item) => item.issueId === issueId);
+
+    if (!state) {
+      throw new Error(`Loop state not found for ${issueId}`);
+    }
+
+    const spec =
+      state.specVersion === 'v0'
+        ? undefined
+        : await this.readOptionalJson<LoopSpec>(`specs/${issueId}/spec.${state.specVersion}.json`);
     const shards = await this.readOptionalJson<LoopShard[]>(`shards/${issueId}/shards.json`);
     const testMatrix = await this.readOptionalJson<LoopTestMatrix>(`tests/${issueId}/matrix.json`);
     const annotations = await this.readOptionalJson<LoopAnnotation[]>(
@@ -81,11 +101,13 @@ export class LoopsFileStoreService {
     const reviewRecords = await this.readReviewRecords(issueId);
     const testRecords = await this.readTestRecords(issueId);
     const logs = await this.readLogs({ issueId, limit: 40 });
-    const state = (await this.readState()).loops.find((item) => item.issueId === issueId);
-
-    if (!state) {
-      throw new Error(`Loop state not found for ${issueId}`);
-    }
+    const notifications = await this.readNotifications({ issueId, limit: 20 });
+    const globalReview = await this.readOptionalJson<LoopGlobalReviewRecord>(
+      `runs/${issueId}/global-review.json`,
+    );
+    const convergencePr = await this.readOptionalJson<LoopConvergencePr>(
+      `runs/${issueId}/convergence-pr.json`,
+    );
 
     return {
       issue,
@@ -98,7 +120,10 @@ export class LoopsFileStoreService {
       reviewRecords,
       testRecords,
       logs,
+      notifications,
       state,
+      globalReview,
+      convergencePr,
     };
   }
 
@@ -117,6 +142,32 @@ export class LoopsFileStoreService {
       .sort((a, b) => b.ts.localeCompare(a.ts));
 
     return entries.slice(0, input.limit ?? 50);
+  }
+
+  async readNotifications(input: { issueId?: string; limit?: number } = {}) {
+    await this.ensureInitialized();
+    const issueIds = input.issueId
+      ? [input.issueId]
+      : await fs
+          .readdir(path.join(this.root, 'notifications'))
+          .catch(() => [])
+          .then((entries) => entries.filter((entry) => !entry.startsWith('.')));
+    const notifications = await Promise.all(
+      issueIds.map(async (issueId) => {
+        const dir = path.join(this.root, 'notifications', issueId);
+        const files = await fs.readdir(dir).catch(() => []);
+        return Promise.all(
+          files
+            .filter((file) => file.endsWith('.json'))
+            .map((file) => this.readJson<LoopNotification>(`notifications/${issueId}/${file}`)),
+        );
+      }),
+    );
+
+    return notifications
+      .flat()
+      .sort((a, b) => b.created.localeCompare(a.created))
+      .slice(0, input.limit ?? 50);
   }
 
   async doctor(): Promise<LoopsDoctorResult> {
@@ -138,7 +189,7 @@ export class LoopsFileStoreService {
       }
 
       if (loop.specVersion !== 'v0') {
-        const specPath = path.join(this.root, 'specs', loop.issueId, 'spec.v1.json');
+        const specPath = path.join(this.root, 'specs', loop.issueId, `spec.${loop.specVersion}.json`);
         if (!(await this.exists(specPath))) {
           problems.push(`missing spec ${loop.specVersion} for ${loop.issueId}`);
         }
@@ -203,6 +254,15 @@ export class LoopsFileStoreService {
       cost_calls: loop.costCalls,
       token_cap: config.tokenCapPerLoop,
       call_cap: config.callCapPerLoop,
+    });
+    await this.writeNotification({
+      issueId: loop.issueId,
+      channel: 'web',
+      kind: 'COST_GUARD_TRIPPED',
+      recipient: 'ops',
+      title: `Cost guard tripped: ${loop.issueId}`,
+      body: `Loop was paused after reaching ${loop.costCalls}/${config.callCapPerLoop} calls and ${loop.costTokens}/${config.tokenCapPerLoop} tokens.`,
+      actionHref: `/loops/${loop.issueId}`,
     });
     return next;
   }
@@ -286,12 +346,21 @@ export class LoopsFileStoreService {
       intake: input.intake.id,
       target_repo: input.issue.targetRepo,
     });
+    await this.writeNotification({
+      issueId: input.issue.id,
+      channel: 'web',
+      kind: 'ISSUE_RECEIVED',
+      recipient: input.issue.submitterId,
+      title: `Issue received: ${input.issue.title}`,
+      body: `Issue ${input.issue.id} has been normalized and queued for planning.`,
+      actionHref: `/loops/${input.issue.id}`,
+    });
   }
 
   async writeSpec(issue: LoopIssue, spec: LoopSpec, state: LoopStateItem) {
     await fs.mkdir(path.join(this.root, 'specs', issue.id), { recursive: true });
-    await this.writeJson(`specs/${issue.id}/spec.v1.json`, spec);
-    await this.writeText(`specs/${issue.id}/spec.v1.md`, spec.body);
+    await this.writeJson(`specs/${issue.id}/spec.${spec.version}.json`, spec);
+    await this.writeText(`specs/${issue.id}/spec.${spec.version}.md`, spec.body);
     await this.writeJson(`issues/${issue.id}.json`, {
       ...issue,
       status: 'IN_LOOP',
@@ -304,6 +373,17 @@ export class LoopsFileStoreService {
       spec: spec.id,
       to: spec.status,
     });
+    if (spec.status === 'DRAFT') {
+      await this.writeNotification({
+        issueId: issue.id,
+        channel: 'web',
+        kind: 'SPEC_REVIEW_REQUESTED',
+        recipient: issue.submitterId,
+        title: `Spec review requested: ${issue.title}`,
+        body: `Spec ${spec.version} is ready for human review before decomposition.`,
+        actionHref: `/loops/${issue.id}`,
+      });
+    }
   }
 
   async writeShards(input: {
@@ -345,6 +425,15 @@ export class LoopsFileStoreService {
       type: 'ANNOTATE',
       issue: input.issue.id,
       count: input.annotations.length,
+    });
+    await this.writeNotification({
+      issueId: input.issue.id,
+      channel: 'web',
+      kind: 'LOOP_STARTED',
+      recipient: input.issue.submitterId,
+      title: `Loop implementation started: ${input.issue.title}`,
+      body: `${input.shards.length} shards have been generated and are ready for implementation.`,
+      actionHref: `/loops/${input.issue.id}`,
     });
   }
 
@@ -434,6 +523,72 @@ export class LoopsFileStoreService {
       verdict: input.record.verdict,
       reviewer: input.record.reviewer,
     });
+    if (input.state.phase === 'PHASE_6_CONVERGE') {
+      await this.writeNotification({
+        issueId: input.issueId,
+        channel: 'web',
+        kind: 'CONVERGENCE_READY',
+        recipient: input.record.reviewer,
+        title: `Loop ready to converge: ${input.issueId}`,
+        body: 'All shards are marked DONE and the loop is ready for convergence review.',
+        actionHref: `/loops/${input.issueId}`,
+      });
+    }
+  }
+
+  async writeGlobalReview(input: {
+    issueId: string;
+    record: LoopGlobalReviewRecord;
+    annotations: LoopAnnotation[];
+    state: LoopStateItem;
+  }) {
+    await this.writeJson(`runs/${input.issueId}/global-review.json`, input.record);
+    await this.writeText(
+      `runs/${input.issueId}/global-review.md`,
+      this.renderGlobalReviewRecord(input.record),
+    );
+    await this.writeJson(`annotations/${input.issueId}.json`, input.annotations);
+    await this.writeText(
+      `annotations/${input.issueId}.yaml`,
+      this.renderAnnotations(input.annotations),
+    );
+    await this.upsertState(input.state);
+    await this.appendLog({
+      type: 'GLOBAL_REVIEW',
+      loop: input.issueId,
+      verdict: input.record.verdict,
+      reviewer: input.record.reviewer,
+    });
+  }
+
+  async writeFinalize(input: {
+    issue: LoopIssue;
+    annotations: LoopAnnotation[];
+    state: LoopStateItem;
+    convergencePr: LoopConvergencePr;
+  }) {
+    await this.writeJson(`annotations/${input.issue.id}.json`, input.annotations);
+    await this.writeText(
+      `annotations/${input.issue.id}.yaml`,
+      this.renderAnnotations(input.annotations),
+    );
+    await this.writeJson(`runs/${input.issue.id}/convergence-pr.json`, input.convergencePr);
+    await this.writeText(
+      `runs/${input.issue.id}/convergence-pr.md`,
+      input.convergencePr.prBody,
+    );
+    await this.writeJson(`issues/${input.issue.id}.json`, {
+      ...input.issue,
+      status: 'CLOSED',
+      updated: input.state.updated,
+    });
+    await this.upsertState(input.state);
+    await this.appendLog({
+      type: 'FINAL_ANNOTATE',
+      loop: input.issue.id,
+      status: input.convergencePr.status,
+      pr: input.convergencePr.id,
+    });
   }
 
   async writeIntervention(input: {
@@ -466,6 +621,41 @@ export class LoopsFileStoreService {
       shard: input.shardId,
       notes: input.notes,
     });
+    await this.writeNotification({
+      issueId: input.issueId,
+      channel: 'web',
+      kind: 'HUMAN_INTERVENTION',
+      recipient: input.actor,
+      title: `Human intervention: ${input.action}`,
+      body: input.shardId
+        ? `${input.actor} performed ${input.action} on ${input.shardId}.`
+        : `${input.actor} performed ${input.action} on the loop.`,
+      actionHref: `/loops/${input.issueId}`,
+    });
+  }
+
+  async writeNotification(input: Omit<LoopNotification, 'id' | 'created' | 'status'>) {
+    const created = new Date().toISOString();
+    const notification: LoopNotification = {
+      ...input,
+      id: `notification-${input.issueId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      status: 'RECORDED',
+      created,
+    };
+    await this.writeJson(`notifications/${input.issueId}/${notification.id}.json`, notification);
+    await this.writeText(
+      `notifications/${input.issueId}/${notification.id}.md`,
+      this.renderNotification(notification),
+    );
+    await this.appendLog({
+      type: 'NOTIFY_SENT',
+      issue: input.issueId,
+      channel: input.channel,
+      kind: input.kind,
+      recipient: input.recipient,
+      status: notification.status,
+    });
+    return notification;
   }
 
   async appendLog(payload: Record<string, unknown>) {
@@ -698,6 +888,18 @@ export class LoopsFileStoreService {
         ? record.issues.map((item) => `- ${item.severity}: ${item.desc}`).join('\n')
         : '无';
     return `---\nid: ${record.id}\nshard: ${record.shardId}\nreviewer: ${record.reviewer}\nround: ${record.round}\nverdict: ${record.verdict}\ncreated: ${record.created}\n---\n\n## 审查意见\n${record.summary}\n\n## 问题\n${issues}\n\n## 修复指令\n${record.fixInstructions.map((item) => `- ${item}`).join('\n') || '无'}\n`;
+  }
+
+  private renderGlobalReviewRecord(record: LoopGlobalReviewRecord) {
+    const issues =
+      record.issues.length > 0
+        ? record.issues.map((item) => `- ${item.severity}: ${item.desc}`).join('\n')
+        : '无';
+    return `---\nid: ${record.id}\nissue: ${record.issueId}\nreviewer: ${record.reviewer}\nround: ${record.round}\nverdict: ${record.verdict}\ncreated: ${record.created}\n---\n\n## 整体复查结论\n${record.summary}\n\n## 问题\n${issues}\n\n## 修复指令\n${record.fixInstructions.map((item) => `- ${item}`).join('\n') || '无'}\n`;
+  }
+
+  private renderNotification(notification: LoopNotification) {
+    return `---\nid: ${notification.id}\nissue: ${notification.issueId}\nchannel: ${notification.channel}\nkind: ${notification.kind}\nrecipient: ${notification.recipient}\nstatus: ${notification.status}\ncreated: ${notification.created}\n---\n\n## ${notification.title}\n\n${notification.body}\n\n${notification.actionHref ? `Action: ${notification.actionHref}\n` : ''}`;
   }
 
   private findWorkspaceRoot() {

@@ -1,7 +1,28 @@
 import { Injectable } from '@nestjs/common';
-import type { LoopAnnotation, LoopIssue, LoopShard, LoopSpec } from '@repo/contracts';
-import type { LoopsAgentAdapter, LoopsDecomposition } from './loops-agent-adapter.interface';
+import type {
+  LoopAnnotation,
+  LoopImplementationRecord,
+  LoopIssue,
+  LoopShard,
+  LoopSpec,
+  LoopTestMatrix,
+  LoopTestRecord,
+} from '@repo/contracts';
+import type {
+  LoopsAgentAdapter,
+  LoopsDecomposition,
+  LoopsGlobalReviewInput,
+  LoopsReviewInput,
+  LoopsReviewOutput,
+  LoopsTestReviewOutput,
+} from './loops-agent-adapter.interface';
 
+/**
+ * 确定性 Codex 大脑实现（默认）。
+ *
+ * 不调用真实 `codex` CLI，以可复现的 MVP 模板产出 Spec / Shard / Test Matrix / 审查结论，
+ * 让 Loop 在无 agent CLI 的环境下也能端到端跑通收敛逻辑。真实 CLI 见 `CliLoopsAgentAdapter`。
+ */
 @Injectable()
 export class DeterministicLoopsAgentAdapter implements LoopsAgentAdapter {
   async plan(issue: LoopIssue, createdAt: string): Promise<LoopSpec> {
@@ -22,6 +43,137 @@ export class DeterministicLoopsAgentAdapter implements LoopsAgentAdapter {
       shards,
       annotations: this.createInitialAnnotations(issue, spec, shards),
     };
+  }
+
+  async designTests(
+    issue: LoopIssue,
+    spec: LoopSpec,
+    shards: LoopShard[],
+    createdAt: string,
+  ): Promise<LoopTestMatrix> {
+    return this.deriveTestMatrix(issue, spec, shards, createdAt);
+  }
+
+  async reviewTests(input: {
+    matrix?: LoopTestMatrix;
+    testRecord?: LoopTestRecord;
+  }): Promise<LoopsTestReviewOutput> {
+    const record = input.testRecord;
+    if (!record) {
+      return {
+        testVerdict: 'TEST-MISSING',
+        issues: [{ severity: 'major', desc: '缺少本轮 Test Record，无法判定测试状态。' }],
+        fixInstructions: ['运行 shard 测试命令并产出 Test Record 后再审查。'],
+        summary: 'No test record for this round.',
+      };
+    }
+    if (record.status === 'TEST-PASS') {
+      return {
+        testVerdict: 'TEST-PASS',
+        issues: [],
+        fixInstructions: [],
+        summary: 'All configured test commands passed.',
+      };
+    }
+    return {
+      testVerdict: record.status,
+      issues: record.failedTests.map((item) => ({ severity: 'major' as const, desc: item.reason })),
+      fixInstructions: record.fixInstructions,
+      summary: `${record.failedTests.length} test command(s) failed.`,
+    };
+  }
+
+  async review(input: LoopsReviewInput): Promise<LoopsReviewOutput> {
+    const { shard, implementationRecord, testRecord } = input;
+    const testsPass = testRecord?.status === 'TEST-PASS';
+    const covered = shard.acceptance.every((item) =>
+      implementationRecord.summary.toLowerCase().includes(item.toLowerCase().slice(0, 12)) ||
+      implementationRecord.changedFiles.length > 0,
+    );
+    if (testsPass && covered) {
+      return {
+        verdict: 'PASS',
+        issues: [],
+        fixInstructions: [],
+        summary: '实现满足验收标准且本轮测试通过。',
+      };
+    }
+    return {
+      verdict: 'NEEDS-WORK',
+      issues: [
+        {
+          severity: 'major',
+          desc: testsPass
+            ? '实现尚未覆盖全部验收标准，需补齐。'
+            : '本轮测试未通过或缺失，需修复并重跑。',
+        },
+      ],
+      fixInstructions: testsPass
+        ? ['对照 acceptance 逐条补齐实现并重新登记 Implementation Record。']
+        : [...(testRecord?.fixInstructions ?? ['修复失败测试后重新运行 shard tests。'])],
+      summary: 'Needs revision: acceptance or tests incomplete.',
+    };
+  }
+
+  async reviewGlobal(input: LoopsGlobalReviewInput): Promise<LoopsReviewOutput> {
+    const allDone = input.shards.length > 0 && input.shards.every((shard) => shard.status === 'DONE');
+    const testsPass = input.testRecords.every((record) => record.status === 'TEST-PASS');
+    const hasRecords = input.implementationRecords.length > 0 && input.reviewRecords.length > 0;
+
+    if (allDone && testsPass && hasRecords) {
+      return {
+        verdict: 'PASS',
+        issues: [],
+        fixInstructions: [],
+        summary: '所有 Shard 已 DONE、测试通过、记录齐备，整体一致。',
+      };
+    }
+    return {
+      verdict: 'NEEDS-WORK',
+      issues: [
+        {
+          severity: allDone ? 'minor' : 'major',
+          desc: allDone
+            ? '存在未通过的测试或缺失的实施/审查记录，需补齐后再次整体复查。'
+            : '仍有未完成的 Shard，需先推动到全部 DONE 再做整体复查。',
+        },
+      ],
+      fixInstructions: allDone
+        ? ['补齐缺失的测试/实施/审查记录后重新整体复查。']
+        : ['回到 Phase 4 继续推动剩余 Shard，直到全部 DONE。'],
+      summary: 'Not yet converged: pending shards or missing evidence.',
+    };
+  }
+
+  async annotateFinalize(input: {
+    issue: LoopIssue;
+    spec?: LoopSpec;
+    shards: LoopShard[];
+    annotations: LoopAnnotation[];
+    globalVerdict: 'PASS' | 'NEEDS-WORK' | 'FAIL';
+  }): Promise<LoopAnnotation[]> {
+    const passed = input.globalVerdict === 'PASS';
+    return input.annotations.map((annotation) => {
+      const isShard = input.shards.some((shard) => shard.id === annotation.target);
+      const isSpec = input.spec?.id === annotation.target;
+      const isIssue = input.issue.id === annotation.target;
+      return {
+        ...annotation,
+        annotator: 'codex' as const,
+        implStatus: passed ? ('done' as const) : annotation.implStatus,
+        testStatus: passed ? ('pass' as const) : annotation.testStatus,
+        verdict: passed
+          ? ('pass' as const)
+          : annotation.verdict === 'unreviewed'
+            ? ('needs-work' as const)
+            : annotation.verdict,
+        coverage: passed ? ('full' as const) : annotation.coverage,
+        notes:
+          passed && (isShard || isSpec || isIssue)
+            ? `终态标注：已收敛，实现/测试/审查均通过。${annotation.notes ? ` ${annotation.notes}` : ''}`
+            : annotation.notes,
+      };
+    });
   }
 
   private renderSpec(issue: LoopIssue, createdAt: string) {
@@ -77,7 +229,6 @@ export class DeterministicLoopsAgentAdapter implements LoopsAgentAdapter {
         },
         filesHint: [
           'apps/api/src/modules/loops/loops.service.ts',
-          'apps/web/app/loops/reviews/page.tsx',
           'apps/web/app/loops/[issueId]/page.tsx',
         ],
       },
@@ -127,5 +278,59 @@ export class DeterministicLoopsAgentAdapter implements LoopsAgentAdapter {
         notes: 'Shard 已生成，等待真实 Runner/Claude Code 实施与测试证据。',
       })),
     ];
+  }
+
+  private deriveTestMatrix(
+    issue: LoopIssue,
+    spec: LoopSpec,
+    shards: LoopShard[],
+    createdAt: string,
+  ): LoopTestMatrix {
+    const requiredTests = shards.flatMap((shard) => {
+      const unit = shard.testRequirements.unit.map((title, index) => ({
+        id: `${shard.id}-unit-${index + 1}`,
+        shardId: shard.id,
+        level: 'unit' as const,
+        title,
+        command: 'pnpm test',
+        required: true,
+      }));
+      const integration = shard.testRequirements.integration.map((title, index) => ({
+        id: `${shard.id}-integration-${index + 1}`,
+        shardId: shard.id,
+        level: 'integration' as const,
+        title,
+        command: 'pnpm test',
+        required: true,
+      }));
+      const e2e = shard.testRequirements.e2e.map((title, index) => ({
+        id: `${shard.id}-e2e-${index + 1}`,
+        shardId: shard.id,
+        level: 'e2e' as const,
+        title,
+        command: 'pnpm test',
+        required: true,
+      }));
+      const manual = shard.acceptance.map((title, index) => ({
+        id: `${shard.id}-manual-${index + 1}`,
+        shardId: shard.id,
+        level: 'manual' as const,
+        title,
+        required: true,
+      }));
+      return [...unit, ...integration, ...e2e, ...manual];
+    });
+
+    return {
+      id: `test-matrix-${issue.id}`,
+      issueId: issue.id,
+      specId: spec.id,
+      owner: 'codex',
+      status: 'ACTIVE',
+      created: createdAt,
+      requiredTests,
+      regressionScope: Array.from(new Set(shards.flatMap((shard) => shard.filesHint))),
+      manualAcceptance: shards.flatMap((shard) => shard.acceptance),
+    };
   }
 }

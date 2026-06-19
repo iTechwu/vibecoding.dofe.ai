@@ -177,6 +177,11 @@ export const LoopImplementationRecordSchema = z.object({
   changedFiles: z.array(z.string()),
   notes: z.string().optional(),
   created: z.string(),
+  // Cost / observability accounting (see 05 §2.4). Optional for back-compat with
+  // records written before token/duration capture landed.
+  tokens: z.number().int().nonnegative().optional(),
+  durationSec: z.number().nonnegative().optional(),
+  testsChanged: z.array(z.string()).optional(),
 });
 
 export const LoopReviewShardRequestSchema = z.object({
@@ -243,6 +248,59 @@ export const LoopTestRecordSchema = z.object({
   created: z.string(),
 });
 
+export const LoopGlobalVerdictSchema = z.enum(['PASS', 'NEEDS-WORK', 'FAIL']);
+
+// M3 · Phase 7 整体复查（reviewGlobal）。跨 Shard 一致性结论，触发回环或终态标注。
+export const LoopGlobalReviewRecordSchema = z.object({
+  id: z.string(),
+  issueId: z.string(),
+  reviewer: z.string(),
+  round: z.number(),
+  verdict: LoopGlobalVerdictSchema,
+  issues: z.array(
+    z.object({
+      severity: z.enum(['minor', 'major', 'critical']),
+      desc: z.string(),
+    }),
+  ),
+  fixInstructions: z.array(z.string()),
+  summary: z.string(),
+  created: z.string(),
+});
+
+export const LoopReloopRequestSchema = z.object({
+  reviewer: z.string().trim().min(1).default('human'),
+  notes: z.string().trim().optional(),
+});
+
+export const LoopReloopResponseSchema = z.object({
+  issueId: z.string(),
+  specVersion: z.string(),
+  round: z.number(),
+  reloopCount: z.number(),
+  maxReloop: z.number(),
+  phase: LoopPhaseSchema,
+  paused: z.boolean(),
+});
+
+// M4 · commit-per-shard + 收敛 PR（GitAdapter，见 ADR-008）
+export const LoopConvergencePrSchema = z.object({
+  id: z.string(),
+  issueId: z.string(),
+  branch: z.string(),
+  baseBranch: z.string(),
+  commits: z.array(
+    z.object({
+      shardId: z.string(),
+      message: z.string(),
+    }),
+  ),
+  annotationsSummary: z.string(),
+  prBody: z.string(),
+  status: z.enum(['DRAFT', 'PUSHED', 'OPENED', 'SKIPPED']),
+  created: z.string(),
+});
+
 export const LoopStateItemSchema = z.object({
   issueId: z.string(),
   phase: LoopPhaseSchema,
@@ -256,6 +314,9 @@ export const LoopStateItemSchema = z.object({
   costCalls: z.number(),
   updated: z.string(),
   paused: z.boolean(),
+  // M3 收敛状态：整体复查结论与终态标注完成标志。
+  globalVerdict: LoopGlobalVerdictSchema.optional(),
+  finalized: z.boolean().optional(),
 });
 
 export const LoopLogEntrySchema = z.object({
@@ -277,6 +338,35 @@ export const LoopLogsQuerySchema = z.object({
 
 export const LoopLogsResponseSchema = z.object({
   entries: z.array(LoopLogEntrySchema),
+});
+
+export const LoopNotificationSchema = z.object({
+  id: z.string(),
+  issueId: z.string(),
+  channel: z.enum(['web', 'feishu']),
+  kind: z.enum([
+    'ISSUE_RECEIVED',
+    'SPEC_REVIEW_REQUESTED',
+    'LOOP_STARTED',
+    'HUMAN_INTERVENTION',
+    'COST_GUARD_TRIPPED',
+    'CONVERGENCE_READY',
+  ]),
+  recipient: z.string(),
+  title: z.string(),
+  body: z.string(),
+  status: z.enum(['RECORDED', 'SENT', 'FAILED', 'SKIPPED']),
+  actionHref: z.string().optional(),
+  created: z.string(),
+});
+
+export const LoopNotificationsQuerySchema = z.object({
+  issueId: z.string().optional(),
+  limit: z.coerce.number().int().positive().max(200).default(50),
+});
+
+export const LoopNotificationsResponseSchema = z.object({
+  notifications: z.array(LoopNotificationSchema),
 });
 
 export const LoopCostItemSchema = z.object({
@@ -306,7 +396,10 @@ export const LoopDetailSchema = z.object({
   reviewRecords: z.array(LoopReviewRecordSchema),
   testRecords: z.array(LoopTestRecordSchema),
   logs: z.array(LoopLogEntrySchema),
+  notifications: z.array(LoopNotificationSchema),
   state: LoopStateItemSchema,
+  globalReview: LoopGlobalReviewRecordSchema.optional(),
+  convergencePr: LoopConvergencePrSchema.optional(),
 });
 
 export const LoopListResponseSchema = z.object({
@@ -373,6 +466,9 @@ export type LoopStateItem = z.infer<typeof LoopStateItemSchema>;
 export type LoopLogEntry = z.infer<typeof LoopLogEntrySchema>;
 export type LoopLogsQuery = z.infer<typeof LoopLogsQuerySchema>;
 export type LoopLogsResponse = z.infer<typeof LoopLogsResponseSchema>;
+export type LoopNotification = z.infer<typeof LoopNotificationSchema>;
+export type LoopNotificationsQuery = z.infer<typeof LoopNotificationsQuerySchema>;
+export type LoopNotificationsResponse = z.infer<typeof LoopNotificationsResponseSchema>;
 export type LoopCostItem = z.infer<typeof LoopCostItemSchema>;
 export type LoopCostResponse = z.infer<typeof LoopCostResponseSchema>;
 export type LoopDetail = z.infer<typeof LoopDetailSchema>;
@@ -382,3 +478,8 @@ export type LoopReviewSpecRequest = z.infer<typeof LoopReviewSpecRequestSchema>;
 export type LoopInterventionRequest = z.infer<typeof LoopInterventionRequestSchema>;
 export type LoopsDoctorResponse = z.infer<typeof LoopsDoctorResponseSchema>;
 export type LoopsResumeResponse = z.infer<typeof LoopsResumeResponseSchema>;
+export type LoopGlobalVerdict = z.infer<typeof LoopGlobalVerdictSchema>;
+export type LoopGlobalReviewRecord = z.infer<typeof LoopGlobalReviewRecordSchema>;
+export type LoopReloopRequest = z.infer<typeof LoopReloopRequestSchema>;
+export type LoopReloopResponse = z.infer<typeof LoopReloopResponseSchema>;
+export type LoopConvergencePr = z.infer<typeof LoopConvergencePrSchema>;

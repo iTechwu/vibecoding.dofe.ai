@@ -11,7 +11,11 @@ import {
   LoopListResponseSchema,
   LoopLogsQuerySchema,
   LoopLogsResponseSchema,
+  LoopNotificationsQuerySchema,
+  LoopNotificationsResponseSchema,
   LoopRecordShardImplementationRequestSchema,
+  LoopReloopResponseSchema,
+  LoopReloopRequestSchema,
   LoopReviewRecordSchema,
   LoopReviewShardRequestSchema,
   LoopRunShardTestsRequestSchema,
@@ -128,6 +132,54 @@ export const loopsContract = c.router(
       },
       summary: 'Review implementation evidence for a Loops shard',
     },
+    runLoop: {
+      method: 'POST',
+      path: '/issues/:issueId/run',
+      pathParams: z.object({
+        issueId: z.string(),
+      }),
+      body: z.object({}).optional(),
+      responses: {
+        200: ApiResponseSchema(LoopDetailSchema),
+      },
+      summary: 'Advance a Loops loop one scheduler step (auto-implement/test/review a ready shard)',
+    },
+    reviewGlobal: {
+      method: 'POST',
+      path: '/issues/:issueId/global-review',
+      pathParams: z.object({
+        issueId: z.string(),
+      }),
+      body: z.object({}).optional(),
+      responses: {
+        200: ApiResponseSchema(LoopDetailSchema),
+      },
+      summary: 'Phase 7: run a Codex global review across all converged shards',
+    },
+    reloop: {
+      method: 'POST',
+      path: '/issues/:issueId/reloop',
+      pathParams: z.object({
+        issueId: z.string(),
+      }),
+      body: LoopReloopRequestSchema,
+      responses: {
+        200: ApiResponseSchema(LoopReloopResponseSchema),
+      },
+      summary: 'Phase 7→1: re-loop by bumping spec version after a non-PASS global review',
+    },
+    finalize: {
+      method: 'POST',
+      path: '/issues/:issueId/finalize',
+      pathParams: z.object({
+        issueId: z.string(),
+      }),
+      body: z.object({}).optional(),
+      responses: {
+        200: ApiResponseSchema(LoopDetailSchema),
+      },
+      summary: 'Phase 8: terminal annotation refresh, close the issue and emit the convergence PR',
+    },
     intervene: {
       method: 'POST',
       path: '/issues/:issueId/interventions',
@@ -164,6 +216,15 @@ export const loopsContract = c.router(
         200: ApiResponseSchema(LoopLogsResponseSchema),
       },
       summary: 'Read recent immutable Loops log events',
+    },
+    notifications: {
+      method: 'GET',
+      path: '/notifications',
+      query: LoopNotificationsQuerySchema,
+      responses: {
+        200: ApiResponseSchema(LoopNotificationsResponseSchema),
+      },
+      summary: 'Read recorded Loops notifications',
     },
     resume: {
       method: 'POST',

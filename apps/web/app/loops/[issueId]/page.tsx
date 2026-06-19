@@ -430,6 +430,29 @@ export default async function LoopIssueDetailPage({
                 )}
               </div>
             </div>
+
+            <div className="rounded-lg border p-5">
+              <h2 className="text-lg font-semibold">Notifications</h2>
+              <div className="mt-4 flex flex-col divide-y">
+                {detail.notifications.length === 0 ? (
+                  <p className="py-3 text-sm text-muted-foreground">No notifications yet.</p>
+                ) : (
+                  detail.notifications.slice(0, 12).map((notification) => (
+                    <div className="py-3 text-xs" key={notification.id}>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-medium">{notification.kind}</span>
+                        <span className="text-muted-foreground">{notification.status}</span>
+                      </div>
+                      <p className="mt-2 text-sm">{notification.title}</p>
+                      <p className="mt-1 text-muted-foreground">{notification.body}</p>
+                      <p className="mt-2 text-muted-foreground">
+                        {notification.channel} · {notification.recipient} · {notification.created}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </aside>
         </section>
       </div>

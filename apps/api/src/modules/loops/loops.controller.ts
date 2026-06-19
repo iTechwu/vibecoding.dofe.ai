@@ -75,6 +75,34 @@ export class LoopsController {
     });
   }
 
+  @TsRestHandler(c.runLoop)
+  async runLoop() {
+    return tsRestHandler(c.runLoop, async ({ params }) => {
+      return success(await this.loopsService.runLoop(params.issueId));
+    });
+  }
+
+  @TsRestHandler(c.reviewGlobal)
+  async reviewGlobal() {
+    return tsRestHandler(c.reviewGlobal, async ({ params }) => {
+      return success(await this.loopsService.reviewGlobal(params.issueId));
+    });
+  }
+
+  @TsRestHandler(c.reloop)
+  async reloop() {
+    return tsRestHandler(c.reloop, async ({ params, body }) => {
+      return success(await this.loopsService.reloop(params.issueId, body));
+    });
+  }
+
+  @TsRestHandler(c.finalize)
+  async finalize() {
+    return tsRestHandler(c.finalize, async ({ params }) => {
+      return success(await this.loopsService.finalize(params.issueId));
+    });
+  }
+
   @TsRestHandler(c.intervene)
   async intervene() {
     return tsRestHandler(c.intervene, async ({ params, body }) => {
@@ -100,6 +128,13 @@ export class LoopsController {
   async logs() {
     return tsRestHandler(c.logs, async ({ query }) => {
       return success(await this.loopsService.logs(query));
+    });
+  }
+
+  @TsRestHandler(c.notifications)
+  async notifications() {
+    return tsRestHandler(c.notifications, async ({ query }) => {
+      return success(await this.loopsService.notifications(query));
     });
   }
 

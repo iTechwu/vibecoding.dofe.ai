@@ -5,6 +5,7 @@ import type {
   LoopImplementationRecord,
   LoopInterventionRequest,
   LoopLogsResponse,
+  LoopNotificationsResponse,
   LoopRecordShardImplementationRequest,
   LoopReviewRecord,
   LoopReviewShardRequest,
@@ -111,6 +112,21 @@ export async function getLoopLogs(input?: { issueId?: string; limit?: number }) 
     await request.get<DataResponse<LoopLogsResponse>>(`/loops/logs${query ? `?${query}` : ''}`, {
       cacheTime: 0,
     }),
+  );
+}
+
+export async function getLoopNotifications(input?: { issueId?: string; limit?: number }) {
+  const searchParams = new URLSearchParams();
+  if (input?.issueId) searchParams.set('issueId', input.issueId);
+  if (input?.limit) searchParams.set('limit', String(input.limit));
+  const query = searchParams.toString();
+  return unwrap(
+    await request.get<DataResponse<LoopNotificationsResponse>>(
+      `/loops/notifications${query ? `?${query}` : ''}`,
+      {
+        cacheTime: 0,
+      },
+    ),
   );
 }
 
