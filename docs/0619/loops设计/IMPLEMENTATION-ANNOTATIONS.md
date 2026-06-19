@@ -9,8 +9,8 @@
 ```yaml
 archive_round: TASK-08-round-2
 impl_status: done # v1 主链路代码全部落地（DB schema/迁移/DB Service/双写/生命周期同步/一致性 doctor/Web 无登录）
-test_status: done # 文件侧全链路 jest 冒烟通过；DB 运行期 smoke 待迁移后人工验证
-verdict: done-with-db-runtime-pending
+test_status: done # 文件侧全链路 jest 冒烟 + live-DB 集成冒烟（loops:db-smoke）均通过
+verdict: done
 source_of_truth: '.loops 文件与 log.jsonl 仍为文档真相源与冲突裁决依据；DB 为查询索引与状态聚合来源（双写同步）'
 verified_at: 2026-06-19
 ```
@@ -54,14 +54,17 @@ verified_at: 2026-06-19
 - 新增 `apps/api/src/modules/loops/loops.service.spec.ts`：隔离临时工作区 + fake runner（TEST-PASS）+ fake git adapter + 确定性 adapter，跑通 `createIssue → generateSpec → approve → decompose → runLoop → reviewGlobal → finalize`，断言 `submitterId==='dev-user'`、shards 全 DONE、`globalVerdict==='PASS'`、终态 `CLOSED`/`finalized`、`doctor.ok===true`。`(cd apps/api && npx jest src/modules/loops/loops.service.spec.ts)` → 1 passed。
 - 修复 `apps/api/jest.config.ts` 在 jest 30 下 `.ts` 配置被当 ES module 求值导致 `__dirname` 未定义、`pnpm test:api` 无法启动的问题（改用 `process.cwd()`），顺带为整个 api 单测解锁。
 - `pnpm loops:doctor` / `pnpm loops:status`：通过，分别输出含 `dbProblems`/`consistencyProblems`/`problems` 的 doctor 结构与队列 JSON。
-- `pnpm --filter @repo/api type-check`：Loops 相关文件 0 错误；仅余 16 条既有非 Loops 阻断（`generated/db/modules/*-auth/*.service.ts` 的 CreateInput/CreateManyInput 生成器类型差异；`libs/domain/auth`、`libs/domain/services/ip-info` 的 `@app/db` 导出漂移；`uploader.controller.ts` 多余 `@ts-expect-error`）。
+- `pnpm --filter @repo/api type-check`：Loops 相关文件 0 错误；仅余既有非 Loops 阻断（IMP-1..IMP-6 共 17 条：5 条生成 auth CRUD `createMany` 类型差异；`@app/db`/`@dofe/infra-clients` 导出漂移 6 条；`streaming-asr` `ApiErrorCode` 3 条；`uploader` 多余 `@ts-expect-error` 2 条；`app.module.ts` 进行中 i18n 重构缺 `path` 绑定 1 条），明细见 [`docs/0619/todo/01-to-implement.md`](../../../0619/todo/01-to-implement.md)。
 - `pnpm --filter @repo/web type-check` / `pnpm --filter @repo/contracts type-check`：通过。
+- **DB 运行期验证（已通过）**：迁移应用后 `pnpm loops:db-smoke`（`LOOPS_DB_SMOKE=1` 跑 `loops-persistence.db.spec.ts`，连真实 DB）3/3 通过：①`createIssue` 写入 `loop_issue`/`loop_issue_intake`/`loop_state` 三表且 `list`/`readDetail` 从 DB 读回；②完整生命周期后 DB `LoopIssue.status=CLOSED`、`closedAt` 非空、`LoopState.phase=CLOSED`、`finalized=true`，`doctor.ok=true`；③删除 DB `loop_state` 行后 `doctor.ok=false` 并报出该 issue 的一致性问题。测试数据在 `afterEach` 级联清理，DB 无残留。`jest.config.ts` 顺带修复 pnpm 布局下 `transformIgnorePatterns` 对 `uuid@14` ESM / `@dofe` TS 源码包的误忽略。
 
 ### 下一阶段入口
 
-1. 在具备可用 `DATABASE_URL` 的环境执行 `pnpm db:migrate:deploy`，运行期验证：无登录提交 → DB `LoopIssue`/`LoopIssueIntake`/`LoopState` 三表入库；生命周期推进 → DB `LoopState` 同步；finalize → DB `CLOSED`/`finalized`；`GET /loops/doctor` 能发现人为制造的 DB/`.loops` 不一致（补齐 Smoke 1/3/4 的 DB 侧）。
-2. 修复既有非 Loops type-check 阻断（生成器 auth CRUD 类型、`@app/db` 导出漂移），使 `pnpm quality:gate` 全绿。
+1. ~~在具备可用 `DATABASE_URL` 的环境执行 DB 运行期验证~~ → **已完成**（`pnpm loops:db-smoke` 3/3 通过，详见上方「DB 运行期验证」）。
+2. 修复既有非 Loops type-check 阻断（生成器 auth CRUD 类型、`@app/db` 导出漂移、uploader `@ts-expect-error`），使 `pnpm quality:gate` 全绿。
 3. 推进 TASK-09 后置项：Dofe SSO、角色/权限、飞书入口/审批/通知、真实远端 PR、多 Loop 并行队列、独立 worker 池、完整 E2E/build 矩阵、生产级 agent 告警。
+
+> 上述 2/3 项的拆解、优先级与建议阶段，已整理到 [`docs/0619/todo/`](../../../0619/todo/)（待实施 / 待优化 / 未落实）。
 
 ---
 

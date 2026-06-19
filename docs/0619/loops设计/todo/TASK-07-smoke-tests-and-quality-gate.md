@@ -88,8 +88,9 @@
   - `pnpm loops:doctor` → `ok:true`，含 `dbProblems`/`consistencyProblems`/`problems` 字段
   - `pnpm loops:status` → 队列 JSON
   - `pnpm --filter @repo/api type-check`（Loops 文件 0 错误，仅余既有非 Loops 阻断）
-- 验证结果：通过；Smoke 1（intake → `.loops`）、Smoke 2（队列/详情恢复）、Smoke 3（Loop 闭环 → CLOSED/finalized）、Smoke 4（doctor ok）的文件侧均有可复用自动化断言。DB 侧（三表入库、DB/`.loops` 一致性）需 `pnpm db:migrate:deploy` + 可用 DB + 起 API 后，经 `GET /loops/doctor` 与 DB 查询手动验证（属部署/本地验证步骤）。
+- 验证结果：通过；Smoke 1（intake → `.loops`）、Smoke 2（队列/详情恢复）、Smoke 3（Loop 闭环 → CLOSED/finalized）、Smoke 4（doctor ok）的文件侧均有可复用自动化断言（`loops.service.spec.ts`）。
+- **DB 侧已补齐并验证**：迁移应用后 `pnpm loops:db-smoke`（`LOOPS_DB_SMOKE=1` 跑 `loops-persistence.db.spec.ts` 连真实 DB）3/3 通过：①`createIssue` 写入三表且 `list`/`readDetail` 从 DB 读回；②生命周期 finalize 后 DB `CLOSED`/`finalized`/`closedAt`，`doctor.ok=true`；③删 DB `loop_state` 行 → `doctor.ok=false` 报一致性问题。`afterEach` 级联清理，无 DB 残留。
 - 阻断来源（既有非 Loops，非本轮引入）：`generated/db/modules/*-auth/*.service.ts` 的 CreateInput/CreateManyInput 生成器类型差异；`libs/domain/auth`、`libs/domain/services/ip-info` 的 `@app/db` 导出漂移（`UserInfoModule/Service`、`FileCdnModule/Client`、`CountryCodeModule/Service`）；`uploader.controller.ts` 多余 `@ts-expect-error`。
-- 剩余风险：DB 入库与 DB 一致性 smoke 为运行期验证，需迁移后的可用 DB；CLI doctor 为纯文件模式不能发现 DB 漂移。
+- 剩余风险：CLI doctor 为纯文件模式（无 persistence），不能发现 DB 漂移；DB 一致性需经 API server 或 `loops:db-smoke` 验证。
 - 需要归档到 IMPLEMENTATION-ANNOTATIONS.md 的内容：
-  - TASK-07 升级为 done：新增文件侧全链路 jest 冒烟（通过）并修复 jest 配置与 CLI；DB 侧 smoke 待迁移后人工验证，阻断来源已列明。
+  - TASK-07 升级为 done：文件侧 + live-DB 侧全链路 jest 冒烟均通过（`loops.service.spec.ts` + `loops-persistence.db.spec.ts`），并修复 jest 配置（`__dirname`、pnpm `transformIgnorePatterns`）与 CLI；既有非 Loops 阻断已列明。

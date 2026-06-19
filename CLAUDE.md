@@ -125,7 +125,7 @@ dofe-ai/
 
 **Backend libs: infra vs domain boundary**
 
-- **infra** (`@dofe/infra-*`): 已从 `libs/infra/` 提取至独立仓库 `infra.dofe.ai`（10 个子包），已发布到 npm，本仓库通过 `package.json` 依赖（`^0.1.55`）从 npm 安装消费，**不再**通过 `pnpm-workspace.yaml` 引用同级 `infra.dofe.ai` 目录。包含 common, clients, prisma, redis, rabbitmq, jwt, utils, i18n, shared-db, shared-services。与产品/领域无关，可复用。**禁止**依赖 `libs/domain/**`。
+- **infra** (`@dofe/infra-*`): 已从 `libs/infra/` 提取至独立仓库 `infra.dofe.ai`（10 个子包），已发布到 npm，本仓库通过 `package.json` 依赖（`^0.1.56`）从 npm 安装消费，**不再**通过 `pnpm-workspace.yaml` 引用同级 `infra.dofe.ai` 目录。包含 common, clients, prisma, redis, rabbitmq, jwt, utils, i18n, shared-db, shared-services。与产品/领域无关，可复用。**禁止**依赖 `libs/domain/**`。
 - **domain** (`libs/domain/`): auth, services。与 Dofe 领域/业务流程强相关。**可**依赖 infra。`@app/db` 指向 `generated/db`（自动生成的 DB Service 模块）。
 - **依赖方向**：`src` → `domain` → `@dofe/infra-*`。infra 内模块可相互依赖，但不得 import domain。
 - 详见 `apps/api/docs/业务与基础设施拆分方案.md` 和 `docs/0426/infra/迁移状态.md`。
