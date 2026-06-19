@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { LoopRunShardTestsRequest, LoopTestRecord } from '@repo/contracts';
+import { resolveAllowedTargetRepo } from './loops-path-policy.util';
+import { readLoopsRuntimeConfig } from './loops-runtime-config.util';
 
 const execFileAsync = promisify(execFile);
 const OUTPUT_LIMIT = 12000;
@@ -17,7 +19,9 @@ export class LoopsRunnerService {
     cwd: string;
     request?: LoopRunShardTestsRequest;
   }): Promise<LoopTestRecord> {
-    const commands = input.request?.commands?.length ? input.request.commands : ['pnpm --version'];
+    const commands = input.request?.commands?.length
+      ? input.request.commands
+      : (await readLoopsRuntimeConfig()).tests.defaultCommands;
     const results: CommandResult[] = [];
 
     for (const command of commands) {
@@ -52,8 +56,9 @@ export class LoopsRunnerService {
   private async runCommand(command: string, cwd: string): Promise<CommandResult> {
     const started = Date.now();
     try {
+      const safeCwd = await resolveAllowedTargetRepo(cwd);
       const result = await execFileAsync('/bin/sh', ['-lc', command], {
-        cwd,
+        cwd: safeCwd,
         timeout: 120000,
         maxBuffer: 1024 * 1024 * 8,
       });

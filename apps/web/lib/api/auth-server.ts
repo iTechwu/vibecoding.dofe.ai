@@ -5,6 +5,17 @@ import {
 } from './contracts/server-client';
 import { logger } from '@/lib/logger';
 
+type UserCheckResponseBody = {
+  code?: number;
+  data?: {
+    userId?: string | null;
+  } | null;
+};
+
+function isUserCheckResponseBody(value: unknown): value is UserCheckResponseBody {
+  return Boolean(value && typeof value === 'object');
+}
+
 /**
  * 从请求头中提取 token 和过期时间信息
  */
@@ -167,7 +178,7 @@ export async function verifyTokenAndGetUser(
         // 如果验证成功（200 状态码）
         if (response.status === 200) {
           const data = response.body;
-          if (data.code === 200 && data.data) {
+          if (isUserCheckResponseBody(data) && data.code === 200 && data.data) {
             const userId = data.data.userId;
             if (userId) {
               return { userId };

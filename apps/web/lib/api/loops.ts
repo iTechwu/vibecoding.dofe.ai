@@ -15,6 +15,8 @@ import type {
   LoopIssueCreatedResponse,
   LoopListResponse,
   LoopReviewSpecRequest,
+  LoopReloopRequest,
+  LoopReloopResponse,
   LoopsResumeResponse,
 } from '@repo/contracts';
 import request, { type DataResponse } from '@/lib/requests';
@@ -184,5 +186,41 @@ export async function reviewLoopShard(
         cacheTime: 0,
       },
     ),
+  );
+}
+
+export async function runLoop(issueId: string) {
+  return unwrap(
+    await request.post<DataResponse<LoopDetail>>(`/loops/issues/${issueId}/run`, {
+      params: {},
+      cacheTime: 0,
+    }),
+  );
+}
+
+export async function reviewLoopGlobal(issueId: string) {
+  return unwrap(
+    await request.post<DataResponse<LoopDetail>>(`/loops/issues/${issueId}/global-review`, {
+      params: {},
+      cacheTime: 0,
+    }),
+  );
+}
+
+export async function reloopIssue(issueId: string, input: LoopReloopRequest) {
+  return unwrap(
+    await request.post<DataResponse<LoopReloopResponse>>(`/loops/issues/${issueId}/reloop`, {
+      params: input,
+      cacheTime: 0,
+    }),
+  );
+}
+
+export async function finalizeLoop(issueId: string) {
+  return unwrap(
+    await request.post<DataResponse<LoopDetail>>(`/loops/issues/${issueId}/finalize`, {
+      params: {},
+      cacheTime: 0,
+    }),
   );
 }

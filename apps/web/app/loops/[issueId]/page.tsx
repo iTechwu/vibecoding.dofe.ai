@@ -4,12 +4,16 @@ import { getLoopIssue } from '@/lib/api/loops';
 import {
   approveSpecAction,
   decomposeAction,
+  finalizeLoopAction,
   generateSpecAction,
+  globalReviewAction,
   pauseLoopAction,
   recordImplementationAction,
+  reloopAction,
   requestRevisionAction,
   resumeLoopAction,
   reviewShardAction,
+  runLoopAction,
   runShardTestsAction,
   takeShardAction,
 } from './actions';
@@ -31,6 +35,10 @@ export default async function LoopIssueDetailPage({
   const approveSpec = approveSpecAction.bind(null, issueId);
   const requestRevision = requestRevisionAction.bind(null, issueId);
   const decompose = decomposeAction.bind(null, issueId);
+  const runLoop = runLoopAction.bind(null, issueId);
+  const globalReview = globalReviewAction.bind(null, issueId);
+  const reloop = reloopAction.bind(null, issueId);
+  const finalizeLoop = finalizeLoopAction.bind(null, issueId);
   const runShardTests = runShardTestsAction.bind(null, issueId);
   const recordImplementation = recordImplementationAction.bind(null, issueId);
   const reviewShard = reviewShardAction.bind(null, issueId);
@@ -53,10 +61,41 @@ export default async function LoopIssueDetailPage({
             <form action={generateSpec}>
               <button
                 className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium disabled:opacity-50"
-                disabled={Boolean(detail.spec)}
+                disabled={Boolean(detail.spec && detail.spec.status !== 'REVISION_REQUESTED')}
                 type="submit"
               >
                 Generate Spec
+              </button>
+            </form>
+            <form action={runLoop}>
+              <button
+                className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium disabled:opacity-50"
+                disabled={
+                  detail.state.paused ||
+                  detail.state.phase === 'CLOSED' ||
+                  detail.state.shardsDone === detail.state.shardsTotal
+                }
+                type="submit"
+              >
+                Run Step
+              </button>
+            </form>
+            <form action={globalReview}>
+              <button
+                className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium disabled:opacity-50"
+                disabled={detail.state.phase !== 'PHASE_6_CONVERGE'}
+                type="submit"
+              >
+                Global Review
+              </button>
+            </form>
+            <form action={finalizeLoop}>
+              <button
+                className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium disabled:opacity-50"
+                disabled={detail.state.globalVerdict !== 'PASS' || detail.state.finalized}
+                type="submit"
+              >
+                Finalize
               </button>
             </form>
             <form action={pauseLoop}>
@@ -95,6 +134,26 @@ export default async function LoopIssueDetailPage({
             </div>
           ))}
         </section>
+
+        {detail.state.globalVerdict && detail.state.globalVerdict !== 'PASS' ? (
+          <section className="rounded-lg border p-5">
+            <h2 className="text-lg font-semibold">Re-loop</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Global verdict is {detail.state.globalVerdict}. Create the next spec revision and
+              send it back through human review.
+            </p>
+            <form action={reloop} className="mt-4 flex flex-col gap-3 sm:flex-row">
+              <input
+                className="h-10 flex-1 rounded-md border bg-background px-3 text-sm"
+                name="notes"
+                placeholder="Revision notes"
+              />
+              <button className="h-10 rounded-md border px-4 text-sm font-medium" type="submit">
+                Start Re-loop
+              </button>
+            </form>
+          </section>
+        ) : null}
 
         <section className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_420px]">
           <div className="flex flex-col gap-6">
@@ -311,6 +370,45 @@ export default async function LoopIssueDetailPage({
                   ))
                 )}
               </div>
+            </div>
+
+            <div className="rounded-lg border p-5">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold">Global Review</h2>
+                <span className="text-xs text-muted-foreground">
+                  {detail.globalReview?.verdict ?? 'none'}
+                </span>
+              </div>
+              {detail.globalReview ? (
+                <div className="mt-4 rounded-md border p-3 text-sm">
+                  <p>{detail.globalReview.summary}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    round {detail.globalReview.round} · {detail.globalReview.created}
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-muted-foreground">No global review yet.</p>
+              )}
+            </div>
+
+            <div className="rounded-lg border p-5">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold">Convergence PR</h2>
+                <span className="text-xs text-muted-foreground">
+                  {detail.convergencePr?.status ?? 'none'}
+                </span>
+              </div>
+              {detail.convergencePr ? (
+                <div className="mt-4 rounded-md border p-3 text-sm">
+                  <p className="font-medium">{detail.convergencePr.branch}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {detail.convergencePr.commits.length} commits · base{' '}
+                    {detail.convergencePr.baseBranch}
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-muted-foreground">No convergence PR yet.</p>
+              )}
             </div>
 
             <div className="rounded-lg border p-5">

@@ -3,11 +3,15 @@
 import { revalidatePath } from 'next/cache';
 import {
   decomposeLoop,
+  finalizeLoop,
   generateLoopSpec,
   interveneLoopIssue,
   recordLoopShardImplementation,
+  reloopIssue,
+  reviewLoopGlobal,
   reviewLoopShard,
   reviewLoopSpec,
+  runLoop,
   runLoopShardTests,
 } from '@/lib/api/loops';
 
@@ -36,6 +40,33 @@ export async function requestRevisionAction(issueId: string, formData: FormData)
 export async function decomposeAction(issueId: string) {
   await decomposeLoop(issueId);
   revalidatePath(`/loops/${issueId}`);
+}
+
+export async function runLoopAction(issueId: string) {
+  await runLoop(issueId);
+  revalidatePath(`/loops/${issueId}`);
+  revalidatePath('/loops');
+}
+
+export async function globalReviewAction(issueId: string) {
+  await reviewLoopGlobal(issueId);
+  revalidatePath(`/loops/${issueId}`);
+  revalidatePath('/loops');
+}
+
+export async function reloopAction(issueId: string, formData: FormData) {
+  await reloopIssue(issueId, {
+    reviewer: 'human',
+    notes: String(formData.get('notes') ?? '') || undefined,
+  });
+  revalidatePath(`/loops/${issueId}`);
+  revalidatePath('/loops');
+}
+
+export async function finalizeLoopAction(issueId: string) {
+  await finalizeLoop(issueId);
+  revalidatePath(`/loops/${issueId}`);
+  revalidatePath('/loops');
 }
 
 export async function pauseLoopAction(issueId: string) {

@@ -1,5 +1,7 @@
 import type {
   LoopAnnotation,
+  LoopConvergencePr,
+  LoopGlobalReviewRecord,
   LoopImplementationRecord,
   LoopIssue,
   LoopReviewRecord,
@@ -76,6 +78,9 @@ export interface LoopsAgentAdapter {
     shards: LoopShard[];
     annotations: LoopAnnotation[];
     globalVerdict: 'PASS' | 'NEEDS-WORK' | 'FAIL';
+    testMatrix?: LoopTestMatrix;
+    globalReview?: LoopGlobalReviewRecord;
+    convergencePr?: LoopConvergencePr;
   }): Promise<LoopAnnotation[]>;
 }
 

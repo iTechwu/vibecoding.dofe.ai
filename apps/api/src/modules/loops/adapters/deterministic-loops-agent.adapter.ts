@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import type {
   LoopAnnotation,
-  LoopImplementationRecord,
+  LoopConvergencePr,
+  LoopGlobalReviewRecord,
   LoopIssue,
   LoopShard,
   LoopSpec,
@@ -151,9 +152,12 @@ export class DeterministicLoopsAgentAdapter implements LoopsAgentAdapter {
     shards: LoopShard[];
     annotations: LoopAnnotation[];
     globalVerdict: 'PASS' | 'NEEDS-WORK' | 'FAIL';
+    testMatrix?: LoopTestMatrix;
+    globalReview?: LoopGlobalReviewRecord;
+    convergencePr?: LoopConvergencePr;
   }): Promise<LoopAnnotation[]> {
     const passed = input.globalVerdict === 'PASS';
-    return input.annotations.map((annotation) => {
+    const refreshed = input.annotations.map((annotation) => {
       const isShard = input.shards.some((shard) => shard.id === annotation.target);
       const isSpec = input.spec?.id === annotation.target;
       const isIssue = input.issue.id === annotation.target;
@@ -174,6 +178,51 @@ export class DeterministicLoopsAgentAdapter implements LoopsAgentAdapter {
             : annotation.notes,
       };
     });
+    const existingTargets = new Set(refreshed.map((annotation) => annotation.target));
+    const finalAnnotations: LoopAnnotation[] = [...refreshed];
+
+    if (passed && input.testMatrix && !existingTargets.has(input.testMatrix.id)) {
+      finalAnnotations.push(this.finalAnnotation(input.testMatrix.id, input.issue.id, [
+        `.loops/tests/${input.issue.id}/matrix.json`,
+        `.loops/tests/${input.issue.id}/matrix.md`,
+      ], 'Test Matrix 已随收敛终态确认。'));
+    }
+
+    if (passed && input.globalReview && !existingTargets.has(input.globalReview.id)) {
+      finalAnnotations.push(this.finalAnnotation(input.globalReview.id, input.issue.id, [
+        `.loops/runs/${input.issue.id}/global-review.json`,
+        `.loops/runs/${input.issue.id}/global-review.md`,
+      ], 'Global Review 已 PASS 并纳入终态标注。'));
+    }
+
+    if (passed && input.convergencePr && !existingTargets.has(input.convergencePr.id)) {
+      finalAnnotations.push(this.finalAnnotation(input.convergencePr.id, input.issue.id, [
+        `.loops/runs/${input.issue.id}/convergence-pr.json`,
+        `.loops/runs/${input.issue.id}/convergence-pr.md`,
+      ], 'Convergence PR 记录已生成并纳入终态标注。'));
+    }
+
+    return finalAnnotations;
+  }
+
+  private finalAnnotation(
+    target: string,
+    issueId: string,
+    location: string[],
+    notes: string,
+  ): LoopAnnotation {
+    return {
+      target,
+      annotator: 'codex',
+      round: 1,
+      implStatus: 'done',
+      testStatus: 'pass',
+      verdict: 'pass',
+      coverage: 'full',
+      location,
+      risk: 'low',
+      notes: `终态标注：${notes} issue=${issueId}`,
+    };
   }
 
   private renderSpec(issue: LoopIssue, createdAt: string) {

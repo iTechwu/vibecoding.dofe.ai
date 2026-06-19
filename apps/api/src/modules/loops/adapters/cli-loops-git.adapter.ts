@@ -6,6 +6,7 @@ import type {
   LoopsGitAdapter,
 } from './loops-git-adapter.interface';
 import { runProcess } from './loops-process.util';
+import { resolveAllowedTargetRepo } from '../loops-path-policy.util';
 
 export type LoopsGitAdapterOptions = {
   commitPerShard: boolean;
@@ -32,10 +33,15 @@ export class CliLoopsGitAdapter implements LoopsGitAdapter {
   }): Promise<LoopsCommitShardResult> {
     const branch = `loops/${input.issue.id}`;
     if (!this.options.commitPerShard) {
-      return { shardId: input.shard.id, committed: false, message: 'commit_per_shard disabled', branch };
+      return {
+        shardId: input.shard.id,
+        committed: false,
+        message: 'commit_per_shard disabled',
+        branch,
+      };
     }
 
-    const cwd = input.issue.targetRepo;
+    const cwd = await resolveAllowedTargetRepo(input.issue.targetRepo);
     const branchOk = await this.git(cwd, ['checkout', '-B', branch]);
     if (!branchOk) {
       return { shardId: input.shard.id, committed: false, message: 'git checkout failed', branch };
@@ -56,7 +62,7 @@ export class CliLoopsGitAdapter implements LoopsGitAdapter {
   async createConvergencePr(input: LoopsConvergencePrInput): Promise<LoopConvergencePr> {
     const branch = `loops/${input.issue.id}`;
     const baseBranch = this.options.baseBranch;
-    const cwd = input.issue.targetRepo;
+    const cwd = await resolveAllowedTargetRepo(input.issue.targetRepo);
     const created = new Date().toISOString();
     const annotationsSummary = this.renderAnnotationsSummary(input);
     const prBody = this.renderPrBody(input, annotationsSummary);

@@ -20,6 +20,7 @@ import type {
   LoopTestMatrix,
   LoopTestRecord,
 } from '@repo/contracts';
+import { readLoopsRuntimeConfig } from './loops-runtime-config.util';
 
 type StateFile = {
   loops: LoopStateItem[];
@@ -41,11 +42,6 @@ export type LoopsResumeResult = {
     from: string;
     to: string;
   }>;
-};
-
-type LoopsCostConfig = {
-  tokenCapPerLoop: number;
-  callCapPerLoop: number;
 };
 
 @Injectable()
@@ -92,22 +88,37 @@ export class LoopsFileStoreService {
       state.specVersion === 'v0'
         ? undefined
         : await this.readOptionalJson<LoopSpec>(`specs/${issueId}/spec.${state.specVersion}.json`);
-    const shards = await this.readOptionalJson<LoopShard[]>(`shards/${issueId}/shards.json`);
-    const testMatrix = await this.readOptionalJson<LoopTestMatrix>(`tests/${issueId}/matrix.json`);
-    const annotations = await this.readOptionalJson<LoopAnnotation[]>(
-      `annotations/${issueId}.json`,
+    const shards =
+      state.shardsTotal > 0
+        ? await this.readOptionalJson<LoopShard[]>(`shards/${issueId}/shards.json`)
+        : undefined;
+    const testMatrix =
+      state.shardsTotal > 0
+        ? await this.readOptionalJson<LoopTestMatrix>(`tests/${issueId}/matrix.json`)
+        : undefined;
+    const annotations =
+      state.shardsTotal > 0
+        ? await this.readOptionalJson<LoopAnnotation[]>(`annotations/${issueId}.json`)
+        : undefined;
+    const implementationRecords = (await this.readImplementationRecords(issueId)).filter(
+      (record) => record.round === state.round,
     );
-    const implementationRecords = await this.readImplementationRecords(issueId);
-    const reviewRecords = await this.readReviewRecords(issueId);
-    const testRecords = await this.readTestRecords(issueId);
+    const reviewRecords = (await this.readReviewRecords(issueId)).filter(
+      (record) => record.round === state.round,
+    );
+    const testRecords = (await this.readTestRecords(issueId)).filter(
+      (record) => record.round === state.round,
+    );
     const logs = await this.readLogs({ issueId, limit: 40 });
     const notifications = await this.readNotifications({ issueId, limit: 20 });
-    const globalReview = await this.readOptionalJson<LoopGlobalReviewRecord>(
-      `runs/${issueId}/global-review.json`,
-    );
-    const convergencePr = await this.readOptionalJson<LoopConvergencePr>(
-      `runs/${issueId}/convergence-pr.json`,
-    );
+    const globalReview =
+      state.globalVerdict || state.finalized
+        ? await this.readOptionalJson<LoopGlobalReviewRecord>(`runs/${issueId}/global-review.json`)
+        : undefined;
+    const convergencePr =
+      state.finalized || state.phase === 'CLOSED'
+        ? await this.readOptionalJson<LoopConvergencePr>(`runs/${issueId}/convergence-pr.json`)
+        : undefined;
 
     return {
       issue,
@@ -189,7 +200,12 @@ export class LoopsFileStoreService {
       }
 
       if (loop.specVersion !== 'v0') {
-        const specPath = path.join(this.root, 'specs', loop.issueId, `spec.${loop.specVersion}.json`);
+        const specPath = path.join(
+          this.root,
+          'specs',
+          loop.issueId,
+          `spec.${loop.specVersion}.json`,
+        );
         if (!(await this.exists(specPath))) {
           problems.push(`missing spec ${loop.specVersion} for ${loop.issueId}`);
         }
@@ -199,11 +215,29 @@ export class LoopsFileStoreService {
         const shardPath = path.join(this.root, 'shards', loop.issueId, 'shards.json');
         if (!(await this.exists(shardPath))) {
           problems.push(`missing shards for ${loop.issueId}`);
+        } else {
+          const shards = await this.readOptionalJson<LoopShard[]>(
+            `shards/${loop.issueId}/shards.json`,
+          );
+          if (!shards) {
+            problems.push(`invalid shards json for ${loop.issueId}`);
+          } else {
+            this.inspectShardState(loop, shards, problems);
+          }
         }
 
         const matrixPath = path.join(this.root, 'tests', loop.issueId, 'matrix.json');
         if (!(await this.exists(matrixPath))) {
           problems.push(`missing test matrix for ${loop.issueId}`);
+        }
+
+        const annotations = await this.readOptionalJson<LoopAnnotation[]>(
+          `annotations/${loop.issueId}.json`,
+        );
+        if (!annotations) {
+          problems.push(`missing annotations for ${loop.issueId}`);
+        } else {
+          await this.inspectAnnotationState(loop, annotations, problems);
         }
       }
     }
@@ -220,7 +254,7 @@ export class LoopsFileStoreService {
   async readCost() {
     await this.ensureInitialized();
     const state = await this.readState();
-    const config = await this.readCostConfig();
+    const config = (await readLoopsRuntimeConfig()).cost;
     const loops: LoopCostItem[] = state.loops.map((loop) => ({
       issueId: loop.issueId,
       costTokens: loop.costTokens,
@@ -235,8 +269,13 @@ export class LoopsFileStoreService {
     return { loops };
   }
 
+  async readDefaultTestCommands() {
+    const config = await readLoopsRuntimeConfig();
+    return config.tests.defaultCommands;
+  }
+
   async enforceCostGuard(loop: LoopStateItem): Promise<LoopStateItem> {
-    const config = await this.readCostConfig();
+    const config = (await readLoopsRuntimeConfig()).cost;
     const tripped =
       loop.costTokens >= config.tokenCapPerLoop || loop.costCalls >= config.callCapPerLoop;
     if (!tripped) return loop;
@@ -363,7 +402,7 @@ export class LoopsFileStoreService {
     await this.writeText(`specs/${issue.id}/spec.${spec.version}.md`, spec.body);
     await this.writeJson(`issues/${issue.id}.json`, {
       ...issue,
-      status: 'IN_LOOP',
+      status: this.issueStatusForSpec(spec, state),
       updated: state.updated,
     });
     await this.upsertState(state);
@@ -536,6 +575,36 @@ export class LoopsFileStoreService {
     }
   }
 
+  async writeShardProgress(input: {
+    issueId: string;
+    shardId: string;
+    from?: string;
+    to: string;
+    actor: string;
+    shards: LoopShard[];
+    state: LoopStateItem;
+    annotations?: LoopAnnotation[];
+  }) {
+    await this.writeJson(`shards/${input.issueId}/shards.json`, input.shards);
+    await this.writeText(`shards/${input.issueId}/dag.yaml`, this.renderDag(input.shards));
+    if (input.annotations) {
+      await this.writeJson(`annotations/${input.issueId}.json`, input.annotations);
+      await this.writeText(
+        `annotations/${input.issueId}.yaml`,
+        this.renderAnnotations(input.annotations),
+      );
+    }
+    await this.upsertState(input.state);
+    await this.appendLog({
+      type: 'SHARD_STATE',
+      loop: input.issueId,
+      shard: input.shardId,
+      from: input.from,
+      to: input.to,
+      actor: input.actor,
+    });
+  }
+
   async writeGlobalReview(input: {
     issueId: string;
     record: LoopGlobalReviewRecord;
@@ -573,10 +642,7 @@ export class LoopsFileStoreService {
       this.renderAnnotations(input.annotations),
     );
     await this.writeJson(`runs/${input.issue.id}/convergence-pr.json`, input.convergencePr);
-    await this.writeText(
-      `runs/${input.issue.id}/convergence-pr.md`,
-      input.convergencePr.prBody,
-    );
+    await this.writeText(`runs/${input.issue.id}/convergence-pr.md`, input.convergencePr.prBody);
     await this.writeJson(`issues/${input.issue.id}.json`, {
       ...input.issue,
       status: 'CLOSED',
@@ -738,18 +804,103 @@ export class LoopsFileStoreService {
     return this.readJson<StateFile>('state.json');
   }
 
-  private async readCostConfig(): Promise<LoopsCostConfig> {
-    const fallback = {
-      tokenCapPerLoop: 5000000,
-      callCapPerLoop: 500,
-    };
-    const content = await fs.readFile(path.join(this.root, 'config.yaml'), 'utf8').catch(() => '');
-    const tokenMatch = content.match(/token_cap_per_loop:\s*(\d+)/);
-    const callMatch = content.match(/call_cap_per_loop:\s*(\d+)/);
-    return {
-      tokenCapPerLoop: tokenMatch ? Number(tokenMatch[1]) : fallback.tokenCapPerLoop,
-      callCapPerLoop: callMatch ? Number(callMatch[1]) : fallback.callCapPerLoop,
-    };
+  private inspectShardState(loop: LoopStateItem, shards: LoopShard[], problems: string[]) {
+    if (shards.length !== loop.shardsTotal) {
+      problems.push(
+        `shard count mismatch for ${loop.issueId}: state=${loop.shardsTotal}, file=${shards.length}`,
+      );
+    }
+
+    const done = shards.filter((shard) => shard.status === 'DONE').length;
+    if (done !== loop.shardsDone) {
+      problems.push(
+        `shardsDone mismatch for ${loop.issueId}: state=${loop.shardsDone}, file=${done}`,
+      );
+    }
+
+    const inProgress = shards.filter((shard) => shard.status === 'IN_PROGRESS').length;
+    if (inProgress !== loop.shardsInProgress) {
+      problems.push(
+        `shardsInProgress mismatch for ${loop.issueId}: state=${loop.shardsInProgress}, file=${inProgress}`,
+      );
+    }
+  }
+
+  private async inspectAnnotationState(
+    loop: LoopStateItem,
+    annotations: LoopAnnotation[],
+    problems: string[],
+  ) {
+    const shards =
+      (await this.readOptionalJson<LoopShard[]>(`shards/${loop.issueId}/shards.json`)) ?? [];
+    const spec =
+      loop.specVersion === 'v0'
+        ? undefined
+        : await this.readOptionalJson<LoopSpec>(
+            `specs/${loop.issueId}/spec.${loop.specVersion}.json`,
+          );
+    const requiredTargets = new Set([loop.issueId, ...shards.map((shard) => shard.id)]);
+    if (spec) requiredTargets.add(spec.id);
+
+    for (const target of requiredTargets) {
+      if (!annotations.some((annotation) => annotation.target === target)) {
+        problems.push(`missing annotation target ${target} for ${loop.issueId}`);
+      }
+    }
+
+    if (loop.finalized || loop.phase === 'CLOSED') {
+      await this.inspectFinalAnnotations(loop, annotations, problems);
+    }
+  }
+
+  private async inspectFinalAnnotations(
+    loop: LoopStateItem,
+    annotations: LoopAnnotation[],
+    problems: string[],
+  ) {
+    const matrix = await this.readOptionalJson<LoopTestMatrix>(`tests/${loop.issueId}/matrix.json`);
+    const globalReview = await this.readOptionalJson<LoopGlobalReviewRecord>(
+      `runs/${loop.issueId}/global-review.json`,
+    );
+    const convergencePr = await this.readOptionalJson<LoopConvergencePr>(
+      `runs/${loop.issueId}/convergence-pr.json`,
+    );
+    const finalTargets = [matrix?.id, globalReview?.id, convergencePr?.id].filter(
+      (target): target is string => Boolean(target),
+    );
+
+    if (!globalReview) {
+      problems.push(`missing global review for finalized loop ${loop.issueId}`);
+    }
+    if (!convergencePr) {
+      problems.push(`missing convergence PR record for finalized loop ${loop.issueId}`);
+    }
+    for (const target of finalTargets) {
+      const annotation = annotations.find((item) => item.target === target);
+      if (!annotation) {
+        problems.push(`missing final annotation target ${target} for ${loop.issueId}`);
+      } else if (
+        annotation.verdict !== 'pass' ||
+        annotation.coverage !== 'full' ||
+        annotation.testStatus !== 'pass'
+      ) {
+        problems.push(`incomplete final annotation target ${target} for ${loop.issueId}`);
+      }
+    }
+
+    const unfinished = annotations.filter(
+      (annotation) =>
+        annotation.verdict === 'unreviewed' ||
+        annotation.coverage === 'partial' ||
+        annotation.testStatus === 'missing',
+    );
+    if (unfinished.length > 0) {
+      problems.push(
+        `finalized loop ${loop.issueId} has unfinished annotations: ${unfinished
+          .map((annotation) => annotation.target)
+          .join(', ')}`,
+      );
+    }
   }
 
   private async readJson<T>(relativePath: string): Promise<T> {
@@ -826,6 +977,13 @@ export class LoopsFileStoreService {
 
   private renderIssueMarkdown(issue: LoopIssue) {
     return `---\nid: ${issue.id}\ntitle: ${issue.title}\nstatus: ${issue.status}\npriority: ${issue.priority}\ncreated: ${issue.created}\nsource_channel: ${issue.sourceChannel}\nsubmitter_id: ${issue.submitterId}\ntarget_repo: ${issue.targetRepo}\n---\n\n${issue.body}\n\n## Acceptance Criteria\n${issue.acceptanceCriteria.map((item) => `- [ ] ${item}`).join('\n')}\n`;
+  }
+
+  private issueStatusForSpec(spec: LoopSpec, state: LoopStateItem): LoopIssue['status'] {
+    if (state.phase === 'CLOSED') {
+      return spec.status === 'REJECTED' ? 'REJECTED' : 'CLOSED';
+    }
+    return 'IN_LOOP';
   }
 
   private renderIntakeMarkdown(intake: LoopIntake, issue: LoopIssue) {

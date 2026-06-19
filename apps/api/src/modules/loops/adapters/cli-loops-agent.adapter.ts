@@ -1,16 +1,18 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type {
   LoopAnnotation,
-  LoopImplementationRecord,
+  LoopConvergencePr,
+  LoopGlobalReviewRecord,
   LoopIssue,
-  LoopReviewRecord,
   LoopShard,
   LoopSpec,
   LoopTestMatrix,
   LoopTestRecord,
 } from '@repo/contracts';
+import { LoopShardSchema, LoopSpecSchema } from '@repo/contracts';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
+import { z } from 'zod';
 import type {
   LoopsAgentAdapter,
   LoopsDecomposition,
@@ -21,6 +23,21 @@ import type {
 } from './loops-agent-adapter.interface';
 import { DeterministicLoopsAgentAdapter } from './deterministic-loops-agent.adapter';
 import { extractJson, runProcess } from './loops-process.util';
+import { readLoopsRuntimeConfig } from '../loops-runtime-config.util';
+
+const CodexReviewOutputSchema = z.object({
+  verdict: z.enum(['PASS', 'NEEDS-WORK', 'FAIL']),
+  issues: z
+    .array(
+      z.object({
+        severity: z.enum(['minor', 'major', 'critical']),
+        desc: z.string().trim().min(1),
+      }),
+    )
+    .default([]),
+  fixInstructions: z.array(z.string().trim().min(1)).default([]),
+  summary: z.string().trim().min(1),
+});
 
 /**
  * 真实 Codex CLI 大脑实现（07 §2 六类调用）。
@@ -40,22 +57,20 @@ export class CliLoopsAgentAdapter implements LoopsAgentAdapter {
 
   async plan(issue: LoopIssue, createdAt: string): Promise<LoopSpec> {
     const prompt = this.buildPrompt('plan', { issue });
-    const raw = await this.callCodex(prompt, 'plan');
-    if (raw) {
-      const spec = this.asSpec(issue, createdAt, raw);
-      if (spec) return spec;
-    }
+    const spec = await this.callCodexWithParsedOutput(prompt, 'plan', (candidate) =>
+      this.asSpec(issue, createdAt, candidate),
+    );
+    if (spec) return spec;
     return this.fallback.plan(issue, createdAt);
   }
 
   async decompose(issue: LoopIssue, spec: LoopSpec): Promise<LoopsDecomposition> {
     const prompt = this.buildPrompt('decompose', { issue, spec });
-    const raw = await this.callCodex(prompt, 'decompose');
-    if (raw && Array.isArray(raw.shards)) {
-      const shards = raw.shards as LoopShard[];
-      if (shards.length > 0) {
-        return { shards, annotations: this.initialAnnotations(issue, spec, shards) };
-      }
+    const shards = await this.callCodexWithParsedOutput(prompt, 'decompose', (candidate) =>
+      this.asShards(candidate),
+    );
+    if (shards) {
+      return { shards, annotations: this.initialAnnotations(issue, spec, shards) };
     }
     return this.fallback.decompose(issue, spec);
   }
@@ -77,9 +92,13 @@ export class CliLoopsAgentAdapter implements LoopsAgentAdapter {
   }
 
   async review(input: LoopsReviewInput): Promise<LoopsReviewOutput> {
-    const prompt = this.buildPrompt('review', { shard: input.shard, record: input.implementationRecord });
-    const raw = await this.callCodex(prompt, 'review');
-    const parsed = this.asReview(raw);
+    const prompt = this.buildPrompt('review', {
+      shard: input.shard,
+      record: input.implementationRecord,
+    });
+    const parsed = await this.callCodexWithParsedOutput(prompt, 'review', (candidate) =>
+      this.asReview(candidate),
+    );
     if (parsed) return parsed;
     return this.fallback.review(input);
   }
@@ -89,8 +108,9 @@ export class CliLoopsAgentAdapter implements LoopsAgentAdapter {
       shards: input.shards,
       records: input.implementationRecords.length,
     });
-    const raw = await this.callCodex(prompt, 'reviewGlobal');
-    const parsed = this.asReview(raw);
+    const parsed = await this.callCodexWithParsedOutput(prompt, 'reviewGlobal', (candidate) =>
+      this.asReview(candidate),
+    );
     if (parsed) return parsed;
     return this.fallback.reviewGlobal(input);
   }
@@ -101,24 +121,74 @@ export class CliLoopsAgentAdapter implements LoopsAgentAdapter {
     shards: LoopShard[];
     annotations: LoopAnnotation[];
     globalVerdict: 'PASS' | 'NEEDS-WORK' | 'FAIL';
+    testMatrix?: LoopTestMatrix;
+    globalReview?: LoopGlobalReviewRecord;
+    convergencePr?: LoopConvergencePr;
   }): Promise<LoopAnnotation[]> {
     return this.fallback.annotateFinalize(input);
   }
 
-  private async callCodex(prompt: string, kind: string): Promise<any | undefined> {
+  private async callCodexWithParsedOutput<T>(
+    prompt: string,
+    kind: string,
+    parse: (raw: unknown) => T | undefined,
+  ): Promise<T | undefined> {
+    const attempts = (await this.maxRetry()) + 1;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      const raw = await this.callCodex(prompt, kind);
+      const parsed = parse(raw);
+      if (parsed) return parsed;
+      if (attempt < attempts) {
+        this.logger.warn?.(
+          `Codex CLI ${kind} returned invalid schema (attempt=${attempt}/${attempts}); retrying.`,
+          'CliLoopsAgentAdapter',
+        );
+      }
+    }
+    this.logger.warn?.(
+      `Codex CLI ${kind} returned invalid schema after ${attempts} attempts; falling back to deterministic.`,
+      'CliLoopsAgentAdapter',
+    );
+    return undefined;
+  }
+
+  private async callCodex(prompt: string, kind: string): Promise<unknown | undefined> {
     const result = await runProcess({
       command: 'codex',
       args: ['exec', '--json', prompt],
-      timeoutMs: Number(process.env.LOOPS_CODEX_TIMEOUT_MS ?? 300_000),
+      timeoutMs: await this.codexTimeoutMs(),
     });
     if (result.exitCode !== 0) {
       this.logger.warn?.(
-        `Codex CLI unavailable/failed for ${kind} (exit=${result.exitCode}); falling back to deterministic.`,
+        `Codex CLI unavailable/failed for ${kind} (exit=${result.exitCode}, attempts=${result.attempts}); falling back to deterministic.`,
         'CliLoopsAgentAdapter',
       );
       return undefined;
     }
     return extractJson(result.stdout);
+  }
+
+  private async maxRetry() {
+    return (
+      this.envNonNegativeInteger('LOOPS_MAX_RETRY') ?? (await readLoopsRuntimeConfig()).maxRetry
+    );
+  }
+
+  private async codexTimeoutMs() {
+    return (
+      this.envPositiveNumber('LOOPS_CODEX_TIMEOUT_MS') ??
+      (await readLoopsRuntimeConfig()).shardTimeoutSec * 1000
+    );
+  }
+
+  private envNonNegativeInteger(name: string) {
+    const parsed = Number(process.env[name]);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+  }
+
+  private envPositiveNumber(name: string) {
+    const parsed = Number(process.env[name]);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
   }
 
   private buildPrompt(kind: string, ctx: Record<string, unknown>): string {
@@ -128,7 +198,7 @@ export class CliLoopsAgentAdapter implements LoopsAgentAdapter {
 
   private asSpec(issue: LoopIssue, createdAt: string, raw: any): LoopSpec | undefined {
     if (!raw || typeof raw.body !== 'string') return undefined;
-    return {
+    const candidate = {
       id: `spec-${issue.id.replace('issue-', '')}`,
       issueId: issue.id,
       version: 'v1',
@@ -137,18 +207,24 @@ export class CliLoopsAgentAdapter implements LoopsAgentAdapter {
       contextBudget: typeof raw.contextBudget === 'number' ? raw.contextBudget : 24000,
       body: raw.body,
     };
+    const parsed = LoopSpecSchema.safeParse(candidate);
+    if (!parsed.success) return undefined;
+    return parsed.data;
   }
 
-  private asReview(raw: any): LoopsReviewOutput | undefined {
-    if (!raw) return undefined;
-    const verdict = raw.verdict;
-    if (verdict !== 'PASS' && verdict !== 'NEEDS-WORK' && verdict !== 'FAIL') return undefined;
-    return {
-      verdict,
-      issues: Array.isArray(raw.issues) ? (raw.issues as LoopsReviewOutput['issues']) : [],
-      fixInstructions: Array.isArray(raw.fixInstructions) ? (raw.fixInstructions as string[]) : [],
-      summary: typeof raw.summary === 'string' ? raw.summary : '',
-    };
+  private asShards(raw: unknown): LoopShard[] | undefined {
+    if (!raw || typeof raw !== 'object' || !Array.isArray((raw as { shards?: unknown }).shards)) {
+      return undefined;
+    }
+    const parsed = LoopShardSchema.array().safeParse((raw as { shards: unknown }).shards);
+    if (!parsed.success || parsed.data.length === 0) return undefined;
+    return parsed.data;
+  }
+
+  private asReview(raw: unknown): LoopsReviewOutput | undefined {
+    const parsed = CodexReviewOutputSchema.safeParse(raw);
+    if (!parsed.success) return undefined;
+    return parsed.data;
   }
 
   private initialAnnotations(
