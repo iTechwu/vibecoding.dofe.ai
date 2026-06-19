@@ -74,18 +74,17 @@ dofe-ai/
 │       │       └── services/   # Business domain services (ip-info, etc.)
 │       └── prisma/             # Database schema & migrations
 │
-│   infra.dofe.ai/              # External infra repo (sibling directory)
-│   └── packages/               # @dofe/infra-* packages (symlinked via pnpm)
-│       ├── common/             # Decorators, interceptors, pipes, config, filter
-│       ├── clients/            # Third-party API clients
-│       ├── prisma/             # DB connection, read/write split
-│       ├── redis/              # Cache
-│       ├── rabbitmq/           # Message queue
-│       ├── jwt/                # JWT
-│       ├── utils/              # Pure utilities
-│       ├── i18n/               # i18n assets
-│       ├── shared-db/          # TransactionalServiceBase, UnitOfWork
-│       └── shared-services/    # email, sms, ip-info, file-storage, etc.
+│   node_modules/@dofe/infra-*/ # Infra packages installed from npm (^0.1.55)
+│   ├── @dofe/infra-common/     # Decorators, interceptors, pipes, config, filter
+│   ├── @dofe/infra-clients/    # Third-party API clients
+│   ├── @dofe/infra-prisma/     # DB connection, read/write split
+│   ├── @dofe/infra-redis/      # Cache
+│   ├── @dofe/infra-rabbitmq/   # Message queue
+│   ├── @dofe/infra-jwt/        # JWT
+│   ├── @dofe/infra-utils/      # Pure utilities
+│   ├── @dofe/infra-i18n/       # i18n assets
+│   ├── @dofe/infra-shared-db/  # TransactionalServiceBase, UnitOfWork
+│   └── @dofe/infra-shared-services/ # email, sms, ip-info, file-storage, etc.
 │
 └── packages/                   # Shared packages (frontend + backend)
     ├── ui/                     # @repo/ui - UI components (shadcn/ui)
@@ -126,7 +125,7 @@ dofe-ai/
 
 **Backend libs: infra vs domain boundary**
 
-- **infra** (`@dofe/infra-*`): 已从 `libs/infra/` 提取至独立仓库 `infra.dofe.ai`（10 个子包）。包含 common, clients, prisma, redis, rabbitmq, jwt, utils, i18n, shared-db, shared-services。与产品/领域无关，可复用。**禁止**依赖 `libs/domain/**`。
+- **infra** (`@dofe/infra-*`): 已从 `libs/infra/` 提取至独立仓库 `infra.dofe.ai`（10 个子包），已发布到 npm，本仓库通过 `package.json` 依赖（`^0.1.55`）从 npm 安装消费，**不再**通过 `pnpm-workspace.yaml` 引用同级 `infra.dofe.ai` 目录。包含 common, clients, prisma, redis, rabbitmq, jwt, utils, i18n, shared-db, shared-services。与产品/领域无关，可复用。**禁止**依赖 `libs/domain/**`。
 - **domain** (`libs/domain/`): auth, services。与 Dofe 领域/业务流程强相关。**可**依赖 infra。`@app/db` 指向 `generated/db`（自动生成的 DB Service 模块）。
 - **依赖方向**：`src` → `domain` → `@dofe/infra-*`。infra 内模块可相互依赖，但不得 import domain。
 - 详见 `apps/api/docs/业务与基础设施拆分方案.md` 和 `docs/0426/infra/迁移状态.md`。
@@ -863,7 +862,7 @@ When using Cursor or Claude for vibecoding (real-time coding), **MUST** read and
 
 5. **业务与基础设施拆分方案** (`apps/api/docs/业务与基础设施拆分方案.md`)
    - libs split into **infra** (`@dofe/infra-*` packages) and **domain** (`libs/domain/`)
-   - **infra**: common, clients, prisma, redis, rabbitmq, jwt, utils, i18n, shared-db, shared-services (in `infra.dofe.ai` repo). MUST NOT depend on `libs/domain/**`.
+   - **infra**: common, clients, prisma, redis, rabbitmq, jwt, utils, i18n, shared-db, shared-services (source repo `infra.dofe.ai`, consumed via npm). MUST NOT depend on `libs/domain/**`.
    - **domain**: auth, services. MAY depend on infra.
    - **Dependency direction**: `src` → `domain` → `@dofe/infra-*`. When adding or changing code under `apps/api/libs/`, obey this boundary.
 

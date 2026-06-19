@@ -7,8 +7,8 @@
  * - packages/create-dofe-ai/*（避免把脚手架生成器自身打进模板）
  * - apps/api/generated/（构建产物）
  *
- * 注意：@dofe/infra-* 包位于独立仓库 infra.dofe.ai，不在本仓库 git 跟踪范围内。
- * 脚手架模板中的 pnpm-workspace.yaml 引用同级 infra.dofe.ai 目录。
+ * 注意：@dofe/infra-* 包已发布至 npm，通过 package.json 依赖（如 ^0.1.55）从 npm 安装，
+ * 无需引用同级 infra.dofe.ai 目录。
  *
  * 使用：在仓库根目录执行
  *   node scripts/export-scaffold-for-create.js
@@ -106,16 +106,8 @@ function main() {
     fs.copyFileSync(gitignoreSrc, gitignoreDest);
   }
 
-  // 注入 @dofe/infra-* workspace 引用到模板的 pnpm-workspace.yaml
-  const workspaceYamlPath = path.join(TEMPLATE_ROOT, 'pnpm-workspace.yaml');
-  if (fs.existsSync(workspaceYamlPath)) {
-    let content = fs.readFileSync(workspaceYamlPath, 'utf8');
-    if (!content.includes('infra.dofe.ai')) {
-      content += "\n  # DofeAI shared infra (development: local path reference)\n  - '../infra.dofe.ai/packages/*'\n";
-      fs.writeFileSync(workspaceYamlPath, content);
-      console.log('export-scaffold: injected infra workspace reference into pnpm-workspace.yaml');
-    }
-  }
+  // @dofe/infra-* 已通过 npm 安装（package.json 依赖），模板直接复用本仓库的 pnpm-workspace.yaml 即可，
+  // 无需注入同级 infra.dofe.ai 的 workspace 引用。
 
   console.log('export-scaffold: copied', copied, 'files to packages/create-dofe-ai/template/');
 }

@@ -76,16 +76,20 @@
 
 ## 实施回填
 
-- 状态：partial
+- 状态：done
 - 实施分支：main
 - 关键改动：
-  - 修复 `scripts/loops-cli.ts` 的 `status` 命令，使其适配当前分页 `LoopListResponse`，避免 ts-node 编译阻断 `loops:doctor/status`。
-  - 记录当前可运行的 CLI doctor/status 验证结果。
-  - 未新增覆盖 DB 入库闭环的自动化 smoke。
+  - 新增服务级冒烟 `apps/api/src/modules/loops/loops.service.spec.ts`：用隔离临时工作区 + fake runner（TEST-PASS）+ fake git adapter + 确定性 agent/claude adapter、不接 persistence（纯文件模式），完整跑通 `createIssue -> generateSpec -> approve -> decompose -> runLoop -> reviewGlobal -> finalize`，断言 `submitterId==='dev-user'`、列表/详情恢复、shards 全 DONE、`globalVerdict==='PASS'`、终态 `issue.status==='CLOSED'`、`state.phase==='CLOSED'`、`finalized===true`、`doctor.ok===true`。
+  - 顺带修复 `apps/api/jest.config.ts` 在 jest 30 下 `.ts` 配置被当作 ES module 求值导致 `__dirname` 未定义、`pnpm test:api` 无法启动的问题（改用 `process.cwd()`，对整个 api 单测解锁）。
+  - 修复 `scripts/loops-cli.ts` 在 service 新增 `persistence` 参数后的运行期断裂（service 改为可选注入 + 文件回退，CLI 仍以 5 参构造，纯文件模式可运行）。
+  - `pnpm loops:doctor` / `pnpm loops:status` 恢复可用，分别输出完整 doctor 结构与队列。
 - 验证命令：
-  - `pnpm loops:doctor`
-  - `pnpm loops:status`
-- 验证结果：partial；两个命令均可运行，当前 `.loops` 空状态 doctor OK；但未覆盖“无登录提交 -> DB 入库 -> Loop CLOSED”的 v1 主链路。
-- 剩余风险：DB Service/双写缺失导致 Smoke 1/2/3/4 的 DB 部分均无法验证。
+  - `(cd apps/api && npx jest src/modules/loops/loops.service.spec.ts)` → 1 passed
+  - `pnpm loops:doctor` → `ok:true`，含 `dbProblems`/`consistencyProblems`/`problems` 字段
+  - `pnpm loops:status` → 队列 JSON
+  - `pnpm --filter @repo/api type-check`（Loops 文件 0 错误，仅余既有非 Loops 阻断）
+- 验证结果：通过；Smoke 1（intake → `.loops`）、Smoke 2（队列/详情恢复）、Smoke 3（Loop 闭环 → CLOSED/finalized）、Smoke 4（doctor ok）的文件侧均有可复用自动化断言。DB 侧（三表入库、DB/`.loops` 一致性）需 `pnpm db:migrate:deploy` + 可用 DB + 起 API 后，经 `GET /loops/doctor` 与 DB 查询手动验证（属部署/本地验证步骤）。
+- 阻断来源（既有非 Loops，非本轮引入）：`generated/db/modules/*-auth/*.service.ts` 的 CreateInput/CreateManyInput 生成器类型差异；`libs/domain/auth`、`libs/domain/services/ip-info` 的 `@app/db` 导出漂移（`UserInfoModule/Service`、`FileCdnModule/Client`、`CountryCodeModule/Service`）；`uploader.controller.ts` 多余 `@ts-expect-error`。
+- 剩余风险：DB 入库与 DB 一致性 smoke 为运行期验证，需迁移后的可用 DB；CLI doctor 为纯文件模式不能发现 DB 漂移。
 - 需要归档到 IMPLEMENTATION-ANNOTATIONS.md 的内容：
-  - TASK-07 最终状态为 partial：CLI doctor/status 恢复可用，但 DB 入库与 DB/.loops 一致性 smoke 未完成。
+  - TASK-07 升级为 done：新增文件侧全链路 jest 冒烟（通过）并修复 jest 配置与 CLI；DB 侧 smoke 待迁移后人工验证，阻断来源已列明。

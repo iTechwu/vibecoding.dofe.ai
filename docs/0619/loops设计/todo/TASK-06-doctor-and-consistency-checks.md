@@ -48,17 +48,23 @@
 
 ## 实施回填
 
-- 状态：partial
+- 状态：done
 - 实施分支：main
 - 关键改动：
-  - `LoopsFileStoreService.doctor()` 可检查 `.loops` root、state、issue/intake/spec/shards、annotation 覆盖与 finalized loop 终态标注完整性。
-  - `GET /loops/doctor` 与 `pnpm loops:doctor` 可调用文件侧 doctor。
-  - 未实现 DB 与 `.loops` 的双向一致性检查。
+  - `LoopsFileStoreService.doctor()` 保留 `.loops` 文件完整性检查（root、state、issue/intake/spec/shards、annotation 覆盖、finalized loop 终态标注），并返回 `fileProblems`/`dbProblems`/`consistencyProblems` 占位字段。
+  - `LoopsPersistenceService.doctor()` 在文件 doctor 之上叠加双向一致性检查：
+    - DB Issue 存在但 `.loops/issues/<id>.json` 缺失 → consistency problem；
+    - `.loops` Issue 存在但 DB Issue 缺失 → consistency problem；
+    - DB `LoopState` 与 `.loops/state.json` 的 `phase`/`round`/`finalized` 不一致 → consistency problem；
+    - DB 缺少 `LoopState` → db problem；
+    - CLOSED Issue 缺少终态标注（`finalized` / `CLOSED` phase）→ consistency problem。
+  - `LoopsDoctorResponseSchema`（`loops.schema.ts`）已含 `dbProblems`/`consistencyProblems`，`problems` 合并三类问题；doctor 不自动删除数据、不修改 `log.jsonl`、不静默吞掉不一致。
+  - `GET /loops/doctor`（API server，带 persistence）跑完整三类检查；`pnpm loops:doctor`（CLI，无 persistence）跑纯文件检查。
 - 验证命令：
-  - `pnpm loops:doctor`
-  - `sed -n '184,250p' apps/api/src/modules/loops/loops-file-store.service.ts`
-  - `sed -n '829,925p' apps/api/src/modules/loops/loops-file-store.service.ts`
-- 验证结果：partial；当前 `pnpm loops:doctor` 输出 `ok=true`、`loops=0`、`issues=0`、`problems=[]`，但无法发现 DB 缺失/偏差。
-- 剩余风险：DB 双写落地后若不扩展 doctor，会出现 DB 与 `.loops` 漂移但检查仍通过。
+  - `rg -n "consistencyProblems|dbProblems|compareState|inspectClosedIssue|listAllIssueStates" apps/api/src/modules/loops/loops-persistence.service.ts apps/api/generated/db/modules/loops/loops-db.service.ts`
+  - `rg -n "dbProblems|consistencyProblems" packages/contracts/src/schemas/loops.schema.ts`
+  - `pnpm loops:doctor`（输出含 `dbProblems:[]`、`consistencyProblems:[]`、`problems:[]`、`ok:true`）
+- 验证结果：通过（代码 + type-check + CLI 文件 doctor 运行）；doctor 输出能区分 file/db/consistency 三类问题。DB 一致性分支运行期需迁移后的可用 DB 才能造不一致并验证告警。
+- 剩余风险：CLI doctor 为纯文件模式，无法发现 DB 漂移；要验证 DB/`.loops` 一致性必须经 API server（带可用 DB）。
 - 需要归档到 IMPLEMENTATION-ANNOTATIONS.md 的内容：
-  - TASK-06 最终状态为 partial：文件 doctor 可用，DB 一致性 doctor 未完成。
+  - TASK-06 升级为 done：文件 + DB + 一致性三类 doctor 均落地；DB 一致性运行期验证待迁移后进行。

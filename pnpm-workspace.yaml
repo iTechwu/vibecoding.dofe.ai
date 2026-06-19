@@ -1,7 +1,3 @@
 packages:
   - 'apps/*'
   - 'packages/*'
-  # DofeAI shared infra (development: local path reference)
-
-  # DofeAI shared infra (development: local path reference)
-  - '../infra.dofe.ai/packages/*'

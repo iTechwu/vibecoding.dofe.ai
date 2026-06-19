@@ -15,7 +15,7 @@
         "watchAssets": true
       },
       {
-        "include": "node_modules/@dofe/infra-i18n/src/**/*",
+        "include": "node_modules/@dofe/infra-i18n/dist/**/*",
         "watchAssets": true
       },
       {

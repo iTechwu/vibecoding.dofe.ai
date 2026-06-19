@@ -11,6 +11,7 @@ import { LOOPS_GIT_ADAPTER } from './adapters/loops-git-adapter.interface';
 import { LoopsController } from './loops.controller';
 import { LoopsFileStoreService } from './loops-file-store.service';
 import { LoopsPersistenceService } from './loops-persistence.service';
+import { LOOPS_PERSISTENCE } from './loops-persistence.token';
 import { LoopsRunnerService } from './loops-runner.service';
 import { LoopsService } from './loops.service';
 
@@ -21,6 +22,10 @@ import { LoopsService } from './loops.service';
     LoopsService,
     LoopsFileStoreService,
     LoopsPersistenceService,
+    // Alias the concrete persistence service to the injection token used by
+    // `LoopsService`, so the DB-backed implementation is only pulled into the
+    // NestJS graph and never into standalone `ts-node` consumers.
+    { provide: LOOPS_PERSISTENCE, useExisting: LoopsPersistenceService },
     LoopsRunnerService,
     DeterministicLoopsAgentAdapter,
     DeterministicLoopsClaudeAdapter,

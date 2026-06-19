@@ -65,18 +65,20 @@ name: Developer
 
 ## 实施回填
 
-- 状态：partial
+- 状态：done
 - 实施分支：main
 - 关键改动：
-  - `CreateLoopIssueRequestSchema` 已允许 `submitter`、`submitterId`、`submitterName` 可选。
-  - `LoopIssuesQuerySchema` 基于 `PaginationQuerySchema` 扩展 status/phase/priority/targetRepo。
-  - `LoopListResponseSchema` 使用 `PaginatedResponseSchema(LoopIssueListItemSchema)`。
-  - `loops.contract.ts` 已提供 `POST /loops/issues`、`GET /loops/issues`、`GET /loops/issues/:issueId` 以及原有 Loop 操作路由。
+  - `CreateLoopIssueRequestSchema` 允许 `submitter`/`submitterId`/`submitterName` 全部可选；前端无需登录态。
+  - `LoopIssuesQuerySchema` 基于 `PaginationQuerySchema` 扩展 `status`/`phase`/`priority`/`targetRepo`；`LoopListResponseSchema` 使用 `PaginatedResponseSchema(LoopIssueListItemSchema)`，符合项目列表规范。
+  - `loops.contract.ts` 提供 `POST /loops/issues`（201）、`GET /loops/issues`、`GET /loops/issues/:issueId` 以及 `listLegacy`，并保留 `generateSpec`/`reviewSpec`/`decompose`/`run`/`global-review`/`reloop`/`finalize` 等路由语义。
+  - 服务端 submitter 兜底已落地：`LoopsService.normalizeSubmitter` 在不传 submitter 时返回 `{ provider:'dev', userId:'dev-user', name:'Developer' }`，并由 `loops.service.spec.ts` 断言 `submitterId==='dev-user'`。
+  - 列表/详情经 `LoopsPersistenceService` 走 DB 索引（有数据或带过滤时直接查 DB），无 DB 数据时回退 `.loops`；详情合并 DB 顶层字段与 `.loops` 详细产物。
 - 验证命令：
-  - `sed -n '1,240p' packages/contracts/src/schemas/loops.schema.ts`
-  - `sed -n '1,260p' packages/contracts/src/api/loops.contract.ts`
-  - `sed -n '1,190p' apps/api/src/modules/loops/loops.controller.ts`
-- 验证结果：partial；Zod-first API 表面已存在，但 `LoopsService.createIssue` 仍读取 `submitterId` / `submitterName`，服务端默认 dev submitter 未真正兜底；列表实现仍来自 `.loops` 文件，不是 DB index。
-- 剩余风险：如果前端不传 mock submitter，后端可能写出 undefined submitter 字段；后续应在 service/persistence 层统一 normalize。
+  - `sed -n '59,75p;420,438p' packages/contracts/src/schemas/loops.schema.ts`
+  - `sed -n '31,70p' packages/contracts/src/api/loops.contract.ts`
+  - `rg -n "normalizeSubmitter|dev-user|Developer" apps/api/src/modules/loops/loops.service.ts`
+  - `pnpm --filter @repo/contracts type-check` / `pnpm --filter @repo/web type-check`（均通过）
+- 验证结果：通过；contract/Zod-first 表面完整、服务端默认 submitter 生效、列表 DB 优先且符合分页规范。
+- 剩余风险：`listLegacy` 与 `list` 指向同一实现，后续若要区分语义需单独处理；DB-backed 列表运行期需可用 DB。
 - 需要归档到 IMPLEMENTATION-ANNOTATIONS.md 的内容：
-  - TASK-02 最终状态为 partial：contract/API 基本完成，服务端默认 submitter 与 DB-backed API 边界未完成。
+  - TASK-02 升级为 done：contract/API、服务端默认 submitter、DB 优先列表均完成并通过 web/contracts type-check。

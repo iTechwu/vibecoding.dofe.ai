@@ -95,16 +95,20 @@
 
 ## 实施回填
 
-- 状态：partial
+- 状态：done
 - 实施分支：main
 - 关键改动：
-  - `apps/api/prisma/schema.prisma` 已包含 `LoopIssue`、`LoopIssueIntake`、`LoopState` 三个 Prisma model。
-  - Loops API/Service 层未发现直接 `prisma.read` / `prisma.write` / `PrismaService` 访问。
-  - 未发现 Loops 专用 DB Service 或已生成 DB Service 被 Loops 模块调用。
+  - `apps/api/prisma/schema.prisma` 已包含 `LoopIssue`、`LoopIssueIntake`、`LoopState` 三个 Prisma model（`schema.prisma:251`、`:280`、`:303`），字段覆盖任务建议清单，并含软删除、索引与级联关系。
+  - 迁移 `apps/api/prisma/migrations/20260619120000_add_loops_persistence/migration.sql` 已生成，与 schema 对齐（含 `loop_state_issue_id_key` 唯一索引与两张外键 `ON DELETE CASCADE`）。
+  - 生成物 `apps/api/generated/db/modules/loops/loops-db.service.ts` 提供 `LoopsDbService extends TransactionalServiceBase`：事务化 `createIssue`（Issue+Intake+LoopState 三表同事务写入）、`createIntake`、`createLoopState`、`updateLoopState`、`updateIssueStatus`、`upsertLoopState`、`listIssuesByStatus`、`listIssues`（含 phase 关联过滤）、`listAllIssueStates`、`getIssueDetailByIssueId(OrThrow)`。
+  - 配套生成 `loop-issue/loop-issue.service.ts`、`loop-issue-intake/loop-issue-intake.service.ts`、`loop-state/loop-state.service.ts` 与各自 module/index，统一经 `LoopsDbModule` 暴露并 import 进 `LoopsModule`。
+  - Loops API/Service 层（`loops.service.ts`、`loops.controller.ts`）无 `prisma.read`/`prisma.write`/`PrismaService` 直接访问，全部经 `LoopsDbService`。
 - 验证命令：
   - `rg -n "model LoopIssue|model LoopIssueIntake|model LoopState" apps/api/prisma/schema.prisma`
-  - `rg -n "prisma\\.read|prisma\\.write|new Prisma|PrismaService|loopIssue|loopState|LoopIssueIntake" apps/api/src/modules/loops apps/api/src apps/api/libs -g '!**/*.map'`
-- 验证结果：partial；schema 存在，且 Loops 层没有直接 Prisma 访问；但 DB Service、迁移/生成验证、Issue/Intake/LoopState 实际入库能力未完成。
-- 剩余风险：后续任务若直接在 `LoopsService` 补 Prisma 写入会违反架构规则，必须先补 DB Service。
+  - `rg -n "class LoopsDbService|createIssue|upsertLoopState|listIssues|getIssueDetailByIssueId" apps/api/generated/db/modules/loops/loops-db.service.ts`
+  - `rg -n "prisma\\.read|prisma\\.write|new Prisma|PrismaService" apps/api/src/modules/loops -g '!**/*.map'`（应为空）
+  - `pnpm --filter @repo/api type-check`（Loops 相关文件无错误；仅余既有非 Loops 阻断）
+- 验证结果：通过；schema、迁移、DB Service 与查询/写入方法均存在且 type-check 干净；DB 运行期写入需 `pnpm db:migrate:deploy` + 可用 `DATABASE_URL` 后才能真正落库（属部署/本地验证步骤，非代码缺口）。
+- 剩余风险：DB Service 为生成产物，重新 `pnpm db:generate` 时若生成器逻辑变化需复核；DB 运行期写入未在本环境实跑。
 - 需要归档到 IMPLEMENTATION-ANNOTATIONS.md 的内容：
-  - TASK-01 最终状态为 partial：DB model 已存在，但 DB Service 与真实 DB 查询/写入未完成。
+  - TASK-01 升级为 done：DB model、迁移、`LoopsDbService`（含事务化三表写入与查询/详情）均已落地；DB 运行期写入待迁移后验证。

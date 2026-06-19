@@ -56,18 +56,20 @@ submitter 默认由后端填充，前端不要求登录态。
 
 ## 实施回填
 
-- 状态：partial
+- 状态：done
 - 实施分支：main
 - 关键改动：
-  - `/loops/new` 提供 Web Issue 表单，并通过 server action 调用 `createLoopIssue()`。
-  - 提交成功后跳转 `/loops/:issueId`。
-  - `/loops` 队列、doctor、cost、logs、notifications 与详情操作入口已存在。
-  - 未发现页面级登录守卫或 cookie/session/token 强依赖。
+  - `/loops/new`（`apps/web/app/loops/new/page.tsx`）已是 v1 最简无登录表单：仅 title、targetRepo、priority、body、acceptanceCriteria；已移除 Submitter ID/Name mock 字段。
+  - server action（`apps/web/app/loops/new/actions.ts`）只透传上述字段，不携带 submitter/登录态，提交成功后 `redirect('/loops/${result.issue.id}')`。
+  - `/loops` 队列、doctor、cost、logs、notifications 与 `/loops/[issueId]` 详情操作入口（run/global-review/reloop/finalize 等）均存在。
+  - 队列/详情数据经 `apps/web/lib/api/loops.ts` 调用 API（`GET /loops/issues`、`GET /loops/issues/:issueId`），状态来自 API（后端 DB 优先 + `.loops` 回退），前端不再伪造数据库状态。
+  - 后端 `normalizeSubmitter` 默认 dev submitter，使前端省略 submitter 仍能正常入库。
 - 验证命令：
-  - `sed -n '1,180p' apps/web/app/loops/new/page.tsx`
-  - `sed -n '1,80p' apps/web/app/loops/new/actions.ts`
-  - `sed -n '1,220p' apps/web/app/loops/page.tsx`
-- 验证结果：partial；无登录/mock Web 提交骨架存在，但页面仍展示 Submitter ID/Name mock 字段，队列数据来自文件 backed API，不是 DB/API 返回的 DB 状态。
-- 剩余风险：后端未默认填充 submitter 时，前端 mock 字段仍承担兜底；真正无登录最简表单需移除或隐藏 submitter 字段。
+  - `sed -n '1,85p' apps/web/app/loops/new/page.tsx`（确认无 submitter 字段）
+  - `sed -n '1,20p' apps/web/app/loops/new/actions.ts`
+  - `rg -n "submitter" apps/web/app/loops/new/page.tsx apps/web/app/loops/new/actions.ts`（应为空）
+  - `pnpm --filter @repo/web type-check`（通过）
+- 验证结果：通过；无登录最简表单、提交跳转、队列/详情入口与 API-backed 状态均就绪，web type-check 干净。
+- 剩余风险：`targetRepo` 默认值硬编码为当前仓库绝对路径，部署到其他环境时需调整；未做浏览器端手动提交回放（需本地起 web+api）。
 - 需要归档到 IMPLEMENTATION-ANNOTATIONS.md 的内容：
-  - TASK-04 最终状态为 partial：Web 无登录骨架可用，但 submitter UI 与 DB-backed 队列仍未达到 v1 验收。
+  - TASK-04 升级为 done：v1 无登录最简表单（无 submitter 字段）、提交跳转、API-backed 队列/详情均完成。

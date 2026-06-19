@@ -1,4 +1,10 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import type {
   CreateLoopIssueRequest,
   LoopAnnotation,
@@ -33,7 +39,8 @@ import {
   type LoopsCommitShardResult,
   type LoopsGitAdapter,
 } from './adapters/loops-git-adapter.interface';
-import { LoopsPersistenceService } from './loops-persistence.service';
+import type { LoopsPersistenceService } from './loops-persistence.service';
+import { LOOPS_PERSISTENCE } from './loops-persistence.token';
 import { resolveAllowedTargetRepo } from './loops-path-policy.util';
 import { readLoopsRuntimeConfig } from './loops-runtime-config.util';
 
@@ -50,16 +57,52 @@ export class LoopsService {
     private readonly claudeAdapter: LoopsClaudeAdapter,
     @Inject(LOOPS_GIT_ADAPTER)
     private readonly gitAdapter: LoopsGitAdapter,
-    private readonly persistence: LoopsPersistenceService,
+    // Persistence (DB index) is optional: the API server injects it via DI for
+    // full DB + `.loops` dual-write; standalone CLI/scripts omit it and run
+    // against the `.loops` file source of truth only. `.loops` remains the
+    // authoritative source of truth in v1 either way. Injected by token + a
+    // type-only import so the concrete `LoopsPersistenceService` (which imports
+    // `@app/db`/Prisma) is only loaded when the NestJS module wires it, keeping
+    // plain-`ts-node` standalone consumers DB-free.
+    @Optional()
+    @Inject(LOOPS_PERSISTENCE)
+    private readonly persistence?: LoopsPersistenceService,
   ) {}
 
   async list(query: LoopIssuesQuery): Promise<LoopListResponse> {
-    return this.persistence.list(query);
+    return this.persistence ? this.persistence.list(query) : this.listFromFile(query);
+  }
+
+  private async listFromFile(query: LoopIssuesQuery): Promise<LoopListResponse> {
+    const fallback = await this.store.list();
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const items = fallback.issues
+      .map((issue) => ({
+        issue,
+        state: fallback.loops.find((state) => state.issueId === issue.id),
+      }))
+      .filter(
+        (item) =>
+          (!query.status || item.issue.status === query.status) &&
+          (!query.phase || item.state?.phase === query.phase) &&
+          (!query.priority || item.issue.priority === query.priority) &&
+          (!query.targetRepo || item.issue.targetRepo === query.targetRepo),
+      );
+    const start = (page - 1) * limit;
+    return {
+      list: items.slice(start, start + limit),
+      total: items.length,
+      page,
+      limit,
+    };
   }
 
   async getIssue(issueId: string) {
     try {
-      return await this.persistence.readDetail(issueId);
+      return this.persistence
+        ? await this.persistence.readDetail(issueId)
+        : await this.store.readDetail(issueId);
     } catch {
       throw new NotFoundException(`Issue ${issueId} not found`);
     }
@@ -1261,15 +1304,5 @@ export class LoopsService {
       const message = error instanceof Error ? error.message : 'Invalid targetRepo';
       throw new BadRequestException(message);
     }
-  }
-
-  private async syncAndRead(issueId: string) {
-    const detail = await this.store.readDetail(issueId);
-    if (this.persistence) {
-      const issueStatus = detail.issue.status === 'CLOSED' ? 'CLOSED' : undefined;
-      await this.persistence.syncState(detail.state, issueStatus);
-      return this.persistence.readDetail(issueId);
-    }
-    return detail;
   }
 }

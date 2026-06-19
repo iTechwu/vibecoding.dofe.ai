@@ -59,15 +59,23 @@ validate request
 
 ## 实施回填
 
-- 状态：not-started
+- 状态：done
 - 实施分支：main
 - 关键改动：
-  - 未发现 `LoopsPersistenceService` 或等价 DB + `.loops` 双写编排层。
-  - `LoopsService.createIssue` 当前只调用 `LoopsFileStoreService.writeIssue()` 写 `.loops`。
+  - 新增 `apps/api/src/modules/loops/loops-persistence.service.ts` 作为 DB + `.loops` 双写编排层：
+    - `writeIssue`/`createIssue`：先 `store.writeIssue` 写 `.loops`，再 `db.createIssue`（事务化 Issue+Intake+LoopState），返回组合结果。
+    - `list`：DB 总数 > 0 或带过滤时直接查 DB 索引并映射为 `{issue, state}` 分页响应；否则回退 `.loops`。
+    - `readDetail`：合并 `.loops` detail 与 DB 顶层 issue/intake/state。
+    - `syncState`/`syncClosed`：`upsertLoopState` + 可选 `updateIssueStatus`，把 `.loops` 真相同步到 DB。
+    - `doctor`：在文件 doctor 之上叠加 DB 缺失与 DB/`.loops` 一致性问题（详见 TASK-06）。
+  - `LoopsService.createIssue` 经 `if (this.persistence)` 切到 `persistence.writeIssue`，否则降级为纯文件写入（CLI 路径）。
+  - `LoopsService` 对 persistence 采用 `@Optional() @Inject(LOOPS_PERSISTENCE)` + type-only import（`loops-persistence.token.ts`），使 API server 走 DB 双写、独立 `ts-node` CLI 走纯文件，避免 CLI 拖入 `@app/db`。
+  - 失败/幂等策略：DB 与 `.loops` 顺序写入；`.loops` 同 ID 已存在时由 file-store 幂等覆盖，DB 侧由 `createIssue` 事务保证；DB 写失败经 `@HandlePrismaError` 抛出并被 controller 捕获，不会静默。
 - 验证命令：
-  - `sed -n '45,115p' apps/api/src/modules/loops/loops.service.ts`
-  - `rg -n "Persistence|writeIssue\\(|loopIssue|loopState|LoopIssueIntake" apps/api/src/modules/loops apps/api/src -g '!**/*.map'`
-- 验证结果：未通过任务验收；未实现 DB 记录创建，也没有双写失败补偿/幂等策略。
-- 剩余风险：v1 主链路目前无法证明 Issue / Intake / LoopState 真实入库。
+  - `rg -n "class LoopsPersistenceService|writeIssue|createIssue|syncState|syncClosed|doctor" apps/api/src/modules/loops/loops-persistence.service.ts`
+  - `rg -n "persistence\\.writeIssue|listFromFile|LOOPS_PERSISTENCE" apps/api/src/modules/loops/loops.service.ts apps/api/src/modules/loops/loops.module.ts`
+  - `pnpm --filter @repo/api type-check`（Loops 文件无错误）
+- 验证结果：通过（代码与 type-check）；双写链路、DB 优先列表、合并详情均落地。文件侧运行期由 `loops.service.spec.ts` 覆盖；DB 写入运行期需迁移后的可用 DB 才能真正落库验证。
+- 剩余风险：DB 写成功但 `.loops` 写失败这类跨系统一致性问题仍以 doctor 报告为准（v1 不做自动回滚），需在运维流程中处理。
 - 需要归档到 IMPLEMENTATION-ANNOTATIONS.md 的内容：
-  - TASK-03 最终状态为 not-started：`.loops` 写入可用，但 DB + `.loops` 双写未落地。
+  - TASK-03 升级为 done：`LoopsPersistenceService` 双写、DB 优先列表、合并详情、失败/幂等策略均落地；DB 运行期写入待迁移后验证。

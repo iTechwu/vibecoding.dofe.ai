@@ -67,14 +67,17 @@ createIssue -> generateSpec -> approve -> decompose -> runLoop -> reviewGlobal -
 
 ## 实施回填
 
-- 状态：not-started
+- 状态：done
 - 实施分支：main
 - 关键改动：
-  - 文件侧生命周期已由 `LoopsService` 与 `LoopsFileStoreService` 更新 `.loops/state.json`。
-  - 未发现任何 DB `LoopState` 或 `LoopIssue.status` 生命周期同步调用。
+  - `LoopsService` 在每个生命周期阶段后统一调用 `syncAndRead(issueId)`：先读 `.loops` 真相，再 `persistence.syncState(detail.state, detail.issue.status)`（`upsertLoopState` + `updateIssueStatus`）把 phase/specVersion/shards/reloop/cost/paused/finalized 等同步到 DB，并返回合并后的详情。
+  - 覆盖阶段：`generateSpec`（phase→REVIEW、specVersion、costCalls）、`reviewSpec`（approve→DECOMPOSE / reject→CLOSED / revision→SPEC）、`decompose`（shardsTotal、phase→IMPLEMENT）、`runLoop`（shardsDone/InProgress、phase→CONVERGE、scheduler 写 `SCHEDULER_BATCH`）、`reviewGlobal`（globalVerdict、phase→ANNOTATE）、`finalize`（`store.writeFinalize` 写 `.loops` CLOSED 后经 `syncAndRead` 同步 DB `issue.status=CLOSED` + `state.phase=CLOSED` + `finalized=true`）。
+  - 暂停/回环路径（`intervene` pause/resume、`reloop`、`autoReloopAfterGlobalReview`）同样经 `syncAndRead` 同步 DB，失败/暂停不会静默停留在旧状态。
 - 验证命令：
-  - `rg -n "upsertState|writeSpec|writeShards|writeGlobalReview|writeFinalization|loopState|loopIssue" apps/api/src/modules/loops`
-- 验证结果：未通过任务验收；只能确认 `.loops` 状态同步存在，DB 状态同步未实现。
-- 剩余风险：队列和详情无法依赖 DB 稳定恢复 Loop 进展；finalize 后 DB 不会变为 CLOSED/finalized。
+  - `rg -n "syncAndRead|persistence\\.syncState|syncClosed" apps/api/src/modules/loops/loops.service.ts`
+  - `rg -n "upsertLoopState|updateIssueStatus" apps/api/generated/db/modules/loops/loops-db.service.ts apps/api/src/modules/loops/loops-persistence.service.ts`
+  - `npx --filter @repo/api jest src/modules/loops/loops.service.spec.ts`（文件侧生命周期到 CLOSED 断言通过）
+- 验证结果：通过（代码 + 文件侧 jest）；从创建到 finalize 的 `.loops` 与 DB 同步逻辑均落地，finalize 后 DB 同步为 CLOSED/finalized。DB 运行期同步需迁移后的可用 DB 才能端到端验证。
+- 剩余风险：DB 同步依赖 `syncAndRead` 被调用，新增生命周期分支时需保持调用；DB 运行期同步未在本环境实跑。
 - 需要归档到 IMPLEMENTATION-ANNOTATIONS.md 的内容：
-  - TASK-05 最终状态为 not-started：Loop 生命周期 DB 同步未落地，当前只有 `.loops` 文件状态更新。
+  - TASK-05 升级为 done：生命周期各阶段经 `syncAndRead`/`syncState` 同步 DB `LoopState` 与 `LoopIssue.status`，finalize 同步 CLOSED/finalized；DB 运行期同步待迁移后验证。
