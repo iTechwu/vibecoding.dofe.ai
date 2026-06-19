@@ -16,6 +16,15 @@ tests:
   default_commands:
     - pnpm test
     - pnpm lint
+  allowed_commands:
+    - pnpm test
+    - pnpm lint
+    - pnpm exec
+    - node -e
+    - printf
+  coverage_floor:
+    lines: 70
+    branches: 60
 git:
   commit_per_shard: true
 auth:

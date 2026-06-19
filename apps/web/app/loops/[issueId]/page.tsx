@@ -139,8 +139,8 @@ export default async function LoopIssueDetailPage({
           <section className="rounded-lg border p-5">
             <h2 className="text-lg font-semibold">Re-loop</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Global verdict is {detail.state.globalVerdict}. Create the next spec revision and
-              send it back through human review.
+              Global verdict is {detail.state.globalVerdict}. Create the next spec revision and send
+              it back through human review.
             </p>
             <form action={reloop} className="mt-4 flex flex-col gap-3 sm:flex-row">
               <input
@@ -479,6 +479,12 @@ export default async function LoopIssueDetailPage({
                       <p className="mt-2 text-xs text-muted-foreground">
                         {record.commands.length} commands · round {record.round}
                       </p>
+                      {record.coverage ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          coverage lines {record.coverage.lines ?? '-'}% · branches{' '}
+                          {record.coverage.branches ?? '-'}%
+                        </p>
+                      ) : null}
                     </div>
                   ))
                 )}

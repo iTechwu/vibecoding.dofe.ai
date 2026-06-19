@@ -11,7 +11,6 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import {
   getConfig,
   HttpExceptionFilter,
-  RequestMiddleware,
   CacheDecoratorModule,
   EventDecoratorModule,
   VersionDecoratorModule,
@@ -21,6 +20,7 @@ import {
   type AppConfig,
   type ZoneConfig,
 } from '@dofe/infra-common';
+import RequestMiddleware from '@dofe/infra-common/middleware/request.middleware';
 import { environmentUtil, getWinstonConfig, type LogOutputMode } from '@dofe/infra-utils';
 
 /** app filter */

@@ -86,6 +86,9 @@
       "@app/clients": ["./libs/clients"],
       "@app/clients/*": ["./libs/clients/*"],
 
+      // === @dofe/infra-* 子路径（moduleResolution: Node 不识别 exports 字段） ===
+      "@dofe/infra-common/*": ["node_modules/@dofe/infra-common/dist/*"],
+
       // === @app/tenant-management/*（stub：scaffold 无租户管理模块） ===
       "@app/tenant-management/*": ["./generated/stubs/tenant-management/*"]
     }

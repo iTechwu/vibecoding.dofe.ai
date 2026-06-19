@@ -33,6 +33,8 @@ import {
 import { resolveAllowedTargetRepo } from './loops-path-policy.util';
 import { readLoopsRuntimeConfig } from './loops-runtime-config.util';
 
+type LoopIssueDetail = Awaited<ReturnType<LoopsFileStoreService['readDetail']>>;
+
 @Injectable()
 export class LoopsService {
   constructor(
@@ -231,75 +233,66 @@ export class LoopsService {
       throw new BadRequestException('Approved spec is required before running loop');
     }
 
-    const shard = this.findRunnableShard(detail.shards);
-    if (!shard) {
-      if (detail.shards.length > 0 && detail.shards.every((item) => item.status === 'DONE')) {
-        const now = new Date().toISOString();
-        await this.store.upsertState({
-          ...detail.state,
-          phase: 'PHASE_6_CONVERGE',
-          shardsDone: detail.shards.length,
-          shardsInProgress: 0,
-          updated: now,
-        });
-        return this.store.readDetail(issueId);
+    const { contextBudget, maxParallel } = await readLoopsRuntimeConfig();
+    let currentDetail = detail;
+    let advanced = 0;
+    let blocked = 0;
+
+    while (advanced < maxParallel) {
+      const shard = this.findRunnableShard(currentDetail.shards);
+      if (!shard) {
+        break;
       }
-      throw new BadRequestException('No runnable shard is available');
+      if (shard.estContext >= contextBudget) {
+        await this.blockShardForContextBudget(issueId, currentDetail, shard, contextBudget);
+        blocked += 1;
+        currentDetail = await this.store.readDetail(issueId);
+        continue;
+      }
+      await this.runRunnableShard(issueId, currentDetail, shard);
+      advanced += 1;
+      currentDetail = await this.store.readDetail(issueId);
+      if (currentDetail.state.paused) {
+        break;
+      }
     }
 
-    const started = new Date().toISOString();
-    const inProgressShards = detail.shards.map((item) =>
-      item.id === shard.id ? { ...item, status: 'IN_PROGRESS' as const } : item,
-    );
-    await this.store.writeShardProgress({
-      issueId,
-      from: shard.status,
-      to: 'IN_PROGRESS',
-      actor: 'loops-scheduler',
-      shardId: shard.id,
-      state: {
+    if (advanced > 0) {
+      await this.store.appendLog({
+        type: 'SCHEDULER_BATCH',
+        loop: issueId,
+        max_parallel: maxParallel,
+        context_budget: contextBudget,
+        advanced,
+        blocked,
+      });
+      return this.store.readDetail(issueId);
+    }
+
+    if (blocked > 0) {
+      await this.store.appendLog({
+        type: 'SCHEDULER_BATCH',
+        loop: issueId,
+        max_parallel: maxParallel,
+        context_budget: contextBudget,
+        advanced,
+        blocked,
+      });
+      return this.store.readDetail(issueId);
+    }
+
+    if (detail.shards.length > 0 && detail.shards.every((item) => item.status === 'DONE')) {
+      const now = new Date().toISOString();
+      await this.store.upsertState({
         ...detail.state,
-        phase: 'PHASE_4_IMPLEMENT',
-        shardsInProgress: 1,
-        updated: started,
-      },
-      shards: inProgressShards,
-    });
-
-    const { record } = await this.claudeAdapter.run({
-      issue: detail.issue,
-      shard,
-      round: detail.state.round,
-      cwd: detail.issue.targetRepo,
-    });
-    const implementationDetail = await this.persistImplementationRecord(issueId, shard.id, record);
-    const testRecord = await this.runShardTests(issueId, shard.id, {
-      commands: await this.store.readDefaultTestCommands(),
-      runner: 'loops-runner',
-    });
-    const testReview = await this.agentAdapter.reviewTests({
-      matrix: implementationDetail.testMatrix,
-      testRecord,
-    });
-    const review = await this.agentAdapter.review({
-      shard,
-      implementationRecord: record,
-      testRecord,
-    });
-
-    const verdict =
-      testReview.testVerdict === 'TEST-PASS' ? review.verdict : ('NEEDS-WORK' as const);
-    await this.reviewShard(issueId, shard.id, {
-      reviewer: 'codex',
-      verdict,
-      summary:
-        verdict === review.verdict ? review.summary : `测试复核未通过：${testReview.summary}`,
-      issues: verdict === review.verdict ? review.issues : testReview.issues,
-      fixInstructions:
-        verdict === review.verdict ? review.fixInstructions : testReview.fixInstructions,
-    });
-
-    return this.store.readDetail(issueId);
+        phase: 'PHASE_6_CONVERGE',
+        shardsDone: detail.shards.length,
+        shardsInProgress: 0,
+        updated: now,
+      });
+      return this.store.readDetail(issueId);
+    }
+    throw new BadRequestException('No runnable shard is available');
   }
 
   async reviewGlobal(issueId: string) {
@@ -369,18 +362,26 @@ export class LoopsService {
           }
         : annotation,
     );
-    const nextState: LoopStateItem = {
-      ...detail.state,
-      phase: review.verdict === 'PASS' ? 'PHASE_8_ANNOTATE' : 'PHASE_1_SPEC',
-      globalVerdict: review.verdict,
-      updated: now,
-    };
+    if (review.verdict !== 'PASS') {
+      return this.autoReloopAfterGlobalReview({
+        issueId,
+        detail,
+        record,
+        annotations: nextAnnotations,
+        now,
+      });
+    }
 
     await this.store.writeGlobalReview({
       issueId,
       record,
       annotations: nextAnnotations,
-      state: nextState,
+      state: {
+        ...detail.state,
+        phase: 'PHASE_8_ANNOTATE',
+        globalVerdict: review.verdict,
+        updated: now,
+      },
     });
     return this.store.readDetail(issueId);
   }
@@ -395,17 +396,14 @@ export class LoopsService {
     const now = new Date().toISOString();
     const nextRound = detail.state.round + 1;
     const reloopCount = detail.state.reloopCount + 1;
-    const specVersion = `v${Number(detail.state.specVersion.replace('v', '') || 1) + 1}`;
-    const baseBody = detail.spec?.body ?? detail.issue.body;
-    const spec: LoopSpec = {
-      id: `spec-${detail.issue.id.replace('issue-', '')}-${specVersion}`,
-      issueId,
-      version: specVersion,
-      status: 'DRAFT',
-      created: now,
-      contextBudget: detail.spec?.contextBudget ?? 24000,
-      body: `${baseBody}\n\n## 回环修订 ${specVersion}\nreviewer: ${request.reviewer ?? 'human'}\nnotes: ${request.notes ?? '整体复查后进入下一轮修订。'}\n`,
-    };
+    const specVersion = this.nextSpecVersion(detail.state.specVersion);
+    const spec = this.buildReloopSpec({
+      detail,
+      specVersion,
+      now,
+      reviewer: request.reviewer ?? 'human',
+      notes: `notes: ${request.notes ?? '整体复查后进入下一轮修订。'}`,
+    });
     const state: LoopStateItem = {
       ...detail.state,
       phase: 'PHASE_2_REVIEW',
@@ -429,6 +427,120 @@ export class LoopsService {
       maxReloop,
       phase: state.phase,
       paused: state.paused,
+    };
+  }
+
+  private async autoReloopAfterGlobalReview(input: {
+    issueId: string;
+    detail: Awaited<ReturnType<LoopsService['getIssue']>>;
+    record: LoopGlobalReviewRecord;
+    annotations: LoopAnnotation[];
+    now: string;
+  }) {
+    const maxReloop = (await readLoopsRuntimeConfig()).maxReloop;
+    if ((input.detail.state.reloopCount ?? 0) >= maxReloop) {
+      const pausedState: LoopStateItem = {
+        ...input.detail.state,
+        phase: 'PAUSED',
+        paused: true,
+        globalVerdict: input.record.verdict,
+        updated: input.now,
+      };
+      await this.store.writeGlobalReview({
+        issueId: input.issueId,
+        record: input.record,
+        annotations: input.annotations,
+        state: pausedState,
+      });
+      await this.store.appendLog({
+        type: 'RELOOP_LIMIT',
+        loop: input.issueId,
+        max_reloop: maxReloop,
+        verdict: input.record.verdict,
+        status: 'PAUSED',
+      });
+      await this.store.writeNotification({
+        issueId: input.issueId,
+        channel: 'web',
+        kind: 'RELOOP_LIMIT',
+        recipient: input.record.reviewer,
+        title: `Re-loop limit reached: ${input.issueId}`,
+        body: `Global review was ${input.record.verdict}, but max_reloop=${maxReloop} has been reached. The loop was paused for human intervention.`,
+        actionHref: `/loops/${input.issueId}`,
+      });
+      return this.store.readDetail(input.issueId);
+    }
+
+    const nextRound = input.detail.state.round + 1;
+    const reloopCount = input.detail.state.reloopCount + 1;
+    const specVersion = this.nextSpecVersion(input.detail.state.specVersion);
+    const spec = this.buildReloopSpec({
+      detail: input.detail,
+      specVersion,
+      now: input.now,
+      reviewer: input.record.reviewer,
+      notes: [
+        `global_verdict: ${input.record.verdict}`,
+        `summary: ${input.record.summary}`,
+        ...input.record.issues.map((item) => `issue(${item.severity}): ${item.desc}`),
+        ...input.record.fixInstructions.map((item) => `fix: ${item}`),
+      ].join('\n'),
+    });
+    const reloopState: LoopStateItem = {
+      ...input.detail.state,
+      phase: 'PHASE_2_REVIEW',
+      round: nextRound,
+      specVersion,
+      shardsTotal: 0,
+      shardsDone: 0,
+      shardsInProgress: 0,
+      reloopCount,
+      globalVerdict: undefined,
+      finalized: false,
+      updated: input.now,
+    };
+
+    await this.store.writeGlobalReview({
+      issueId: input.issueId,
+      record: input.record,
+      annotations: input.annotations,
+      state: {
+        ...input.detail.state,
+        phase: 'PHASE_1_SPEC',
+        globalVerdict: input.record.verdict,
+        updated: input.now,
+      },
+    });
+    await this.store.writeSpec(input.detail.issue, spec, reloopState);
+    await this.store.appendLog({
+      type: 'RELOOP',
+      loop: input.issueId,
+      reason: 'global review non-pass',
+      verdict: input.record.verdict,
+      new_spec_version: specVersion,
+      round: nextRound,
+      reloop_count: reloopCount,
+      max_reloop: maxReloop,
+    });
+    return this.store.readDetail(input.issueId);
+  }
+
+  private buildReloopSpec(input: {
+    detail: Awaited<ReturnType<LoopsService['getIssue']>>;
+    specVersion: string;
+    now: string;
+    reviewer: string;
+    notes: string;
+  }): LoopSpec {
+    const baseBody = input.detail.spec?.body ?? input.detail.issue.body;
+    return {
+      id: `spec-${input.detail.issue.id.replace('issue-', '')}-${input.specVersion}`,
+      issueId: input.detail.issue.id,
+      version: input.specVersion,
+      status: 'DRAFT',
+      created: input.now,
+      contextBudget: input.detail.spec?.contextBudget ?? 24000,
+      body: `${baseBody}\n\n## 自动回环修订 ${input.specVersion}\nreviewer: ${input.reviewer}\n${input.notes}\n`,
     };
   }
 
@@ -692,6 +804,22 @@ export class LoopsService {
       throw new BadRequestException('Shard cannot be DONE until latest round tests pass');
     }
 
+    const config = await readLoopsRuntimeConfig();
+    const currentNeedsWorkCount = detail.reviewRecords.filter(
+      (record) => record.shardId === shardId && record.verdict === 'NEEDS-WORK',
+    ).length;
+    const redoLimitExceeded =
+      request.verdict === 'NEEDS-WORK' && currentNeedsWorkCount >= config.maxShardRedo;
+    const effectiveVerdict: LoopReviewShardRequest['verdict'] = redoLimitExceeded
+      ? 'FAIL'
+      : request.verdict;
+    const effectiveFixInstructions = redoLimitExceeded
+      ? [
+          ...request.fixInstructions,
+          `Shard exceeded max_shard_redo=${config.maxShardRedo}; escalate to FAILED and require convergence/reloop decision.`,
+        ]
+      : request.fixInstructions;
+
     const now = new Date().toISOString();
     const record: LoopReviewRecord = {
       id: `review-record-${shardId}-r${detail.state.round}-${Date.now()}`,
@@ -699,16 +827,18 @@ export class LoopsService {
       shardId,
       round: detail.state.round,
       reviewer: request.reviewer,
-      verdict: request.verdict,
+      verdict: effectiveVerdict,
       issues: request.issues,
-      fixInstructions: request.fixInstructions,
-      summary: request.summary,
+      fixInstructions: effectiveFixInstructions,
+      summary: redoLimitExceeded
+        ? `${request.summary} Shard exceeded max_shard_redo=${config.maxShardRedo}; escalated to FAILED.`
+        : request.summary,
       created: now,
     };
     const shardStatus: LoopShard['status'] =
-      request.verdict === 'PASS' ? 'DONE' : request.verdict === 'FAIL' ? 'FAILED' : 'NEEDS-WORK';
+      effectiveVerdict === 'PASS' ? 'DONE' : effectiveVerdict === 'FAIL' ? 'FAILED' : 'NEEDS-WORK';
     const annotationVerdict: LoopAnnotation['verdict'] =
-      request.verdict === 'PASS' ? 'pass' : request.verdict === 'FAIL' ? 'fail' : 'needs-work';
+      effectiveVerdict === 'PASS' ? 'pass' : effectiveVerdict === 'FAIL' ? 'fail' : 'needs-work';
     const nextShards = detail.shards.map((item) =>
       item.id === shardId ? { ...item, status: shardStatus } : item,
     );
@@ -716,15 +846,20 @@ export class LoopsService {
       annotation.target === shardId
         ? {
             ...annotation,
-            implStatus: request.verdict === 'PASS' ? ('done' as const) : annotation.implStatus,
+            implStatus:
+              effectiveVerdict === 'PASS'
+                ? ('done' as const)
+                : effectiveVerdict === 'FAIL'
+                  ? ('failed' as const)
+                  : annotation.implStatus,
             testStatus:
               testRecord?.status === 'TEST-PASS' ? ('pass' as const) : annotation.testStatus,
             verdict: annotationVerdict,
-            coverage: request.verdict === 'PASS' ? ('full' as const) : annotation.coverage,
+            coverage: effectiveVerdict === 'PASS' ? ('full' as const) : annotation.coverage,
             notes:
-              request.verdict === 'PASS'
+              effectiveVerdict === 'PASS'
                 ? `Review Record PASS：${record.summary}`
-                : `Review Record ${request.verdict}：${record.fixInstructions.join('；') || record.summary}`,
+                : `Review Record ${effectiveVerdict}：${record.fixInstructions.join('；') || record.summary}`,
           }
         : annotation,
     );
@@ -745,6 +880,42 @@ export class LoopsService {
       shards: nextShards,
       state: nextState,
     });
+
+    if (redoLimitExceeded) {
+      await this.store.appendLog({
+        type: 'SHARD_REDO_LIMIT',
+        loop: issueId,
+        shard: shardId,
+        max_shard_redo: config.maxShardRedo,
+        needs_work_count: currentNeedsWorkCount + 1,
+        status: 'FAILED',
+      });
+      await this.store.writeNotification({
+        issueId,
+        channel: 'web',
+        kind: 'SHARD_REDO_LIMIT',
+        recipient: request.reviewer,
+        title: `Shard redo limit reached: ${shardId}`,
+        body: `Shard ${shardId} exceeded max_shard_redo=${config.maxShardRedo} and was marked FAILED for convergence or re-loop decision.`,
+        actionHref: `/loops/${issueId}`,
+      });
+    }
+
+    if (effectiveVerdict === 'PASS') {
+      const commit = await this.gitAdapter.commitShard({
+        issue: detail.issue,
+        shard,
+        changedFiles: implementationRecord.changedFiles,
+      });
+      await this.store.appendLog({
+        type: 'SHARD_COMMIT',
+        loop: issueId,
+        shard: shardId,
+        committed: commit.committed,
+        message: commit.message,
+        branch: commit.branch,
+      });
+    }
 
     return record;
   }
@@ -857,6 +1028,121 @@ export class LoopsService {
           shards.some((candidate) => candidate.id === dependency && candidate.status === 'DONE'),
         ),
     );
+  }
+
+  private async blockShardForContextBudget(
+    issueId: string,
+    detail: LoopIssueDetail,
+    shard: LoopShard,
+    contextBudget: number,
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    const nextShards = detail.shards.map((item) =>
+      item.id === shard.id ? { ...item, status: 'BLOCKED' as const } : item,
+    );
+    const nextAnnotations = detail.annotations.map((annotation) =>
+      annotation.target === shard.id
+        ? {
+            ...annotation,
+            implStatus: 'skipped' as const,
+            testStatus: 'skipped' as const,
+            verdict: 'needs-work' as const,
+            coverage: 'none' as const,
+            risk: 'high' as const,
+            notes: `Shard est_context=${shard.estContext} exceeds context_budget=${contextBudget}; re-decompose before implementation.`,
+          }
+        : annotation,
+    );
+    await this.store.writeShardProgress({
+      issueId,
+      from: shard.status,
+      to: 'BLOCKED',
+      actor: 'loops-scheduler',
+      shardId: shard.id,
+      state: {
+        ...detail.state,
+        phase: 'PHASE_4_IMPLEMENT',
+        shardsInProgress: 0,
+        updated: now,
+      },
+      shards: nextShards,
+      annotations: nextAnnotations,
+    });
+    await this.store.appendLog({
+      type: 'CONTEXT_BUDGET_EXCEEDED',
+      loop: issueId,
+      shard: shard.id,
+      est_context: shard.estContext,
+      context_budget: contextBudget,
+      status: 'BLOCKED',
+    });
+    await this.store.writeNotification({
+      issueId,
+      channel: 'web',
+      kind: 'CONTEXT_BUDGET_EXCEEDED',
+      recipient: 'human',
+      title: `Shard blocked by context budget: ${shard.id}`,
+      body: `Shard ${shard.id} est_context=${shard.estContext} exceeds context_budget=${contextBudget}. Re-decompose before implementation.`,
+      actionHref: `/loops/${issueId}`,
+    });
+  }
+
+  private async runRunnableShard(
+    issueId: string,
+    detail: LoopIssueDetail,
+    shard: LoopShard,
+  ): Promise<void> {
+    const started = new Date().toISOString();
+    const inProgressShards = detail.shards.map((item) =>
+      item.id === shard.id ? { ...item, status: 'IN_PROGRESS' as const } : item,
+    );
+    await this.store.writeShardProgress({
+      issueId,
+      from: shard.status,
+      to: 'IN_PROGRESS',
+      actor: 'loops-scheduler',
+      shardId: shard.id,
+      state: {
+        ...detail.state,
+        phase: 'PHASE_4_IMPLEMENT',
+        shardsInProgress: 1,
+        updated: started,
+      },
+      shards: inProgressShards,
+    });
+
+    const { record } = await this.claudeAdapter.run({
+      issue: detail.issue,
+      shard,
+      round: detail.state.round,
+      cwd: detail.issue.targetRepo,
+    });
+    const implementationDetail = await this.persistImplementationRecord(issueId, shard.id, record);
+    const testRecord = await this.runShardTests(issueId, shard.id, {
+      commands: await this.store.readDefaultTestCommands(),
+      runner: 'loops-runner',
+    });
+    const testReview = await this.agentAdapter.reviewTests({
+      matrix: implementationDetail.testMatrix,
+      testRecord,
+    });
+    const review = await this.agentAdapter.review({
+      shard,
+      implementationRecord: record,
+      testRecord,
+    });
+
+    const verdict =
+      testReview.testVerdict === 'TEST-PASS' ? review.verdict : ('NEEDS-WORK' as const);
+    await this.reviewShard(issueId, shard.id, {
+      reviewer: 'codex',
+      verdict,
+      summary:
+        verdict === review.verdict ? review.summary : `测试复核未通过：${testReview.summary}`,
+      issues: verdict === review.verdict ? review.issues : testReview.issues,
+      fixInstructions:
+        verdict === review.verdict ? review.fixInstructions : testReview.fixInstructions,
+    });
   }
 
   private async resolveTargetRepo(input: string) {

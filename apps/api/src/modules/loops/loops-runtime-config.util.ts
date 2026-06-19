@@ -4,8 +4,11 @@ import { load } from 'js-yaml';
 import * as path from 'path';
 
 export type LoopsRuntimeConfig = {
+  contextBudget: number;
+  maxParallel: number;
   maxRetry: number;
   maxReloop: number;
+  maxShardRedo: number;
   shardTimeoutSec: number;
   cost: {
     tokenCapPerLoop: number;
@@ -13,22 +16,38 @@ export type LoopsRuntimeConfig = {
   };
   tests: {
     defaultCommands: string[];
+    allowedCommands: string[];
+    coverageFloor: {
+      lines?: number;
+      branches?: number;
+    };
   };
 };
 
 type ParsedLoopsRuntimeConfig = {
+  contextBudget?: number;
+  maxParallel?: number;
   maxRetry?: number;
   maxReloop?: number;
+  maxShardRedo?: number;
   shardTimeoutSec?: number;
   cost: Partial<LoopsRuntimeConfig['cost']>;
   tests: {
     defaultCommands: string[];
+    allowedCommands: string[];
+    coverageFloor: {
+      lines?: number;
+      branches?: number;
+    };
   };
 };
 
 const DEFAULT_RUNTIME_CONFIG: LoopsRuntimeConfig = {
+  contextBudget: 24000,
+  maxParallel: 1,
   maxRetry: 2,
   maxReloop: 3,
+  maxShardRedo: 3,
   shardTimeoutSec: 900,
   cost: {
     tokenCapPerLoop: 5000000,
@@ -36,6 +55,8 @@ const DEFAULT_RUNTIME_CONFIG: LoopsRuntimeConfig = {
   },
   tests: {
     defaultCommands: ['pnpm --version'],
+    allowedCommands: [],
+    coverageFloor: {},
   },
 };
 
@@ -45,8 +66,11 @@ export async function readLoopsRuntimeConfig(): Promise<LoopsRuntimeConfig> {
     .catch(() => '');
   const parsed = parseLoopsRuntimeConfig(content);
   return {
+    contextBudget: parsed.contextBudget ?? DEFAULT_RUNTIME_CONFIG.contextBudget,
+    maxParallel: parsed.maxParallel ?? DEFAULT_RUNTIME_CONFIG.maxParallel,
     maxRetry: parsed.maxRetry ?? DEFAULT_RUNTIME_CONFIG.maxRetry,
     maxReloop: parsed.maxReloop ?? DEFAULT_RUNTIME_CONFIG.maxReloop,
+    maxShardRedo: parsed.maxShardRedo ?? DEFAULT_RUNTIME_CONFIG.maxShardRedo,
     shardTimeoutSec: parsed.shardTimeoutSec ?? DEFAULT_RUNTIME_CONFIG.shardTimeoutSec,
     cost: {
       tokenCapPerLoop: parsed.cost.tokenCapPerLoop ?? DEFAULT_RUNTIME_CONFIG.cost.tokenCapPerLoop,
@@ -56,6 +80,15 @@ export async function readLoopsRuntimeConfig(): Promise<LoopsRuntimeConfig> {
       defaultCommands: parsed.tests.defaultCommands.length
         ? parsed.tests.defaultCommands
         : DEFAULT_RUNTIME_CONFIG.tests.defaultCommands,
+      allowedCommands: parsed.tests.allowedCommands.length
+        ? parsed.tests.allowedCommands
+        : parsed.tests.defaultCommands.length
+          ? parsed.tests.defaultCommands
+          : DEFAULT_RUNTIME_CONFIG.tests.defaultCommands,
+      coverageFloor: {
+        lines: parsed.tests.coverageFloor.lines,
+        branches: parsed.tests.coverageFloor.branches,
+      },
     },
   };
 }
@@ -66,6 +99,8 @@ function parseLoopsRuntimeConfig(content: string): ParsedLoopsRuntimeConfig {
       cost: {},
       tests: {
         defaultCommands: [],
+        allowedCommands: [],
+        coverageFloor: {},
       },
     };
   }
@@ -78,10 +113,19 @@ function parseLoopsRuntimeConfig(content: string): ParsedLoopsRuntimeConfig {
         (item): item is string => typeof item === 'string' && item.trim().length > 0,
       )
     : [];
+  const allowedCommands = Array.isArray(tests?.allowed_commands)
+    ? tests.allowed_commands.filter(
+        (item): item is string => typeof item === 'string' && item.trim().length > 0,
+      )
+    : [];
+  const coverageFloor = asRecord(tests?.coverage_floor);
 
   return {
+    contextBudget: asPositiveNumber(raw?.context_budget),
+    maxParallel: asPositiveInteger(raw?.max_parallel),
     maxRetry: asNonNegativeInteger(raw?.max_retry),
     maxReloop: asNonNegativeInteger(raw?.max_reloop),
+    maxShardRedo: asNonNegativeInteger(raw?.max_shard_redo),
     shardTimeoutSec: asPositiveNumber(raw?.shard_timeout_sec),
     cost: {
       tokenCapPerLoop: asPositiveNumber(cost?.token_cap_per_loop),
@@ -89,6 +133,11 @@ function parseLoopsRuntimeConfig(content: string): ParsedLoopsRuntimeConfig {
     },
     tests: {
       defaultCommands,
+      allowedCommands,
+      coverageFloor: {
+        lines: asPercentage(coverageFloor?.lines),
+        branches: asPercentage(coverageFloor?.branches),
+      },
     },
   };
 }
@@ -114,6 +163,16 @@ function asPositiveNumber(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
+function asPercentage(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100
+    ? value
+    : undefined;
+}
+
 function asNonNegativeInteger(value: unknown) {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
+function asPositiveInteger(value: unknown) {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
 }

@@ -156,7 +156,7 @@ node scripts/init-project.js
 
 启动后：
 
-- 前端：http://localhost:3000
+- 前端：http://localhost:3003
 - 后端：http://localhost:3101
 - API 文档：http://localhost:3101/docs
 
@@ -614,7 +614,7 @@ API 容器自动挂载配置文件（只读）：
 | Redis      | 6379         | 缓存                |
 | RabbitMQ   | 5672 / 15672 | 消息队列 / 管理界面 |
 | API        | 3101         | NestJS 后端         |
-| Web        | 3000         | Next.js 前端        |
+| Web        | 3003         | Next.js 前端        |
 
 ---
 

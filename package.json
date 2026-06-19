@@ -53,7 +53,7 @@
     "loops:finalize": "pnpm --filter @repo/api exec ts-node --project tsconfig.json ../../scripts/loops-cli.ts finalize",
     "prepare": "husky || true",
     "kill:api": "lsof -ti:13100 | xargs kill -9 2>/dev/null && echo \"done\" || echo \"no process on port 13100\"",
-    "kill:web": "lsof -ti:3000 | xargs kill -9 2>/dev/null && echo \"done\" || echo \"no process on port 3000\"",
+    "kill:web": "lsof -ti:3003 | xargs kill -9 2>/dev/null && echo \"done\" || echo \"no process on port 3003\"",
     "openssl:random": "openssl rand -hex 32"
   },
   "devDependencies": {

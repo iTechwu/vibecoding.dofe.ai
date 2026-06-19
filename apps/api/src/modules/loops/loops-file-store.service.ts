@@ -547,6 +547,11 @@ export class LoopsFileStoreService {
     const recordDir = `runs/${input.issueId}/${input.shardId}/round-${input.record.round}`;
     await this.writeJson(`${recordDir}/review.json`, input.record);
     await this.writeText(`${recordDir}/review.md`, this.renderReviewRecord(input.record));
+    await this.writeJson(`${recordDir}/reviews/${input.record.id}.json`, input.record);
+    await this.writeText(
+      `${recordDir}/reviews/${input.record.id}.md`,
+      this.renderReviewRecord(input.record),
+    );
     await this.writeJson(`annotations/${input.issueId}.json`, input.annotations);
     await this.writeText(
       `annotations/${input.issueId}.yaml`,
@@ -774,10 +779,14 @@ export class LoopsFileStoreService {
   }
 
   private async readReviewRecords(issueId: string) {
-    return this.readRunRecords<LoopReviewRecord>(issueId, 'review.json');
+    return this.readRunRecords<LoopReviewRecord>(issueId, 'review.json', 'reviews');
   }
 
-  private async readRunRecords<T extends { created: string }>(issueId: string, filename: string) {
+  private async readRunRecords<T extends { created: string; id?: string }>(
+    issueId: string,
+    filename: string,
+    historyDir?: string,
+  ) {
     const issueDir = path.join(this.root, 'runs', issueId);
     const shardIds = await fs.readdir(issueDir).catch(() => []);
     const recordPaths: string[] = [];
@@ -790,13 +799,26 @@ export class LoopsFileStoreService {
         if (await this.exists(recordPath)) {
           recordPaths.push(`runs/${issueId}/${shardId}/${round}/${filename}`);
         }
+        if (historyDir) {
+          const historyPath = path.join(shardDir, round, historyDir);
+          const historyFiles = await fs.readdir(historyPath).catch(() => []);
+          recordPaths.push(
+            ...historyFiles
+              .filter((file) => file.endsWith('.json'))
+              .map((file) => `runs/${issueId}/${shardId}/${round}/${historyDir}/${file}`),
+          );
+        }
       }
     }
 
     const records = await Promise.all(
       recordPaths.map((recordPath) => this.readJson<T>(recordPath)),
     );
-    return records.sort((a, b) => b.created.localeCompare(a.created));
+    const deduped = new Map<string, T>();
+    for (const record of records) {
+      deduped.set(record.id ?? `${record.created}-${deduped.size}`, record);
+    }
+    return [...deduped.values()].sort((a, b) => b.created.localeCompare(a.created));
   }
 
   private async readState(): Promise<StateFile> {
@@ -1019,11 +1041,21 @@ export class LoopsFileStoreService {
           `- \`${item.command}\` exit=${item.exitCode ?? 'null'} duration=${item.durationMs}ms`,
       )
       .join('\n');
+    const coverage = record.coverage
+      ? [
+          record.coverage.lines !== undefined ? `- lines: ${record.coverage.lines}%` : undefined,
+          record.coverage.branches !== undefined
+            ? `- branches: ${record.coverage.branches}%`
+            : undefined,
+        ]
+          .filter(Boolean)
+          .join('\n')
+      : '未解析到覆盖率摘要';
     const failures =
       record.failedTests.length > 0
         ? record.failedTests.map((item) => `- ${item.name}: ${item.reason}`).join('\n')
         : '无';
-    return `---\nid: ${record.id}\nscope: ${record.shardId}\nround: ${record.round}\nrunner: ${record.runner}\nreviewer: ${record.reviewer}\nstatus: ${record.status}\ncreated: ${record.created}\n---\n\n## 测试执行摘要\n${commands}\n\n## 失败归因\n${failures}\n\n## 修复指令\n${record.fixInstructions.map((item) => `- ${item}`).join('\n') || '无'}\n`;
+    return `---\nid: ${record.id}\nscope: ${record.shardId}\nround: ${record.round}\nrunner: ${record.runner}\nreviewer: ${record.reviewer}\nstatus: ${record.status}\ncreated: ${record.created}\n---\n\n## 测试执行摘要\n${commands}\n\n## 覆盖率摘要\n${coverage}\n\n## 失败归因\n${failures}\n\n## 修复指令\n${record.fixInstructions.map((item) => `- ${item}`).join('\n') || '无'}\n`;
   }
 
   private renderTestMatrix(matrix: LoopTestMatrix) {
