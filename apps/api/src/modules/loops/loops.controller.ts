@@ -1,0 +1,112 @@
+import { Controller, VERSION_NEUTRAL } from '@nestjs/common';
+import { TsRestHandler, tsRestHandler } from '@ts-rest/nest';
+import { created, success } from '@dofe/infra-common/ts-rest';
+import { loopsContract as c } from '@repo/contracts/api';
+import { LoopsService } from './loops.service';
+
+@Controller({
+  version: VERSION_NEUTRAL,
+})
+export class LoopsController {
+  constructor(private readonly loopsService: LoopsService) {}
+
+  @TsRestHandler(c.list)
+  async list() {
+    return tsRestHandler(c.list, async () => {
+      return success(await this.loopsService.list());
+    });
+  }
+
+  @TsRestHandler(c.createIssue)
+  async createIssue() {
+    return tsRestHandler(c.createIssue, async ({ body }) => {
+      return created(await this.loopsService.createIssue(body));
+    });
+  }
+
+  @TsRestHandler(c.getIssue)
+  async getIssue() {
+    return tsRestHandler(c.getIssue, async ({ params }) => {
+      return success(await this.loopsService.getIssue(params.issueId));
+    });
+  }
+
+  @TsRestHandler(c.generateSpec)
+  async generateSpec() {
+    return tsRestHandler(c.generateSpec, async ({ params }) => {
+      return success(await this.loopsService.generateSpec(params.issueId));
+    });
+  }
+
+  @TsRestHandler(c.reviewSpec)
+  async reviewSpec() {
+    return tsRestHandler(c.reviewSpec, async ({ params, body }) => {
+      return success(await this.loopsService.reviewSpec(params.issueId, body));
+    });
+  }
+
+  @TsRestHandler(c.decompose)
+  async decompose() {
+    return tsRestHandler(c.decompose, async ({ params }) => {
+      return success(await this.loopsService.decompose(params.issueId));
+    });
+  }
+
+  @TsRestHandler(c.runShardTests)
+  async runShardTests() {
+    return tsRestHandler(c.runShardTests, async ({ params, body }) => {
+      return success(await this.loopsService.runShardTests(params.issueId, params.shardId, body));
+    });
+  }
+
+  @TsRestHandler(c.recordShardImplementation)
+  async recordShardImplementation() {
+    return tsRestHandler(c.recordShardImplementation, async ({ params, body }) => {
+      return success(
+        await this.loopsService.recordShardImplementation(params.issueId, params.shardId, body),
+      );
+    });
+  }
+
+  @TsRestHandler(c.reviewShard)
+  async reviewShard() {
+    return tsRestHandler(c.reviewShard, async ({ params, body }) => {
+      return success(await this.loopsService.reviewShard(params.issueId, params.shardId, body));
+    });
+  }
+
+  @TsRestHandler(c.intervene)
+  async intervene() {
+    return tsRestHandler(c.intervene, async ({ params, body }) => {
+      return success(await this.loopsService.intervene(params.issueId, body));
+    });
+  }
+
+  @TsRestHandler(c.doctor)
+  async doctor() {
+    return tsRestHandler(c.doctor, async () => {
+      return success(await this.loopsService.doctor());
+    });
+  }
+
+  @TsRestHandler(c.cost)
+  async cost() {
+    return tsRestHandler(c.cost, async () => {
+      return success(await this.loopsService.cost());
+    });
+  }
+
+  @TsRestHandler(c.logs)
+  async logs() {
+    return tsRestHandler(c.logs, async ({ query }) => {
+      return success(await this.loopsService.logs(query));
+    });
+  }
+
+  @TsRestHandler(c.resume)
+  async resume() {
+    return tsRestHandler(c.resume, async () => {
+      return success(await this.loopsService.resume());
+    });
+  }
+}

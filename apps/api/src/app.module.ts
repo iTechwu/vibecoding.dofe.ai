@@ -31,14 +31,10 @@ import * as winston from 'winston';
 
 /** uploader module */
 import { UploaderModule } from './modules/uploader/uploader.module';
+import { LoopsModule } from './modules/loops/loops.module';
 
 /** i18n */
-import {
-  AcceptLanguageResolver,
-  QueryResolver,
-  HeaderResolver,
-  I18nModule,
-} from 'nestjs-i18n';
+import { AcceptLanguageResolver, QueryResolver, HeaderResolver, I18nModule } from 'nestjs-i18n';
 import * as path from 'path';
 
 /** request middleware */
@@ -65,9 +61,7 @@ const preBootstrapLogger = winston.createLogger({
     WinstonModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
-        const output =
-          configService.get<LogOutputMode>('app.nestLogOutput') ||
-          'file';
+        const output = configService.get<LogOutputMode>('app.nestLogOutput') || 'file';
         return getWinstonConfig(output);
       },
       inject: [ConfigService],
@@ -151,9 +145,7 @@ const preBootstrapLogger = winston.createLogger({
           if (error.message && error.message.includes('version')) {
             throw error;
           }
-          preBootstrapLogger.warn(
-            `无法预先检查 Redis 版本，BullMQ 将尝试连接: ${error.message}`,
-          );
+          preBootstrapLogger.warn(`无法预先检查 Redis 版本，BullMQ 将尝试连接: ${error.message}`);
         }
 
         return {
@@ -175,6 +167,7 @@ const preBootstrapLogger = winston.createLogger({
     SystemHealthModule,
     JwtModule,
     UploaderModule,
+    LoopsModule,
   ],
   providers: [
     {
@@ -197,8 +190,6 @@ export class AppModule implements NestModule, OnModuleInit {
   }
 
   configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(RequestMiddleware)
-      .forRoutes({ path: '*path', method: RequestMethod.ALL });
+    consumer.apply(RequestMiddleware).forRoutes({ path: '*path', method: RequestMethod.ALL });
   }
 }

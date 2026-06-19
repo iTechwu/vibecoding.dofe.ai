@@ -1,36 +1,59 @@
 import { Injectable } from '@nestjs/common';
+import { existsSync } from 'fs';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import type {
   LoopAnnotation,
+  LoopCostItem,
   LoopDetail,
+  LoopImplementationRecord,
   LoopIntake,
   LoopIssue,
+  LoopLogEntry,
+  LoopReviewRecord,
   LoopShard,
   LoopSpec,
   LoopStateItem,
+  LoopTestMatrix,
+  LoopTestRecord,
 } from '@repo/contracts';
 
 type StateFile = {
   loops: LoopStateItem[];
 };
 
+export type LoopsDoctorResult = {
+  ok: boolean;
+  root: string;
+  loops: number;
+  issues: number;
+  problems: string[];
+};
+
+export type LoopsResumeResult = {
+  resumed: number;
+  updatedShards: Array<{
+    issueId: string;
+    shardId: string;
+    from: string;
+    to: string;
+  }>;
+};
+
+type LoopsCostConfig = {
+  tokenCapPerLoop: number;
+  callCapPerLoop: number;
+};
+
 @Injectable()
 export class LoopsFileStoreService {
-  private readonly root = path.join(process.cwd(), '..', '..', '.loops');
+  private readonly root = path.join(this.findWorkspaceRoot(), '.loops');
 
   async ensureInitialized() {
     await Promise.all(
-      [
-        'issues',
-        'intakes',
-        'specs',
-        'shards',
-        'tests',
-        'runs',
-        'annotations',
-        'archive',
-      ].map((dir) => fs.mkdir(path.join(this.root, dir), { recursive: true })),
+      ['issues', 'intakes', 'specs', 'shards', 'tests', 'runs', 'annotations', 'archive'].map(
+        (dir) => fs.mkdir(path.join(this.root, dir), { recursive: true }),
+      ),
     );
 
     await this.writeJsonIfMissing('state.json', { loops: [] });
@@ -47,21 +70,18 @@ export class LoopsFileStoreService {
   async readDetail(issueId: string): Promise<LoopDetail> {
     await this.ensureInitialized();
     const issue = await this.readJson<LoopIssue>(`issues/${issueId}.json`);
-    const intake = await this.readJson<LoopIntake>(
-      `intakes/${this.intakeId(issueId)}.json`,
-    );
-    const spec = await this.readOptionalJson<LoopSpec>(
-      `specs/${issueId}/spec.v1.json`,
-    );
-    const shards = await this.readOptionalJson<LoopShard[]>(
-      `shards/${issueId}/shards.json`,
-    );
+    const intake = await this.readJson<LoopIntake>(`intakes/${this.intakeId(issueId)}.json`);
+    const spec = await this.readOptionalJson<LoopSpec>(`specs/${issueId}/spec.v1.json`);
+    const shards = await this.readOptionalJson<LoopShard[]>(`shards/${issueId}/shards.json`);
+    const testMatrix = await this.readOptionalJson<LoopTestMatrix>(`tests/${issueId}/matrix.json`);
     const annotations = await this.readOptionalJson<LoopAnnotation[]>(
       `annotations/${issueId}.json`,
     );
-    const state = (await this.readState()).loops.find(
-      (item) => item.issueId === issueId,
-    );
+    const implementationRecords = await this.readImplementationRecords(issueId);
+    const reviewRecords = await this.readReviewRecords(issueId);
+    const testRecords = await this.readTestRecords(issueId);
+    const logs = await this.readLogs({ issueId, limit: 40 });
+    const state = (await this.readState()).loops.find((item) => item.issueId === issueId);
 
     if (!state) {
       throw new Error(`Loop state not found for ${issueId}`);
@@ -72,8 +92,169 @@ export class LoopsFileStoreService {
       intake,
       spec,
       shards: shards ?? [],
+      testMatrix,
       annotations: annotations ?? [],
+      implementationRecords,
+      reviewRecords,
+      testRecords,
+      logs,
       state,
+    };
+  }
+
+  async readLogs(input: { issueId?: string; limit?: number } = {}) {
+    await this.ensureInitialized();
+    const content = await fs.readFile(path.join(this.root, 'log.jsonl'), 'utf8').catch(() => '');
+    const entries = content
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => this.parseLogLine(line))
+      .filter((entry): entry is LoopLogEntry => Boolean(entry))
+      .filter((entry) => {
+        if (!input.issueId) return true;
+        return entry.loop === input.issueId || entry.issue === input.issueId;
+      })
+      .sort((a, b) => b.ts.localeCompare(a.ts));
+
+    return entries.slice(0, input.limit ?? 50);
+  }
+
+  async doctor(): Promise<LoopsDoctorResult> {
+    await this.ensureInitialized();
+    const state = await this.readState();
+    const issues = await this.readAllIssues();
+    const problems: string[] = [];
+
+    for (const loop of state.loops) {
+      const issue = issues.find((item) => item.id === loop.issueId);
+      if (!issue) {
+        problems.push(`state references missing issue ${loop.issueId}`);
+        continue;
+      }
+
+      const intakePath = path.join(this.root, 'intakes', `${this.intakeId(loop.issueId)}.json`);
+      if (!(await this.exists(intakePath))) {
+        problems.push(`missing intake for ${loop.issueId}`);
+      }
+
+      if (loop.specVersion !== 'v0') {
+        const specPath = path.join(this.root, 'specs', loop.issueId, 'spec.v1.json');
+        if (!(await this.exists(specPath))) {
+          problems.push(`missing spec ${loop.specVersion} for ${loop.issueId}`);
+        }
+      }
+
+      if (loop.shardsTotal > 0) {
+        const shardPath = path.join(this.root, 'shards', loop.issueId, 'shards.json');
+        if (!(await this.exists(shardPath))) {
+          problems.push(`missing shards for ${loop.issueId}`);
+        }
+
+        const matrixPath = path.join(this.root, 'tests', loop.issueId, 'matrix.json');
+        if (!(await this.exists(matrixPath))) {
+          problems.push(`missing test matrix for ${loop.issueId}`);
+        }
+      }
+    }
+
+    return {
+      ok: problems.length === 0,
+      root: this.root,
+      loops: state.loops.length,
+      issues: issues.length,
+      problems,
+    };
+  }
+
+  async readCost() {
+    await this.ensureInitialized();
+    const state = await this.readState();
+    const config = await this.readCostConfig();
+    const loops: LoopCostItem[] = state.loops.map((loop) => ({
+      issueId: loop.issueId,
+      costTokens: loop.costTokens,
+      costCalls: loop.costCalls,
+      tokenCap: config.tokenCapPerLoop,
+      callCap: config.callCapPerLoop,
+      tokensRemaining: Math.max(0, config.tokenCapPerLoop - loop.costTokens),
+      callsRemaining: Math.max(0, config.callCapPerLoop - loop.costCalls),
+      paused: loop.paused,
+      tripped: loop.costTokens >= config.tokenCapPerLoop || loop.costCalls >= config.callCapPerLoop,
+    }));
+    return { loops };
+  }
+
+  async enforceCostGuard(loop: LoopStateItem): Promise<LoopStateItem> {
+    const config = await this.readCostConfig();
+    const tripped =
+      loop.costTokens >= config.tokenCapPerLoop || loop.costCalls >= config.callCapPerLoop;
+    if (!tripped) return loop;
+
+    const next: LoopStateItem = {
+      ...loop,
+      phase: 'PAUSED',
+      paused: true,
+      updated: new Date().toISOString(),
+    };
+    await this.appendLog({
+      type: 'COST_TRIP',
+      loop: loop.issueId,
+      cost_tokens: loop.costTokens,
+      cost_calls: loop.costCalls,
+      token_cap: config.tokenCapPerLoop,
+      call_cap: config.callCapPerLoop,
+    });
+    return next;
+  }
+
+  async resumeInterruptedLoops(): Promise<LoopsResumeResult> {
+    await this.ensureInitialized();
+    const state = await this.readState();
+    const updatedShards: LoopsResumeResult['updatedShards'] = [];
+
+    for (const loop of state.loops) {
+      const shards = await this.readOptionalJson<LoopShard[]>(`shards/${loop.issueId}/shards.json`);
+      if (!shards?.length) continue;
+
+      let changed = false;
+      const nextShards = shards.map((shard) => {
+        if (shard.status !== 'IN_PROGRESS' && shard.status !== 'TIMEOUT') {
+          return shard;
+        }
+        changed = true;
+        updatedShards.push({
+          issueId: loop.issueId,
+          shardId: shard.id,
+          from: shard.status,
+          to: 'TODO',
+        });
+        return { ...shard, status: 'TODO' as const };
+      });
+
+      if (!changed) continue;
+
+      await this.writeJson(`shards/${loop.issueId}/shards.json`, nextShards);
+      await this.writeText(`shards/${loop.issueId}/dag.yaml`, this.renderDag(nextShards));
+      const nextState: LoopStateItem = {
+        ...loop,
+        shardsInProgress: 0,
+        updated: new Date().toISOString(),
+        paused: false,
+      };
+      await this.upsertState(nextState);
+      await this.appendLog({
+        type: 'HUMAN_INTERVENE',
+        loop: loop.issueId,
+        action: 'resume',
+        reset_shards: updatedShards
+          .filter((item) => item.issueId === loop.issueId)
+          .map((item) => item.shardId),
+      });
+    }
+
+    return {
+      resumed: updatedShards.length,
+      updatedShards,
     };
   }
 
@@ -85,10 +266,7 @@ export class LoopsFileStoreService {
   }) {
     await this.ensureInitialized();
     await this.writeJson(`issues/${input.issue.id}.json`, input.issue);
-    await this.writeText(
-      `issues/${input.issue.id}.md`,
-      this.renderIssueMarkdown(input.issue),
-    );
+    await this.writeText(`issues/${input.issue.id}.md`, this.renderIssueMarkdown(input.issue));
     await this.writeJson(`intakes/${input.intake.id}.json`, input.intake);
     await this.writeText(
       `intakes/${input.intake.id}.md`,
@@ -132,6 +310,7 @@ export class LoopsFileStoreService {
     issue: LoopIssue;
     spec: LoopSpec;
     shards: LoopShard[];
+    testMatrix: LoopTestMatrix;
     annotations: LoopAnnotation[];
     state: LoopStateItem;
   }) {
@@ -139,17 +318,16 @@ export class LoopsFileStoreService {
       recursive: true,
     });
     await this.writeJson(`shards/${input.issue.id}/shards.json`, input.shards);
-    await this.writeText(
-      `shards/${input.issue.id}/dag.yaml`,
-      this.renderDag(input.shards),
-    );
+    await this.writeText(`shards/${input.issue.id}/dag.yaml`, this.renderDag(input.shards));
     await Promise.all(
       input.shards.map((shard) =>
-        this.writeText(
-          `shards/${input.issue.id}/${shard.id}.md`,
-          this.renderShardMarkdown(shard),
-        ),
+        this.writeText(`shards/${input.issue.id}/${shard.id}.md`, this.renderShardMarkdown(shard)),
       ),
+    );
+    await this.writeJson(`tests/${input.issue.id}/matrix.json`, input.testMatrix);
+    await this.writeText(
+      `tests/${input.issue.id}/matrix.md`,
+      this.renderTestMatrix(input.testMatrix),
     );
     await this.writeJson(`annotations/${input.issue.id}.json`, input.annotations);
     await this.writeText(
@@ -161,7 +339,7 @@ export class LoopsFileStoreService {
       type: 'TEST_MATRIX',
       issue: input.issue.id,
       spec: input.spec.id,
-      required_count: input.shards.length * 2,
+      required_count: input.testMatrix.requiredTests.length,
     });
     await this.appendLog({
       type: 'ANNOTATE',
@@ -170,16 +348,132 @@ export class LoopsFileStoreService {
     });
   }
 
+  async writeTestRecord(input: {
+    issueId: string;
+    shardId: string;
+    record: LoopTestRecord;
+    annotations: LoopAnnotation[];
+    shards: LoopShard[];
+    state: LoopStateItem;
+  }) {
+    const recordDir = `tests/${input.issueId}/records`;
+    await this.writeJson(`${recordDir}/${input.record.id}.json`, input.record);
+    await this.writeText(`${recordDir}/${input.record.id}.md`, this.renderTestRecord(input.record));
+    await this.writeJson(`annotations/${input.issueId}.json`, input.annotations);
+    await this.writeText(
+      `annotations/${input.issueId}.yaml`,
+      this.renderAnnotations(input.annotations),
+    );
+    await this.writeJson(`shards/${input.issueId}/shards.json`, input.shards);
+    await this.writeText(`shards/${input.issueId}/dag.yaml`, this.renderDag(input.shards));
+    await this.upsertState(input.state);
+    await this.appendLog({
+      type: 'TEST_RUN',
+      loop: input.issueId,
+      shard: input.shardId,
+      status: input.record.status,
+      commands: input.record.commands.map((item) => item.command),
+    });
+  }
+
+  async writeImplementationRecord(input: {
+    issueId: string;
+    shardId: string;
+    record: LoopImplementationRecord;
+    annotations: LoopAnnotation[];
+    shards: LoopShard[];
+    state: LoopStateItem;
+  }) {
+    const recordDir = `runs/${input.issueId}/${input.shardId}/round-${input.record.round}`;
+    await this.writeJson(`${recordDir}/implementation.json`, input.record);
+    await this.writeText(
+      `${recordDir}/implementation.md`,
+      this.renderImplementationRecord(input.record),
+    );
+    await this.writeJson(`annotations/${input.issueId}.json`, input.annotations);
+    await this.writeText(
+      `annotations/${input.issueId}.yaml`,
+      this.renderAnnotations(input.annotations),
+    );
+    await this.writeJson(`shards/${input.issueId}/shards.json`, input.shards);
+    await this.writeText(`shards/${input.issueId}/dag.yaml`, this.renderDag(input.shards));
+    await this.upsertState(input.state);
+    await this.appendLog({
+      type: 'IMPLEMENTATION_RECORD',
+      loop: input.issueId,
+      shard: input.shardId,
+      status: input.record.status,
+      implementer: input.record.implementer,
+      changed_files: input.record.changedFiles,
+    });
+  }
+
+  async writeReviewRecord(input: {
+    issueId: string;
+    shardId: string;
+    record: LoopReviewRecord;
+    annotations: LoopAnnotation[];
+    shards: LoopShard[];
+    state: LoopStateItem;
+  }) {
+    const recordDir = `runs/${input.issueId}/${input.shardId}/round-${input.record.round}`;
+    await this.writeJson(`${recordDir}/review.json`, input.record);
+    await this.writeText(`${recordDir}/review.md`, this.renderReviewRecord(input.record));
+    await this.writeJson(`annotations/${input.issueId}.json`, input.annotations);
+    await this.writeText(
+      `annotations/${input.issueId}.yaml`,
+      this.renderAnnotations(input.annotations),
+    );
+    await this.writeJson(`shards/${input.issueId}/shards.json`, input.shards);
+    await this.writeText(`shards/${input.issueId}/dag.yaml`, this.renderDag(input.shards));
+    await this.upsertState(input.state);
+    await this.appendLog({
+      type: 'REVIEW_RECORD',
+      loop: input.issueId,
+      shard: input.shardId,
+      verdict: input.record.verdict,
+      reviewer: input.record.reviewer,
+    });
+  }
+
+  async writeIntervention(input: {
+    issueId: string;
+    action: string;
+    actor: string;
+    state: LoopStateItem;
+    shards?: LoopShard[];
+    annotations?: LoopAnnotation[];
+    shardId?: string;
+    notes?: string;
+  }) {
+    if (input.shards) {
+      await this.writeJson(`shards/${input.issueId}/shards.json`, input.shards);
+      await this.writeText(`shards/${input.issueId}/dag.yaml`, this.renderDag(input.shards));
+    }
+    if (input.annotations) {
+      await this.writeJson(`annotations/${input.issueId}.json`, input.annotations);
+      await this.writeText(
+        `annotations/${input.issueId}.yaml`,
+        this.renderAnnotations(input.annotations),
+      );
+    }
+    await this.upsertState(input.state);
+    await this.appendLog({
+      type: 'HUMAN_INTERVENE',
+      loop: input.issueId,
+      action: input.action,
+      actor: input.actor,
+      shard: input.shardId,
+      notes: input.notes,
+    });
+  }
+
   async appendLog(payload: Record<string, unknown>) {
     const entry = {
       ts: new Date().toISOString(),
       ...payload,
     };
-    await fs.appendFile(
-      path.join(this.root, 'log.jsonl'),
-      `${JSON.stringify(entry)}\n`,
-      'utf8',
-    );
+    await fs.appendFile(path.join(this.root, 'log.jsonl'), `${JSON.stringify(entry)}\n`, 'utf8');
   }
 
   async upsertState(next: LoopStateItem) {
@@ -208,14 +502,100 @@ export class LoopsFileStoreService {
     return issues.sort((a, b) => b.created.localeCompare(a.created));
   }
 
+  private async readTestRecords(issueId: string) {
+    const dir = path.join(this.root, 'tests', issueId, 'records');
+    const files = await fs.readdir(dir).catch(() => []);
+    const records = await Promise.all(
+      files
+        .filter((file) => file.endsWith('.json'))
+        .map((file) => this.readJson<LoopTestRecord>(`tests/${issueId}/records/${file}`)),
+    );
+    return records.sort((a, b) => b.created.localeCompare(a.created));
+  }
+
+  private async readImplementationRecords(issueId: string) {
+    return this.readRunRecords<LoopImplementationRecord>(issueId, 'implementation.json');
+  }
+
+  private async readReviewRecords(issueId: string) {
+    return this.readRunRecords<LoopReviewRecord>(issueId, 'review.json');
+  }
+
+  private async readRunRecords<T extends { created: string }>(issueId: string, filename: string) {
+    const issueDir = path.join(this.root, 'runs', issueId);
+    const shardIds = await fs.readdir(issueDir).catch(() => []);
+    const recordPaths: string[] = [];
+
+    for (const shardId of shardIds) {
+      const shardDir = path.join(issueDir, shardId);
+      const rounds = await fs.readdir(shardDir).catch(() => []);
+      for (const round of rounds.filter((item) => item.startsWith('round-'))) {
+        const recordPath = path.join(shardDir, round, filename);
+        if (await this.exists(recordPath)) {
+          recordPaths.push(`runs/${issueId}/${shardId}/${round}/${filename}`);
+        }
+      }
+    }
+
+    const records = await Promise.all(
+      recordPaths.map((recordPath) => this.readJson<T>(recordPath)),
+    );
+    return records.sort((a, b) => b.created.localeCompare(a.created));
+  }
+
   private async readState(): Promise<StateFile> {
     await this.ensureInitialized();
     return this.readJson<StateFile>('state.json');
   }
 
+  private async readCostConfig(): Promise<LoopsCostConfig> {
+    const fallback = {
+      tokenCapPerLoop: 5000000,
+      callCapPerLoop: 500,
+    };
+    const content = await fs.readFile(path.join(this.root, 'config.yaml'), 'utf8').catch(() => '');
+    const tokenMatch = content.match(/token_cap_per_loop:\s*(\d+)/);
+    const callMatch = content.match(/call_cap_per_loop:\s*(\d+)/);
+    return {
+      tokenCapPerLoop: tokenMatch ? Number(tokenMatch[1]) : fallback.tokenCapPerLoop,
+      callCapPerLoop: callMatch ? Number(callMatch[1]) : fallback.callCapPerLoop,
+    };
+  }
+
   private async readJson<T>(relativePath: string): Promise<T> {
     const content = await fs.readFile(path.join(this.root, relativePath), 'utf8');
     return JSON.parse(content) as T;
+  }
+
+  private parseLogLine(line: string): LoopLogEntry | undefined {
+    try {
+      const raw = JSON.parse(line) as Record<string, unknown>;
+      const ts = typeof raw.ts === 'string' ? raw.ts : '';
+      const type = typeof raw.type === 'string' ? raw.type : '';
+      if (!ts || !type) return undefined;
+      return {
+        ts,
+        type,
+        loop: typeof raw.loop === 'string' ? raw.loop : undefined,
+        issue: typeof raw.issue === 'string' ? raw.issue : undefined,
+        shard: typeof raw.shard === 'string' ? raw.shard : undefined,
+        action: typeof raw.action === 'string' ? raw.action : undefined,
+        status: typeof raw.status === 'string' ? raw.status : undefined,
+        verdict: typeof raw.verdict === 'string' ? raw.verdict : undefined,
+        payload: raw,
+      };
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async exists(target: string) {
+    try {
+      await fs.access(target);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async readOptionalJson<T>(relativePath: string): Promise<T | undefined> {
@@ -282,5 +662,62 @@ export class LoopsFileStoreService {
           `- target: ${item.target}\n  annotator: ${item.annotator}\n  round: ${item.round}\n  impl_status: ${item.implStatus}\n  test_status: ${item.testStatus}\n  verdict: ${item.verdict}\n  coverage: ${item.coverage}\n  risk: ${item.risk}\n  notes: ${JSON.stringify(item.notes)}`,
       )
       .join('\n');
+  }
+
+  private renderTestRecord(record: LoopTestRecord) {
+    const commands = record.commands
+      .map(
+        (item) =>
+          `- \`${item.command}\` exit=${item.exitCode ?? 'null'} duration=${item.durationMs}ms`,
+      )
+      .join('\n');
+    const failures =
+      record.failedTests.length > 0
+        ? record.failedTests.map((item) => `- ${item.name}: ${item.reason}`).join('\n')
+        : '无';
+    return `---\nid: ${record.id}\nscope: ${record.shardId}\nround: ${record.round}\nrunner: ${record.runner}\nreviewer: ${record.reviewer}\nstatus: ${record.status}\ncreated: ${record.created}\n---\n\n## 测试执行摘要\n${commands}\n\n## 失败归因\n${failures}\n\n## 修复指令\n${record.fixInstructions.map((item) => `- ${item}`).join('\n') || '无'}\n`;
+  }
+
+  private renderTestMatrix(matrix: LoopTestMatrix) {
+    const requiredTests = matrix.requiredTests
+      .map(
+        (item) =>
+          `- [${item.required ? 'x' : ' '}] ${item.id} (${item.level}) ${item.shardId}: ${item.title}${item.command ? `\n  - command: \`${item.command}\`` : ''}`,
+      )
+      .join('\n');
+    return `---\nid: ${matrix.id}\nissue: ${matrix.issueId}\nspec: ${matrix.specId}\nowner: ${matrix.owner}\nstatus: ${matrix.status}\ncreated: ${matrix.created}\n---\n\n## 测试矩阵说明\n${requiredTests || '无'}\n\n## 回归范围\n${matrix.regressionScope.map((item) => `- ${item}`).join('\n') || '无'}\n\n## 暂不自动化的人工验收项\n${matrix.manualAcceptance.map((item) => `- ${item}`).join('\n') || '无'}\n`;
+  }
+
+  private renderImplementationRecord(record: LoopImplementationRecord) {
+    return `---\nid: ${record.id}\nscope: ${record.shardId}\nround: ${record.round}\nimplementer: ${record.implementer}\nstatus: ${record.status}\ncreated: ${record.created}\n---\n\n## 实施摘要\n${record.summary}\n\n## 变更文件\n${record.changedFiles.map((item) => `- ${item}`).join('\n') || '无'}\n\n## 备注\n${record.notes || '无'}\n`;
+  }
+
+  private renderReviewRecord(record: LoopReviewRecord) {
+    const issues =
+      record.issues.length > 0
+        ? record.issues.map((item) => `- ${item.severity}: ${item.desc}`).join('\n')
+        : '无';
+    return `---\nid: ${record.id}\nshard: ${record.shardId}\nreviewer: ${record.reviewer}\nround: ${record.round}\nverdict: ${record.verdict}\ncreated: ${record.created}\n---\n\n## 审查意见\n${record.summary}\n\n## 问题\n${issues}\n\n## 修复指令\n${record.fixInstructions.map((item) => `- ${item}`).join('\n') || '无'}\n`;
+  }
+
+  private findWorkspaceRoot() {
+    let current = process.env.LOOPS_WORKSPACE_ROOT || process.cwd();
+    for (;;) {
+      const packageJson = path.join(current, 'package.json');
+      const turboJson = path.join(current, 'turbo.json');
+      try {
+        if (existsSync(packageJson) && existsSync(turboJson)) {
+          return current;
+        }
+      } catch {
+        return process.cwd();
+      }
+
+      const parent = path.dirname(current);
+      if (parent === current) {
+        return process.cwd();
+      }
+      current = parent;
+    }
   }
 }
