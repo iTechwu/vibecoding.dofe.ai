@@ -2,11 +2,11 @@
 
 ## v1.1 · 身份与权限
 
-| 项                  | 当前状态    | 下一步                                                            |
-| ------------------- | ----------- | ----------------------------------------------------------------- |
-| Dofe SSO 登录       | in-progress | Loops submitter 已接 SSO；跟随 `docs/0619/sso` 完成真实浏览器 E2E |
-| 用户角色/权限       | open        | 设计并实现 Loops 最小 RBAC                                        |
-| 真实 SSO 浏览器 E2E | ready       | 补 Playwright E2E，需真实 SSO 环境                                |
+| 项                  | 当前状态 | 下一步                                                        |
+| ------------------- | -------- | ------------------------------------------------------------- |
+| Dofe SSO 登录       | blocked  | `docs/0619/sso` 为唯一真源；本目录仅等待真实 SSO E2E 环境输入 |
+| 用户角色/权限       | done     | Loops 最小 RBAC 已实现并通过 round 2 回归                     |
+| 真实 SSO 浏览器 E2E | blocked  | 缺真实 SSO client secret、测试账号和可启动联调环境            |
 
 ### RBAC 最小方案
 
@@ -29,18 +29,41 @@
 验收：
 
 - 无 token：401 或现有 AuthGuard 标准错误。
-- 无权限：403。
-- 有权限：原路径正常。
-- CLI 直调不受 HTTP RBAC 影响。
+- 无权限：403，已由 `loops-rbac.guard.spec.ts` 覆盖。
+- 有权限：管理员、非生产 `MODE_USER_ID`、allowlist 用户均已覆盖。
+- CLI 直调不受 HTTP RBAC 影响，`LoopsService` smoke 继续通过。
+
+实施文件：
+
+- `apps/api/src/modules/loops/loops-rbac.decorator.ts`
+- `apps/api/src/modules/loops/loops-rbac.guard.ts`
+- `apps/api/src/modules/loops/loops-rbac.guard.spec.ts`
+- `apps/api/src/modules/loops/loops.controller.ts`
+- `apps/api/src/modules/loops/loops.module.ts`
+
+当前权限来源：
+
+- `request.userInfo.isAdmin`：全部 Loops 权限。
+- 非生产 `MODE_USER_ID`：本地开发 bypass，生产环境不得使用。
+- `LOOPS_RBAC_READ_USER_IDS` / `LOOPS_RBAC_CREATE_USER_IDS` / `LOOPS_RBAC_OPERATE_USER_IDS` / `LOOPS_RBAC_ADMIN_USER_IDS`：逗号分隔用户 ID allowlist。
+
+round 2 回归：
+
+- `pnpm --filter @repo/api exec jest src/modules/loops --runInBand`
+- `pnpm --filter @repo/api exec jest src/bootstrap/i18n.bootstrap.spec.ts --runInBand`
+- `pnpm --filter @repo/api type-check`
+- `pnpm quality:gate`
+- `pnpm loops:doctor`
+- `pnpm loops:db-doctor`
 
 ## v1.2 · 飞书与测试矩阵
 
-| 项                  | 当前状态 | 下一步                                              |
-| ------------------- | -------- | --------------------------------------------------- |
-| 飞书 Issue 入口     | open     | 定义 Feishu payload → `CreateLoopIssueRequest` 映射 |
-| 飞书审批卡片        | open     | 定义审批动作与 Loops review/intervene 的映射        |
-| 飞书反向通知        | open     | 将 `.loops/notifications` 接入真实发送通道          |
-| 完整 E2E/build 矩阵 | open     | 将最小冒烟扩展为 CI 可跑矩阵                        |
+| 项                  | 当前状态 | 下一步                                                 |
+| ------------------- | -------- | ------------------------------------------------------ |
+| 飞书 Issue 入口     | blocked  | 缺 Feishu payload 样例、签名配置和应用凭据             |
+| 飞书审批卡片        | blocked  | 缺审批按钮、状态机、幂等策略和用户映射决策             |
+| 飞书反向通知        | blocked  | 缺 Feishu 发送 client 配置、通知目标和重试策略         |
+| 完整 E2E/build 矩阵 | done     | 已新增 `pnpm regression:docs0620` 并接入 CI Loops 回归 |
 
 ### 飞书入口拆解
 
@@ -63,14 +86,26 @@
 3. 接入 Feishu client。
 4. doctor 增加通知发送一致性检查。
 
+### E2E/build 矩阵实施结果
+
+round 3 已完成非真实 SSO 范围的矩阵固化：
+
+- `scripts/docs0620-regression.sh`
+- `package.json` 的 `regression:docs0620`
+- `.github/workflows/ci.yml` 的 Loops Jest + doctor/db-doctor
+
+真实 SSO 浏览器 E2E 仍因 B3 外部环境缺失保持 blocked。
+
+解除 blocked 需要的外部输入统一见 [05-blockers.md](05-blockers.md)。
+
 ## v1.3 · 远端协作与执行能力
 
-| 项                | 当前状态 | 下一步                                             |
-| ----------------- | -------- | -------------------------------------------------- |
-| 真实远端 PR 打开  | open     | 选定 git provider，落 repo allowlist 与 token 管理 |
-| 多 Loop 并行队列  | open     | 设计队列、锁、并发限流                             |
-| 独立 worker 池    | open     | 将 runner 从 API 进程解耦                          |
-| 生产级 agent 告警 | open     | 定义失败、超时、成本、重试耗尽告警                 |
+| 项                | 当前状态 | 下一步                                                 |
+| ----------------- | -------- | ------------------------------------------------------ |
+| 真实远端 PR 打开  | blocked  | 缺 git provider、token 管理、repo allowlist 与权限模型 |
+| 多 Loop 并行队列  | blocked  | 缺队列、锁、幂等、并发限流和部署拓扑确认               |
+| 独立 worker 池    | blocked  | 缺 worker 运行边界、队列协议和资源隔离方案             |
+| 生产级 agent 告警 | blocked  | 缺告警通道、指标口径、SLO 和升级策略                   |
 
 ### 真实 PR 能力
 
@@ -92,11 +127,11 @@
 
 ## 生产化额外项
 
-| 项                               | 当前状态 | 下一步                              |
-| -------------------------------- | -------- | ----------------------------------- |
-| 真实 Codex / Claude CLI 生产可用 | open     | 固化 CLI 版本、权限、超时、重试策略 |
-| 真实 diff 自动回收               | open     | 从 git diff 自动生成 changedFiles   |
-| 成本真实统计与外部告警           | open     | 接 token 计量与告警通道             |
+| 项                               | 当前状态 | 下一步                                                 |
+| -------------------------------- | -------- | ------------------------------------------------------ |
+| 真实 Codex / Claude CLI 生产可用 | blocked  | 缺生产 CLI 版本、权限、超时、重试和沙箱策略            |
+| 真实 diff 自动回收               | blocked  | 缺真实 git provider/工作区策略和 changedFiles 来源确认 |
+| 成本真实统计与外部告警           | blocked  | 缺真实 token 计量来源、成本口径和外部告警通道          |
 
 ### 最小验收
 

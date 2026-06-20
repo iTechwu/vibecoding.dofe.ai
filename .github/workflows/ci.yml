@@ -71,6 +71,9 @@ jobs:
       - run: pnpm db:generate
       - run: pnpm db:push
       - run: pnpm test:api
+      - run: pnpm --filter @repo/api exec jest src/modules/loops --runInBand
+      - run: pnpm loops:doctor
+      - run: pnpm loops:db-doctor
 
   test-web:
     name: Test Web

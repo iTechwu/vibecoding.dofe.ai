@@ -16,16 +16,16 @@
 
 ## 推荐实施顺序
 
-| 批次 | 状态  | 目标                                | 为什么先做                                 |
-| ---- | ----- | ----------------------------------- | ------------------------------------------ |
-| B1   | done  | 关闭 `OPT-5`                        | 已改为 config 文件位置解析并通过回归       |
-| B2   | ready | Loops RBAC 最小门禁                 | 已有 SSO 身份，下一步自然是权限边界        |
-| B3   | ready | 真实 SSO 浏览器 E2E                 | 验证登录态、token 注入、Loops 页面真实可用 |
-| B4   | open  | 完整 E2E/build 矩阵                 | 在身份链路稳定后扩展测试矩阵               |
-| B5   | open  | 飞书入口 / 审批 / 反向通知          | 依赖身份和审批决策，适合放到 v1.2          |
-| B6   | open  | 真实远端 PR 与 diff 自动回收        | 依赖 git provider 决策和真实 CLI 稳定性    |
-| B7   | open  | 多 Loop 并行与独立 worker 池        | 涉及调度、资源隔离、状态一致性，风险较高   |
-| B8   | open  | 成本计量、生产告警、真实 CLI 稳定性 | 生产运维闭环，适合在 runner 能力稳定后推进 |
+| 批次 | 状态    | 目标                                | 为什么先做                                        |
+| ---- | ------- | ----------------------------------- | ------------------------------------------------- |
+| B1   | done    | 关闭 `OPT-5`                        | 已改为 config 文件位置解析并通过回归              |
+| B2   | done    | Loops RBAC 最小门禁                 | 已按 read/create/operate/admin 分组并通过回归     |
+| B3   | blocked | 真实 SSO 浏览器 E2E                 | 缺真实 SSO client secret、测试账号和可启动环境    |
+| B4   | done    | 完整 E2E/build 矩阵                 | 已固化非真实 SSO 范围回归入口与 CI Loops 检查     |
+| B5   | blocked | 飞书入口 / 审批 / 反向通知          | 缺 Feishu payload、签名配置、应用凭据和通知目标   |
+| B6   | blocked | 真实远端 PR 与 diff 自动回收        | 缺 git provider、token 管理和 repo allowlist 决策 |
+| B7   | blocked | 多 Loop 并行与独立 worker 池        | 缺队列/锁/worker 拓扑与资源隔离方案确认           |
+| B8   | blocked | 成本计量、生产告警、真实 CLI 稳定性 | 缺真实 CLI 运行策略、token 计量来源和外部告警通道 |
 
 ## B1 · `OPT-5` 处理
 
@@ -52,25 +52,41 @@
 
 ## B2 · RBAC 最小门禁
 
-状态：ready，下一轮优先实施。
+状态：done（round 2 / 2026-06-20）。
 
 目标：在已有 `@Auth('api')` 登录校验基础上，为 Loops 操作增加最小角色/权限控制。
 
-建议最小切分：
+实施结果：
 
-- 定义 Loops 权限枚举，如 `loops:read`、`loops:create`、`loops:operate`、`loops:admin`。
-- 将只读端点与写操作端点分组。
-- 本地开发保留 `MODE_USER_ID` bypass，但必须在文档中标注仅限非生产。
-- 权限缺失返回标准 ts-rest error，不能落成普通 500。
+- 已在 `apps/api/src/modules/loops/loops-rbac.decorator.ts` 定义 `loops:read`、`loops:create`、`loops:operate`、`loops:admin`。
+- 已在 `apps/api/src/modules/loops/loops-rbac.guard.ts` 增加 Loops HTTP 局部门禁：管理员拥有全部权限；非生产 `MODE_USER_ID` 保留本地 bypass；其他用户通过 `LOOPS_RBAC_*_USER_IDS` allowlist 授权。
+- 已在 `apps/api/src/modules/loops/loops.controller.ts` 将端点分组标注，并通过 `LoopsRbacGuard` 执行。
+- 权限缺失复用 `CommonErrorCode.FeatureHasPermissions`，HTTP status 为 403，不落成普通 500。
+- CLI 直调 `LoopsService` 不经过 controller guard，仍保留无 HTTP RBAC 的内部/CLI 路径。
 
 验收：
 
-- 未登录：仍被 AuthGuard 拦截。
-- 已登录但无权限：返回 403。
-- 有权限用户：可创建 / 操作 Loop。
-- CLI 直调 `LoopsService` 不受 HTTP RBAC 影响。
+- 未登录：仍由全局 `AuthGuard` 拦截。
+- 已登录但无权限：`loops-rbac.guard.spec.ts` 覆盖 403。
+- 有权限用户：管理员、非生产 `MODE_USER_ID`、allowlist 用户均有单测覆盖。
+- CLI 直调 `LoopsService` 不受 HTTP RBAC 影响，Loops service smoke 继续通过。
+
+回归：
+
+- `pnpm --filter @repo/api exec jest src/modules/loops --runInBand`：通过。
+- `pnpm --filter @repo/api exec jest src/bootstrap/i18n.bootstrap.spec.ts --runInBand`：通过。
+- `pnpm --filter @repo/api type-check`：通过。
+- `pnpm quality:gate`：通过。
+- `pnpm loops:doctor` / `pnpm loops:db-doctor`：通过。
+- 包级回归：`@repo/web type-check/test`、`@repo/contracts typecheck/test`、`@repo/utils typecheck/test`、`@repo/validators test` 均通过。
+
+附带优化：
+
+- 回归中发现 `apps/api/src/bootstrap/i18n.bootstrap.ts` 对 `AppConfig.zones` 可空类型缺少保护，已补 `zones ?? []` 与单测；该修复不改变 Loops v1 CLOSED 门槛。
 
 ## B3 · 真实 SSO 浏览器 E2E
+
+状态：blocked（round 2 / 2026-06-20）。
 
 目标：用真实浏览器路径验证登录、token 注入、Loops 页面访问和提交。
 
@@ -80,6 +96,8 @@
 - Redis / DB / API / Web 本地或测试环境可启动。
 - 可用测试账号。
 
+阻塞原因：当前工作区未提供真实 SSO client secret、可用测试账号、以及 API/Web/Redis/DB 的真实登录联调环境；不得用 mock 登录结果替代“真实 SSO 浏览器 E2E”验收。
+
 验收：
 
 - 登录页跳转 OIDC。
@@ -88,11 +106,38 @@
 - `/loops/new` 能提交并由服务端记录 `provider: dofe-sso`。
 - 不泄露 token 到 server action 或日志。
 
-## B4-B8 后续批次
+## B4 · E2E/build 回归矩阵
 
-这些批次均需在每轮开始前重新拆为更小任务，不建议一次性实现：
+状态：done（round 3 / 2026-06-20，真实 SSO 浏览器 E2E 除外）。
 
-- 飞书相关能力需要先明确入口 payload、审批状态机和通知目标。
-- 真实远端 PR 需要明确 provider、权限模型、repo allowlist、失败补偿。
-- 多 Loop 并行和 worker 池需要先设计锁、队列、幂等、资源限流。
-- 生产告警和成本计量需要先确定指标来源与告警通道。
+目标：将 `docs/0620/04-regression-checklist.md` 中已可本地执行的回归命令固化为脚本，并把 Loops 专项回归接入 CI。
+
+实施结果：
+
+- 新增 `scripts/docs0620-regression.sh`，封装质量门禁、包级类型/测试、API bootstrap/Loops Jest、`loops:doctor`、`loops:db-doctor` 和 `pnpm build`。
+- 新增根脚本 `pnpm regression:docs0620`。
+- 更新 `.github/workflows/ci.yml` 的 `test-api` job，在 `pnpm test:api` 后追加 Loops 模块 Jest、`loops:doctor`、`loops:db-doctor`。
+- `LOOPS_DB_SMOKE=1` 时，回归脚本会追加 live DB Loops persistence smoke。
+
+回归：
+
+- `pnpm regression:docs0620`：通过（round 3 初版）。
+
+round 4 优化：
+
+- 将 `pnpm build` 纳入 `scripts/docs0620-regression.sh`，使本地一键回归与 “E2E/build 矩阵” 名称一致。
+- `pnpm regression:docs0620` 已重新执行通过；Next build 自动更新 `apps/web/next-env.d.ts` 的 routes 类型引用。
+
+边界：
+
+- 真实 SSO 浏览器 E2E 仍归属 B3，因缺真实环境保持 blocked。
+- CI 真实 DB smoke 仍依赖 workflow 中的 PostgreSQL service 与 `pnpm db:push`。
+
+## B5-B8 后续批次
+
+这些批次当前均需外部凭据、产品决策或跨进程/跨系统设计确认，不建议在本仓直接伪实现：
+
+- 飞书相关能力需要先明确入口 payload、签名校验密钥、应用凭据、审批状态机和通知目标。
+- 真实远端 PR 需要明确 provider、权限模型、repo allowlist、token 管理、失败补偿。
+- 多 Loop 并行和 worker 池需要先确认队列/锁/幂等/资源限流/部署拓扑。
+- 生产告警和成本计量需要先确定真实 token 来源、指标口径与告警通道。

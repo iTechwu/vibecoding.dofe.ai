@@ -24,7 +24,8 @@ export function resolveProjectRoot(projectRoot?: string, cwd: string = process.c
 }
 
 export function resolveAppZone(appConfig: AppConfig, baseZone: string = 'cn'): ZoneConfig {
-  const zone = appConfig.zones.find((config: ZoneConfig) => config.zone === baseZone);
+  const zones = appConfig.zones ?? [];
+  const zone = zones.find((config: ZoneConfig) => config.zone === baseZone);
   if (!zone) {
     throw new Error('Zone not found');
   }

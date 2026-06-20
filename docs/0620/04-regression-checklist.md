@@ -68,6 +68,225 @@ pnpm --filter @repo/web test
    - 仍未完成的边界；
    - 是否影响 Loops v1 CLOSED 门槛。
 
+## round 2 回归记录（2026-06-20）
+
+范围：
+
+- Loops RBAC 最小门禁复核与标注。
+- 回归中修复 `apps/api/src/bootstrap/i18n.bootstrap.ts` 的 `AppConfig.zones` 可空类型缺口。
+
+结果：
+
+- `pnpm --filter @repo/api exec jest src/modules/loops --runInBand`：通过。
+- `pnpm --filter @repo/api exec jest src/bootstrap/i18n.bootstrap.spec.ts --runInBand`：通过。
+- `pnpm --filter @repo/api type-check`：通过。
+- `pnpm quality:gate`：通过。
+- `pnpm loops:doctor`：通过。
+- `pnpm loops:db-doctor`：通过。
+- `pnpm --filter @repo/web type-check`：通过。
+- `pnpm --filter @repo/contracts typecheck` / `pnpm --filter @repo/contracts test`：通过。
+- `pnpm --filter @repo/utils typecheck` / `pnpm --filter @repo/utils test`：通过。
+- `pnpm --filter @repo/validators test` / `pnpm --filter @repo/web test`：通过。
+
+仍未完成：
+
+- 真实 SSO 浏览器 E2E：blocked，需真实 SSO client secret、测试账号和可启动联调环境。
+- v1.2+ 飞书、真实 PR、多 Loop 并行、worker 池、生产告警和成本计量仍为后置项。
+
+Loops v1 CLOSED 门槛：不受影响；本轮为 v1.1 权限边界和回归修复。
+
+## round 3 回归记录（2026-06-20）
+
+范围：
+
+- 固化非真实 SSO 范围的 E2E/build 回归矩阵。
+- 将 Loops 专项回归接入 CI API job。
+
+实施文件：
+
+- `scripts/docs0620-regression.sh`
+- `package.json`
+- `.github/workflows/ci.yml`
+
+结果：
+
+- `pnpm regression:docs0620`：通过。
+
+脚本覆盖：
+
+- `pnpm quality:gate`
+- API/Web/package 类型检查与测试
+- API bootstrap targeted Jest
+- Loops module Jest
+- `pnpm loops:doctor`
+- `pnpm loops:db-doctor`
+- `LOOPS_DB_SMOKE=1` 时追加 live DB persistence smoke
+- `pnpm build`
+
+仍未完成：
+
+- 真实 SSO 浏览器 E2E：blocked。
+- 飞书入口/审批/反向通知：blocked，需 Feishu payload、签名配置、应用凭据、用户映射和通知目标。
+- 真实 PR、并行 worker、真实 CLI、真实成本/告警：blocked，需 provider/凭据/部署拓扑/指标通道决策。
+
+Loops v1 CLOSED 门槛：不受影响；本轮为回归矩阵固化。
+
+## round 4 回归记录（2026-06-20）
+
+范围：
+
+- 优化 `pnpm regression:docs0620`，补齐本地 build 回归。
+
+实施文件：
+
+- `scripts/docs0620-regression.sh`
+- `docs/0620/01-execution-plan.md`
+- `docs/0620/04-regression-checklist.md`
+
+结果：
+
+- `pnpm regression:docs0620`：通过。
+
+附带生成变更：
+
+- `apps/web/next-env.d.ts`：由 `pnpm build` / Next build 自动更新 routes 类型引用，从 `.next/dev/types/routes.d.ts` 切换为 `.next/types/routes.d.ts`。
+
+Loops v1 CLOSED 门槛：不受影响；本轮仅补齐回归矩阵覆盖面。
+
+## round 5 回归记录（2026-06-20）
+
+范围：
+
+- 收敛 `docs/0620` 的剩余状态标注。
+- 新增 blocked 项解除条件清单。
+
+实施文件：
+
+- `docs/0620/README.md`
+- `docs/0620/03-deferred-items.md`
+- `docs/0620/04-regression-checklist.md`
+- `docs/0620/05-blockers.md`
+
+结果：
+
+- `pnpm regression:docs0620`：通过。
+
+Loops v1 CLOSED 门槛：不受影响；本轮仅补齐文档阻塞条件标注。
+
+## round 6 回归记录（2026-06-20）
+
+范围：
+
+- 复核 `docs/0620` 状态表、任务拆解和 blocked 清单。
+- 确认本目录无 `open` / `ready` / `in-progress` 待执行项。
+- 确认剩余 blocked 项仍缺外部凭据、产品决策或运行环境。
+
+实施文件：
+
+- `docs/0620/README.md`
+- `docs/0620/04-regression-checklist.md`
+
+结果：
+
+- `pnpm regression:docs0620`：通过。
+
+Loops v1 CLOSED 门槛：不受影响；本轮无新增代码实施项。
+
+## round 7 回归记录（2026-06-20）
+
+范围：
+
+- 复核 `docs/0620` 是否存在新的 `open` / `ready` / `in-progress` / TODO / 未实施 / 待优化标记。
+- 复核 blocked 项解除条件是否仍准确。
+- 本轮未发现新的本仓可实施项。
+
+实施文件：
+
+- `docs/0620/README.md`
+- `docs/0620/04-regression-checklist.md`
+
+结果：
+
+- `pnpm regression:docs0620`：通过。
+
+Loops v1 CLOSED 门槛：不受影响；本轮无新增代码实施项。
+
+## round 8 回归记录（2026-06-20）
+
+范围：
+
+- 使用精确状态扫描复核 `docs/0620` 是否存在新的可执行项。
+- 复核 blocked 项解除条件是否仍与当前外部依赖一致。
+- 本轮未发现新的本仓可实施项。
+
+实施文件：
+
+- `docs/0620/README.md`
+- `docs/0620/04-regression-checklist.md`
+
+结果：
+
+- `pnpm regression:docs0620`：通过。
+
+Loops v1 CLOSED 门槛：不受影响；本轮无新增代码实施项。
+
+## round 9 回归记录（2026-06-20）
+
+范围：
+
+- 使用精确状态扫描复核 `docs/0620` 是否存在新的可执行项。
+- 复核 blocked 项解除条件是否仍与当前外部依赖一致。
+- 本轮未发现新的本仓可实施项。
+
+实施文件：
+
+- `docs/0620/README.md`
+- `docs/0620/04-regression-checklist.md`
+
+结果：
+
+- `pnpm regression:docs0620`：通过。
+
+Loops v1 CLOSED 门槛：不受影响；本轮无新增代码实施项。
+
+## round 10 回归记录（2026-06-20）
+
+范围：
+
+- 使用精确状态扫描复核 `docs/0620` 是否存在新的可执行项。
+- 复核 blocked 项解除条件是否仍与当前外部依赖一致。
+- 本轮未发现新的本仓可实施项。
+
+实施文件：
+
+- `docs/0620/README.md`
+- `docs/0620/04-regression-checklist.md`
+
+结果：
+
+- `pnpm regression:docs0620`：通过。
+
+Loops v1 CLOSED 门槛：不受影响；本轮无新增代码实施项。
+
+## round 11 回归记录（2026-06-20）
+
+范围：
+
+- 使用精确状态扫描复核 `docs/0620` 是否存在新的可执行项。
+- 复核 blocked 项解除条件是否仍与当前外部依赖一致。
+- 本轮未发现新的本仓可实施项。
+
+实施文件：
+
+- `docs/0620/README.md`
+- `docs/0620/04-regression-checklist.md`
+
+结果：
+
+- `pnpm regression:docs0620`：通过。
+
+Loops v1 CLOSED 门槛：不受影响；本轮无新增代码实施项。
+
 ## 失败处理
 
 | 失败类型          | 处理                                                      |

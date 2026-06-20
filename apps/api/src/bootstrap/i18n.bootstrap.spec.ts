@@ -21,6 +21,10 @@ describe('i18n bootstrap options', () => {
     expect(() => resolveAppZone(appConfig, 'kr')).toThrow('Zone not found');
   });
 
+  it('throws when zones are not configured', () => {
+    expect(() => resolveAppZone({} as AppConfig)).toThrow('Zone not found');
+  });
+
   it('replaces $(pwd) in project root', () => {
     expect(resolveProjectRoot('$(pwd)/app', '/work')).toBe('/work/app');
   });
