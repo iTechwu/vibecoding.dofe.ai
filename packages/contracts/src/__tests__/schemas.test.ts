@@ -11,41 +11,28 @@ import * as schemas from '../schemas';
 describe('Schemas', () => {
   describe('Schema Exports', () => {
     it('should export Prisma enums', () => {
-      // Verify some key Prisma enum schemas are exported
-      expect(schemas.TeamMemberRoleSchema).toBeDefined();
-      expect(schemas.TeamPermissionOpsSchema).toBeDefined();
+      expect(schemas.SexTypeSchema).toBeDefined();
+      expect(schemas.FileBucketVendorSchema).toBeDefined();
+      expect(schemas.FileEnvTypeSchema).toBeDefined();
     });
 
     it('should export domain schemas', () => {
-      // Team schemas
-      expect(schemas.TeamMemberSchema).toBeDefined();
-      expect(schemas.TeamSchema).toBeDefined();
-
-      // Space schemas
-      expect(schemas.SpaceRoleSchema).toBeDefined();
-      expect(schemas.FileSystemTypeSchema).toBeDefined();
-
-      // User schemas
       expect(schemas.UserCheckResponseSchema).toBeDefined();
-
-      // Comment schemas
-      expect(schemas.CommentStatusSchema).toBeDefined();
-      expect(schemas.CommentUserSchema).toBeDefined();
+      expect(schemas.TaskListResponseSchema).toBeDefined();
+      expect(schemas.TaskListQuerySchema).toBeDefined();
+      expect(schemas.LoopListResponseSchema).toBeDefined();
+      expect(schemas.MessageListResponseSchema).toBeDefined();
     });
   });
 
   describe('Schema Validation', () => {
-    describe('Team Schemas', () => {
-      it('should validate TeamMemberRole', () => {
-        // Use actual Prisma enum values
-        const validRoles = ['owner', 'admin', 'editMember', 'viewMember', 'guest', 'noViewMember'];
-        validRoles.forEach((role) => {
-          const result = schemas.TeamMemberRoleSchema.safeParse(role);
-          expect(result.success).toBe(true);
-        });
+    describe('Prisma enum schemas', () => {
+      it('should validate generated enum values', () => {
+        expect(schemas.SexTypeSchema.safeParse('UNKNOWN').success).toBe(true);
+        expect(schemas.FileBucketVendorSchema.safeParse('gcs').success).toBe(true);
+        expect(schemas.FileEnvTypeSchema.safeParse('prod').success).toBe(true);
 
-        const invalidResult = schemas.TeamMemberRoleSchema.safeParse('invalid');
-        expect(invalidResult.success).toBe(false);
+        expect(schemas.SexTypeSchema.safeParse('invalid').success).toBe(false);
       });
     });
 
@@ -58,15 +45,31 @@ describe('Schemas', () => {
         // UserCheckResponseSchema requires userId as UUID
         const validResult = schemas.UserCheckResponseSchema.safeParse({
           userId: validUuid,
-          teamId: null,
         });
         expect(validResult.success).toBe(true);
 
         const invalidResult = schemas.UserCheckResponseSchema.safeParse({
           userId: invalidUuid,
-          teamId: null,
         });
         expect(invalidResult.success).toBe(false);
+      });
+    });
+
+    describe('Paginated list schemas', () => {
+      it('should validate the standardized task list response shape', () => {
+        const result = schemas.TaskListResponseSchema.safeParse({
+          list: [
+            {
+              id: '550e8400-e29b-41d4-a716-446655440000',
+              status: 'completed',
+            },
+          ],
+          total: 1,
+          page: 1,
+          limit: 20,
+        });
+
+        expect(result.success).toBe(true);
       });
     });
   });
@@ -74,14 +77,13 @@ describe('Schemas', () => {
   describe('Type Inference', () => {
     it('should correctly infer types from schemas', () => {
       // This is a compile-time check - if it compiles, types are correct
-      type TeamMemberRole = z.infer<typeof schemas.TeamMemberRoleSchema>;
-      const role: TeamMemberRole = 'owner';
-      expect(role).toBe('owner');
+      type SexType = z.infer<typeof schemas.SexTypeSchema>;
+      const sex: SexType = 'UNKNOWN';
+      expect(sex).toBe('UNKNOWN');
 
       type UserCheckResponse = z.infer<typeof schemas.UserCheckResponseSchema>;
       const response: UserCheckResponse = {
         userId: '550e8400-e29b-41d4-a716-446655440000',
-        teamId: null,
       };
       expect(response.userId).toBeDefined();
     });

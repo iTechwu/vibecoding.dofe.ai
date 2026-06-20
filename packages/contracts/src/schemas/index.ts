@@ -14,6 +14,5 @@ export * from './sse.schema';
 export * from './system.schema';
 export * from './tag.schema';
 export * from './task.schema';
-export * from './uploader.schema';
 export * from './user.schema';
 export * from './webhook.schema';

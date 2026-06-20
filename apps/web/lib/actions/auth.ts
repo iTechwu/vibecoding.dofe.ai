@@ -55,27 +55,10 @@ export async function refreshTiktokAccessToken(refreshToken: string) {
 
 // Get User Info
 export async function getTiktokUserProfile(accessToken: string) {
-  const resp = await request.get(
-    `${process.env.TIKTOK_API_ENDPOINT}/v2/user/info/`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
+  const resp = await request.get(`${process.env.TIKTOK_API_ENDPOINT}/v2/user/info/`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
     },
-  );
+  });
   return resp;
 }
-
-/**
- * 
- {
-    "access_token": "act.8dsjbPDiBVQzq34dd1X2U47e6r6BsvP7eTBrwYa3O91XMFPpIeTq1pYYt2Ik!5096.va",
-    "expires_in": 86400,
-    "open_id": "-000u1leqP_Rg0TBecSi3DSYFpc5qQFO0aOV",
-    "refresh_expires_in": 31536000,
-    "refresh_token": "rft.z4K63WtDO7SFLl4jaI3yn4sUYSlTNTAS4NiYnLRt3iwLBOIH37UUZmamqgNM!5132.va",
-    "scope": "user.info.basic,video.publish,video.upload",
-    "token_type": "Bearer"
-}
- * 
- */

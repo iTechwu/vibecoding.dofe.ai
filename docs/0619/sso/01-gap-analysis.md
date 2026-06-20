@@ -1,5 +1,7 @@
 # 01 · 现状与差距分析
 
+> **历史现状记录**：本文记录实施前差距。2026-06-19 已完成落地，准确状态见 [09-implementation-status.md](./09-implementation-status.md)。
+
 ## 1. vibecoding 后端（apps/api）现状
 
 ### 1.1 认证库（半成品）
@@ -49,14 +51,14 @@
 
 端口：`apps/web/package.json` → `next dev -p 3003`、`next start -p 3003`。
 
-## 3. 已知问题（必须修复）
+## 3. 实施前已知问题（已通过最终方案消除）
 
 **FileCdn 导入包名错误**（直接导致 `pnpm type-check` 失败）：
 
 - `apps/api/libs/domain/auth/src/auth.service.ts:12` → `import { FileCdnClient } from '@dofe/infra-clients';` ❌
 - `apps/api/libs/domain/auth/src/auth.module.ts:12` → `import { FileCdnModule } from '@dofe/infra-clients';` ❌
 - 正确来源：`@dofe/infra-shared-services`（`@dofe/infra-clients` 下无此二者导出，仅有 `FileGcsClient` 等 storage client）。
-- 修复：两处 import 改为 `from '@dofe/infra-shared-services'`。详见 [04-file-management.md](./04-file-management.md) §2。
+- 最终处理：本地 FileCdn/Uploader 链路已整体下线，文件能力改为通过 `@dofe/file-sdk` / `@dofe/file-sdk-web` 消费 SSO。详见 [04-file-management.md](./04-file-management.md) 与 [09-implementation-status.md](./09-implementation-status.md)。
 
 ## 4. scaffold.dofe.ai 现状
 
@@ -69,9 +71,9 @@
 | **sso 注册表**    | 无 vibecoding client                   | 新增 `vibecoding-dofe-ai` + seed            | 06       |
 | **api env**       | 无 SSO 变量                            | 补齐 `SSO_*`/`JWKS_*`/`INTERNAL_API_SECRET` | 07       |
 | **api schema**    | 无 `AuditLog`、`UserInfo` 无 `ssoSub`  | migration + prisma generate                 | 03 / 08  |
-| **api 审计日志**  | 无                                     | 复制适配层 + 装配                           | 03       |
+| **api 审计日志**  | 无                                     | models 风格 `AuditLogService`，业务主动调用 | 03       |
 | **api OIDC**      | 无 oidc-client-api / guard / user-sync | 复制 models 并裁剪 RBAC                     | 05       |
-| **api file**      | FileCdn import 错误                    | 修 import + 接 `@dofe/file-sdk`             | 04       |
+| **api file**      | FileCdn import 错误                    | 下线本地文件源，接 `@dofe/file-sdk`         | 04       |
 | **web 登录页**    | `/login` 路由缺失                      | 新建 login/callback/success                 | 05       |
 | **web token**     | localStorage 自家模型                  | OIDC token-manager + `dofe_rf` cookie       | 05       |
 | **web apiClient** | 无 `credentials:include` / 401 刷新    | 改造 baseFetch                              | 05       |

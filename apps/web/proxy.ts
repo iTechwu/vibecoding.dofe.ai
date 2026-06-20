@@ -32,14 +32,8 @@ export default async function middleware(request: NextRequest) {
   const pathWithoutLocale = pathname.replace(/^\/(zh-CN|en)/, '') || '/';
 
   // Skip daily check-in logic for public routes
-  const publicRoutes = ['/login', '/register'];
+  const publicRoutes = ['/login'];
   if (publicRoutes.some((route) => pathWithoutLocale.includes(route))) {
-    return intlResponse;
-  }
-
-  // Check if user is authenticated
-  const token = request.cookies.get('auth-token')?.value;
-  if (!token) {
     return intlResponse;
   }
 

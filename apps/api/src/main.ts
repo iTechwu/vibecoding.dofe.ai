@@ -1,6 +1,32 @@
 const dotenv = require('dotenv');
 const dotenvExpand = require('dotenv-expand');
 dotenvExpand.expand(dotenv.config());
+
+const prismaClient = require('@prisma/client') as {
+  FileBucketVendor?: Record<string, string>;
+  FileEnvType?: Record<string, string>;
+};
+
+// Compatibility shim for shared @dofe/infra packages that still reference the
+// removed local file-storage Prisma enums at module initialization time.
+prismaClient.FileBucketVendor ??= {
+  oss: 'oss',
+  us3: 'us3',
+  qiniu: 'qiniu',
+  s3: 's3',
+  gcs: 'gcs',
+  tos: 'tos',
+  tencent: 'tencent',
+  ksyun: 'ksyun',
+};
+prismaClient.FileEnvType ??= {
+  dev: 'dev',
+  test: 'test',
+  prod: 'prod',
+  produs: 'produs',
+  prodap: 'prodap',
+};
+
 import { NestFactory, Reflector } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe, INestApplication, VersioningType } from '@nestjs/common';
@@ -25,6 +51,7 @@ import fastifySSE from 'fastify-sse-v2';
 import fastifyMultipart from '@fastify/multipart';
 
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import type { FastifyPluginCallback, FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
@@ -42,9 +69,19 @@ process.on('uncaughtException', (error) => {
   process.exit(1);
 });
 
-// interface CustomRateLimitOptions extends rateLimit.FastifyRateLimitOptions {
-//     skip?: (req: any) => boolean;
-// }
+type RegisterableFastifyPlugin =
+  | FastifyPluginCallback<Record<string, unknown>>
+  | FastifyPluginAsync<Record<string, unknown>>;
+type RateLimitContext = { max: number; ttl: number };
+type FastifyCorsOptions = Parameters<NestFastifyApplication['enableCors']>[0];
+
+function asFastifyPlugin(plugin: unknown): RegisterableFastifyPlugin {
+  return plugin as RegisterableFastifyPlugin;
+}
+
+function requestField(request: FastifyRequest, field: string): unknown {
+  return (request as FastifyRequest & Record<string, unknown>)[field];
+}
 
 /**
  * 将 keys/config.json 中的核心密钥同步到 process.env
@@ -106,13 +143,13 @@ async function bootstrap() {
 
   const adapter = new FastifyAdapter();
   // 安全防护
-  adapter.register(fastifyHelmet as any);
+  adapter.register(asFastifyPlugin(fastifyHelmet));
   // , {
   //     contentSecurityPolicy: false,
   //     crossOriginResourcePolicy: false,
   // })
   // 压缩请求
-  adapter.register(compress as any, {
+  adapter.register(asFastifyPlugin(compress), {
     global: true,
     encodings: ['gzip', 'deflate'],
   });
@@ -120,9 +157,9 @@ async function bootstrap() {
     rawBody: true,
     logger: ['error', 'warn', 'verbose', 'debug'],
   });
-  await app.register(fastifySSE as any);
+  await app.register(asFastifyPlugin(fastifySSE));
   // 注册 multipart 插件用于文件上传
-  await app.register(fastifyMultipart as any, {
+  await app.register(asFastifyPlugin(fastifyMultipart), {
     limits: {
       fileSize: 50 * 1024 * 1024, // 50MB 最大文件大小
     },
@@ -132,33 +169,26 @@ async function bootstrap() {
 
   // 入口限流: 多维度限流保护
   // 优先级: userId > apiKey > tenantId > IP
-  app.register(rateLimit as any, {
+  app.register(asFastifyPlugin(rateLimit), {
     max: 200,
     timeWindow: '1 minute',
-    keyGenerator: (req: any) => {
+    keyGenerator: (req: FastifyRequest) => {
       // 多维度 Key 生成: 优先使用用户身份，降级到 IP
-      const userId = req.user?.id || req.userId;
+      const user = requestField(req, 'user') as { id?: string } | undefined;
+      const userId = user?.id || requestField(req, 'userId');
       const apiKey = req.headers['x-api-key'];
-      const tenantId = req.teamId || req.tenantId;
+      const tenantId = requestField(req, 'teamId') || requestField(req, 'tenantId');
       const ip = ipUtil.extractIp(req);
 
-      if (userId) return `user:${userId}`;
+      if (userId) return `user:${String(userId)}`;
       if (apiKey) return `apiKey:${apiKey}`;
-      if (tenantId) return `tenant:${tenantId}`;
+      if (tenantId) return `tenant:${String(tenantId)}`;
       return `ip:${ip}`;
     },
     redis: redisService.redis,
-    allowList: (req: any) => {
+    allowList: (req: FastifyRequest) => {
       // 白名单路由不受限流
-      const excludedRoutes = [
-        '/health',
-        '/metrics',
-        '/docs',
-        '/api/apis',
-        '/uploader/token/multipart',
-        '/uploader/token/private',
-        '/uploader/token/private/thumb',
-      ];
+      const excludedRoutes = ['/health', '/metrics', '/docs', '/api/apis'];
       // 检查精确匹配或前缀匹配
       const isExcluded = excludedRoutes.some((route) => req.url.startsWith(route));
 
@@ -177,7 +207,7 @@ async function bootstrap() {
 
       return isExcluded;
     },
-    errorResponseBuilder: (req: any, context: any) => ({
+    errorResponseBuilder: (req: FastifyRequest, context: RateLimitContext) => ({
       code: 925429,
       msg: '请求过于频繁，请稍后再试',
       error: {
@@ -186,11 +216,11 @@ async function bootstrap() {
         resetTime: Math.ceil(Date.now() / 1000 + context.ttl / 1000),
         retryAfter: Math.ceil(context.ttl / 1000),
       },
-      traceId: req.traceId || '',
+      traceId: String(requestField(req, 'traceId') || ''),
     }),
   });
   // 不需要对cookie进行校验
-  await app.register(fastifyCookie as any);
+  await app.register(asFastifyPlugin(fastifyCookie));
 
   // 如果需要校验则
   // await app.register(fastifyCookie, {
@@ -208,11 +238,8 @@ async function bootstrap() {
   );
 
   // 跨域配置
-  const corsOptions = {
-    origin: (
-      origin: string | undefined,
-      callback: (err: Error | null, allow?: boolean) => void,
-    ) => {
+  const corsOptions: FastifyCorsOptions = {
+    origin: (origin: string | undefined, callback: (err: Error | null, allow: boolean) => void) => {
       if (
         !origin ||
         corsRegex.test(origin) ||
@@ -229,7 +256,7 @@ async function bootstrap() {
     credentials: true,
     optionsSuccessStatus: 204,
   };
-  app.enableCors(corsOptions as any);
+  app.enableCors(corsOptions);
 
   // 设置全局前缀（排除监控端点）
   app.setGlobalPrefix('', {

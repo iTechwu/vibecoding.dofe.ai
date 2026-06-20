@@ -1,7 +1,8 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { tsRestClient, taskClient } from '../client';
+import type { TaskListQuery } from '@repo/contracts/schemas/task.schema';
+import { tsRestClient } from '../client';
 
 /**
  * Task Query Keys
@@ -10,7 +11,7 @@ import { tsRestClient, taskClient } from '../client';
 export const taskKeys = {
   all: ['tasks'] as const,
   check: (taskId: string) => [...taskKeys.all, 'check', taskId] as const,
-  list: () => [...taskKeys.all, 'list'] as const,
+  list: (query?: TaskListQuery) => [...taskKeys.all, 'list', query] as const,
 };
 
 // ============================================================================
@@ -34,7 +35,8 @@ export function useCheckTask(taskId: string) {
  * Get user's task list
  */
 export function useTaskList() {
-  return tsRestClient.task.getTaskList.useQuery(taskKeys.list(), {});
+  const query = { page: 1, limit: 20 } satisfies TaskListQuery;
+  return tsRestClient.task.getTaskList.useQuery(taskKeys.list(query), { query });
 }
 
 // ============================================================================

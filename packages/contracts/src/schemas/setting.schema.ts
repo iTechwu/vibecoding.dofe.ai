@@ -17,13 +17,6 @@ export const SettingAccountRequestSchema = z.object({
   emailCode: z.string().optional(),
   mobile: z.string().optional(),
   mobileCode: z.string().optional(),
-  oldPassword: z.string().optional(),
-  newPassword: z.string().optional(),
-});
-
-// Set password request
-export const SetPasswordRequestSchema = z.object({
-  newPassword: z.string().min(6),
 });
 
 // Brand schema
@@ -71,11 +64,8 @@ export const UpdateAvatarRequestSchema = z.object({
 });
 
 // Inferred types
-export type SendVerifyEmailRequest = z.infer<
-  typeof SendVerifyEmailRequestSchema
->;
+export type SendVerifyEmailRequest = z.infer<typeof SendVerifyEmailRequestSchema>;
 export type SettingAccountRequest = z.infer<typeof SettingAccountRequestSchema>;
-export type SetPasswordRequest = z.infer<typeof SetPasswordRequestSchema>;
 export type Brand = z.infer<typeof BrandSchema>;
 export type BrandSettingRequest = z.infer<typeof BrandSettingRequestSchema>;
 export type UsageResponse = z.infer<typeof UsageResponseSchema>;

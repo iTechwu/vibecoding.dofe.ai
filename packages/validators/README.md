@@ -17,13 +17,18 @@
 ### 前端表单验证
 
 ```typescript
-import { userSchema, loginSchema } from '@repo/validators';
+import { emailSchema } from '@repo/validators';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 
-function LoginForm() {
+const profileSchema = z.object({
+  email: emailSchema,
+});
+
+function ProfileForm() {
   const form = useForm({
-    resolver: zodResolver(loginSchema),
+    resolver: zodResolver(profileSchema),
   });
 
   // ...
@@ -54,19 +59,6 @@ export const userSchema = z.object({
   email: z.string().email(),
   name: z.string().min(2).max(50),
   avatar: z.string().url().optional(),
-});
-
-export const loginSchema = z.object({
-  email: z.string().email('请输入有效的邮箱'),
-  password: z.string().min(8, '密码至少8位'),
-});
-
-export const registerSchema = loginSchema.extend({
-  name: z.string().min(2, '名称至少2个字符'),
-  confirmPassword: z.string(),
-}).refine(data => data.password === data.confirmPassword, {
-  message: '两次密码不一致',
-  path: ['confirmPassword'],
 });
 ```
 
@@ -127,12 +119,14 @@ export const idParamSchema = z.object({
 ### 时间范围
 
 ```typescript
-export const dateRangeSchema = z.object({
-  startDate: z.string().datetime(),
-  endDate: z.string().datetime(),
-}).refine(data => new Date(data.startDate) <= new Date(data.endDate), {
-  message: '开始时间不能晚于结束时间',
-});
+export const dateRangeSchema = z
+  .object({
+    startDate: z.string().datetime(),
+    endDate: z.string().datetime(),
+  })
+  .refine((data) => new Date(data.startDate) <= new Date(data.endDate), {
+    message: '开始时间不能晚于结束时间',
+  });
 ```
 
 ## 最佳实践

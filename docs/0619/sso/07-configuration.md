@@ -1,5 +1,7 @@
 # 07 · 环境变量与配置清单
 
+> **实施后补充**：scaffold 使用 `SSO_CLIENT_ID=scaffold-dofe-ai` 与 `SCAFFOLD_INTERNAL_API_URL`；vibecoding 使用 `SSO_CLIENT_ID=vibecoding-dofe-ai` 与 `VIBECODING_INTERNAL_API_URL`。见 [09-implementation-status.md](./09-implementation-status.md)。
+
 > vibecoding（及 scaffold）接入 SSO 所需的前后端环境变量。本地 / 预发 / 生产取值不同，此处给出 **key 名与本地默认值**；生产值由运维注入。
 
 ## 1. 后端 `apps/api/.env`

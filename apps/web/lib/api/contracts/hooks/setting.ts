@@ -20,10 +20,6 @@ export function useSendVerifyEmail() {
   return settingApi.sendVerifyEmail.useMutation();
 }
 
-export function useSetPassword() {
-  return settingApi.setPassword.useMutation();
-}
-
 export function useBindEmail() {
   return settingApi.bindEmail.useMutation();
 }

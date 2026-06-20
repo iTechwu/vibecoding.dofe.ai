@@ -2,7 +2,14 @@ import validate from './validate.util';
 import objectUtil from './object.util';
 
 export interface MultiMensionArray {
-  [key: string]: any;
+  [key: string]: unknown;
+}
+
+function toComparableNumber(value: unknown): number {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') return Number(value);
+  if (typeof value === 'boolean') return Number(value);
+  return 0;
 }
 
 export default {
@@ -15,15 +22,14 @@ export default {
    */
   filter(
     array: MultiMensionArray[] | null,
-    conditions: { [key: string]: any },
-    defaultValue: any = '',
+    conditions: { [key: string]: unknown },
+    defaultValue: unknown = '',
   ): MultiMensionArray[] | null {
     if (!array) return null; // 如果输入数组为null，则直接返回null
     return array.filter((item) =>
       // 对每个元素进行条件过滤，只有满足所有条件的元素才会被保留
       Object.entries(conditions).every(
-        ([key, value]) =>
-          objectUtil.getValue(item, key, defaultValue) === value,
+        ([key, value]) => objectUtil.getValue(item, key, defaultValue) === value,
       ),
     );
   },
@@ -35,20 +41,18 @@ export default {
    * @returns 返回找到的元素，如果没有找到或数组为null，则返回null。
    */
   findOne(
-    array: any[] | any | null,
-    conditions: { [key: string]: any },
-    defaultValue: any = '',
-  ): any | null {
+    array: unknown[] | unknown | null,
+    conditions: { [key: string]: unknown },
+    defaultValue: unknown = '',
+  ): unknown | null {
     // console.log('techwu findOne' , array ,conditions )
     // 如果数组不为null，则开始查找
-    return array
-      ? array.find((item: any) => {
+    return Array.isArray(array)
+      ? array.find((item: unknown) => {
           // 对于每个元素，检查是否所有条件都满足
           return Object.keys(conditions).every((key) => {
             // 使用objectUtil.getValue获取元素的属性值，并与条件进行比较
-            return (
-              objectUtil.getValue(item, key, defaultValue) === conditions[key]
-            );
+            return objectUtil.getValue(item, key, defaultValue) === conditions[key];
           });
         })
       : null; // 如果数组为null，则直接返回null
@@ -60,20 +64,20 @@ export default {
     defaultValue: number = 0,
   ): MultiMensionArray[] {
     return array.filter((item) => {
-      return objectUtil.getValue(item, 'timestamp', defaultValue) >= timestamp;
+      return (
+        (objectUtil.getValue<number>(item, 'timestamp', defaultValue) ?? defaultValue) >= timestamp
+      );
     });
   },
 
   filterInValues(
     array: MultiMensionArray[],
-    conditions: { [key: string]: any[] },
-    defaultValue: any = '',
+    conditions: { [key: string]: unknown[] },
+    defaultValue: unknown = '',
   ): MultiMensionArray[] {
     return array.filter((item) => {
       return Object.entries(conditions).every(([field, inValues]) => {
-        return inValues.includes(
-          objectUtil.getValue(item, field, defaultValue),
-        );
+        return inValues.includes(objectUtil.getValue(item, field, defaultValue));
       });
     });
   },
@@ -81,8 +85,8 @@ export default {
   filterNotInValues(
     array: MultiMensionArray[],
     field: string,
-    inValues: any[],
-    defaultValue: any = '',
+    inValues: unknown[],
+    defaultValue: unknown = '',
   ): MultiMensionArray[] {
     return array.filter((item) => {
       return !inValues.includes(objectUtil.getValue(item, field, defaultValue));
@@ -92,8 +96,8 @@ export default {
   checkExists(
     array: MultiMensionArray[],
     field: string,
-    valueToCheck: any,
-    defaultValue: any = '',
+    valueToCheck: unknown,
+    defaultValue: unknown = '',
   ): boolean {
     return array.some((item) => {
       return objectUtil.getValue(item, field, defaultValue) === valueToCheck;
@@ -103,8 +107,8 @@ export default {
   removeItem(
     array: MultiMensionArray[],
     field: string,
-    valueToCheck: any,
-    defaultValue: any = '',
+    valueToCheck: unknown,
+    defaultValue: unknown = '',
   ): MultiMensionArray[] {
     const indexToRemove = array.findIndex((item) => {
       return objectUtil.getValue(item, field, defaultValue) === valueToCheck;
@@ -121,8 +125,8 @@ export default {
   getMapFieldValues(
     originalArray: MultiMensionArray[] | null,
     fieldName: string = 'id',
-    defaultValue: any = 0,
-  ): any[] {
+    defaultValue: unknown = 0,
+  ): unknown[] {
     if (!originalArray || originalArray.length === 0) {
       return [];
     }
@@ -146,7 +150,7 @@ export default {
     array2: MultiMensionArray[],
     field: string = 'id',
     merge: boolean = true,
-    defaultValue: any = 0,
+    defaultValue: unknown = 0,
   ): MultiMensionArray[] {
     // 将第二个数组的指定字段值转换为Set集合，便于快速查找
     const array2FieldValues = new Set(
@@ -154,8 +158,7 @@ export default {
     );
     // 筛选出第一个数组中独有的元素
     let uniqueInArray1 = array1.filter(
-      (item1) =>
-        !array2FieldValues.has(objectUtil.getValue(item1, field, defaultValue)),
+      (item1) => !array2FieldValues.has(objectUtil.getValue(item1, field, defaultValue)),
     );
 
     if (merge) {
@@ -164,10 +167,7 @@ export default {
         array1.map((item) => objectUtil.getValue(item, field, defaultValue)),
       );
       const uniqueInArray2 = array2.filter(
-        (item2) =>
-          !array1FieldValues.has(
-            objectUtil.getValue(item2, field, defaultValue),
-          ),
+        (item2) => !array1FieldValues.has(objectUtil.getValue(item2, field, defaultValue)),
       );
       // 合并两个数组中独有的元素
       uniqueInArray1 = uniqueInArray1.concat(uniqueInArray2);
@@ -185,11 +185,11 @@ export default {
    * @returns 合并（并可能去重和排序）后的数组
    */
   combine(
-    arr1: any[],
-    arr2: any[],
+    arr1: unknown[],
+    arr2: unknown[],
     uniqueField: string = '',
     orderby?: { sort: string; asc: 'asc' | 'desc' },
-  ): any[] {
+  ): unknown[] {
     // 合并两个数组
     let combinedArray = [...(arr1 || []), ...(arr2 || [])];
     // 如果指定了用于去重的字段，则调用unique方法进行去重
@@ -211,11 +211,7 @@ export default {
    * @param fieldValue 要匹配的字段值
    * @returns 匹配元素的索引，如果未找到则返回-1
    */
-  findIndex(
-    messagesArray: MultiMensionArray[],
-    field: string,
-    fieldValue: any,
-  ): number {
+  findIndex(messagesArray: MultiMensionArray[], field: string, fieldValue: unknown): number {
     return messagesArray.findIndex((item) => item[field] === fieldValue);
   },
 
@@ -228,11 +224,7 @@ export default {
    * @param defaultValue 如果字段不存在时使用的默认值
    * @returns 去重后的数组
    */
-  unique(
-    arr: any[],
-    uniqueField: string = '',
-    defaultValue: string = '',
-  ): any[] {
+  unique(arr: unknown[], uniqueField: string = '', defaultValue: string = ''): unknown[] {
     if (typeof arr[0] !== 'object') {
       // 如果arr[0]不是对象，则返回原数组
       return arr;
@@ -240,10 +232,10 @@ export default {
     // 检查是否指定了用于去重的字段
     if (validate.isNotBlank(uniqueField)) {
       // 使用reduce方法进行去重
-      arr = arr.reduce((acc, current) => {
+      arr = arr.reduce<unknown[]>((acc, current) => {
         // 查找累加器中是否已存在当前元素
         const x = acc.find(
-          (item: any) =>
+          (item: unknown) =>
             // 使用objectUtil工具获取元素的字段值，进行比较
             objectUtil.getValue(item, uniqueField, defaultValue) ===
             objectUtil.getValue(current, uniqueField, defaultValue),
@@ -266,11 +258,11 @@ export default {
     element: MultiMensionArray,
     array: MultiMensionArray[],
     field: string,
-    defaultValue: any = '',
+    defaultValue: unknown = '',
   ): boolean {
     for (let j = 0; j < array.length; j++) {
-      let valueInElement = objectUtil.getValue(element, field, defaultValue);
-      let valueInArray = objectUtil.getValue(array[j], field, defaultValue);
+      const valueInElement = objectUtil.getValue(element, field, defaultValue);
+      const valueInArray = objectUtil.getValue(array[j], field, defaultValue);
       if (valueInElement === valueInArray) {
         return true;
       }
@@ -287,11 +279,11 @@ export default {
    * @returns 返回排序后的数组
    */
   sort(
-    array: any[],
+    array: unknown[],
     sort: string = 'timestamp',
     asc: 'asc' | 'desc' = 'asc',
-    defaultValue: any = 0,
-  ): any[] {
+    defaultValue: unknown = 0,
+  ): unknown[] {
     // 判断排序方向是否为升序
     const ascBoolean = asc === 'asc';
     // 使用sort方法对数组进行排序
@@ -307,7 +299,7 @@ export default {
         comparison = valueA.getTime() - valueB.getTime();
       } else {
         // 否则直接比较数值
-        comparison = valueA - valueB;
+        comparison = toComparableNumber(valueA) - toComparableNumber(valueB);
       }
 
       // 如果排序方向为降序，反转比较结果
@@ -327,7 +319,7 @@ export default {
    * @param value 要排除的值
    * @returns 返回一个新数组，其中不包含具有指定字段值的元素
    */
-  exclude(arr: any[], field: string, value: any): any[] {
+  exclude(arr: unknown[], field: string, value: unknown): unknown[] {
     return arr.filter((item) => objectUtil.getValue(item, field, '') !== value);
   },
 };

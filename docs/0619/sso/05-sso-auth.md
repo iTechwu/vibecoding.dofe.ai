@@ -93,9 +93,9 @@ await app.register(fastifyCookie);
 - 401/410 或 session 过期 → `refreshToken()` 重试一次；仍失败 → `clearToken()` + `replace(getLocaleLoginPath())`。
 - `oidcAuthClient` 用 `publicClientOptions`（无 token），业务 client 用 `clientOptions`（需 token）。
 
-### 2.4 可选：Next middleware
+### 2.4 Next proxy / middleware
 
-models 仓库内未发现 `middleware.ts`（presence cookie 已写入但无消费方）。vibecoding 若需服务端路由保护，自建 `middleware.ts` 读 `tokenPresence`/`tokenExpire` cookie 做拦截。
+当前 `apps/web/proxy.ts` 只保留国际化与 public route 流程，不做旧 `auth-token` cookie 认证。presence cookie（`tokenPresence` / `tokenExpire`）仅作为未来服务端路由保护的轻量信号；若后续启用服务端拦截，应读取 presence cookie 并仍以 API/SSO 校验为准。
 
 ## 3. 本仓库新增的共享产物
 

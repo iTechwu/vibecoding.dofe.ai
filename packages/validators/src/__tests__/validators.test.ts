@@ -11,8 +11,6 @@ import {
   paginationSchema,
   idSchema,
   dateRangeSchema,
-  loginSchema,
-  registerSchema,
   checkPasswordStrength,
 } from '../index';
 
@@ -71,9 +69,7 @@ describe('Strong Password Schema', () => {
   });
 
   it('should reject passwords longer than 32 characters', () => {
-    expect(
-      strongPasswordSchema.safeParse('Aa1!'.repeat(10)).success
-    ).toBe(false);
+    expect(strongPasswordSchema.safeParse('Aa1!'.repeat(10)).success).toBe(false);
   });
 });
 
@@ -130,9 +126,7 @@ describe('Pagination Schema', () => {
 
 describe('ID Schema', () => {
   it('should accept valid UUIDs', () => {
-    expect(
-      idSchema.safeParse('550e8400-e29b-41d4-a716-446655440000').success
-    ).toBe(true);
+    expect(idSchema.safeParse('550e8400-e29b-41d4-a716-446655440000').success).toBe(true);
   });
 
   it('should accept positive integers', () => {
@@ -176,67 +170,6 @@ describe('Date Range Schema', () => {
     const result = dateRangeSchema.safeParse({
       startDate: '2024-12-31',
       endDate: '2024-01-01',
-    });
-    expect(result.success).toBe(false);
-  });
-});
-
-describe('Login Schema', () => {
-  it('should accept valid login credentials', () => {
-    const result = loginSchema.safeParse({
-      email: 'test@example.com',
-      password: 'any-password',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('should reject invalid email', () => {
-    const result = loginSchema.safeParse({
-      email: 'invalid',
-      password: 'password',
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('should reject empty password', () => {
-    const result = loginSchema.safeParse({
-      email: 'test@example.com',
-      password: '',
-    });
-    expect(result.success).toBe(false);
-  });
-});
-
-describe('Register Schema', () => {
-  it('should accept valid registration data', () => {
-    const result = registerSchema.safeParse({
-      email: 'test@example.com',
-      password: 'password123',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('should accept registration with optional username', () => {
-    const result = registerSchema.safeParse({
-      email: 'test@example.com',
-      password: 'password123',
-      username: 'john_doe',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('should reject invalid email', () => {
-    const result = registerSchema.safeParse({
-      email: 'invalid',
-      password: 'password123',
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('should reject weak password', () => {
-    const result = registerSchema.safeParse({
-      email: 'test@example.com',
-      password: 'weak',
     });
     expect(result.success).toBe(false);
   });

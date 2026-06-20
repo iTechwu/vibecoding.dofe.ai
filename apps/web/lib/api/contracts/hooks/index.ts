@@ -4,12 +4,7 @@
 export { userKeys, useUserInfo, useUserCheck, useUserContact } from './user';
 
 // Message hooks
-export {
-  messageKeys,
-  useMessages,
-  useUnreadMessageCount,
-  useSetMessagesRead,
-} from './message';
+export { messageKeys, useMessages, useUnreadMessageCount, useSetMessagesRead } from './message';
 
 // Analytics hooks
 export { analyticsKeys, useTrackEvent, useTrackEventBatch } from './analytics';
@@ -18,12 +13,7 @@ export { analyticsKeys, useTrackEvent, useTrackEventBatch } from './analytics';
 export { taskKeys, useCheckTask, useTaskList, useCheckTasks } from './task';
 
 // System hooks
-export {
-  systemKeys,
-  usePermissionConfig,
-  useServiceReady,
-  useServiceHealth,
-} from './system';
+export { systemKeys, usePermissionConfig, useServiceReady, useServiceHealth } from './system';
 
 // Notification hooks (scaffold reference)
 export { notificationKeys } from './notification';
@@ -34,7 +24,6 @@ export {
   useSaveAccount,
   useUpdateAvatar,
   useSendVerifyEmail,
-  useSetPassword,
   useBindEmail,
   useBindPhone,
 } from './setting';

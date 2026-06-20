@@ -3,7 +3,6 @@ import { ApiResponseSchema, SuccessResponseSchema } from '../base';
 import {
   SendVerifyEmailRequestSchema,
   SettingAccountRequestSchema,
-  SetPasswordRequestSchema,
   BrandSchema,
   BrandSettingRequestSchema,
   UsageResponseSchema,
@@ -12,7 +11,7 @@ import {
   UpdateAvatarRequestSchema,
 } from '../schemas/setting.schema';
 import { UserAccountBaseSchema } from '../schemas/user.schema';
-import { LoginSuccessSchema, UserInfoSchema } from '../schemas/sign.schema';
+import { UserInfoSchema } from '../schemas/sign.schema';
 
 const c = initContract();
 
@@ -41,17 +40,6 @@ export const settingContract = c.router(
         200: ApiResponseSchema(UserInfoSchema),
       },
       summary: 'Save account info',
-    },
-
-    // POST /settings/password - Set password (first time)
-    setPassword: {
-      method: 'POST',
-      path: '/password',
-      body: SetPasswordRequestSchema,
-      responses: {
-        200: ApiResponseSchema(UserAccountBaseSchema),
-      },
-      summary: 'Set password (first time)',
     },
 
     // GET /settings/brand - Get branding info
@@ -91,7 +79,7 @@ export const settingContract = c.router(
       path: '/email/bind',
       body: EmailVerifyRequestSchema,
       responses: {
-        200: ApiResponseSchema(LoginSuccessSchema),
+        200: ApiResponseSchema(UserInfoSchema),
       },
       summary: 'Bind email account',
     },
@@ -102,7 +90,7 @@ export const settingContract = c.router(
       path: '/phone/bind',
       body: MobileLoginRequestSchema,
       responses: {
-        200: ApiResponseSchema(LoginSuccessSchema),
+        200: ApiResponseSchema(UserInfoSchema),
       },
       summary: 'Bind phone number',
     },

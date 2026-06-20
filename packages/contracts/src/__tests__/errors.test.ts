@@ -4,27 +4,9 @@
  */
 
 import {
-  TeamErrorCode,
-  TeamErrorTypes,
-  TeamErrorHttpStatus,
   UserErrorCode,
   UserErrorTypes,
   UserErrorHttpStatus,
-  SpaceErrorCode,
-  SpaceErrorTypes,
-  SpaceErrorHttpStatus,
-  FolderErrorCode,
-  FolderErrorTypes,
-  FolderErrorHttpStatus,
-  FileErrorCode,
-  FileErrorTypes,
-  FileErrorHttpStatus,
-  CommentErrorCode,
-  CommentErrorTypes,
-  CommentErrorHttpStatus,
-  PaymentErrorCode,
-  PaymentErrorTypes,
-  PaymentErrorHttpStatus,
   CommonErrorCode,
   CommonErrorTypes,
   CommonErrorHttpStatus,
@@ -32,50 +14,21 @@ import {
 
 import { AllErrorTypes, getErrorType, getHttpStatus } from '../errors/codes';
 
+type ErrorDomain = {
+  name: string;
+  errorCode: Record<string, string>;
+  errorTypes: Record<string, string>;
+  httpStatus: Record<string, number>;
+};
+
 describe('Error Codes', () => {
   describe('Domain Error Codes', () => {
-    const domains = [
-      {
-        name: 'Team',
-        errorCode: TeamErrorCode,
-        errorTypes: TeamErrorTypes,
-        httpStatus: TeamErrorHttpStatus,
-      },
+    const domains: ErrorDomain[] = [
       {
         name: 'User',
         errorCode: UserErrorCode,
         errorTypes: UserErrorTypes,
         httpStatus: UserErrorHttpStatus,
-      },
-      {
-        name: 'Space',
-        errorCode: SpaceErrorCode,
-        errorTypes: SpaceErrorTypes,
-        httpStatus: SpaceErrorHttpStatus,
-      },
-      {
-        name: 'Folder',
-        errorCode: FolderErrorCode,
-        errorTypes: FolderErrorTypes,
-        httpStatus: FolderErrorHttpStatus,
-      },
-      {
-        name: 'File',
-        errorCode: FileErrorCode,
-        errorTypes: FileErrorTypes,
-        httpStatus: FileErrorHttpStatus,
-      },
-      {
-        name: 'Comment',
-        errorCode: CommentErrorCode,
-        errorTypes: CommentErrorTypes,
-        httpStatus: CommentErrorHttpStatus,
-      },
-      {
-        name: 'Payment',
-        errorCode: PaymentErrorCode,
-        errorTypes: PaymentErrorTypes,
-        httpStatus: PaymentErrorHttpStatus,
       },
       {
         name: 'Common',
@@ -88,24 +41,18 @@ describe('Error Codes', () => {
     domains.forEach(({ name, errorCode, errorTypes, httpStatus }) => {
       describe(`${name} Error Codes`, () => {
         it('should have matching error types for all error codes', () => {
-          const codes = Object.values(errorCode).filter(
-            (v) => typeof v === 'number',
-          );
+          const codes = Object.values(errorCode);
           codes.forEach((code) => {
-            expect(errorTypes[code as number]).toBeDefined();
-            expect(typeof errorTypes[code as number]).toBe('string');
+            expect(errorTypes[code]).toBeDefined();
+            expect(typeof errorTypes[code]).toBe('string');
           });
         });
 
         it('should have matching HTTP status for all error codes', () => {
-          const codes = Object.values(errorCode).filter(
-            (v) => typeof v === 'number',
-          );
+          const codes = Object.values(errorCode);
           codes.forEach((code) => {
-            expect(httpStatus[code as keyof typeof httpStatus]).toBeDefined();
-            expect(typeof httpStatus[code as keyof typeof httpStatus]).toBe(
-              'number',
-            );
+            expect(httpStatus[code]).toBeDefined();
+            expect(typeof httpStatus[code]).toBe('number');
           });
         });
 
@@ -120,16 +67,10 @@ describe('Error Codes', () => {
 
   describe('AllErrorTypes', () => {
     it('should contain all error codes from all domains', () => {
-      const totalCodes = [
-        TeamErrorTypes,
-        UserErrorTypes,
-        SpaceErrorTypes,
-        FolderErrorTypes,
-        FileErrorTypes,
-        CommentErrorTypes,
-        PaymentErrorTypes,
-        CommonErrorTypes,
-      ].reduce((sum, types) => sum + Object.keys(types).length, 0);
+      const totalCodes = [UserErrorTypes, CommonErrorTypes].reduce(
+        (sum, types) => sum + Object.keys(types).length,
+        0,
+      );
 
       expect(Object.keys(AllErrorTypes).length).toBe(totalCodes);
     });
@@ -137,11 +78,8 @@ describe('Error Codes', () => {
 
   describe('getErrorType', () => {
     it('should return correct error type for valid code', () => {
-      expect(getErrorType(TeamErrorCode.TeamNotFound)).toBe('teamNotFound');
       expect(getErrorType(UserErrorCode.UserNotFound)).toBe('userNotFound');
-      expect(getErrorType(SpaceErrorCode.SpaceIsNotExist)).toBe(
-        'spaceIsNotExist',
-      );
+      expect(getErrorType(CommonErrorCode.SessionExpired)).toBe('sessionExpired');
     });
 
     it('should return undefined for invalid code', () => {
@@ -151,7 +89,7 @@ describe('Error Codes', () => {
 
   describe('getHttpStatus', () => {
     it('should return correct HTTP status for valid code', () => {
-      expect(getHttpStatus(TeamErrorCode.TeamNotFound)).toBe(200);
+      expect(getHttpStatus(UserErrorCode.UserNotFound)).toBe(401);
       expect(getHttpStatus(CommonErrorCode.UnAuthorized)).toBe(401);
       expect(getHttpStatus(CommonErrorCode.InternalServerError)).toBe(500);
     });

@@ -27,19 +27,12 @@ export const strongPasswordSchema = z
   .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
   .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
   .regex(/[0-9]/, 'Password must contain at least one number')
-  .regex(
-    /[^a-zA-Z0-9]/,
-    'Password must contain at least one special character',
-  );
+  .regex(/[^a-zA-Z0-9]/, 'Password must contain at least one special character');
 
 /**
  * Password strength levels
  */
-export type PasswordStrengthLevel =
-  | 'weak'
-  | 'medium'
-  | 'strong'
-  | 'very_strong';
+export type PasswordStrengthLevel = 'weak' | 'medium' | 'strong' | 'very_strong';
 
 /**
  * Password strength check result
@@ -66,9 +59,7 @@ export interface PasswordStrengthResult {
  * console.log(result.suggestions); // []
  * ```
  */
-export function checkPasswordStrength(
-  password: string,
-): PasswordStrengthResult {
+export function checkPasswordStrength(password: string): PasswordStrengthResult {
   let score = 0;
   const suggestions: string[] = [];
 
@@ -122,10 +113,7 @@ export const usernameSchema = z
   .string()
   .min(3, 'Username must be at least 3 characters')
   .max(30, 'Username must be at most 30 characters')
-  .regex(
-    /^[a-zA-Z0-9_-]+$/,
-    'Username can only contain letters, numbers, underscores and hyphens',
-  );
+  .regex(/^[a-zA-Z0-9_-]+$/, 'Username can only contain letters, numbers, underscores and hyphens');
 
 // Pagination validation
 export const paginationSchema = z.object({
@@ -150,19 +138,6 @@ export const dateRangeSchema = z
     path: ['startDate'],
   });
 
-// Common login schema
-export const loginSchema = z.object({
-  email: emailSchema,
-  password: z.string().min(1, 'Password is required'),
-});
-
-// Common register schema
-export const registerSchema = z.object({
-  email: emailSchema,
-  password: passwordSchema,
-  username: usernameSchema.optional(),
-});
-
 // Types inferred from schemas
 export type Email = z.infer<typeof emailSchema>;
 export type Password = z.infer<typeof passwordSchema>;
@@ -171,8 +146,6 @@ export type Username = z.infer<typeof usernameSchema>;
 export type Pagination = z.infer<typeof paginationSchema>;
 export type Id = z.infer<typeof idSchema>;
 export type DateRange = z.infer<typeof dateRangeSchema>;
-export type LoginInput = z.infer<typeof loginSchema>;
-export type RegisterInput = z.infer<typeof registerSchema>;
 
 // Re-export zod for convenience
 export { z };

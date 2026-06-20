@@ -7,7 +7,7 @@
  */
 
 import { initClient, type ApiFetcherArgs } from '@ts-rest/core';
-import { userContract, signContract } from '@repo/contracts';
+import { userContract } from '@repo/contracts';
 import {
   API_VERSION_HEADER,
   APP_BUILD_HEADER,
@@ -78,8 +78,7 @@ function createServerFetch(options: ServerClientOptions) {
     // Handle body serialization
     let requestBody: string | undefined;
     if (args.body !== undefined && args.body !== null) {
-      requestBody =
-        typeof args.body === 'string' ? args.body : JSON.stringify(args.body);
+      requestBody = typeof args.body === 'string' ? args.body : JSON.stringify(args.body);
     }
 
     const response = await fetch(args.path, {
@@ -121,23 +120,5 @@ export function createServerUserClient(options: ServerClientOptions = {}) {
   });
 }
 
-/**
- * 创建服务端 Sign API 客户端
- *
- * @example
- * ```ts
- * const signClient = createServerSignClient();
- * const response = await signClient.refreshToken({ query: { refresh: 'xxx' } });
- * ```
- */
-export function createServerSignClient(options: ServerClientOptions = {}) {
-  return initClient(signContract, {
-    baseUrl: API_CONFIG.baseUrl,
-    baseHeaders: {},
-    api: createServerFetch(options),
-  });
-}
-
 // Export types
 export type ServerUserClient = ReturnType<typeof createServerUserClient>;
-export type ServerSignClient = ReturnType<typeof createServerSignClient>;

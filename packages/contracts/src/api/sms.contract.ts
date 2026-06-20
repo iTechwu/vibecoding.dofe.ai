@@ -3,14 +3,9 @@ import { ApiResponseSchema } from '../base';
 import {
   SendSmsCodeRequestSchema,
   CheckVerifyCodeRequestSchema,
-  MobileCodeSendRequestSchema,
-  SmsMobileLoginRequestSchema,
   SendSmsCodeResponseSchema,
   CheckVerifyCodeResponseSchema,
-  SendLoginCodeResponseSchema,
-  SendRegisterCodeResponseSchema,
 } from '../schemas/sms.schema';
-import { LoginSuccessSchema } from '../schemas/sign.schema';
 
 const c = initContract();
 
@@ -41,49 +36,8 @@ export const smsContract = c.router(
       summary: 'Check SMS verification code',
     },
 
-    // POST /sms/send/code/login - Send login code
-    sendLoginCode: {
-      method: 'POST',
-      path: '/send/code/login',
-      body: MobileCodeSendRequestSchema,
-      responses: {
-        200: ApiResponseSchema(SendLoginCodeResponseSchema),
-      },
-      summary: 'Send login verification code',
-    },
-
-    // POST /sms/login/verify - Login with verify code
-    loginWithVerifyCode: {
-      method: 'POST',
-      path: '/login/verify',
-      body: SmsMobileLoginRequestSchema,
-      responses: {
-        200: ApiResponseSchema(LoginSuccessSchema),
-      },
-      summary: 'Login with SMS verification code',
-    },
-
-    // POST /sms/send/code/register - Send register code
-    sendRegisterCode: {
-      method: 'POST',
-      path: '/send/code/register',
-      body: MobileCodeSendRequestSchema,
-      responses: {
-        200: ApiResponseSchema(SendRegisterCodeResponseSchema),
-      },
-      summary: 'Send register verification code',
-    },
-
-    // POST /sms/register/verify - Register with verify code
-    registerWithVerifyCode: {
-      method: 'POST',
-      path: '/register/verify',
-      body: SmsMobileLoginRequestSchema,
-      responses: {
-        200: ApiResponseSchema(LoginSuccessSchema),
-      },
-      summary: 'Register with SMS verification code',
-    },
+    // SMS login/register endpoints are intentionally not exposed.
+    // Authentication is owned by sso.dofe.ai via OIDC.
   },
   {
     pathPrefix: '/sms',
@@ -91,4 +45,3 @@ export const smsContract = c.router(
 );
 
 export type SmsContract = typeof smsContract;
-

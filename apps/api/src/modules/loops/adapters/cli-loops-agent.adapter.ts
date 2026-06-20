@@ -196,16 +196,19 @@ export class CliLoopsAgentAdapter implements LoopsAgentAdapter {
     return `${base}\n上下文:\n${JSON.stringify(ctx).slice(0, 20000)}`;
   }
 
-  private asSpec(issue: LoopIssue, createdAt: string, raw: any): LoopSpec | undefined {
-    if (!raw || typeof raw.body !== 'string') return undefined;
+  private asSpec(issue: LoopIssue, createdAt: string, raw: unknown): LoopSpec | undefined {
+    if (!raw || typeof raw !== 'object') return undefined;
+    const candidateInput = raw as { body?: unknown; contextBudget?: unknown };
+    if (typeof candidateInput.body !== 'string') return undefined;
     const candidate = {
       id: `spec-${issue.id.replace('issue-', '')}`,
       issueId: issue.id,
       version: 'v1',
       status: 'DRAFT',
       created: createdAt,
-      contextBudget: typeof raw.contextBudget === 'number' ? raw.contextBudget : 24000,
-      body: raw.body,
+      contextBudget:
+        typeof candidateInput.contextBudget === 'number' ? candidateInput.contextBudget : 24000,
+      body: candidateInput.body,
     };
     const parsed = LoopSpecSchema.safeParse(candidate);
     if (!parsed.success) return undefined;

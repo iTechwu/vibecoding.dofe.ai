@@ -53,6 +53,28 @@ module.exports = function (options, webpack) {
     return !(plugin instanceof ForkTsCheckerWebpackPlugin);
   });
   const tsconfigAliases = buildAliasesFromTsconfig();
+  const prismaEnumShim = `
+try {
+  const prismaClient = require('@prisma/client');
+  prismaClient.FileBucketVendor ??= {
+    oss: 'oss',
+    us3: 'us3',
+    qiniu: 'qiniu',
+    s3: 's3',
+    gcs: 'gcs',
+    tos: 'tos',
+    tencent: 'tencent',
+    ksyun: 'ksyun',
+  };
+  prismaClient.FileEnvType ??= {
+    dev: 'dev',
+    test: 'test',
+    prod: 'prod',
+    produs: 'produs',
+    prodap: 'prodap',
+  };
+} catch {}
+`;
 
   // Check if node_modules directories exist
   const existingModulesDirs = modulesDirs.filter((dir) => fs.existsSync(dir));
@@ -165,7 +187,14 @@ module.exports = function (options, webpack) {
       },
       symlinks: false,
     },
-    plugins,
+    plugins: [
+      new webpack.BannerPlugin({
+        banner: prismaEnumShim,
+        raw: true,
+        entryOnly: true,
+      }),
+      ...plugins,
+    ],
     // Suppress "failed to read input source map" warnings from generated Prisma files
     stats: {
       ...options.stats,

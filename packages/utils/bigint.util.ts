@@ -37,7 +37,7 @@ export default {
   },
 
   parseToInt(num: bigint): number {
-    let numb = parseInt(`${num}`);
+    const numb = parseInt(`${num}`);
     // if ( !numb ){
     //     numb = 0
     // }
@@ -69,7 +69,7 @@ export default {
     return gt1 > gt2;
   },
 
-  serialize(obj: any, seen = new WeakSet()): any {
+  serialize(obj: unknown, seen = new WeakSet<object>()): unknown {
     if (obj === null || obj === undefined) {
       return obj;
     }
@@ -97,10 +97,7 @@ export default {
 
         seen.add(obj);
         const result = Object.fromEntries(
-          Object.entries(obj).map(([key, value]) => [
-            key,
-            this.serialize(value, seen),
-          ]),
+          Object.entries(obj).map(([key, value]) => [key, this.serialize(value, seen)]),
         );
         seen.delete(obj);
         return result;

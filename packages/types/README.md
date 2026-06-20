@@ -25,24 +25,15 @@ import type { User, Task, ApiResponse } from '@repo/types';
 AI 相关的类型定义：
 
 ```typescript
-import type {
-  ChatMessage,
-  AIModel,
-  CompletionOptions
-} from '@repo/types';
+import type { ChatMessage, AIModel, CompletionOptions } from '@repo/types';
 ```
 
-### 认证类型 (auth.ts)
+### 第三方账号类型 (auth.ts)
 
-用户认证相关类型：
+第三方平台授权返回类型；本项目登录态以 `sso.dofe.ai` 为唯一真源：
 
 ```typescript
-import type {
-  User,
-  AuthToken,
-  LoginCredentials,
-  RegisterData
-} from '@repo/types';
+import type { TikTokAccessToken, TikTokUserProfile } from '@repo/types';
 ```
 
 ### 通用类型 (common.ts)
@@ -50,11 +41,7 @@ import type {
 通用基础类型：
 
 ```typescript
-import type {
-  ApiResponse,
-  PaginatedResponse,
-  ErrorResponse
-} from '@repo/types';
+import type { ApiResponse, PaginatedResponse, ErrorResponse } from '@repo/types';
 
 // API 响应类型
 interface ApiResponse<T> {
@@ -77,11 +64,7 @@ interface PaginatedResponse<T> {
 创意内容相关类型：
 
 ```typescript
-import type {
-  Creative,
-  MediaAsset,
-  ContentTemplate
-} from '@repo/types';
+import type { Creative, MediaAsset, ContentTemplate } from '@repo/types';
 ```
 
 ### 任务类型 (task.ts)
@@ -89,11 +72,7 @@ import type {
 任务管理相关类型：
 
 ```typescript
-import type {
-  Task,
-  TaskStatus,
-  TaskPriority
-} from '@repo/types';
+import type { Task, TaskStatus, TaskPriority } from '@repo/types';
 ```
 
 ## 添加新类型

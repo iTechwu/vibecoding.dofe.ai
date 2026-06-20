@@ -1,16 +1,27 @@
 import { pinyin } from 'pinyin-pro';
 
-import { validate as uuidValidate } from 'uuid';
-import { default as objectUtil } from './object.util';
-import { v4 as uuidv4 } from 'uuid';
 import { HeaderData } from './headers';
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function randomUUID(): string {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = char === 'x' ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
+
 export default {
-  isUUID(str: any): boolean {
-    if (objectUtil.getType(str) !== 'string') {
+  isUUID(str: unknown): boolean {
+    if (typeof str !== 'string') {
       return false;
     }
-    return uuidValidate(str);
+    return uuidPattern.test(str);
   },
 
   stringGen(len: number = 6) {
@@ -26,21 +37,20 @@ export default {
   },
 
   generateCode(length: number): string {
-    const characters =
-      'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz0123456789'; // Removed 'I', 'O' and 'l'
+    const characters = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz0123456789'; // Removed 'I', 'O' and 'l'
     let result = '';
     for (let i = 0; i < length; i++) {
-      result += characters.charAt(
-        Math.floor(Math.random() * characters.length),
-      );
+      result += characters.charAt(Math.floor(Math.random() * characters.length));
     }
     return result;
   },
 
   toCamelCase(inputString: string): string {
-    return inputString.replace(/_+(\w)/g, (match: string, letter: string) =>
-      letter.toUpperCase(),
-    );
+    return inputString.replace(/_+(\w)/g, (match: string, letter: string) => letter.toUpperCase());
+  },
+
+  escapeMongoRegexSpecialChars(input: string): string {
+    return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   },
 
   generateString(input: string, suffixLength = 3): string {
@@ -91,11 +101,7 @@ export default {
     };
   },
 
-  splitString(
-    inputString: string,
-    splitChar: string = '/',
-    slice?: number,
-  ): string[] {
+  splitString(inputString: string, splitChar: string = '/', slice?: number): string[] {
     // 使用split方法按照'/'字符分割字符串
     const parts = inputString
       .trim()
@@ -113,7 +119,7 @@ export default {
       deviceInfo?.os ||
       'unknown' + '-' + deviceInfo?.platform ||
       'unknown' + '-' + deviceInfo?.deviceid ||
-      uuidv4()
+      randomUUID()
     );
   },
 

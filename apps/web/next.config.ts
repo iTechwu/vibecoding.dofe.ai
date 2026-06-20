@@ -61,9 +61,23 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'https',
+        hostname: '*.dofe.ai',
+      },
+      {
+        protocol: 'https',
         hostname: '*.alicdn.com',
       },
     ],
+  },
+  // SSO file upload proxy — FileUploader appends /api/uploader/* itself.
+  async rewrites() {
+    const ssoApiUrl = process.env.NEXT_PUBLIC_SSO_BASE_URL || 'https://sso.dofe.ai';
+    return [
+      {
+        source: '/api/proxy/sso/:path*',
+        destination: `${ssoApiUrl}/:path*`,
+      },
+    ];
   },
   // HTML 禁止缓存 - 确保用户始终获取最新版本
   async headers() {

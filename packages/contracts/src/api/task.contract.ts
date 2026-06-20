@@ -4,6 +4,7 @@ import { ApiResponseSchema } from '../base';
 import {
   TaskCheckResponseSchema,
   TaskListResponseSchema,
+  TaskListQuerySchema,
   CheckTasksRequestSchema,
   CheckTasksResponseSchema,
 } from '../schemas/task.schema';
@@ -32,6 +33,7 @@ export const taskContract = c.router(
     getTaskList: {
       method: 'GET',
       path: '/list',
+      query: TaskListQuerySchema,
       responses: {
         200: ApiResponseSchema(TaskListResponseSchema),
       },
@@ -55,4 +57,3 @@ export const taskContract = c.router(
 );
 
 export type TaskContract = typeof taskContract;
-

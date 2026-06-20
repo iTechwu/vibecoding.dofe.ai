@@ -1,5 +1,7 @@
 # 08 · 分阶段实施计划与里程碑
 
+> **实施状态**：本计划已在 2026-06-19 完成主要代码落地，并在 2026-06-20 深审修复 SSO 文件代理与默认前端回调端口；准确完成项、废弃项与未执行 E2E 见 [09-implementation-status.md](./09-implementation-status.md)。
+
 > 按「先 sso 侧、再 api 基础、再认证、再前端、最后文件与 scaffold」的顺序推进。每阶段独立可验证、可回滚。
 
 ## 阶段总览
@@ -8,7 +10,7 @@
 | ---- | ---------------------------------------- | ---- | -------- | ------ |
 | 0    | sso 侧 client 注册                       | —    | 06       | M0     |
 | 1    | api schema + env 基础                    | 0    | 07 / 03  | M1a    |
-| 2    | 审计日志 + 修 FileCdn bug                | 1    | 03 / 04  | M1     |
+| 2    | 审计日志与文件链路收敛                   | 1    | 03 / 04  | M1     |
 | 3    | api SSO 认证（OIDC + guard + user-sync） | 0,1  | 05(后端) | M2     |
 | 4    | web SSO 前端闭环                         | 3    | 05(前端) | M3     |
 | 5    | file-sdk 接入                            | 2    | 04       | M4     |
@@ -33,14 +35,14 @@
 - **验证**：`@app/db` 产出 `AuditLogModule/Service`；`pnpm type-check` 不因 schema 报错。
 - **回滚**：prisma migrate reset / 回退 migration；删除新增 env。
 
-## 阶段 2 · 审计日志 + 修 FileCdn bug（在 vibecoding）
+## 阶段 2 · 审计日志与文件链路收敛（在 vibecoding）
 
 - **改动**：
-  - 复制 sso `libs/domain/services/src/audit/{operate-log-adapter.service,audit.service,audit.module}.ts` → vibecoding 同路径；更新 `libs/domain/services/src/index.ts` 导出（03 §2）。
-  - 修 `auth.module.ts:12` / `auth.service.ts:12` 的 `FileCdnModule/FileCdnClient` 导入源 → `@dofe/infra-shared-services`（04 §2）。
-  - 装配：`bootstrap/app-module-imports.bootstrap.ts` 加 `AuditModule`；`app.module.ts` providers 加 `OPERATE_LOG_SERVICE_TOKEN` + `APP_INTERCEPTOR→AuditLogInterceptor`（03 §4）。
-- **验证**：`pnpm type-check` 通过（既有 FileCdn 错误消除）；访问写接口 → `t_audit_log` 有记录。
-- **回滚**：移除装配行 + 删除 audit 目录 + 还原 import。
+  - 采用 `models.dofe.ai` 的业务主动调用模式：`apps/api/libs/domain/audit-log/` + 本地 `audit_logs` 表（03）。
+  - 不注册 `AuditLogInterceptor` / `OPERATE_LOG_SERVICE_TOKEN`。
+  - 文件能力改为 file-sdk 消费后，旧 `FileCdnModule/FileCdnClient` 路径不再作为运行依赖。
+- **验证**：`pnpm --filter @repo/api type-check` 通过；业务写接口按需主动调用 `AuditLogService` 后写入 `audit_logs`。
+- **回滚**：移除业务侧审计调用 + 删除 audit-log domain 与 schema。
 
 ## 阶段 3 · api SSO 认证（在 vibecoding）
 
@@ -59,6 +61,9 @@
   - 新建 `app/[locale]/login`、`app/[locale]/auth/oidc/{callback,success}`、`app/api/auth/oidc/authorize`（05 §2.1）。
   - 复制 `lib/{token-manager,sso-session,sso-session-errors,storage/index}.ts`（05 §2.2）。
   - 改造 `lib/api/contracts/client.ts` 的 `baseFetch`（`credentials:include` + 401 刷新重试）（05 §2.3）。
+  - 改造 `AuthProvider` 与 `lib/api.ts` 兼容层：刷新统一走 `tokenManager` + `/auth/oidc/token`，登出统一走 `oidcAuthClient.logout/clearSession`。
+  - 删除未被引用的旧 `lib/api/auth-server.ts`，避免继续暴露本地 refresh token 模式。
+  - 删除旧本地 `/sign` ts-rest contract、前端 `signClient` 与未使用的 `/sign/*` 配置；认证入口只保留 OIDC contract/client。
   - web `package.json` 新增依赖：`@dofe/sso-browser`、`@dofe/sso-contracts`。
 - **验证**：端到端登录闭环（login→sso→callback→success→token 入库）；access 过期自动 refresh；logout 回 `/login`。
 - **回滚**：删除新增路由/lib；还原 `baseFetch`。
@@ -66,16 +71,20 @@
 ## 阶段 5 · file-sdk 接入（在 vibecoding）
 
 - **改动**：
-  - 5a：`UploaderModule` 内部 Service 改调 `FileSdkClient`（转发 sso），入口不变（04 §3.3）。
-  - 5b（可选）：前端 `@dofe/file-sdk-web` 直连 sso，下线自有 uploader。
-  - 新增 `@dofe/file-sdk` 依赖与 Client 层封装（04 §3）。
-- **验证**：上传文件落 sso 存储 + CDN URL 可访问 + 本地 `FileSource` 缓存一致。
-- **回滚**：还原 UploaderService 直接存储逻辑。
+  - 删除本地 `UploaderModule`，不保留本地上传入口。
+  - 删除本地 `FileSource` 与 bucket/env 枚举；`avatarFileId` 仅保存 SSO file id。
+  - 删除旧本地 `/uploader` ts-rest contract/schema 暴露，并移除 `/uploader/token/*` 限流白名单。
+  - 后端使用 `@dofe/file-sdk` 解析/消费 SSO 文件。
+  - 前端使用 `@dofe/file-sdk-web`，`apiBase='/api/proxy/sso'`。
+  - `apps/web/next.config.ts` 增加 `/api/proxy/sso/:path*` → `${NEXT_PUBLIC_SSO_BASE_URL}/:path*` rewrite，并允许 `*.dofe.ai` 图片域名（`@dofe/file-sdk-web` 自行拼接 `/api/uploader/*`）。
+- **验证**：type-check 通过；真实上传/CDN 验证需要联动 SSO 服务与密钥。
+- **回滚**：恢复本地 uploader 与 file schema 会违反“SSO 为唯一真源”，不作为推荐回滚路径；如需临时降级，应仅回滚前端入口并保留 SSO 文件源。
 
 ## 阶段 6 · scaffold 同步
 
 - 对 `scaffold.dofe.ai` 重复阶段 0–5（client_id=`scaffold-dofe-ai`，secret=`SSO_CLIENT_SECRET_SCAFFOLD`）。
 - 实施前补一次 scaffold 现状核对（01 §4），差异点就地修订。
+- 当前验收口径：scaffold 只要求保持代码同步基线，不要求必须完成 `sso.dofe.ai` 真实登录链路验证；真实 SSO E2E 验收对象为 vibecoding。
 
 ---
 
@@ -83,16 +92,44 @@
 
 - **M0**（阶段 0）：sso 注册完成，vibecoding 可发起 `/auth/oidc/authorize` 且 sso 接受 redirect_uri。
 - **M1a**（阶段 1）：schema/env 就绪，`@app/db` 含 `AuditLog`/`ssoSub`。
-- **M1**（阶段 2）：审计日志上线，`pnpm type-check` 全绿（含 FileCdn bug 修复）。
+- **M1**（阶段 2）：审计日志上线，`pnpm type-check` 全绿，本地 FileCdn/Uploader 链路不再作为运行依赖。
 - **M2**（阶段 3）：api 端 SSO 认证可用（远程校验 + user-sync + cookie）。
 - **M3**（阶段 4）：全栈 SSO 登录端到端闭环。
 - **M4**（阶段 5）：文件能力以 sso 为唯一源。
 - **M5**（阶段 6）：scaffold 同步完成。
 
-## 全局验证清单
+## 全局验证清单（截至 2026-06-20）
 
-- [ ] `pnpm type-check`（api）全绿
-- [ ] `pnpm test`（bootstrap + audit + user-sync + token-manager 单测）通过
-- [ ] `pnpm dev:api` + `pnpm dev:web` + sso 三端联动，登录/刷新/登出闭环
-- [ ] sso `t_oauth_client` 含 vibecoding；vibecoding `t_audit_log` 记录正常
-- [ ] 文件上传经 sso，CDN 可访问
+- [x] vibecoding `pnpm --filter @repo/api type-check` 全绿
+- [x] vibecoding `pnpm --filter @repo/web type-check` 全绿
+- [x] scaffold `pnpm --filter @repo/api type-check` 全绿
+- [x] scaffold `pnpm --filter @repo/web type-check` 全绿
+- [x] logout 本地 blacklist 写入后，`AuthGuard` 已增加 `jti` blacklist 检查（SSO 远程 verify 仍为权威校验）
+- [x] `/auth/oidc/token` 仅从 `dofe_rf` HttpOnly cookie 读取 refresh token，不接受请求体回退
+- [x] web proxy 已移除旧 `auth-token` cookie 伪认证分支
+- [x] vibecoding api/contracts/web 本地单测通过（api: 4 passed, 1 skipped；contracts: 43 passed；web: 2 passed）
+- [x] scaffold contracts/web 本地单测通过（contracts: 41 passed；web: 2 passed）
+- [x] scaffold api Jest 配置可解析；当前无 `.spec.ts` 文件（`--passWithNoTests`）
+- [x] vibecoding 质量门禁通过：`check:architecture`、`check:list-contracts`、`check:sensitive-logs`、`check:utils-hygiene`
+- [x] scaffold 质量门禁通过：`check:architecture`、`check:list-contracts`、`check:sensitive-logs`、`check:utils-hygiene`
+- [x] scaffold 已同步 vibecoding 的 utils 类型/日志收敛、Fastify 注册类型化写法、标准分页 task list schema
+- [x] vibecoding/scaffold `API_CONFIG.endpoints.refreshToken` 已改为真实 OIDC 端点 `/auth/oidc/token`
+- [x] vibecoding/scaffold 已删除 TikTok OAuth action 中的硬编码 token 示例注释
+- [x] vibecoding/scaffold OIDC controller 已移除显式 `Promise<any>`，由 ts-rest contract 推断返回类型
+- [x] vibecoding/scaffold 已删除本地 Email/手机号登录、注册、refresh 请求 schema
+- [x] vibecoding/scaffold 已删除 SMS 登录/注册 contract 入口，验证码接口不再作为本地认证入口
+- [x] vibecoding/scaffold 资料绑定 contract 返回 `UserInfoSchema`，不再返回登录态
+- [x] vibecoding/scaffold 已删除 `@repo/validators` 的本地 `loginSchema/registerSchema`
+- [x] vibecoding/scaffold 已删除 `/settings/password` contract 与 `useSetPassword` hook
+- [x] vibecoding/scaffold 已删除共享 `UserMobileAccount/UserEmailAccount/WechatAccount/GoogleAccount/DiscordAccount` schema 暴露
+- [x] vibecoding/scaffold web 已移除 `/register` public route / analytics mapping，并将 auth locale 收敛为 SSO 页面文案
+- [x] scaffold web ts-rest client 已同步 vibecoding 的 401/410 自动 refresh retry 逻辑，刷新只走 `/auth/oidc/token` + `dofe_rf` HttpOnly cookie
+- [x] vibecoding/scaffold 前端 public client 注释已去除 login/register 表述，认证公共入口仅描述为 OIDC 相关端点
+- [x] vibecoding API dev 端口配置已改为 `13100`，web 前端端口配置为 `3003`，对齐 sso client seed
+- [x] vibecoding 登录成功默认回跳已改为存在的 `/`，避免 `/dashboard` 缺页导致回调后 404
+- [x] vibecoding/scaffold SSO 文件代理 rewrite 已修正为 `${NEXT_PUBLIC_SSO_BASE_URL}/:path*`
+- [x] vibecoding 已新增真实 SSO E2E 入口：`pnpm --filter @repo/web test:e2e:sso`
+- [ ] vibecoding SSO 联动 E2E 测试通过
+- [ ] vibecoding `pnpm dev:api` + `pnpm dev:web` + sso 三端联动，登录/刷新/登出闭环
+- [ ] sso `t_oauth_client` 含 vibecoding；业务写接口审计记录正常
+- [ ] vibecoding 文件上传经 sso，CDN 可访问

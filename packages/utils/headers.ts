@@ -20,6 +20,15 @@ export interface VersionInfo {
   appBuild?: string;
 }
 
+type NavigatorWithLegacyFields = Navigator & {
+  vendor?: string;
+};
+
+type WindowWithLegacyBrowserFields = Window & {
+  opera?: string;
+  MSStream?: unknown;
+};
+
 /**
  * 获取或生成设备 ID
  */
@@ -45,14 +54,15 @@ function getOS(): string {
     return 'unknown';
   }
 
-  const userAgent =
-    navigator.userAgent || navigator.vendor || (window as any).opera;
+  const legacyNavigator = navigator as NavigatorWithLegacyFields;
+  const legacyWindow = window as WindowWithLegacyBrowserFields;
+  const userAgent = navigator.userAgent || legacyNavigator.vendor || legacyWindow.opera || '';
 
   if (/android/i.test(userAgent)) {
     return 'android';
   }
 
-  if (/iPad|iPhone|iPod/.test(userAgent) && !(window as any).MSStream) {
+  if (/iPad|iPhone|iPod/.test(userAgent) && !legacyWindow.MSStream) {
     return 'ios';
   }
 

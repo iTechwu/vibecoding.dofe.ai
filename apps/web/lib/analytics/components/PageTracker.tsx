@@ -69,10 +69,7 @@ export function PageTracker({
     analytics.pageView(fullPath, pageName);
 
     // Track session start on first page view
-    if (
-      typeof window !== 'undefined' &&
-      !sessionStorage.getItem('session_started')
-    ) {
+    if (typeof window !== 'undefined' && !sessionStorage.getItem('session_started')) {
       analytics.track('SESSION_START', {
         path: fullPath,
       } as unknown as EventProperties);
@@ -128,7 +125,6 @@ export const defaultPageNameMapper = (pathname: string): string => {
     '/home': 'Home',
     '/settings': 'Settings',
     '/login': 'Login',
-    '/register': 'Register',
     '/upload': 'Upload',
   };
 

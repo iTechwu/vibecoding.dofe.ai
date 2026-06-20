@@ -66,13 +66,13 @@ export type VersionedContract<T extends AppRouter> = T & {
  * @example
  * ```typescript
  * const c = initContract();
- * export const signContract = withVersion(
- *   c.router({ ... }, { pathPrefix: '/sign' }),
- *   { version: API_VERSION.V1, pathPrefix: '/sign' }
+ * export const oidcAuthContract = withVersion(
+ *   c.router({ ... }, { pathPrefix: '/oidc-auth' }),
+ *   { version: API_VERSION.V1, pathPrefix: '/oidc-auth' }
  * );
  *
  * // 读取版本
- * const version = getContractVersion(signContract); // '1'
+ * const version = getContractVersion(oidcAuthContract); // '1'
  * ```
  */
 export function withVersion<T extends AppRouter>(
@@ -91,13 +91,8 @@ export function withVersion<T extends AppRouter>(
  * @returns 版本号，如果未设置则返回默认版本
  */
 export function getContractVersion(contract: unknown): ApiVersion {
-  if (
-    contract &&
-    typeof contract === 'object' &&
-    CONTRACT_METADATA in contract
-  ) {
-    return (contract as VersionedContract<AppRouter>)[CONTRACT_METADATA]
-      .version;
+  if (contract && typeof contract === 'object' && CONTRACT_METADATA in contract) {
+    return (contract as VersionedContract<AppRouter>)[CONTRACT_METADATA].version;
   }
   return API_VERSION_DEFAULT;
 }
@@ -108,14 +103,8 @@ export function getContractVersion(contract: unknown): ApiVersion {
  * @param contract - ts-rest contract
  * @returns 元数据对象，如果未设置则返回 undefined
  */
-export function getContractMetadata(
-  contract: unknown,
-): ContractMetadata | undefined {
-  if (
-    contract &&
-    typeof contract === 'object' &&
-    CONTRACT_METADATA in contract
-  ) {
+export function getContractMetadata(contract: unknown): ContractMetadata | undefined {
+  if (contract && typeof contract === 'object' && CONTRACT_METADATA in contract) {
     return (contract as VersionedContract<AppRouter>)[CONTRACT_METADATA];
   }
   return undefined;
@@ -125,11 +114,7 @@ export function getContractMetadata(
  * 检查 Contract 是否有版本元数据
  */
 export function hasContractVersion(contract: unknown): boolean {
-  return (
-    contract !== null &&
-    typeof contract === 'object' &&
-    CONTRACT_METADATA in contract
-  );
+  return contract !== null && typeof contract === 'object' && CONTRACT_METADATA in contract;
 }
 
 // Base response wrapper schema
@@ -167,9 +152,7 @@ export type ApiResponse<T> = {
 export const PaginationQuerySchema = z.object({
   limit: z.coerce.number().positive().optional().default(20),
   page: z.coerce.number().positive().min(1).optional().default(1),
-  sort: z
-    .enum(['createdAt', 'name', 'fsize', 'disable', 'frameTime', 'expireAt'])
-    .optional(),
+  sort: z.enum(['createdAt', 'name', 'fsize', 'disable', 'frameTime', 'expireAt']).optional(),
   asc: z.enum(['asc', 'desc']).optional(),
 });
 
@@ -184,9 +167,7 @@ export type PaginationQuery = z.infer<typeof PaginationQuerySchema>;
  * const UserListResponseSchema = PaginatedResponseSchema(UserSchema);
  * // Results in: { list: User[], total: number, page: number, limit: number }
  */
-export const PaginatedResponseSchema = <T extends z.ZodTypeAny>(
-  itemSchema: T,
-) =>
+export const PaginatedResponseSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
   z.object({
     list: z.array(itemSchema),
     total: z.number(),
@@ -204,9 +185,7 @@ export const PaginatedResponseSchema = <T extends z.ZodTypeAny>(
  * const SpaceListResponseSchema = ExtendedPaginatedResponseSchema(SpaceSchema);
  * // Results in: { list: Space[], total: number, page: number, limit: number, totalSize?: number, ... }
  */
-export const ExtendedPaginatedResponseSchema = <T extends z.ZodTypeAny>(
-  itemSchema: T,
-) =>
+export const ExtendedPaginatedResponseSchema = <T extends z.ZodTypeAny>(itemSchema: T) =>
   z.object({
     list: z.array(itemSchema),
     total: z.number(),

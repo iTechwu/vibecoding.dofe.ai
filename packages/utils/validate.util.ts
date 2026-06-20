@@ -1,5 +1,5 @@
 export default {
-  isBlank(data: any, debug: boolean = false): boolean {
+  isBlank(data: unknown, debug: boolean = false): boolean {
     if (data == null) return true;
     if (typeof data === 'string') return data.trim() === '';
     if (Array.isArray(data)) return data.length === 0;
@@ -7,7 +7,7 @@ export default {
     if (typeof data === 'number') return data === 0;
     return false;
   },
-  isNotBlank(data: any): boolean {
+  isNotBlank(data: unknown): boolean {
     return !this.isBlank(data);
   },
   diffStr(str1: string, str2: string): string {

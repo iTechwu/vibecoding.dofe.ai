@@ -1,7 +1,7 @@
 export default {
-  parse(data: string, defaultValue: any): any {
+  parse<T = unknown>(data: string, defaultValue: T): T {
     try {
-      return JSON.parse(data);
+      return JSON.parse(data) as T;
     } catch (e) {
       return defaultValue;
     }

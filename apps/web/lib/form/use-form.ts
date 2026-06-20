@@ -3,12 +3,7 @@
  * 表单工具 - React Hook Form + Zod 集成
  */
 
-import type {
-  UseFormProps,
-  FieldValues,
-  UseFormReturn,
-  Resolver,
-} from 'react-hook-form';
+import type { UseFormProps, FieldValues, UseFormReturn, Resolver } from 'react-hook-form';
 import { useForm as useReactHookForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { ZodObject, ZodRawShape } from 'zod';
@@ -21,22 +16,18 @@ import { toast } from 'sonner';
  * 增强的 useForm hook，集成 Zod 验证
  *
  * @example
- * const loginSchema = z.object({
+ * const profileSchema = z.object({
  *   email: z.string().email('Invalid email'),
- *   password: z.string().min(6, 'Password too short'),
  * });
  *
  * const { form, onSubmit } = useForm({
- *   schema: loginSchema,
+ *   schema: profileSchema,
  *   onSubmit: async (data) => {
- *     await login(data);
+ *     await saveProfile(data);
  *   },
  * });
  */
-export function useForm<
-  TShape extends ZodRawShape,
-  T extends z.infer<ZodObject<TShape>>,
->({
+export function useForm<TShape extends ZodRawShape, T extends z.infer<ZodObject<TShape>>>({
   schema,
   defaultValues,
   onSubmit,

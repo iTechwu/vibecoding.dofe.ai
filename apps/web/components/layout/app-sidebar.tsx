@@ -43,7 +43,7 @@ const navGroups: NavGroup[] = [
     items: [
       {
         titleKey: 'dashboard',
-        href: '/dashboard',
+        href: '/',
         icon: LayoutDashboard,
       },
     ],
@@ -78,21 +78,15 @@ const NavItemComponent = memo(function NavItemComponent({
         tooltip={title}
         className={cn(
           'relative h-9 rounded-md transition-all duration-150',
-          isActive
-            ? ['bg-primary/20', 'font-medium', 'shadow-sm']
-            : ['hover:bg-accent'],
+          isActive ? ['bg-primary/20', 'font-medium', 'shadow-sm'] : ['hover:bg-accent'],
         )}
       >
         <Link
           href={item.href}
           className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center"
         >
-          <item.icon
-            className={cn('size-4 shrink-0', isActive ? 'text-primary' : '')}
-          />
-          <span className="truncate group-data-[collapsible=icon]:hidden">
-            {title}
-          </span>
+          <item.icon className={cn('size-4 shrink-0', isActive ? 'text-primary' : '')} />
+          <span className="truncate group-data-[collapsible=icon]:hidden">{title}</span>
           {isActive && (
             <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full" />
           )}
@@ -128,8 +122,7 @@ export function AppSidebar() {
 
   // Memoize active state checker
   const isItemActive = useCallback(
-    (href: string) =>
-      currentPath === href || currentPath.startsWith(`${href}/`),
+    (href: string) => currentPath === href || currentPath.startsWith(`${href}/`),
     [currentPath],
   );
 
@@ -163,9 +156,7 @@ export function AppSidebar() {
 
   return (
     <Sidebar collapsible="icon" variant="sidebar">
-      <SidebarContent className="pt-4">
-        {filteredGroups.map(renderNavGroup)}
-      </SidebarContent>
+      <SidebarContent className="pt-4">{filteredGroups.map(renderNavGroup)}</SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border/50 relative">
         <div className="p-3">
@@ -183,10 +174,7 @@ export function AppSidebar() {
         </div>
 
         {/* Collapse/expand button, fixed at bottom right */}
-        <div
-          className="absolute -right-3"
-          style={{ bottom: 'calc(0.75rem + 50px)' }}
-        >
+        <div className="absolute -right-3" style={{ bottom: 'calc(0.75rem + 50px)' }}>
           <SidebarTrigger className="size-8 bg-accent" />
         </div>
       </SidebarFooter>

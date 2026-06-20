@@ -27,19 +27,12 @@ export interface FetchOptions extends RequestInit {
 /**
  * 封装的 fetch 函数，自动添加 header 和 token 管理
  */
-export async function apiFetch(
-  url: string,
-  options: FetchOptions = {},
-): Promise<Response> {
+export async function apiFetch(url: string, options: FetchOptions = {}): Promise<Response> {
   const { requireAuth = true, mptrail, headers = {}, ...restOptions } = options;
 
   // 构建请求头（包含版本信息）
   const requestHeaders: Record<string, string> = {
-    ...getHeaders(
-      headers as Record<string, string>,
-      mptrail,
-      versionConfig || undefined,
-    ),
+    ...getHeaders(headers as Record<string, string>, mptrail, versionConfig || undefined),
   };
 
   // 如果需要认证，添加 token
@@ -51,7 +44,6 @@ export async function apiFetch(
       }
     } catch (error) {
       // Token 获取失败，但不抛出错误，让调用方处理
-      console.warn('获取 token 失败:', error);
     }
   }
 
@@ -73,10 +65,7 @@ export async function apiFetch(
 /**
  * GET 请求封装
  */
-export async function apiGet<T = any>(
-  url: string,
-  options?: FetchOptions,
-): Promise<T> {
+export async function apiGet<T = unknown>(url: string, options?: FetchOptions): Promise<T> {
   const response = await apiFetch(url, {
     ...options,
     method: 'GET',
@@ -89,9 +78,9 @@ export async function apiGet<T = any>(
 /**
  * POST 请求封装
  */
-export async function apiPost<T = any>(
+export async function apiPost<T = unknown>(
   url: string,
-  body?: any,
+  body?: BodyInit | Record<string, unknown> | unknown[] | null,
   options?: FetchOptions,
 ): Promise<T> {
   const isFormData = body instanceof FormData;
@@ -111,12 +100,7 @@ export async function apiPost<T = any>(
       ...headers,
       ...(options?.headers || {}),
     },
-    body:
-      isFormData || isURLSearchParams
-        ? body
-        : body
-          ? JSON.stringify(body)
-          : undefined,
+    body: isFormData || isURLSearchParams ? body : body ? JSON.stringify(body) : undefined,
   });
 
   const data = await response.json();
@@ -126,9 +110,9 @@ export async function apiPost<T = any>(
 /**
  * PUT 请求封装
  */
-export async function apiPut<T = any>(
+export async function apiPut<T = unknown>(
   url: string,
-  body?: any,
+  body?: BodyInit | Record<string, unknown> | unknown[] | null,
   options?: FetchOptions,
 ): Promise<T> {
   const isFormData = body instanceof FormData;
@@ -156,10 +140,7 @@ export async function apiPut<T = any>(
 /**
  * DELETE 请求封装
  */
-export async function apiDelete<T = any>(
-  url: string,
-  options?: FetchOptions,
-): Promise<T> {
+export async function apiDelete<T = unknown>(url: string, options?: FetchOptions): Promise<T> {
   const response = await apiFetch(url, {
     ...options,
     method: 'DELETE',

@@ -20,12 +20,7 @@ export interface MaskOptions {
 function maskString(str: string, options: MaskOptions = {}): string {
   if (!str || typeof str !== 'string') return str;
 
-  const {
-    prefixLength = 0,
-    suffixLength = 0,
-    maskChar = '*',
-    fixedMaskLength,
-  } = options;
+  const { prefixLength = 0, suffixLength = 0, maskChar = '*', fixedMaskLength } = options;
 
   if (str.length <= prefixLength + suffixLength) {
     return str;
@@ -33,8 +28,7 @@ function maskString(str: string, options: MaskOptions = {}): string {
 
   const prefix = str.slice(0, prefixLength);
   const suffix = str.slice(-suffixLength || undefined);
-  const maskLength =
-    fixedMaskLength ?? str.length - prefixLength - suffixLength;
+  const maskLength = fixedMaskLength ?? str.length - prefixLength - suffixLength;
   const mask = maskChar.repeat(Math.max(maskLength, 1));
 
   return suffixLength > 0 ? `${prefix}${mask}${suffix}` : `${prefix}${mask}`;
@@ -243,22 +237,19 @@ const SENSITIVE_FIELDS = [
 /**
  * 自动检测并脱敏对象中的敏感字段
  */
-function maskObject<T extends Record<string, any>>(
-  obj: T,
-  additionalFields: string[] = [],
-): T {
+type MaskableObject = Record<string, unknown>;
+
+function maskObject<T extends MaskableObject>(obj: T, additionalFields: string[] = []): T {
   if (!obj || typeof obj !== 'object') return obj;
 
   const sensitiveFields = [...SENSITIVE_FIELDS, ...additionalFields];
-  const result: Record<string, any> = { ...obj };
+  const result: MaskableObject = { ...obj };
 
   for (const key of Object.keys(result)) {
     const lowerKey = key.toLowerCase();
 
     // 检查是否为敏感字段
-    const isSensitive = sensitiveFields.some((field) =>
-      lowerKey.includes(field.toLowerCase()),
-    );
+    const isSensitive = sensitiveFields.some((field) => lowerKey.includes(field.toLowerCase()));
 
     if (isSensitive && typeof result[key] === 'string') {
       result[key] = '***';
@@ -266,28 +257,23 @@ function maskObject<T extends Record<string, any>>(
     }
 
     // 递归处理嵌套对象
-    if (
-      result[key] &&
-      typeof result[key] === 'object' &&
-      !Array.isArray(result[key])
-    ) {
-      result[key] = maskObject(result[key], additionalFields);
+    if (result[key] && typeof result[key] === 'object' && !Array.isArray(result[key])) {
+      result[key] = maskObject(result[key] as MaskableObject, additionalFields);
     }
 
     // 处理数组
     if (Array.isArray(result[key])) {
-      result[key] = result[key].map((item: any) =>
-        typeof item === 'object' ? maskObject(item, additionalFields) : item,
+      result[key] = result[key].map((item: unknown) =>
+        item && typeof item === 'object'
+          ? maskObject(item as MaskableObject, additionalFields)
+          : item,
       );
     }
 
     // 特殊字段处理
     if (lowerKey === 'email' && typeof result[key] === 'string') {
       result[key] = maskEmail(result[key]);
-    } else if (
-      (lowerKey === 'phone' || lowerKey === 'mobile') &&
-      typeof result[key] === 'string'
-    ) {
+    } else if ((lowerKey === 'phone' || lowerKey === 'mobile') && typeof result[key] === 'string') {
       result[key] = maskPhone(result[key]);
     } else if (lowerKey === 'idcard' && typeof result[key] === 'string') {
       result[key] = maskIdCard(result[key]);

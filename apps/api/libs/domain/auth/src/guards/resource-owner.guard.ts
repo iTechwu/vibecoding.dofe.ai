@@ -1,14 +1,8 @@
-import {
-  CanActivate,
-  ExecutionContext,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import {
-  RESOURCE_OWNER_KEY,
-  ResourceOwnerCheck,
-} from '../decorators/resource-owner.decorator';
+import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
+import type { Logger } from 'winston';
+import { RESOURCE_OWNER_KEY, ResourceOwnerCheck } from '../decorators/resource-owner.decorator';
 
 /**
  * 资源所有者守卫
@@ -28,26 +22,24 @@ import {
  */
 @Injectable()
 export class ResourceOwnerGuard implements CanActivate {
-  private readonly logger = new Logger(ResourceOwnerGuard.name);
-
-  constructor(private readonly reflector: Reflector) {}
+  constructor(
+    private readonly reflector: Reflector,
+    @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const check = this.reflector.get<ResourceOwnerCheck>(
-      RESOURCE_OWNER_KEY,
-      context.getHandler(),
-    );
+    const check = this.reflector.get<ResourceOwnerCheck>(RESOURCE_OWNER_KEY, context.getHandler());
 
     // No decorator applied, allow access
     if (!check) return true;
 
     // ⚠️ STUB: Log warning that ownership check is not implemented
     const request = context.switchToHttp().getRequest();
-    this.logger.warn(
-      `ResourceOwnerGuard is a STUB - ownership check NOT IMPLEMENTED for ${check.resourceType}. ` +
-        `User ${request.userId} accessing resource ${check.resourceIdField}. ` +
-        `This endpoint is effectively unprotected!`,
-    );
+    this.logger.warn('ResourceOwnerGuard is a STUB - ownership check NOT IMPLEMENTED', {
+      resourceType: check.resourceType,
+      userId: request.userId,
+      resourceIdField: check.resourceIdField,
+    });
 
     // TODO: implement resource ownership verification
     return true;

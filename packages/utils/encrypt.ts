@@ -19,7 +19,6 @@ export function rsaDecrypt(encryptedVal: string): string | false {
     const decryptedText = bytes.toString(CryptoJS.enc.Utf8);
     return decryptedText;
   } catch (error) {
-    console.error('解密失败:', error);
     return '';
   }
 }
@@ -27,11 +26,7 @@ export function rsaDecrypt(encryptedVal: string): string | false {
 /**
  * 加密参数（用于 API 签名）
  */
-export function encryptParams(
-  filename: string = '',
-  sha256?: string,
-  fileId?: string,
-): string {
+export function encryptParams(filename: string = '', sha256?: string, fileId?: string): string {
   const timestamp: number = Date.now();
   const platform: string = 'pc';
 
@@ -47,30 +42,22 @@ export function encryptParams(
     }
     if (userStr) {
       try {
-        const user = JSON.parse(userStr);
+        const user = JSON.parse(userStr) as { id?: string };
         userId = user.id || '';
       } catch (error) {
-        console.error('[encryptParams] Failed to parse user data:', error);
         // 忽略解析错误，userId 保持为空字符串
       }
     }
-
-    // 调试日志（仅在开发环境）
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[encryptParams] User ID from storage:', {
-        userId,
-        hasUserStr: !!userStr,
-        storageKey: userStr
-          ? localStorage.getItem('user')
-            ? 'user'
-            : 'userInfo'
-          : 'none',
-      });
-    }
   }
-  console.log('userId', userId);
 
-  const params: any = {
+  const params: {
+    filename: string;
+    timestamp: number;
+    platform: string;
+    userId: string;
+    fileId?: string;
+    sha256?: string;
+  } = {
     filename,
     timestamp,
     platform,
@@ -86,19 +73,6 @@ export function encryptParams(
   }
 
   const encrypted = rsaEncrypt(JSON.stringify(params)).toString();
-
-  // 调试日志（仅在开发环境）
-  if (process.env.NODE_ENV === 'development') {
-    console.log('[encryptParams] Generated signature params:', {
-      filename,
-      timestamp,
-      platform,
-      userId,
-      hasFileId: !!fileId,
-      hasSha256: !!sha256,
-      signatureLength: encrypted.length,
-    });
-  }
 
   return encrypted;
 }

@@ -35,8 +35,7 @@
     "lodash": "^4.18.1",
     "moment-timezone": "^0.6.2",
     "pinyin-pro": "^3.28.1",
-    "tailwind-merge": "^3.6.0",
-    "uuid": "^14.0.0"
+    "tailwind-merge": "^3.6.0"
   },
   "optionalDependencies": {
     "bcrypt": "^6.0.0"

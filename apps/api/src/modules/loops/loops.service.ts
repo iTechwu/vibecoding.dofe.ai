@@ -10,6 +10,7 @@ import type {
   LoopAnnotation,
   LoopGlobalReviewRecord,
   LoopImplementationRecord,
+  LoopIntake,
   LoopInterventionRequest,
   LoopIssue,
   LoopIssuesQuery,
@@ -70,7 +71,7 @@ export class LoopsService {
   ) {}
 
   async list(query: LoopIssuesQuery): Promise<LoopListResponse> {
-    return this.persistence ? this.persistence.list(query) : this.listFromFile(query);
+    return this.persistence?.list(query) ?? this.listFromFile(query);
   }
 
   private async listFromFile(query: LoopIssuesQuery): Promise<LoopListResponse> {
@@ -100,9 +101,7 @@ export class LoopsService {
 
   async getIssue(issueId: string) {
     try {
-      return this.persistence
-        ? await this.persistence.readDetail(issueId)
-        : await this.store.readDetail(issueId);
+      return await this.readDetail(issueId);
     } catch {
       throw new NotFoundException(`Issue ${issueId} not found`);
     }
@@ -156,11 +155,7 @@ export class LoopsService {
       paused: false,
     };
 
-    if (this.persistence) {
-      await this.persistence.writeIssue({ issue, intake, state, rawPayload: input });
-    } else {
-      await this.store.writeIssue({ issue, intake, state, rawPayload: input });
-    }
+    await this.writeIssueRecord({ issue, intake, state, rawPayload: input });
     return { issue, intake, state };
   }
 
@@ -180,6 +175,24 @@ export class LoopsService {
 
     await this.persistence.syncState(detail.state, detail.issue.status);
     return this.persistence.readDetail(issueId);
+  }
+
+  private async readDetail(issueId: string): Promise<LoopIssueDetail> {
+    return this.persistence?.readDetail(issueId) ?? this.store.readDetail(issueId);
+  }
+
+  private async writeIssueRecord(input: {
+    issue: LoopIssue;
+    intake: LoopIntake;
+    state: LoopStateItem;
+    rawPayload: unknown;
+  }): Promise<void> {
+    if (this.persistence) {
+      await this.persistence.writeIssue(input);
+      return;
+    }
+
+    await this.store.writeIssue(input);
   }
 
   async generateSpec(issueId: string) {
@@ -694,7 +707,7 @@ export class LoopsService {
   }
 
   async doctor() {
-    return this.persistence ? this.persistence.doctor() : this.store.doctor();
+    return this.persistence?.doctor() ?? this.store.doctor();
   }
 
   async cost() {

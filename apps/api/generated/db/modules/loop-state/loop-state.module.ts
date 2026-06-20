@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { PrismaModule } from '@dofe/infra-prisma';
 import { LoopStateService } from './loop-state.service';
+import { PrismaModule } from '@dofe/infra-prisma';
 
 @Module({
   imports: [PrismaModule],

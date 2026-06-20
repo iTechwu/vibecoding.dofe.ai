@@ -5,75 +5,76 @@ import { pick } from 'lodash';
 type NestedObject = {
   [key: string]: NestedObject | {};
 };
+type UnknownRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 export default {
-  filter(object: any, fields: string[]) {
+  filter<T extends object>(object: T, fields: string[]) {
     return pick(object, fields);
   },
-  getType(data: any): string {
+  getType(data: unknown): string {
     if (Array.isArray(data)) return 'array';
     if (data === null) return 'null';
     return typeof data;
   },
-  isCustomType(object: any, constructorName: string): boolean {
-    return (
+  isCustomType(object: unknown, constructorName: string): boolean {
+    return Boolean(
       object &&
       typeof object === 'object' &&
       typeof object.constructor === 'function' &&
-      object.constructor.name === constructorName
+      object.constructor.name === constructorName,
     );
   },
-  getValue(data: any, name: string, defaultValue: any = null): any {
-    let objData =
-      typeof data === 'string' ? jsonUtil.parse(data, defaultValue) : data;
+  getValue<T = unknown>(data: unknown, name: string, defaultValue: T | null = null): T | null {
+    const objData = typeof data === 'string' ? jsonUtil.parse(data, defaultValue) : data;
     if (this.getType(name) !== 'string') return defaultValue;
-    if (this.getType(objData) !== 'object' || objData === null)
-      return defaultValue;
+    if (this.getType(objData) !== 'object' || objData === null) return defaultValue;
 
     if (name.includes('.')) {
       return name.split('.').reduce((acc, key) => {
-        return acc !== defaultValue
-          ? this.getValue(acc, key, defaultValue)
-          : defaultValue;
-      }, objData);
+        return acc !== defaultValue ? this.getValue(acc, key, defaultValue) : defaultValue;
+      }, objData as unknown) as T | null;
     } else {
-      return objData.hasOwnProperty(name) && validate.isNotBlank(objData[name])
-        ? objData[name]
+      const record = objData as UnknownRecord;
+      return Object.prototype.hasOwnProperty.call(record, name) && validate.isNotBlank(record[name])
+        ? (record[name] as T)
         : defaultValue;
     }
   },
-  addProperty(obj: any, key: string, value: any): any {
-    const addObj: any = {};
+  addProperty<T extends UnknownRecord>(obj: unknown, key: string, value: unknown): T {
+    const addObj: UnknownRecord = {};
     addObj[key] = value;
-    if (!this.isCustomType(obj, 'Object')) {
-      obj = {};
-    }
-    obj = {
-      ...obj,
+    const baseObj = isRecord(obj) ? obj : {};
+    const nextObj = {
+      ...baseObj,
       ...addObj,
     };
-    return obj;
+    return nextObj as T;
   },
-  removeProperty(obj: any, key: string): any {
-    if (!obj?.hasOwnProperty(key)) {
+  removeProperty<T extends UnknownRecord>(obj: T, key: string): Partial<T> {
+    if (!Object.prototype.hasOwnProperty.call(obj, key)) {
       return obj;
     }
-    // 使用扩展运算符创建新对象，并排除指定的 key
-    const { [key]: omitted, ...newObj } = obj;
+    const newObj: Partial<T> = { ...obj };
+    delete newObj[key as keyof T];
     return newObj;
   },
-  removePropertys(obj: any, keys: string[]): any {
-    return keys.reduce((acc, key) => this.removeProperty(acc, key), obj);
+  removePropertys<T extends UnknownRecord>(obj: T, keys: string[]): Partial<T> {
+    return keys.reduce<Partial<T>>((acc, key) => this.removeProperty(acc as T, key), obj);
   },
   // 数组的项目是Object的处理
-  addPropertyInArray(array: any[], key: string, value: any): any[] {
+  addPropertyInArray<T extends UnknownRecord>(array: unknown[], key: string, value: unknown): T[] {
     return array
       .filter((item) => this.isCustomType(item, 'Object'))
-      .map((item) => this.addProperty(item, key, value));
+      .map((item) => this.addProperty(item, key, value) as T);
   },
-  removePropertysInArray(array: any[], keys: string[]): any[] {
+  removePropertysInArray<T extends UnknownRecord>(array: T[], keys: string[]): (Partial<T> | T)[] {
     return array.map((item) => this.removePropertys(item, keys));
   },
-  setNestedValue(obj: Record<string, any>, path: string, value: any): void {
+  setNestedValue(obj: UnknownRecord, path: string, value: unknown): void {
     // 将字符串路径转换为路径数组
     const pathArray = path.split('.');
 
@@ -88,12 +89,12 @@ export default {
       if (!key) continue;
 
       // 如果当前层的字段不存在，则创建它（假设它是一个对象）
-      if (!Object.prototype.hasOwnProperty.call(obj, key) || typeof obj[key] !== 'object' || obj[key] === null) {
+      if (!Object.prototype.hasOwnProperty.call(obj, key) || !isRecord(obj[key])) {
         obj[key] = {};
       }
 
       // 向下遍历到下一层对象
-      obj = obj[key];
+      obj = obj[key] as UnknownRecord;
     }
     // 设置最后一个字段的值
     const lastKey = pathArray[pathArray.length - 1];
@@ -102,12 +103,13 @@ export default {
     }
   },
 
-  traverseKeys(obj: NestedObject | any, parentKeys: string[] = []): string[][] {
+  traverseKeys(obj: NestedObject | unknown, parentKeys: string[] = []): string[][] {
     const keyPaths: string[][] = [];
+    if (!isRecord(obj)) return keyPaths;
 
     // 遍历对象的每一个属性
     for (const key in obj) {
-      if (obj.hasOwnProperty(key)) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
         // 构建当前键的完整路径
         const currentKeys = [...parentKeys, key];
 
@@ -124,11 +126,14 @@ export default {
 
     return keyPaths;
   },
-  isEqual(object1: any, object2: any): boolean {
+  isEqual(object1: unknown, object2: unknown): boolean {
     if (object1 === object2) {
       return true;
     }
     if (!object1 || !object2) {
+      return false;
+    }
+    if (!isRecord(object1) || !isRecord(object2)) {
       return false;
     }
     const keys1 = Object.keys(object1);

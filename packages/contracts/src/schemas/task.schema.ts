@@ -1,16 +1,12 @@
 import { z } from 'zod';
+import { PaginatedResponseSchema, PaginationQuerySchema } from '../base';
 
 /**
  * Task-related Zod schemas
  */
 
 // System task status enum (QueueStatus from Prisma)
-export const SystemTaskStatusSchema = z.enum([
-  'init',
-  'processing',
-  'completed',
-  'failed',
-]);
+export const SystemTaskStatusSchema = z.enum(['init', 'processing', 'completed', 'failed']);
 
 // System task schema (all fields optional to match Partial<SystemTask>)
 export const SystemTaskSchema = z
@@ -37,7 +33,11 @@ export const TaskCheckResponseSchema = z.object({
 });
 
 // Task list response
-export const TaskListResponseSchema = z.array(SystemTaskSchema);
+export const TaskListResponseSchema = PaginatedResponseSchema(SystemTaskSchema);
+
+// Task list query
+export const TaskListQuerySchema = PaginationQuerySchema;
+export type TaskListQuery = z.infer<typeof TaskListQuerySchema>;
 
 // Check tasks request
 export const CheckTasksRequestSchema = z.object({

@@ -30,9 +30,7 @@ export default function NotFound() {
           </span>
         </div>
 
-        <h1 className="text-8xl font-bold text-primary/20 mb-4 select-none">
-          404
-        </h1>
+        <h1 className="text-8xl font-bold text-primary/20 mb-4 select-none">404</h1>
         <h2 className="text-2xl font-bold text-foreground mb-3">{t('title')}</h2>
         <p className="text-muted-foreground/60 mb-8">{t('description')}</p>
 
@@ -43,7 +41,7 @@ export default function NotFound() {
               {t('goHome')}
             </Button>
           </Link>
-          <Link href="/dashboard">
+          <Link href="/">
             <Button>
               <LayoutDashboard className="size-4 mr-2" />
               {t('goDashboard')}
