@@ -131,12 +131,6 @@ importers:
       '@dofe/infra-utils':
         specifier: ^0.1.56
         version: 0.1.56(@dofe/infra-contracts@0.1.56)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)
-      '@dofe/sso-contracts':
-        specifier: ^0.1.66
-        version: 0.1.66(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
-      '@dofe/sso-node':
-        specifier: 0.1.43
-        version: 0.1.43
       '@fastify/compress':
         specifier: ^8.3.1
         version: 8.3.1
@@ -516,9 +510,6 @@ importers:
       '@dofe/sso-browser':
         specifier: ^0.1.56
         version: 0.1.56(react@19.2.6)
-      '@dofe/sso-contracts':
-        specifier: ^0.1.66
-        version: 0.1.66(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
       '@hookform/resolvers':
         specifier: ^5.4.0
         version: 5.4.0(react-hook-form@7.79.0(react@19.2.6))
@@ -1527,12 +1518,6 @@ packages:
       winston: ^3.13.0
       zod: ^4.3.6
 
-  '@dofe/infra-contracts-base@0.1.56':
-    resolution: {integrity: sha512-sES0R1+3UlWQXJe3SYbYvBwYW4fYwsC+L1QKgcjUubfuTIqjOAMAmS0LWJ6y4M+2BGugdKKD4HaOX2sdYchOGQ==}
-    peerDependencies:
-      '@ts-rest/core': 3.53.0-rc.1
-      zod: ^4.0.0
-
   '@dofe/infra-contracts@0.1.56':
     resolution: {integrity: sha512-1zrG04/S969CQvsWCh3o/JbhSpF4NxOYd2dyNKhGHfsu+sVQ1s1JQGvnhSdxc3pumTaQ23JwYhYUdO9vOaH7nw==}
 
@@ -1672,16 +1657,6 @@ packages:
     resolution: {integrity: sha512-8svSX5jUpNOJ+icaK5oRZCe95Y/P2rizz+c6Cwt1tr7thV7o+/9+P6HJdgeLHddVa1lwsgnk34jZlsd2esKZBQ==}
     peerDependencies:
       react: '>=18'
-
-  '@dofe/sso-contracts@0.1.66':
-    resolution: {integrity: sha512-y5TZJP+XfG000FrjXMuC4tBefEP2KQiRk83FfLTq1/wI2td5MSWpSUOENIZY9WxS6be6hhZduGlll5pVQTUY4A==}
-    peerDependencies:
-      '@ts-rest/core': '>=3.53.0-rc.1'
-      zod: ^4.4.3
-
-  '@dofe/sso-node@0.1.43':
-    resolution: {integrity: sha512-fdD/ziBPRYhtJ1bk0BhIMkBztJ+Csko/vWlrTl5TQ9Dogav6D1+vsXS1R+zbm6YwlwCougOGlbgPhZdrv1xYeg==}
-    engines: {node: '>=18.0.0'}
 
   '@electric-sql/pglite-socket@0.1.1':
     resolution: {integrity: sha512-p2hoXw3Z3LQHwTeikdZNsFBOvXGqKY2hk51BBw+8NKND8eoH+8LFOtW9Z8CQKmTJ2qqGYu82ipqiyFZOTTXNfw==}
@@ -10929,11 +10904,6 @@ snapshots:
       - pinyin-pro
       - winston-daily-rotate-file
 
-  '@dofe/infra-contracts-base@0.1.56(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)':
-    dependencies:
-      '@ts-rest/core': 3.53.0-rc.1(@types/node@25.9.4)
-      zod: 4.4.3
-
   '@dofe/infra-contracts@0.1.56': {}
 
   '@dofe/infra-docker@0.1.55(ce8ca68a9ed9bf11fad356aec9bd7d43)':
@@ -11173,15 +11143,6 @@ snapshots:
   '@dofe/sso-browser@0.1.56(react@19.2.6)':
     dependencies:
       react: 19.2.6
-
-  '@dofe/sso-contracts@0.1.66(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)':
-    dependencies:
-      '@dofe/infra-contracts': 0.1.56
-      '@dofe/infra-contracts-base': 0.1.56(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
-      '@ts-rest/core': 3.53.0-rc.1(@types/node@25.9.4)
-      zod: 4.4.3
-
-  '@dofe/sso-node@0.1.43': {}
 
   '@electric-sql/pglite-socket@0.1.1(@electric-sql/pglite@0.4.1)':
     dependencies:

@@ -1,6 +1,6 @@
 # 08 · 分阶段实施计划与里程碑
 
-> **实施状态**：本计划已在 2026-06-19 完成主要代码落地，并在 2026-06-20 深审修复 SSO 文件代理与默认前端回调端口；准确完成项、废弃项与未执行 E2E 见 [09-implementation-status.md](./09-implementation-status.md)。
+> **实施状态**：本计划已在 2026-06-19 完成主要代码落地，并在 2026-06-20 深审修复 SSO 文件代理与默认前端回调端口；真实 Chromium E2E 已验证 vibecoding login → callback → refresh → logout 与 SSO 上传凭证/CDN 元数据返回。准确完成项、废弃项与本轮不验收项见 [09-implementation-status.md](./09-implementation-status.md)。
 
 > 按「先 sso 侧、再 api 基础、再认证、再前端、最后文件与 scaffold」的顺序推进。每阶段独立可验证、可回滚。
 
@@ -77,7 +77,7 @@
   - 后端使用 `@dofe/file-sdk` 解析/消费 SSO 文件。
   - 前端使用 `@dofe/file-sdk-web`，`apiBase='/api/proxy/sso'`。
   - `apps/web/next.config.ts` 增加 `/api/proxy/sso/:path*` → `${NEXT_PUBLIC_SSO_BASE_URL}/:path*` rewrite，并允许 `*.dofe.ai` 图片域名（`@dofe/file-sdk-web` 自行拼接 `/api/uploader/*`）。
-- **验证**：type-check 通过；真实上传/CDN 验证需要联动 SSO 服务与密钥。
+- **验证**：type-check 通过；真实 Chromium E2E 已验证 SSO 上传凭证与 CDN 元数据返回。预签名 URL PUT 与 CDN GET 等物理 bucket 验证等待 `dofe-public/private/system` 存储侧后续处理。
 - **回滚**：恢复本地 uploader 与 file schema 会违反“SSO 为唯一真源”，不作为推荐回滚路径；如需临时降级，应仅回滚前端入口并保留 SSO 文件源。
 
 ## 阶段 6 · scaffold 同步
@@ -129,7 +129,7 @@
 - [x] vibecoding 登录成功默认回跳已改为存在的 `/`，避免 `/dashboard` 缺页导致回调后 404
 - [x] vibecoding/scaffold SSO 文件代理 rewrite 已修正为 `${NEXT_PUBLIC_SSO_BASE_URL}/:path*`
 - [x] vibecoding 已新增真实 SSO E2E 入口：`pnpm --filter @repo/web test:e2e:sso`
-- [ ] vibecoding SSO 联动 E2E 测试通过
+- [x] vibecoding SSO 联动 E2E 测试通过（Chromium）
 - [ ] vibecoding `pnpm dev:api` + `pnpm dev:web` + sso 三端联动，登录/刷新/登出闭环
 - [ ] sso `t_oauth_client` 含 vibecoding；业务写接口审计记录正常
-- [ ] vibecoding 文件上传经 sso，CDN 可访问
+- [x] vibecoding 文件上传经 sso 返回上传凭证与 CDN 元数据；物理 bucket PUT/CDN GET 不纳入本轮验收

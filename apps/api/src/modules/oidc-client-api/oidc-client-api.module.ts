@@ -5,9 +5,10 @@ import { OidcClientApiService } from './oidc-client-api.service';
 import { ConfigModule } from '@nestjs/config';
 import { RedisModule } from '@dofe/infra-redis';
 import { UserInfoModule } from '@app/db';
+import { AuditLogModule } from '@app/audit-log';
 
 @Module({
-  imports: [JwtModule.register({}), ConfigModule, RedisModule, UserInfoModule],
+  imports: [JwtModule.register({}), ConfigModule, RedisModule, UserInfoModule, AuditLogModule],
   controllers: [OidcClientApiController],
   providers: [OidcClientApiService],
   exports: [OidcClientApiService],

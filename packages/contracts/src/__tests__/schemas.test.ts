@@ -12,8 +12,7 @@ describe('Schemas', () => {
   describe('Schema Exports', () => {
     it('should export Prisma enums', () => {
       expect(schemas.SexTypeSchema).toBeDefined();
-      expect(schemas.FileBucketVendorSchema).toBeDefined();
-      expect(schemas.FileEnvTypeSchema).toBeDefined();
+      expect(schemas.AuditActionTypeSchema).toBeDefined();
     });
 
     it('should export domain schemas', () => {
@@ -29,8 +28,7 @@ describe('Schemas', () => {
     describe('Prisma enum schemas', () => {
       it('should validate generated enum values', () => {
         expect(schemas.SexTypeSchema.safeParse('UNKNOWN').success).toBe(true);
-        expect(schemas.FileBucketVendorSchema.safeParse('gcs').success).toBe(true);
-        expect(schemas.FileEnvTypeSchema.safeParse('prod').success).toBe(true);
+        expect(schemas.AuditActionTypeSchema.safeParse('CREATE').success).toBe(true);
 
         expect(schemas.SexTypeSchema.safeParse('invalid').success).toBe(false);
       });

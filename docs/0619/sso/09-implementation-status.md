@@ -98,7 +98,9 @@
 - 第十二轮发现 vibecoding `apps/api/config.local.yaml` 仍使用 `app.port=3101`，会导致 OIDC redirect_uri 与 sso seed 的 `http://127.0.0.1:13100/auth/oidc/callback` 不一致；已改为 `app.port=13100` 并补 `frontendPort=3003`。
 - 第十二轮发现登录成功默认跳转 `/dashboard`，但当前 vibecoding web 没有 dashboard 页面；已将默认 callbackUrl / success fallback / authorize fallback 调整为实际存在的 `/`，避免真实回调后落到 404。
 - 第十二轮发现 `@dofe/file-sdk-web` 会请求 `${apiBase}/api/uploader/*`，因此 `/api/proxy/sso/:path*` rewrite 不能再额外追加 `/api`；已将 vibecoding/scaffold 的 rewrite 修正为 `${NEXT_PUBLIC_SSO_BASE_URL}/:path*`，确保文件上传真实转发到 SSO `/api/uploader/*`。
-- 第十二轮新增 vibecoding 专用真实 E2E：`apps/web/e2e/sso-real.spec.ts` + `apps/web/playwright.config.ts` + `pnpm --filter @repo/web test:e2e:sso`，覆盖 login → callback → refresh → logout 与 `FileUploader({ apiBase: '/api/proxy/sso' })` 上传/CDN URL 可访问性；默认未设置 `SSO_E2E_ENABLED=1` 时跳过，不影响普通回归。
+- 第十二轮新增 vibecoding 专用真实 E2E：`apps/web/e2e/sso-real.spec.ts` + `apps/web/playwright.config.ts` + `pnpm --filter @repo/web test:e2e:sso`，覆盖 login → callback → refresh → logout 与 SSO 上传凭证/CDN 元数据返回；默认未设置 `SSO_E2E_ENABLED=1` 时跳过，不影响普通回归。
+- 第十三轮在用户已启动 SSO 后执行真实 Chromium E2E：`login → callback → refresh → logout` 已通过；文件链路已验证到 `/api/proxy/sso/api/uploader/token/private` 经 SSO 返回 `fileId/key/bucket=dofe-public/cdnUrl/token`。`dofe-public/private/system` 三桶当前按 SSO 规划先配置，后续由存储侧处理；本轮不校验预签名 URL PUT 和 CDN GET。
+- 第十三轮补齐 SSO 侧 browser upload 与 FileSource key 类型修复：`sso.dofe.ai` 允许已认证浏览器请求使用 `signature=browser-upload` 获取上传凭证，并将 `f_file_source.key` 从 UUID 约束调整为字符串 key；已执行 SSO 迁移、Prisma generate 与 API type-check。
 
 ## 3. 明确废弃/不再采用
 
@@ -168,17 +170,24 @@
 - `vibecoding.dofe.ai`: 第十二轮后 `pnpm --filter @repo/web test`（2 passed）
 - `vibecoding.dofe.ai`: 第十二轮后 `pnpm --filter @repo/web exec playwright test e2e/sso-real.spec.ts --reporter=line`（未启用真实 SSO 时 1 skipped，验证测试资产可加载）
 - `scaffold.dofe.ai`: 第十二轮后 `pnpm --filter @repo/web type-check`（仅因同步修正 SSO file proxy rewrite 执行；不代表 scaffold 已完成真实 SSO 登录验收）
+- `vibecoding.dofe.ai`: 第十三轮后 `SSO_E2E_ENABLED=1 E2E_SSO_MOBILE=13800138000 E2E_SSO_PASSWORD=*** E2E_SSO_ORIGIN=http://127.0.0.1:3100 E2E_SSO_LOGIN_ORIGIN=http://127.0.0.1:3000 E2E_API_ORIGIN=http://127.0.0.1:13100 pnpm --filter @repo/web test:e2e:sso`（Chromium，1 passed）
+- `vibecoding.dofe.ai`: 第十三轮后 `pnpm --filter @repo/web type-check`
+- `vibecoding.dofe.ai`: 第十三轮后 `pnpm --filter @repo/api type-check`
+- `scaffold.dofe.ai`: 第十三轮后 `pnpm --filter @repo/api type-check`
+- `scaffold.dofe.ai`: 第十三轮后 `pnpm --filter @repo/web type-check`
+- `sso.dofe.ai`: 第十三轮后 `pnpm --filter @repo/api type-check`
+- `vibecoding.dofe.ai`: 第十三轮残留扫描确认旧本地认证/文件入口未复活；命中项仅为 OIDC 内部合法 refresh token 交换、历史 migration 字段、已移除说明或测试断言。
 
-未执行 / 待真实环境执行：
+本轮不纳入验收：
 
-- vibecoding 端到端浏览器登录流程，需要可用的本地/测试 SSO client secret、`INTERNAL_API_SECRET`、Redis、数据库与 sso 服务。当前机器检查到 `sso.dofe.ai` API `:3100` 有响应，但 vibecoding API `:13100` / Web `:3003` 未启动，且 vibecoding `apps/api/.env` 尚未配置 `SSO_CLIENT_SECRET` / `INTERNAL_API_SECRET`，因此不能标记真实 E2E 已通过。
+- 预签名 URL 对象存储 PUT 与 CDN GET：`dofe-public/private/system` 三桶按 SSO 规划先配置，后续由存储侧创建/绑定/CORS/CDN 处理；本轮仅验证 vibecoding 经 SSO 成功拿到上传凭证、物理 bucket 路由与 CDN 元数据。
 - `pnpm test` 全量 monorepo 测试未作为单条命令执行；本轮已执行可本地隔离验证的 api/contracts/web 测试，E2E 仍依赖真实 SSO 环境。
 
-已知待真实环境验证：
+已验证：
 
-- `/api/proxy/sso/:path*` 真实上传转发与 SSO 返回 CDN URL 可访问性。
+- `/api/proxy/sso/:path*` 真实上传凭证转发，SSO 返回 `fileId/key/bucket/cdnUrl/token`。
 - 完整 login → sso → callback → exchange → refresh → logout 浏览器闭环。
-- token blacklist guard 检查已实现；仍需在真实登出后验证黑名单 key 与 access token `jti` 的实际命中。
+- 登出后 `clear-session` 执行成功，随后 refresh 失败，确认 `dofe_rf` HttpOnly cookie 被清理。
 
 真实 E2E 命令（仅 vibecoding）：
 
@@ -187,9 +196,11 @@
 # apps/api/.env 已配置 SSO_CLIENT_SECRET / INTERNAL_API_SECRET；
 # sso.dofe.ai 已 seed vibecoding-dofe-ai client，且测试账号可登录。
 SSO_E2E_ENABLED=1 \
-E2E_SSO_EMAIL=<test-user@example.com> \
+E2E_SSO_MOBILE=<test-mobile> \
 E2E_SSO_PASSWORD=<password> \
 E2E_SSO_ORIGIN=http://127.0.0.1:3100 \
+E2E_SSO_LOGIN_ORIGIN=http://127.0.0.1:3000 \
+E2E_API_ORIGIN=http://127.0.0.1:13100 \
 pnpm --filter @repo/web test:e2e:sso
 ```
 

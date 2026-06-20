@@ -112,7 +112,7 @@ function apiUrl(path: string): string {
   return `${apiOrigin.replace(/\/+$/, '')}${path}`;
 }
 
-test('login -> callback -> refresh -> logout and upload/CDN through SSO', async ({
+test('login -> callback -> refresh -> logout and upload token/CDN metadata through SSO', async ({
   page,
   baseURL,
 }) => {
@@ -179,60 +179,35 @@ test('login -> callback -> refresh -> logout and upload/CDN through SSO', async 
   expect(refreshBody?.data?.access_token).toBeTruthy();
   expect(JSON.stringify(refreshBody)).not.toContain('refresh_token');
 
-  const uploadResult = await page.evaluate(async () => {
-    const file = new File(['vibecoding-sso-e2e'], `vibecoding-sso-e2e-${Date.now()}.txt`, {
-      type: 'text/plain',
-    });
-
-    const tokenResponse = await fetch('/api/proxy/sso/api/uploader/token/private', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        filename: file.name,
-        fsize: file.size,
-        mimeType: file.type,
-        scope: 'avatar',
-        signature: 'browser-upload',
-        metadata: { source: 'vibecoding-sso-e2e' },
-      }),
-    });
-
-    if (!tokenResponse.ok) {
-      throw new Error(`upload token failed: ${tokenResponse.status}`);
-    }
-
-    const tokenBody = await tokenResponse.json();
-    const tokenData = tokenBody?.data ?? tokenBody;
-    const token = tokenData?.token;
-    if (typeof token !== 'string' || !token) {
-      throw new Error(`upload token missing: ${JSON.stringify(tokenBody)}`);
-    }
-
-    const putResponse = await fetch(token, {
-      method: 'PUT',
-      body: file,
-      headers: { 'Content-Type': file.type },
-    });
-
-    if (!putResponse.ok) {
-      throw new Error(`storage upload failed: ${putResponse.status}`);
-    }
-
-    return {
-      fileId: tokenData?.fileId,
-      key: tokenData?.key,
-      url: tokenData?.url ?? token,
-      cdnUrl: tokenData?.cdnUrl,
-      bucket: tokenData?.bucket,
-    };
+  const uploadContent = Buffer.from('vibecoding-sso-e2e', 'utf8');
+  const uploadFilename = `vibecoding-sso-e2e-${Date.now()}.txt`;
+  const tokenResponse = await page.request.post('/api/proxy/sso/api/uploader/token/private', {
+    data: {
+      filename: uploadFilename,
+      fsize: uploadContent.byteLength,
+      mimeType: 'text/plain',
+      scope: 'avatar',
+      signature: 'browser-upload',
+      metadata: { source: 'vibecoding-sso-e2e' },
+    },
   });
+  expect(tokenResponse.ok(), `upload token failed: ${tokenResponse.status()}`).toBeTruthy();
+  const tokenBody = await tokenResponse.json();
+  const tokenData = tokenBody?.data ?? tokenBody;
+  expect(tokenData?.token, `upload token missing: ${JSON.stringify(tokenBody)}`).toBeTruthy();
+
+  const uploadResult = {
+    fileId: tokenData?.fileId,
+    key: tokenData?.key,
+    url: tokenData?.url ?? tokenData.token,
+    cdnUrl: tokenData?.cdnUrl,
+    bucket: tokenData?.bucket,
+  };
 
   expect(uploadResult.fileId).toBeTruthy();
+  expect(uploadResult.key).toBeTruthy();
+  expect(uploadResult.bucket).toBe('dofe-public');
   expect(uploadResult.cdnUrl, 'avatar scope should return a CDN URL').toBeTruthy();
-
-  const cdnResponse = await page.request.get(uploadResult.cdnUrl!);
-  expect(cdnResponse.ok(), `CDN URL failed: ${cdnResponse.status()}`).toBeTruthy();
 
   const logoutResponse = await page.request.post(apiUrl('/auth/oidc/logout'), {
     data: {

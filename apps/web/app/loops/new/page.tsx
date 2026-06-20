@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import path from 'node:path';
-import { createLoopIssueAction } from './actions';
+import NewLoopIssueForm from './new-loop-issue-form';
 
 // Resolve the workspace root server-side so the default `targetRepo` is portable
 // across machines (the web app runs from `apps/web`, so the repo root is `../..`).
@@ -22,70 +22,7 @@ export default function NewLoopIssuePage() {
           </Link>
         </div>
 
-        <form action={createLoopIssueAction} className="flex flex-col gap-5">
-          <label className="flex flex-col gap-2 text-sm font-medium">
-            Title
-            <input
-              className="h-10 rounded-md border bg-background px-3 text-sm"
-              name="title"
-              required
-            />
-          </label>
-
-          <label className="flex flex-col gap-2 text-sm font-medium">
-            Target Repository
-            <input
-              className="h-10 rounded-md border bg-background px-3 text-sm"
-              defaultValue={defaultTargetRepo}
-              name="targetRepo"
-              required
-            />
-          </label>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <label className="flex flex-col gap-2 text-sm font-medium">
-              Priority
-              <select
-                className="h-10 rounded-md border bg-background px-3 text-sm"
-                defaultValue="P2"
-                name="priority"
-              >
-                <option value="P0">P0</option>
-                <option value="P1">P1</option>
-                <option value="P2">P2</option>
-                <option value="P3">P3</option>
-              </select>
-            </label>
-          </div>
-
-          <label className="flex flex-col gap-2 text-sm font-medium">
-            Requirement Body
-            <textarea
-              className="min-h-36 rounded-md border bg-background px-3 py-2 text-sm"
-              name="body"
-              required
-            />
-          </label>
-
-          <label className="flex flex-col gap-2 text-sm font-medium">
-            Acceptance Criteria
-            <textarea
-              className="min-h-28 rounded-md border bg-background px-3 py-2 text-sm"
-              name="acceptanceCriteria"
-              placeholder="One acceptance item per line"
-              required
-            />
-          </label>
-
-          <div className="flex justify-end">
-            <button
-              className="inline-flex h-10 items-center justify-center rounded-md bg-foreground px-4 text-sm font-medium text-background"
-              type="submit"
-            >
-              Create Issue
-            </button>
-          </div>
-        </form>
+        <NewLoopIssueForm defaultTargetRepo={defaultTargetRepo} />
       </div>
     </main>
   );

@@ -1,23 +1,28 @@
+'use client';
+
 import Link from 'next/link';
 import {
-  getLoopLogs,
-  getLoopNotifications,
-  getLoopsCost,
-  getLoopsDoctor,
-  listLoops,
-} from '@/lib/api/loops';
-import { resumeLoopsAction } from './actions';
+  useLoopsCost,
+  useLoopsDoctor,
+  useLoopsList,
+  useLoopsLogs,
+  useLoopsNotifications,
+  useResumeLoops,
+} from '@/lib/api/contracts/hooks';
 
-export const dynamic = 'force-dynamic';
+export default function LoopsPage() {
+  const listQuery = useLoopsList({ page: 1, limit: 20 });
+  const doctorQuery = useLoopsDoctor();
+  const costQuery = useLoopsCost();
+  const logsQuery = useLoopsLogs({ limit: 8 });
+  const notificationsQuery = useLoopsNotifications({ limit: 6 });
+  const resume = useResumeLoops();
 
-export default async function LoopsPage() {
-  const [data, doctor, cost, logs, notifications] = await Promise.all([
-    listLoops(),
-    getLoopsDoctor(),
-    getLoopsCost(),
-    getLoopLogs({ limit: 8 }),
-    getLoopNotifications({ limit: 6 }),
-  ]);
+  const data = listQuery.data?.body.data;
+  const doctor = doctorQuery.data?.body.data;
+  const cost = costQuery.data?.body.data;
+  const logs = logsQuery.data?.body.data;
+  const notifications = notificationsQuery.data?.body.data;
 
   return (
     <main className="min-h-screen bg-background px-6 py-8">
@@ -37,53 +42,67 @@ export default async function LoopsPage() {
 
         <section className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_220px_180px]">
           <div className="rounded-lg border p-4">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium">
-                  State Doctor: {doctor.ok ? 'OK' : 'Needs Attention'}
-                </p>
-                <p className="mt-1 break-all text-sm text-muted-foreground">{doctor.root}</p>
-              </div>
-              <span className="text-sm text-muted-foreground">
-                {doctor.loops} loops · {doctor.issues} issues
-              </span>
-            </div>
-            {doctor.problems.length > 0 ? (
-              <ul className="mt-3 list-disc pl-5 text-sm text-muted-foreground">
-                {doctor.problems.map((problem) => (
-                  <li key={problem}>{problem}</li>
-                ))}
-              </ul>
-            ) : null}
+            {doctor ? (
+              <>
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium">
+                      State Doctor: {doctor.ok ? 'OK' : 'Needs Attention'}
+                    </p>
+                    <p className="mt-1 break-all text-sm text-muted-foreground">{doctor.root}</p>
+                  </div>
+                  <span className="text-sm text-muted-foreground">
+                    {doctor.loops} loops · {doctor.issues} issues
+                  </span>
+                </div>
+                {doctor.problems.length > 0 ? (
+                  <ul className="mt-3 list-disc pl-5 text-sm text-muted-foreground">
+                    {doctor.problems.map((problem) => (
+                      <li key={problem}>{problem}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">Loading doctor…</p>
+            )}
           </div>
           <div className="rounded-lg border p-4">
             <p className="text-sm font-medium">Cost Guard</p>
-            <p className="mt-2 text-2xl font-semibold">
-              {cost.loops.filter((loop) => loop.tripped).length}/{cost.loops.length}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              tripped · {cost.loops.reduce((sum, loop) => sum + loop.costCalls, 0)} calls
-            </p>
+            {cost ? (
+              <>
+                <p className="mt-2 text-2xl font-semibold">
+                  {cost.loops.filter((loop) => loop.tripped).length}/{cost.loops.length}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  tripped · {cost.loops.reduce((sum, loop) => sum + loop.costCalls, 0)} calls
+                </p>
+              </>
+            ) : (
+              <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
+            )}
           </div>
-          <form action={resumeLoopsAction}>
-            <button
-              className="h-full min-h-20 w-full rounded-md border px-4 text-sm font-medium hover:bg-muted/30"
-              type="submit"
-            >
-              Resume Interrupted
-            </button>
-          </form>
+          <button
+            className="h-full min-h-20 w-full rounded-md border px-4 text-sm font-medium hover:bg-muted/30 disabled:opacity-60"
+            disabled={resume.isPending}
+            onClick={() => resume.mutate({ body: {} })}
+            type="button"
+          >
+            {resume.isPending ? 'Resuming…' : 'Resume Interrupted'}
+          </button>
         </section>
 
         <section className="rounded-lg border p-4">
           <div className="flex items-center justify-between gap-4">
             <h2 className="text-sm font-medium">Recent Notifications</h2>
             <span className="text-xs text-muted-foreground">
-              {notifications.notifications.length} records
+              {notifications?.notifications.length ?? 0} records
             </span>
           </div>
           <div className="mt-3 flex flex-col divide-y">
-            {notifications.notifications.length === 0 ? (
+            {!notifications ? (
+              <p className="py-3 text-sm text-muted-foreground">Loading…</p>
+            ) : notifications.notifications.length === 0 ? (
               <p className="py-3 text-sm text-muted-foreground">No notifications yet.</p>
             ) : (
               notifications.notifications.map((notification) => (
@@ -103,10 +122,14 @@ export default async function LoopsPage() {
         <section className="rounded-lg border p-4">
           <div className="flex items-center justify-between gap-4">
             <h2 className="text-sm font-medium">Recent Events</h2>
-            <span className="text-xs text-muted-foreground">{logs.entries.length} entries</span>
+            <span className="text-xs text-muted-foreground">
+              {logs?.entries.length ?? 0} entries
+            </span>
           </div>
           <div className="mt-3 flex flex-col divide-y">
-            {logs.entries.length === 0 ? (
+            {!logs ? (
+              <p className="py-3 text-sm text-muted-foreground">Loading…</p>
+            ) : logs.entries.length === 0 ? (
               <p className="py-3 text-sm text-muted-foreground">No events yet.</p>
             ) : (
               logs.entries.map((entry) => (
@@ -132,7 +155,9 @@ export default async function LoopsPage() {
             <span>Phase</span>
             <span>Priority</span>
           </div>
-          {data.list.length === 0 ? (
+          {!data ? (
+            <div className="px-4 py-10 text-sm text-muted-foreground">Loading issues…</div>
+          ) : data.list.length === 0 ? (
             <div className="px-4 py-10 text-sm text-muted-foreground">No Loops issues yet.</div>
           ) : (
             data.list.map(({ issue, state }) => {

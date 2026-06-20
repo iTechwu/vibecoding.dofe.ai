@@ -66,5 +66,5 @@ new FileUploader({ apiBase: '/api/proxy/sso' });
 
 - `pnpm --filter @repo/api type-check` 通过。
 - `pnpm --filter @repo/web type-check` 通过。
-- 深审修复后需确认 `/api/proxy/sso/:path*` 可转发到 `${NEXT_PUBLIC_SSO_BASE_URL}/:path*`，并由 SDK 命中 SSO `/api/uploader/*`。
-- 端到端上传验证需要可用的 SSO 服务、client secret、`INTERNAL_API_SECRET`、Redis 与数据库；未在本轮本地执行。
+- 2026-06-20 真实 Chromium E2E 已确认 `/api/proxy/sso/:path*` 可转发到 `${NEXT_PUBLIC_SSO_BASE_URL}/:path*`，并命中 SSO `/api/uploader/*`。
+- 文件链路本轮验证到 SSO 返回上传凭证、`fileId/key/bucket=dofe-public/cdnUrl/token` 元数据。`dofe-public/private/system` 三桶当前按 SSO 规划先配置，后续由存储侧处理；本轮不校验预签名 URL PUT 与 CDN GET。

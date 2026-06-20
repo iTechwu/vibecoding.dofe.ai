@@ -1,48 +1,27 @@
+'use client';
+
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
-import { getLoopIssue } from '@/lib/api/loops';
-import {
-  approveSpecAction,
-  decomposeAction,
-  finalizeLoopAction,
-  generateSpecAction,
-  globalReviewAction,
-  pauseLoopAction,
-  recordImplementationAction,
-  reloopAction,
-  requestRevisionAction,
-  resumeLoopAction,
-  reviewShardAction,
-  runLoopAction,
-  runShardTestsAction,
-  takeShardAction,
-} from './actions';
+import { useParams } from 'next/navigation';
+import { useFormState } from './use-loop-operations';
+import { useLoopIssue } from '@/lib/api/contracts/hooks';
 
-export const dynamic = 'force-dynamic';
+export default function LoopIssueDetailPage() {
+  const { issueId } = useParams<{ issueId: string }>();
+  const detailQuery = useLoopIssue(issueId);
+  const detail = detailQuery.data?.body.data;
+  const ops = useFormState(issueId);
 
-export default async function LoopIssueDetailPage({
-  params,
-}: {
-  params: Promise<{ issueId: string }>;
-}) {
-  const { issueId } = await params;
-  const detail = await getLoopIssue(issueId).catch(() => null);
-  if (!detail) notFound();
-
-  const generateSpec = generateSpecAction.bind(null, issueId);
-  const pauseLoop = pauseLoopAction.bind(null, issueId);
-  const resumeLoop = resumeLoopAction.bind(null, issueId);
-  const approveSpec = approveSpecAction.bind(null, issueId);
-  const requestRevision = requestRevisionAction.bind(null, issueId);
-  const decompose = decomposeAction.bind(null, issueId);
-  const runLoop = runLoopAction.bind(null, issueId);
-  const globalReview = globalReviewAction.bind(null, issueId);
-  const reloop = reloopAction.bind(null, issueId);
-  const finalizeLoop = finalizeLoopAction.bind(null, issueId);
-  const runShardTests = runShardTestsAction.bind(null, issueId);
-  const recordImplementation = recordImplementationAction.bind(null, issueId);
-  const reviewShard = reviewShardAction.bind(null, issueId);
-  const takeShard = takeShardAction.bind(null, issueId);
+  if (!detail) {
+    return (
+      <main className="min-h-screen bg-background px-6 py-8">
+        <div className="mx-auto max-w-6xl">
+          <p className="text-sm text-muted-foreground">
+            {detailQuery.isLoading ? 'Loading issue…' : 'Issue not found.'}
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-background px-6 py-8">
@@ -58,64 +37,58 @@ export default async function LoopIssueDetailPage({
             </p>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
-            <form action={generateSpec}>
-              <button
-                className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium disabled:opacity-50"
-                disabled={Boolean(detail.spec && detail.spec.status !== 'REVISION_REQUESTED')}
-                type="submit"
-              >
-                Generate Spec
-              </button>
-            </form>
-            <form action={runLoop}>
-              <button
-                className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium disabled:opacity-50"
-                disabled={
-                  detail.state.paused ||
-                  detail.state.phase === 'CLOSED' ||
-                  detail.state.shardsDone === detail.state.shardsTotal
-                }
-                type="submit"
-              >
-                Run Step
-              </button>
-            </form>
-            <form action={globalReview}>
-              <button
-                className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium disabled:opacity-50"
-                disabled={detail.state.phase !== 'PHASE_6_CONVERGE'}
-                type="submit"
-              >
-                Global Review
-              </button>
-            </form>
-            <form action={finalizeLoop}>
-              <button
-                className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium disabled:opacity-50"
-                disabled={detail.state.globalVerdict !== 'PASS' || detail.state.finalized}
-                type="submit"
-              >
-                Finalize
-              </button>
-            </form>
-            <form action={pauseLoop}>
-              <button
-                className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium disabled:opacity-50"
-                disabled={detail.state.paused}
-                type="submit"
-              >
-                Pause
-              </button>
-            </form>
-            <form action={resumeLoop}>
-              <button
-                className="inline-flex h-10 items-center justify-center rounded-md bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50"
-                disabled={!detail.state.paused}
-                type="submit"
-              >
-                Resume
-              </button>
-            </form>
+            <button
+              className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium disabled:opacity-50"
+              disabled={Boolean(detail.spec && detail.spec.status !== 'REVISION_REQUESTED')}
+              onClick={ops.generateSpec}
+              type="button"
+            >
+              Generate Spec
+            </button>
+            <button
+              className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium disabled:opacity-50"
+              disabled={
+                detail.state.paused ||
+                detail.state.phase === 'CLOSED' ||
+                detail.state.shardsDone === detail.state.shardsTotal
+              }
+              onClick={ops.runLoop}
+              type="button"
+            >
+              Run Step
+            </button>
+            <button
+              className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium disabled:opacity-50"
+              disabled={detail.state.phase !== 'PHASE_6_CONVERGE'}
+              onClick={ops.globalReview}
+              type="button"
+            >
+              Global Review
+            </button>
+            <button
+              className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium disabled:opacity-50"
+              disabled={detail.state.globalVerdict !== 'PASS' || detail.state.finalized}
+              onClick={ops.finalizeLoop}
+              type="button"
+            >
+              Finalize
+            </button>
+            <button
+              className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium disabled:opacity-50"
+              disabled={detail.state.paused}
+              onClick={ops.pauseLoop}
+              type="button"
+            >
+              Pause
+            </button>
+            <button
+              className="inline-flex h-10 items-center justify-center rounded-md bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50"
+              disabled={!detail.state.paused}
+              onClick={ops.resumeLoop}
+              type="button"
+            >
+              Resume
+            </button>
           </div>
         </header>
 
@@ -142,7 +115,7 @@ export default async function LoopIssueDetailPage({
               Global verdict is {detail.state.globalVerdict}. Create the next spec revision and send
               it back through human review.
             </p>
-            <form action={reloop} className="mt-4 flex flex-col gap-3 sm:flex-row">
+            <form className="mt-4 flex flex-col gap-3 sm:flex-row" onSubmit={ops.reloop}>
               <input
                 className="h-10 flex-1 rounded-md border bg-background px-3 text-sm"
                 name="notes"
@@ -191,16 +164,15 @@ export default async function LoopIssueDetailPage({
                     {detail.spec.body}
                   </pre>
                   <div className="mt-4 flex flex-wrap gap-3">
-                    <form action={approveSpec}>
-                      <button
-                        className="h-10 rounded-md bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50"
-                        disabled={detail.spec.status === 'APPROVED'}
-                        type="submit"
-                      >
-                        Approve
-                      </button>
-                    </form>
-                    <form action={requestRevision} className="flex gap-2">
+                    <button
+                      className="h-10 rounded-md bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50"
+                      disabled={detail.spec.status === 'APPROVED'}
+                      onClick={ops.approveSpec}
+                      type="button"
+                    >
+                      Approve
+                    </button>
+                    <form className="flex gap-2" onSubmit={ops.requestRevision}>
                       <input
                         className="h-10 rounded-md border bg-background px-3 text-sm"
                         name="notes"
@@ -213,15 +185,14 @@ export default async function LoopIssueDetailPage({
                         Request Revision
                       </button>
                     </form>
-                    <form action={decompose}>
-                      <button
-                        className="h-10 rounded-md border px-4 text-sm font-medium disabled:opacity-50"
-                        disabled={detail.spec.status !== 'APPROVED'}
-                        type="submit"
-                      >
-                        Decompose
-                      </button>
-                    </form>
+                    <button
+                      className="h-10 rounded-md border px-4 text-sm font-medium disabled:opacity-50"
+                      disabled={detail.spec.status !== 'APPROVED'}
+                      onClick={ops.decompose}
+                      type="button"
+                    >
+                      Decompose
+                    </button>
                   </div>
                 </>
               ) : (
@@ -246,7 +217,7 @@ export default async function LoopIssueDetailPage({
                       <p className="mt-2 text-xs text-muted-foreground">
                         est_context {shard.estContext} · depends {shard.dependsOn.length || 0}
                       </p>
-                      <form action={takeShard} className="mt-3 flex flex-col gap-2">
+                      <form className="mt-3 flex flex-col gap-2" onSubmit={(e) => ops.takeShard(e)}>
                         <input name="shardId" type="hidden" value={shard.id} />
                         <input
                           className="h-8 rounded-md border bg-background px-2 text-xs"
@@ -261,7 +232,10 @@ export default async function LoopIssueDetailPage({
                           Take Over
                         </button>
                       </form>
-                      <form action={recordImplementation} className="mt-3 flex flex-col gap-2">
+                      <form
+                        className="mt-3 flex flex-col gap-2"
+                        onSubmit={(e) => ops.recordImplementation(e)}
+                      >
                         <input name="shardId" type="hidden" value={shard.id} />
                         <input name="implementer" type="hidden" value="human" />
                         <textarea
@@ -287,7 +261,10 @@ export default async function LoopIssueDetailPage({
                           Record Implementation
                         </button>
                       </form>
-                      <form action={runShardTests} className="mt-3 flex flex-col gap-2">
+                      <form
+                        className="mt-3 flex flex-col gap-2"
+                        onSubmit={(e) => ops.runShardTests(e)}
+                      >
                         <input name="shardId" type="hidden" value={shard.id} />
                         <textarea
                           className="min-h-16 rounded-md border bg-background px-2 py-1 text-xs"
@@ -301,7 +278,10 @@ export default async function LoopIssueDetailPage({
                           Run Tests
                         </button>
                       </form>
-                      <form action={reviewShard} className="mt-3 flex flex-col gap-2">
+                      <form
+                        className="mt-3 flex flex-col gap-2"
+                        onSubmit={(e) => ops.reviewShard(e)}
+                      >
                         <input name="shardId" type="hidden" value={shard.id} />
                         <select
                           className="h-8 rounded-md border bg-background px-2 text-xs"

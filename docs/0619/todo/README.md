@@ -3,7 +3,7 @@
 > 本目录在 Loops v1 主链路**代码完成且经文件侧 + live-DB 冒烟验证**之后，整理出后续的待实施项、待优化项与未落实（后置）项。
 > 权威实现状态见 [`docs/0619/loops设计/IMPLEMENTATION-ANNOTATIONS.md`](../loops设计/IMPLEMENTATION-ANNOTATIONS.md) 的「最终归档（TASK-08 · round 2）」。
 
-## 当前已验证结论（round 12 / 2026-06-20）
+## 当前已验证结论（round 15 / 2026-06-20）
 
 - v1 主链路（无登录 Web 提交 → DB 三表入库 → `.loops` 真相源 → Loop 开发闭环 → 整体复查/终态标注 → CLOSED）代码全部落地。
 - `pnpm loops:db-smoke`（连真实 DB）3/3 通过：三表写入、生命周期 CLOSED/finalized、doctor 一致性告警。
@@ -18,6 +18,8 @@
 - **round 11 后**：再次深度复审本目录，无新的非 SSO/file 待实施项；`api/web/contracts/utils` type-check、contracts/utils tests、Loops Jest、`loops:doctor`、`loops:db-doctor`、list/sensitive/utils gates 均通过。
 - **round 12 后**：回归复核发现 `docs/0619/sso` 迁移进程（已推进至第十二轮）已修复此前阻断 `check:architecture` 的 auth/SSO 命中——`resource-owner.guard.ts` 改注入 Winston `WINSTON_MODULE_PROVIDER` Logger（不再用 Nest 内置 Logger）、`streaming-asr-session.guard.ts` 已移除 `as any`。**`pnpm check:architecture` 与 `pnpm quality:gate` 现已全绿**，本目录此前记录的「quality:gate 被 auth/SSO 短路」结论已失效。
 - **round 13 后**：SSO 迁移已提交、`generated/db` 落定，实施 **OPT-3**——`LoopIssue`/`LoopIssueIntake`/`LoopState` 加入 `generate-db-crud.js` 的 `EXCLUDE_MODELS`，删除 3 个孤儿生成目录并由 `ensureExportsInIndex` 收敛 `index.ts`。回归全绿（`quality:gate` 6/6、`loops:doctor`、Loops Jest、API type-check）。本目录待优化项仅剩 `OPT-5`（accepted，非阻断）。
+- **round 14 后**：推进 v1.1 后置项「Loops submitter 接真实 SSO 用户」——`LoopsController` 整体加 `@Auth('api')`，`createIssue` submitter 取自 SSO `userInfo`（`dofe-sso`，忽略客户端伪造）；Web 三个 loops 页面迁到客户端 ts-rest（token 由 `token-manager` 注入），删除无鉴权 `@/lib/api/loops` 与 server actions。CLI 不受影响。详见 [03-not-yet-implemented.md](03-not-yet-implemented.md) 的「v1.1 进度」节。回归全绿（`quality:gate` 6/6、Loops Jest 含 dofe-sso/dev 双路径、web test、`loops:doctor`、api+web type-check）。
+- **round 15 后**：按本文档目录重新逐项复审并实测代码状态，确认 `OPT-3` 已真实落地（生成器排除 + 三个孤儿目录已删除）、Loops HTTP submitter 已接 SSO 用户、`quality:gate` / Loops Jest / web test / contracts-utils-validators 测试 / `loops:doctor` / `loops:db-doctor` 继续全绿。本轮未发现新的 Loops v1 收尾范围待实施项。
 - `pnpm quality:gate` ✅ 全绿：`check:architecture` / `check:list-contracts` / `check:sensitive-logs` / `check:utils-hygiene` / `type-check` 五步全部通过；本目录在 Loops v1 收尾范围内已无任何质量门禁阻断。
 - SSO 与 file 唯一真源迁移当前由另一个进程在 `docs/0619/sso` 范围处理（当前进度见 [`docs/0619/sso/09-implementation-status.md`](../sso/09-implementation-status.md)）；本目录只标注 Loops v1 收尾与非 SSO/file 的质量事项。
 
@@ -44,8 +46,8 @@
 | 9   | ~~Contracts 测试历史导出快照收敛~~                     | 待优化 | P3     | ✅ 当前 contract/schema/error 公共面测试与 typecheck 已通过       |
 | 10  | ~~Loops/API bootstrap architecture `any` 收敛~~        | 待优化 | P3     | ✅ Loops adapter 与 `main.ts` 已无 `as any` 命中                  |
 | 11  | ~~`packages/utils` hygiene 历史基线清理~~              | 待优化 | P3     | ✅ 无 `console.*` / `any` 命中，utils typecheck/test 通过         |
-| 12  | Dofe SSO / 角色权限                                    | 未落实 | v1.1   | TASK-09 后置                                                      |
+| 12  | Dofe SSO 登录 / 角色权限                               | 未落实 | v1.1   | 🟡 Loops submitter 已接 SSO；RBAC 与真实浏览器 E2E 仍后置         |
 | 13  | 飞书入口/审批/反向通知                                 | 未落实 | v1.2   | TASK-09 后置                                                      |
 | 14  | 真实远端 PR / 多 Loop 并行 / 独立 worker 池 / 生产告警 | 未落实 | v1.3   | TASK-09 后置                                                      |
 
-> 注：round 13 实施后，本目录无新的 Loops v1 P0/P1 待实施项；`pnpm quality:gate` 全绿；`OPT-3` 已 done（round 13），仅剩 `OPT-5` 维持 accepted/deferred，不作为阻断。
+> 注：round 15 复审后，本目录无新的 Loops v1 P0/P1 待实施项；`pnpm quality:gate` 全绿；`OPT-3` 已 done（round 13），仅剩 `OPT-5` 维持 accepted/deferred，不作为阻断。

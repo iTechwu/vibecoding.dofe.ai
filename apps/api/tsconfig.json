@@ -81,6 +81,8 @@
       "@app/auth/*": ["./libs/domain/auth/src/*"],
       "@app/services": ["./libs/domain/services/src"],
       "@app/services/*": ["./libs/domain/services/*"],
+      "@app/audit-log": ["./libs/domain/audit-log"],
+      "@app/audit-log/*": ["./libs/domain/audit-log/*"],
 
       // === Nest 库别名 @app/clients（客户端封装层） ===
       "@app/clients": ["./libs/clients"],

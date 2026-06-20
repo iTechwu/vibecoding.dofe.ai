@@ -1,10 +1,10 @@
 # 待优化项（to-optimize）
 
-> Loops v1 已可用且经验证，以下为健壮性、可维护性、可移植性、可观测性的改进空间。round 13 实施 `OPT-3`（SSO 迁移 `generated/db` 落定后裁剪冗余 per-model 生成 service）。
+> Loops v1 已可用且经验证，以下为健壮性、可维护性、可移植性、可观测性的改进空间。round 15 复审确认：已实施项仍与代码一致，未发现新的非 SSO/file 待优化实现项。
 
-## 本轮（round 13 / 2026-06-20）进度
+## 本轮（round 15 / 2026-06-20）进度
 
-round 13 实施 `OPT-3`：`docs/0619/sso` 迁移已提交（`1637408` / `d981a90`），工作树 clean、`generated/db` 落定，OPT-3 的阻断前提消除。已将 `LoopIssue` / `LoopIssueIntake` / `LoopState` 加入 `apps/api/scripts/generate-db-crud.js` 的 `EXCLUDE_MODELS`，删除 `generated/db/modules/loop-issue`、`loop-issue-intake`、`loop-state` 三个孤儿生成目录，并由 `ensureExportsInIndex` 自动收敛 `generated/db/index.ts`（顺带补回此前缺失的 `user-info` / `audit-log` barrel 导出）。回归全绿：`check:architecture`、`quality:gate`（6/6）、`loops:doctor`、Loops Jest、API type-check 均通过。`OPT-5` 维持 accepted。
+round 15 复审确认 `OPT-3` 代码状态仍准确：`LoopIssue` / `LoopIssueIntake` / `LoopState` 已在 `apps/api/scripts/generate-db-crud.js` 的 `EXCLUDE_MODELS` 中，`generated/db/modules/` 下仅保留手写 `loops` 模块，不再有 `loop-issue`、`loop-issue-intake`、`loop-state` 三个孤儿生成目录；业务引用扫描无命中。回归继续全绿：`quality:gate`、Loops Jest、web test、contracts/utils/validators tests、`loops:doctor`、`loops:db-doctor` 均通过。`OPT-5` 维持 accepted。
 
 | 项                                    | 状态          | 说明                                                                                               |
 | ------------------------------------- | ------------- | -------------------------------------------------------------------------------------------------- |
@@ -20,7 +20,7 @@ round 13 实施 `OPT-3`：`docs/0619/sso` 迁移已提交（`1637408` / `d981a90
 | OPT-10 architecture `any` 收敛        | ✅ done       | Loops CLI adapter 与 API bootstrap 的 `as any` 已清除；round 12 确认 auth/SSO 残留命中也已修复     |
 | OPT-11 utils hygiene 历史基线清理     | ✅ done       | `packages/utils` 生产代码 `console.*` / `any` 清零，utils typecheck/test/hygiene 均通过            |
 
-round 13 复审结论：`OPT-3` 已实施为 done；`OPT-5` 继续维持 accepted，非阻断；`OPT-1/2/4/6/7/8/9/10/11` 均已 done/documented。`check:architecture` / `quality:gate` 全绿。当前本目录仅剩 `OPT-5`（accepted）一项非阻断优化。
+round 15 复审结论：`OPT-3` 已实施且状态仍准确；`OPT-5` 继续维持 accepted，非阻断；`OPT-1/2/4/6/7/8/9/10/11` 均已 done/documented。`check:architecture` / `quality:gate` 全绿。当前本目录仅剩 `OPT-5`（accepted）一项非阻断优化。
 
 ## OPT-1 · CLI 增加「可选 DB 模式」【✅ done】
 

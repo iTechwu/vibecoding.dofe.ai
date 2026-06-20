@@ -15,6 +15,7 @@ import {
   allowInsecureRequests,
 } from 'openid-client';
 import { UserInfoService } from '@app/db';
+import { AuditLogService } from '@app/audit-log';
 import { RedisService } from '@dofe/infra-redis';
 import { apiError } from '@dofe/infra-common';
 import { CommonErrorCode, UserErrorCode } from '@repo/contracts/errors';
@@ -45,6 +46,7 @@ export class OidcClientApiService implements OnModuleInit {
     private readonly configService: ConfigService,
     private readonly userInfoService: UserInfoService,
     private readonly redisService: RedisService,
+    private readonly auditLogService: AuditLogService,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
   ) {}
 
@@ -269,6 +271,18 @@ export class OidcClientApiService implements OnModuleInit {
     }
 
     const localUser = await this.findOrCreateUserFromSso(claims);
+
+    // Record successful SSO login audit entry (best-effort; must not block login).
+    // Only fires on the real token-exchange path (state consumed), so repeated
+    // duplicate callbacks do not create duplicate LOGIN audit rows.
+    if (localUser) {
+      this.auditLogService.logLogin(localUser.id, { ssoSub: ssoUserId }).catch((err) => {
+        this.logger.warn('Failed to record login audit log', {
+          userId: localUser.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
 
     // Generate one-time exchange code and store tokens + user in Redis
     const exchangeCode = randomBytes(32).toString('hex');
