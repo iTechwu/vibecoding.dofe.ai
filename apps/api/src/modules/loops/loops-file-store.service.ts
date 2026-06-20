@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { existsSync } from 'fs';
 import { promises as fs } from 'fs';
 import * as path from 'path';
@@ -20,6 +20,7 @@ import type {
   LoopTestMatrix,
   LoopTestRecord,
 } from '@repo/contracts';
+import { LoopsNotificationSender } from './loops-notification-sender.service';
 import { readLoopsRuntimeConfig } from './loops-runtime-config.util';
 
 type StateFile = {
@@ -49,6 +50,11 @@ export type LoopsResumeResult = {
 
 @Injectable()
 export class LoopsFileStoreService {
+  constructor(
+    @Optional()
+    private readonly notificationSender: LoopsNotificationSender = new LoopsNotificationSender(),
+  ) {}
+
   private readonly root = path.join(this.findWorkspaceRoot(), '.loops');
 
   async ensureInitialized() {
@@ -713,11 +719,15 @@ export class LoopsFileStoreService {
 
   async writeNotification(input: Omit<LoopNotification, 'id' | 'created' | 'status'>) {
     const created = new Date().toISOString();
-    const notification: LoopNotification = {
+    let notification: LoopNotification = {
       ...input,
       id: `notification-${input.issueId}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       status: 'RECORDED',
       created,
+    };
+    notification = {
+      ...notification,
+      status: await this.notificationSender.send(notification),
     };
     await this.writeJson(`notifications/${input.issueId}/${notification.id}.json`, notification);
     await this.writeText(
@@ -725,7 +735,7 @@ export class LoopsFileStoreService {
       this.renderNotification(notification),
     );
     await this.appendLog({
-      type: 'NOTIFY_SENT',
+      type: 'NOTIFICATION_RECORDED',
       issue: input.issueId,
       channel: input.channel,
       kind: input.kind,

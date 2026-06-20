@@ -19,12 +19,13 @@
 - round 10：再次复核确认无新增本仓可实施项；blocked 项解除条件未变化。
 - round 11：再次复核确认无新增本仓可实施项；blocked 项解除条件未变化。
 - round 12：发现并修复 Loops deterministic spec/annotation 仍描述 SSO mock 的过期标注；生成内容已改为准确说明 HTTP submitter 已由 AuthGuard 派生 `dofe-sso`，真实浏览器 SSO E2E 仍 blocked。
+- round 13：推进 B6/B7/B8 本仓可实施前置：新增 GitHub/GitLab/Gitea PR provider client、收敛 PR `OPENED` 记录与前端链接；新增进程内 issue/repo 写锁；新增 Loops notification webhook sender，支持外部告警/Feishu webhook 发送状态。
 - `docs/0620` 作为新阶段优化入口，聚焦：
   - accepted 项是否继续维持、转实施或关闭；
   - v1.1+ 后置能力的可执行拆解；
   - 每轮实施后的文档标注和回归测试。
 - SSO/file 唯一真源仍以 `docs/0619/sso` 为权威来源；本目录只记录与 Loops 后续能力、生产化、质量回归相关的执行事项。
-- 真实 SSO 浏览器 E2E、飞书、真实远端 PR、worker 池、真实 CLI 与外部告警仍依赖外部凭据/产品决策/运行环境，当前不得标为 done。
+- 真实 SSO 浏览器 E2E、飞书入口/审批、跨进程 worker 池、真实 CLI 生产稳定性与真实外部凭据验收仍依赖外部输入，当前不得标为 done；远端 PR provider client、进程内写锁、webhook 告警前置已在本仓落地。
 
 ## 文件索引
 

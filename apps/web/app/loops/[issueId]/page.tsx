@@ -2,8 +2,99 @@
 
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import type { LoopDetail } from '@repo/contracts';
 import { useFormState } from './use-loop-operations';
 import { useLoopIssue } from '@/lib/api/contracts/hooks';
+
+function getNextAction(detail: LoopDetail) {
+  if (detail.state.paused) {
+    return {
+      label: 'Resume loop',
+      body: 'This issue is paused. Resume it before running more agent steps.',
+      tone: 'attention',
+    };
+  }
+  if (!detail.spec || detail.spec.status === 'REVISION_REQUESTED') {
+    return {
+      label: 'Generate spec',
+      body: 'Create or refresh the product spec before decomposition.',
+      tone: 'default',
+    };
+  }
+  if (detail.spec.status === 'DRAFT') {
+    return {
+      label: 'Review spec',
+      body: 'Approve, request changes, or reject the draft spec.',
+      tone: 'attention',
+    };
+  }
+  if (detail.spec.status === 'APPROVED' && detail.shards.length === 0) {
+    return {
+      label: 'Decompose',
+      body: 'Split the approved spec into self-contained implementation shards.',
+      tone: 'default',
+    };
+  }
+  if (detail.state.phase === 'PHASE_6_CONVERGE') {
+    return {
+      label: 'Global review',
+      body: 'Run the cross-shard review before final annotation and delivery.',
+      tone: 'attention',
+    };
+  }
+  if (detail.state.globalVerdict && detail.state.globalVerdict !== 'PASS') {
+    return {
+      label: 'Start re-loop',
+      body: 'Global review found remaining work. Create the next spec revision.',
+      tone: 'attention',
+    };
+  }
+  if (detail.state.globalVerdict === 'PASS' && !detail.state.finalized) {
+    return {
+      label: 'Finalize',
+      body: 'Close the issue and emit the convergence record.',
+      tone: 'default',
+    };
+  }
+  if (detail.state.phase === 'CLOSED' || detail.state.finalized) {
+    return {
+      label: 'Closed',
+      body: 'Delivery is finalized. Review the records below for audit evidence.',
+      tone: 'success',
+    };
+  }
+  return {
+    label: 'Run step',
+    body: 'Advance the next runnable shard through implementation, tests, and review.',
+    tone: 'default',
+  };
+}
+
+function summarizeEvidence(detail: LoopDetail) {
+  const total = Math.max(detail.shards.length, 1);
+  const implemented = new Set(detail.implementationRecords.map((record) => record.shardId)).size;
+  const tested = new Set(detail.testRecords.map((record) => record.shardId)).size;
+  const reviewed = new Set(detail.reviewRecords.map((record) => record.shardId)).size;
+  const annotated = detail.annotations.filter(
+    (annotation) => annotation.coverage !== 'none',
+  ).length;
+  return [
+    ['Implemented', implemented, total],
+    ['Tested', tested, total],
+    ['Reviewed', reviewed, total],
+    ['Annotated', annotated, Math.max(detail.annotations.length, total)],
+  ] as const;
+}
+
+function actionToneClass(tone: string) {
+  if (tone === 'attention') {
+    return 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100';
+  }
+  if (tone === 'success') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100';
+  }
+  return 'border-border bg-muted/40 text-foreground';
+}
 
 export default function LoopIssueDetailPage() {
   const { issueId } = useParams<{ issueId: string }>();
@@ -22,6 +113,9 @@ export default function LoopIssueDetailPage() {
       </main>
     );
   }
+
+  const nextAction = getNextAction(detail);
+  const evidence = summarizeEvidence(detail);
 
   return (
     <main className="min-h-screen bg-background px-6 py-8">
@@ -106,6 +200,32 @@ export default function LoopIssueDetailPage() {
               <p className="mt-2 text-2xl font-semibold">{value}</p>
             </div>
           ))}
+        </section>
+
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.4fr]">
+          <div className={`rounded-lg border p-4 ${actionToneClass(nextAction.tone)}`}>
+            <p className="text-sm font-medium">Next Action</p>
+            <h2 className="mt-2 text-xl font-semibold">{nextAction.label}</h2>
+            <p className="mt-2 text-sm opacity-80">{nextAction.body}</p>
+          </div>
+          <div className="rounded-lg border p-4">
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="text-sm font-semibold">Evidence Coverage</h2>
+              <span className="text-xs text-muted-foreground">
+                {detail.shards.length} shards · {detail.annotations.length} annotations
+              </span>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+              {evidence.map(([label, done, total]) => (
+                <div className="rounded-md bg-muted/40 p-3" key={label}>
+                  <p className="text-xs text-muted-foreground">{label}</p>
+                  <p className="mt-2 text-lg font-semibold">
+                    {done}/{total}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
         </section>
 
         {detail.state.globalVerdict && detail.state.globalVerdict !== 'PASS' ? (
@@ -385,6 +505,16 @@ export default function LoopIssueDetailPage() {
                     {detail.convergencePr.commits.length} commits · base{' '}
                     {detail.convergencePr.baseBranch}
                   </p>
+                  {detail.convergencePr.url ? (
+                    <a
+                      className="mt-3 inline-flex text-xs font-medium text-primary hover:underline"
+                      href={detail.convergencePr.url}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Open {detail.convergencePr.provider ?? 'remote'} PR
+                    </a>
+                  ) : null}
                 </div>
               ) : (
                 <p className="mt-3 text-sm text-muted-foreground">No convergence PR yet.</p>

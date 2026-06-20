@@ -27,6 +27,7 @@ import type {
 import { LoopsFileStoreService } from './loops-file-store.service';
 import { LoopsRunnerService } from './loops-runner.service';
 import { LoopsService } from './loops.service';
+import { LoopsWorkLockService } from './loops-work-lock.service';
 
 function makePassTestRecord(issueId: string, shardId: string, round: number): LoopTestRecord {
   return {
@@ -111,6 +112,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     service = new LoopsService(
       store,
       createFakeRunner(),
+      new LoopsWorkLockService(),
       new DeterministicLoopsAgentAdapter(),
       new DeterministicLoopsClaudeAdapter(),
       createFakeGitAdapter(),

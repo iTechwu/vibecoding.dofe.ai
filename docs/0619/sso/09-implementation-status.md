@@ -111,7 +111,8 @@
 - 第十四轮补齐 scaffold `apps/api/.env.example` 与 `apps/web/.env.example` 缺失的 SSO 环境变量（`SSO_API_URL`/`SSO_INTERNAL_API_URL`/`SSO_ISSUER`/`SSO_CLIENT_ID=scaffold-dofe-ai`/`SSO_CLIENT_SECRET`/`SSO_SERVICE_NAME=scaffold.dofe.ai`/`INTERNAL_API_SECRET` 与 `SCAFFOLD_INTERNAL_API_URL`/`NEXT_PUBLIC_SSO_BASE_URL`），对齐 vibecoding 模板，恢复 scaffold 作为可运行模板的完整性。
 - 第十五轮复查发现审计层虽然已在 OIDC 登录回调落地，但业务写操作仍未兑现 03 文档中的主动调用验收；已在 vibecoding Loops HTTP 写路径补齐 `AuditLogService` best-effort 调用，覆盖 issue 创建、spec 生成/审核、分解、shard 测试/实现/审核、runLoop、global review、reloop、finalize、intervene、resume 等成功操作。
 - 第十五轮同步修订 `README` / `02` / `05` / `08` 中仍残留的 `@dofe/sso-node`、`@dofe/sso-contracts`、`@app/sso-client` 旧实施口径；当前准确口径为：后端直接用 `@dofe/infra-clients/sso` + `openid-client`，前端保留 `@dofe/sso-browser`，OIDC contract 由 `@repo/contracts` 承载。
-- 第十六轮复查发现审计枚举已包含 `LOGOUT`，但 OIDC logout 只做 access token blacklist 与 SSO logout URL 生成；已补齐 `AuditLogService.logLogout` 与 `/auth/oidc/logout` best-effort 调用，登出审计与登录审计形成闭环。
+- 第十六轮复查发现审计枚举已包含 `LOGOUT`，但 OIDC logout 只做 access token blacklist 与 SSO logout URL 生成；已补齐 `AuditLogService.logLogout` 与 `/auth/oidc/logout` best-effort 调用，登出审计与登录审计形成闭环。登出审计只记录 `ssoSub` 与事件来源，不落 raw token / `jti`。
+- 第十七轮按“登录使用 `sso.dofe.ai` 作为 SSO 唯一真源”口径复查：删除前端兼容层残留的本地密码登录 `LoginRequest` / `login()` 导出；将 settings 手机绑定 schema 从 `MobileLoginRequestSchema` 重命名为 `MobileBindRequestSchema`，避免资料绑定接口继续出现 login 命名。当前登录入口仅为 `/login` → `/api/auth/oidc/authorize` → `sso.dofe.ai` OIDC。
 
 ## 3. 明确废弃/不再采用
 
@@ -204,6 +205,17 @@
 - `vibecoding.dofe.ai`: 第十五轮后四项质量门禁通过：`check:architecture`、`check:list-contracts`、`check:sensitive-logs`、`check:utils-hygiene`
 - `vibecoding.dofe.ai`: 第十五轮残留扫描确认源码/lockfile 无 `@dofe/sso-node`、`@dofe/sso-contracts`、`@app/sso-client`、`signContract`、`signClient`、旧 `auth-token`、旧 `/api/oidc-auth/refresh-token`、`/settings/password`、`loginSchema/registerSchema` 残留；docs 命中均为“未采用/已移除/不依赖”说明。
 - `vibecoding.dofe.ai`: 第十六轮后 `pnpm --filter @repo/api type-check`
+- `vibecoding.dofe.ai`: 第十六轮后 `pnpm --filter @repo/api exec jest --runInBand`（5 suites passed / 1 skipped；20 tests passed / 3 skipped）
+- `vibecoding.dofe.ai`: 第十六轮后四项质量门禁通过：`check:architecture`、`check:list-contracts`、`check:sensitive-logs`、`check:utils-hygiene`
+- `vibecoding.dofe.ai`: 第十六轮最终回归 `pnpm type-check` 全仓通过
+- `vibecoding.dofe.ai`: 第十六轮最终回归 `pnpm --filter @repo/api exec jest --runInBand`（6 suites passed / 1 skipped；24 tests passed / 3 skipped）
+- `vibecoding.dofe.ai`: 第十六轮最终回归 `pnpm --filter @repo/contracts test`（43 passed）、`pnpm --filter @repo/web test`（3 passed）、`pnpm --filter @repo/validators test`（40 passed）
+- `vibecoding.dofe.ai`: 第十七轮后 `pnpm type-check`
+- `vibecoding.dofe.ai`: 第十七轮后 `pnpm --filter @repo/contracts test`（43 passed）
+- `vibecoding.dofe.ai`: 第十七轮后 `pnpm --filter @repo/api exec jest --runInBand`（8 suites passed / 1 skipped；29 tests passed / 3 skipped）
+- `vibecoding.dofe.ai`: 第十七轮后 `pnpm --filter @repo/web test`（6 passed）+ `pnpm --filter @repo/validators test`（40 passed）
+- `vibecoding.dofe.ai`: 第十七轮后四项质量门禁通过：`check:architecture`、`check:list-contracts`、`check:sensitive-logs`、`check:utils-hygiene`
+- `vibecoding.dofe.ai`: 第十七轮登录旁路扫描确认无 `LoginRequest`、`MobileLoginRequest`、`loginSchema/registerSchema`、`signClient/signContract`、旧 `/sign/*`、旧 `auth-token`、本地 password login / SMS login contract 残留。
 
 本轮不纳入验收：
 

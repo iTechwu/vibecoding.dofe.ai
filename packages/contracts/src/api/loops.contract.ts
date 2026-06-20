@@ -12,6 +12,7 @@ import {
   LoopListResponseSchema,
   LoopLogsQuerySchema,
   LoopLogsResponseSchema,
+  LoopMetricsResponseSchema,
   LoopNotificationsQuerySchema,
   LoopNotificationsResponseSchema,
   LoopRecordShardImplementationRequestSchema,
@@ -221,6 +222,14 @@ export const loopsContract = c.router(
         200: ApiResponseSchema(LoopCostResponseSchema),
       },
       summary: 'Get Loops cost usage and circuit breaker state',
+    },
+    metrics: {
+      method: 'GET',
+      path: '/metrics',
+      responses: {
+        200: ApiResponseSchema(LoopMetricsResponseSchema),
+      },
+      summary: 'Get aggregated Loops control-plane metrics',
     },
     logs: {
       method: 'GET',

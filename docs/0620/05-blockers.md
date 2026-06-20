@@ -31,17 +31,27 @@
 - 审批按钮、审批状态机、幂等键和重复点击策略。
 - 通知目标、发送失败重试策略和死信处理策略。
 
+已满足的本仓前置：
+
+- `LoopsNotificationSender` 已支持 `LOOPS_FEISHU_WEBHOOK_URL` / `LOOPS_FEISHU_WEBHOOK_TOKEN` 发送 Feishu channel notification，并记录 `SENT` / `FAILED` / `SKIPPED`。
+
 ## B6 · 真实远端 PR 与 diff 自动回收
 
 状态：blocked。
 
 解除条件：
 
-- Git provider 选择：GitHub / GitLab / Gitea 或内部 provider。
+- 真实 Git provider endpoint 与 token。
 - token 管理方式与最小权限范围。
-- repo allowlist、branch 命名规则和保护分支策略。
+- 保护分支策略。
 - PR 创建失败时的补偿策略。
 - changedFiles 的真实来源：git diff、provider API 或 runner 输出。
+
+已满足的本仓前置：
+
+- `LoopsPrProviderClient` 已支持 GitHub / GitLab / Gitea。
+- `LOOPS_PR_REPOSITORY_ALLOWLIST` 已支持 repo allowlist。
+- `CliLoopsGitAdapter` 已在 push 后尝试真实开 PR，成功写入 `OPENED + provider + url`，失败保留本地 convergence PR record。
 
 ## B7 · 多 Loop 并行与独立 worker 池
 
@@ -50,9 +60,13 @@
 解除条件：
 
 - 队列系统与部署拓扑。
-- 同一 repo 写锁、同一 issue 幂等锁和超时释放策略。
+- 跨进程同一 repo 写锁、同一 issue 幂等锁和超时释放策略。
 - worker 资源隔离、并发限流和重试策略。
 - API 进程与 worker 进程之间的状态同步协议。
+
+已满足的本仓前置：
+
+- `LoopsWorkLockService` 已提供 API 进程内 issue/repo 写锁，防止同进程 `runLoop` 重入。
 
 ## B8 · 成本计量、生产告警、真实 CLI 稳定性
 
@@ -64,3 +78,7 @@
 - 真实 token / call 计量来源。
 - 成本指标口径、阈值和预算策略。
 - 外部告警通道、升级策略和负责人。
+
+已满足的本仓前置：
+
+- `LoopsNotificationSender` 已支持 `LOOPS_ALERT_WEBHOOK_URL` / `LOOPS_ALERT_WEBHOOK_TOKEN` 发送外部告警 webhook。

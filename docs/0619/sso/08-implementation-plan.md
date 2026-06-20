@@ -141,3 +141,4 @@
 - [x] 第十四轮：补齐 scaffold `.env.example`（api+web）SSO 变量；修订 05 §1.3 / 02 技术栈 sso-client 描述为"未采用"
 - [x] 第十四轮：vibecoding/scaffold 四项质量门禁全绿，type-check/contracts/web/validators/api jest 全通过
 - [x] 第十五轮：vibecoding LoopsModule 引入 `AuditLogModule`，LoopsController 对 create/generate/review/decompose/run/finalize/intervene/resume 等 HTTP 成功写操作记录 `CREATE`/`UPDATE` 审计；`pnpm --filter @repo/api type-check`、API Jest、四项质量门禁通过
+- [x] 第十六轮：vibecoding OIDC logout 补齐 `AuditLogService.logLogout` best-effort 调用，`LOGIN`/`LOGOUT` 审计闭环；`pnpm --filter @repo/api type-check`、API Jest、四项质量门禁通过

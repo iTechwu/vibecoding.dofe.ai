@@ -38,6 +38,7 @@ import { LoopsFileStoreService } from './loops-file-store.service';
 import { LoopsPersistenceService } from './loops-persistence.service';
 import { LoopsRunnerService } from './loops-runner.service';
 import { LoopsService } from './loops.service';
+import { LoopsWorkLockService } from './loops-work-lock.service';
 
 const RUN = process.env.LOOPS_DB_SMOKE === '1';
 const describeDb = RUN ? describe : describe.skip;
@@ -148,6 +149,7 @@ describeDb('LoopsPersistence DB smoke (live DB)', () => {
     service = new LoopsService(
       store,
       makeFakeRunner(),
+      new LoopsWorkLockService(),
       new DeterministicLoopsAgentAdapter(),
       new DeterministicLoopsClaudeAdapter(),
       makeFakeGitAdapter(),

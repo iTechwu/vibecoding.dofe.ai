@@ -2,15 +2,6 @@ import type { LoginSuccess, UserInfo } from '@repo/contracts';
 import { setLoginData, getAccessToken, getRefreshToken as getRefresh, clearAll } from './storage';
 import { tokenManager } from './token-manager';
 
-// ============================================================================
-// Type Definitions (re-export from contracts for backward compatibility)
-// ============================================================================
-
-export interface LoginRequest {
-  mobile: string;
-  password: string;
-}
-
 // Re-export types from contracts
 export type User = UserInfo;
 export type LoginData = LoginSuccess;
@@ -63,18 +54,6 @@ export function setTokenData(data: LoginData): void {
 // 清除 token（使用新的存储模块）
 export function clearToken(): void {
   clearAll();
-}
-
-// ============================================================================
-// API Functions (using ts-rest client)
-// ============================================================================
-
-/**
- * @deprecated 本项目认证以 sso.dofe.ai 为唯一真源，请跳转 /login 发起 OIDC 登录。
- */
-export async function login(credentials: LoginRequest): Promise<LoginData> {
-  void credentials;
-  throw new Error('Local password login is disabled. Please use SSO login.');
 }
 
 /**

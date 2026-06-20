@@ -5,6 +5,7 @@ import type {
   LoopsConvergencePrInput,
   LoopsGitAdapter,
 } from './loops-git-adapter.interface';
+import { LoopsPrProviderClient } from './loops-pr-provider.client';
 import { runProcess } from './loops-process.util';
 import { resolveAllowedTargetRepo } from '../loops-path-policy.util';
 
@@ -24,7 +25,10 @@ export type LoopsGitAdapterOptions = {
  */
 @Injectable()
 export class CliLoopsGitAdapter implements LoopsGitAdapter {
-  constructor(private readonly options: LoopsGitAdapterOptions) {}
+  constructor(
+    private readonly options: LoopsGitAdapterOptions,
+    private readonly prProvider = new LoopsPrProviderClient(),
+  ) {}
 
   async commitShard(input: {
     issue: { id: string; targetRepo: string };
@@ -82,17 +86,27 @@ export class CliLoopsGitAdapter implements LoopsGitAdapter {
     }
 
     const pushed = await this.git(cwd, ['push', '-u', 'origin', branch]);
+    const opened = pushed
+      ? await this.prProvider.openPullRequest({
+          branch,
+          baseBranch,
+          title: `Loops ${input.issue.id}: ${input.issue.title}`,
+          body: prBody,
+        })
+      : { opened: false as const, reason: 'git push failed' };
     return {
-      id: `convergence-pr-${input.issue.id}`,
+      id: opened.opened ? opened.id : `convergence-pr-${input.issue.id}`,
       issueId: input.issue.id,
       branch,
       baseBranch,
+      provider: opened.opened ? opened.provider : undefined,
+      url: opened.opened ? opened.url : undefined,
       commits: input.commits
         .filter((item) => item.committed)
         .map((item) => ({ shardId: item.shardId, message: item.message })),
       annotationsSummary,
-      prBody,
-      status: pushed ? 'PUSHED' : 'DRAFT',
+      prBody: opened.opened ? prBody : `${prBody}\n\n## Provider 状态\n${opened.reason}`,
+      status: opened.opened ? 'OPENED' : pushed ? 'PUSHED' : 'DRAFT',
       created,
     };
   }

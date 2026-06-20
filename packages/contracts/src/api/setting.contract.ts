@@ -7,7 +7,7 @@ import {
   BrandSettingRequestSchema,
   UsageResponseSchema,
   EmailVerifyRequestSchema,
-  MobileLoginRequestSchema,
+  MobileBindRequestSchema,
   UpdateAvatarRequestSchema,
 } from '../schemas/setting.schema';
 import { UserAccountBaseSchema } from '../schemas/user.schema';
@@ -88,7 +88,7 @@ export const settingContract = c.router(
     bindPhone: {
       method: 'POST',
       path: '/phone/bind',
-      body: MobileLoginRequestSchema,
+      body: MobileBindRequestSchema,
       responses: {
         200: ApiResponseSchema(UserInfoSchema),
       },

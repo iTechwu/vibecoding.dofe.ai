@@ -314,6 +314,53 @@ Loops v1 CLOSED 门槛：不受影响；本轮无新增代码实施项。
 
 Loops v1 CLOSED 门槛：不受影响；本轮为生成文档标注准确性修复，不扩大外部验收口径。
 
+## round 13 回归记录（2026-06-20）
+
+范围：
+
+- B6：新增 GitHub/GitLab/Gitea PR provider client；`CliLoopsGitAdapter` push 后可真实创建远端 PR，并在 convergence PR record 写入 `OPENED`、`provider`、`url`。
+- B7：新增 API 进程内 issue/repo 写锁，防止同进程 `runLoop` 并发重入。
+- B8/B5 通知前置：新增 Loops notification webhook sender，支持 external alert 与 Feishu webhook 配置后发送并记录状态。
+- 前端 Loops 详情页展示远端 PR 链接。
+
+实施文件：
+
+- `apps/api/src/modules/loops/adapters/loops-pr-provider.client.ts`
+- `apps/api/src/modules/loops/adapters/loops-pr-provider.client.spec.ts`
+- `apps/api/src/modules/loops/adapters/cli-loops-git.adapter.ts`
+- `apps/api/src/modules/loops/loops-work-lock.service.ts`
+- `apps/api/src/modules/loops/loops-work-lock.service.spec.ts`
+- `apps/api/src/modules/loops/loops-notification-sender.service.ts`
+- `apps/api/src/modules/loops/loops-notification-sender.service.spec.ts`
+- `apps/api/src/modules/loops/loops-file-store.service.ts`
+- `apps/api/src/modules/loops/loops.module.ts`
+- `apps/api/src/modules/loops/loops.service.ts`
+- `packages/contracts/src/schemas/loops.schema.ts`
+- `apps/web/app/loops/[issueId]/page.tsx`
+- `docs/0620/README.md`
+- `docs/0620/01-execution-plan.md`
+- `docs/0620/03-deferred-items.md`
+- `docs/0620/04-regression-checklist.md`
+- `docs/0620/05-blockers.md`
+
+结果：
+
+- `pnpm --filter @repo/api exec jest src/modules/loops --runInBand`：通过（1 skipped DB smoke，5 passed；17 passed，3 skipped）。
+- `pnpm --filter @repo/api type-check`：通过。
+- `pnpm --filter @repo/web type-check`：通过。
+- `pnpm --filter @repo/contracts exec jest --runInBand`：通过。
+- `pnpm regression:docs0620`：通过。
+
+仍未完成：
+
+- 真实 SSO 浏览器 E2E：blocked，需真实 SSO client secret、测试账号和可启动联调环境。
+- 飞书入口/审批：blocked，需真实 payload、签名、用户映射和审批状态机；Feishu webhook 发送前置已完成。
+- 真实远端 PR 环境验收与真实 diff 自动回收：blocked，需真实 provider token/仓库与 changedFiles 来源。
+- 独立 worker 池：blocked，需跨进程队列/锁/资源隔离/部署拓扑。
+- 真实 CLI 生产稳定性与真实 token 计量：blocked，需生产 CLI 版本、权限、沙箱和计量来源。
+
+Loops v1 CLOSED 门槛：不受影响；本轮为 v1.1+ / 生产化前置能力，不扩大真实外部验收口径。
+
 ## 失败处理
 
 | 失败类型          | 处理                                                      |

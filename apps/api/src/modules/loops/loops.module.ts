@@ -9,19 +9,23 @@ import { DeterministicLoopsAgentAdapter } from './adapters/deterministic-loops-a
 import { LOOPS_AGENT_ADAPTER } from './adapters/loops-agent-adapter.interface';
 import { LOOPS_CLAUDE_ADAPTER } from './adapters/loops-claude-adapter.interface';
 import { LOOPS_GIT_ADAPTER } from './adapters/loops-git-adapter.interface';
+import { LoopsPrProviderClient } from './adapters/loops-pr-provider.client';
 import { LoopsController } from './loops.controller';
 import { LoopsFileStoreService } from './loops-file-store.service';
+import { LoopsNotificationSender } from './loops-notification-sender.service';
 import { LoopsPersistenceService } from './loops-persistence.service';
 import { LOOPS_PERSISTENCE } from './loops-persistence.token';
 import { LoopsRbacGuard } from './loops-rbac.guard';
 import { LoopsRunnerService } from './loops-runner.service';
 import { LoopsService } from './loops.service';
+import { LoopsWorkLockService } from './loops-work-lock.service';
 
 @Module({
   imports: [LoopsDbModule, AuditLogModule],
   controllers: [LoopsController],
   providers: [
     LoopsService,
+    LoopsNotificationSender,
     LoopsFileStoreService,
     LoopsPersistenceService,
     LoopsRbacGuard,
@@ -30,10 +34,12 @@ import { LoopsService } from './loops.service';
     // NestJS graph and never into standalone `ts-node` consumers.
     { provide: LOOPS_PERSISTENCE, useExisting: LoopsPersistenceService },
     LoopsRunnerService,
+    LoopsWorkLockService,
     DeterministicLoopsAgentAdapter,
     DeterministicLoopsClaudeAdapter,
     CliLoopsAgentAdapter,
     CliLoopsClaudeAdapter,
+    LoopsPrProviderClient,
     {
       provide: LOOPS_AGENT_ADAPTER,
       useExisting:
@@ -50,11 +56,15 @@ import { LoopsService } from './loops.service';
     },
     {
       provide: LOOPS_GIT_ADAPTER,
-      useFactory: () =>
-        new CliLoopsGitAdapter({
-          commitPerShard: process.env.LOOPS_GIT_COMMIT_PER_SHARD === 'true',
-          baseBranch: process.env.LOOPS_GIT_BASE_BRANCH ?? 'main',
-        }),
+      useFactory: (prProvider: LoopsPrProviderClient) =>
+        new CliLoopsGitAdapter(
+          {
+            commitPerShard: process.env.LOOPS_GIT_COMMIT_PER_SHARD === 'true',
+            baseBranch: process.env.LOOPS_GIT_BASE_BRANCH ?? 'main',
+          },
+          prProvider,
+        ),
+      inject: [LoopsPrProviderClient],
     },
   ],
 })

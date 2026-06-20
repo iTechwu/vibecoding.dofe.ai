@@ -247,7 +247,7 @@ export class OidcClientApiController {
     try {
       await this.auditLogService.logLogout(actorId, {
         ssoSub: typeof decodedToken?.sub === 'string' ? decodedToken.sub : undefined,
-        jti: typeof decodedToken?.jti === 'string' ? decodedToken.jti : undefined,
+        source: 'oidc.logout',
       });
     } catch (error) {
       this.logger.warn('Failed to record logout audit log', {

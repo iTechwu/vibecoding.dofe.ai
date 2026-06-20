@@ -16,16 +16,16 @@
 
 ## 推荐实施顺序
 
-| 批次 | 状态    | 目标                                | 为什么先做                                        |
-| ---- | ------- | ----------------------------------- | ------------------------------------------------- |
-| B1   | done    | 关闭 `OPT-5`                        | 已改为 config 文件位置解析并通过回归              |
-| B2   | done    | Loops RBAC 最小门禁                 | 已按 read/create/operate/admin 分组并通过回归     |
-| B3   | blocked | 真实 SSO 浏览器 E2E                 | 缺真实 SSO client secret、测试账号和可启动环境    |
-| B4   | done    | 完整 E2E/build 矩阵                 | 已固化非真实 SSO 范围回归入口与 CI Loops 检查     |
-| B5   | blocked | 飞书入口 / 审批 / 反向通知          | 缺 Feishu payload、签名配置、应用凭据和通知目标   |
-| B6   | blocked | 真实远端 PR 与 diff 自动回收        | 缺 git provider、token 管理和 repo allowlist 决策 |
-| B7   | blocked | 多 Loop 并行与独立 worker 池        | 缺队列/锁/worker 拓扑与资源隔离方案确认           |
-| B8   | blocked | 成本计量、生产告警、真实 CLI 稳定性 | 缺真实 CLI 运行策略、token 计量来源和外部告警通道 |
+| 批次 | 状态    | 目标                                | 为什么先做                                                          |
+| ---- | ------- | ----------------------------------- | ------------------------------------------------------------------- |
+| B1   | done    | 关闭 `OPT-5`                        | 已改为 config 文件位置解析并通过回归                                |
+| B2   | done    | Loops RBAC 最小门禁                 | 已按 read/create/operate/admin 分组并通过回归                       |
+| B3   | blocked | 真实 SSO 浏览器 E2E                 | 缺真实 SSO client secret、测试账号和可启动环境                      |
+| B4   | done    | 完整 E2E/build 矩阵                 | 已固化非真实 SSO 范围回归入口与 CI Loops 检查                       |
+| B5   | blocked | 飞书入口 / 审批 / 反向通知          | 缺 Feishu payload、签名配置、应用凭据和通知目标                     |
+| B6   | partial | 真实远端 PR 与 diff 自动回收        | PR provider client 已落地；真实凭据验收/diff 来源仍 blocked         |
+| B7   | partial | 多 Loop 并行与独立 worker 池        | 同进程 issue/repo 写锁已落地；跨进程队列/worker 拓扑仍 blocked      |
+| B8   | partial | 成本计量、生产告警、真实 CLI 稳定性 | webhook 告警发送已落地；真实 CLI/token 计量和告警通道验收仍 blocked |
 
 ## B1 · `OPT-5` 处理
 
@@ -135,9 +135,9 @@ round 4 优化：
 
 ## B5-B8 后续批次
 
-这些批次当前均需外部凭据、产品决策或跨进程/跨系统设计确认，不建议在本仓直接伪实现：
+这些批次仍有外部凭据、产品决策或跨进程/跨系统设计依赖；round 13 已先完成本仓可验证前置，不伪装外部验收：
 
 - 飞书相关能力需要先明确入口 payload、签名校验密钥、应用凭据、审批状态机和通知目标。
-- 真实远端 PR 需要明确 provider、权限模型、repo allowlist、token 管理、失败补偿。
-- 多 Loop 并行和 worker 池需要先确认队列/锁/幂等/资源限流/部署拓扑。
-- 生产告警和成本计量需要先确定真实 token 来源、指标口径与告警通道。
+- 真实远端 PR 已支持 `LOOPS_PR_PROVIDER=github|gitlab|gitea`、`LOOPS_PR_API_BASE_URL`、`LOOPS_PR_REPOSITORY`、`LOOPS_PR_TOKEN`、`LOOPS_PR_REPOSITORY_ALLOWLIST` 配置后真实开 PR；缺真实 token/仓库验收和 changedFiles 真实来源时仍不得标 full done。
+- 多 Loop 并行已增加同进程 issue/repo 写锁，防止 API 进程内重入写坏；独立 worker 池仍需确认队列/锁/幂等/资源限流/部署拓扑。
+- 生产告警已支持 `LOOPS_ALERT_WEBHOOK_URL` / `LOOPS_ALERT_WEBHOOK_TOKEN` 与 `LOOPS_FEISHU_WEBHOOK_URL` / `LOOPS_FEISHU_WEBHOOK_TOKEN` 发送 notification 状态；真实 token 来源、指标口径与外部告警通道验收仍需输入。

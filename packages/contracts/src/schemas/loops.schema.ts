@@ -402,6 +402,72 @@ export const LoopCostResponseSchema = z.object({
   loops: z.array(LoopCostItemSchema),
 });
 
+export const LoopMetricsPhaseItemSchema = z.object({
+  phase: LoopPhaseSchema.or(z.string()),
+  label: z.string(),
+  count: z.number().int().nonnegative(),
+});
+
+export const LoopMetricsRiskItemSchema = z.object({
+  issueId: z.string(),
+  title: z.string(),
+  level: z.enum(['critical', 'warning', 'info']),
+  reason: z.string(),
+  phase: LoopPhaseSchema.optional(),
+  priority: LoopPrioritySchema,
+  status: LoopIssueStatusSchema,
+  href: z.string(),
+});
+
+export const LoopMetricsActionItemSchema = z.object({
+  issueId: z.string(),
+  title: z.string(),
+  action: z.enum([
+    'generate-spec',
+    'review-spec',
+    'decompose',
+    'run-step',
+    'global-review',
+    'reloop',
+    'finalize',
+    'resume',
+    'closed',
+  ]),
+  label: z.string(),
+  priority: LoopPrioritySchema,
+  phase: LoopPhaseSchema.optional(),
+  href: z.string(),
+});
+
+export const LoopMetricsResponseSchema = z.object({
+  health: z.object({
+    ok: z.boolean(),
+    root: z.string(),
+    loops: z.number().int().nonnegative(),
+    issues: z.number().int().nonnegative(),
+    problems: z.array(z.string()),
+  }),
+  summary: z.object({
+    total: z.number().int().nonnegative(),
+    active: z.number().int().nonnegative(),
+    inLoop: z.number().int().nonnegative(),
+    paused: z.number().int().nonnegative(),
+    attention: z.number().int().nonnegative(),
+    closed: z.number().int().nonnegative(),
+  }),
+  phaseDistribution: z.array(LoopMetricsPhaseItemSchema),
+  costSummary: z.object({
+    loops: z.number().int().nonnegative(),
+    tripped: z.number().int().nonnegative(),
+    totalCalls: z.number().int().nonnegative(),
+    totalTokens: z.number().int().nonnegative(),
+    minCallsRemaining: z.number().int().nonnegative(),
+    minTokensRemaining: z.number().int().nonnegative(),
+  }),
+  riskQueue: z.array(LoopMetricsRiskItemSchema),
+  actionQueue: z.array(LoopMetricsActionItemSchema),
+});
+
 export const LoopDetailSchema = z.object({
   issue: LoopIssueSchema,
   intake: LoopIntakeSchema,
@@ -502,6 +568,10 @@ export type LoopNotificationsQuery = z.infer<typeof LoopNotificationsQuerySchema
 export type LoopNotificationsResponse = z.infer<typeof LoopNotificationsResponseSchema>;
 export type LoopCostItem = z.infer<typeof LoopCostItemSchema>;
 export type LoopCostResponse = z.infer<typeof LoopCostResponseSchema>;
+export type LoopMetricsPhaseItem = z.infer<typeof LoopMetricsPhaseItemSchema>;
+export type LoopMetricsRiskItem = z.infer<typeof LoopMetricsRiskItemSchema>;
+export type LoopMetricsActionItem = z.infer<typeof LoopMetricsActionItemSchema>;
+export type LoopMetricsResponse = z.infer<typeof LoopMetricsResponseSchema>;
 export type LoopDetail = z.infer<typeof LoopDetailSchema>;
 export type LoopIssuesQuery = z.infer<typeof LoopIssuesQuerySchema>;
 export type LoopIssueListItem = z.infer<typeof LoopIssueListItemSchema>;

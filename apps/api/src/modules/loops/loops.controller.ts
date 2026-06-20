@@ -241,6 +241,14 @@ export class LoopsController {
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.metrics)
+  async metrics() {
+    return tsRestHandler(c.metrics, async () => {
+      return success(await this.loopsService.metrics());
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.logs)
   async logs() {
     return tsRestHandler(c.logs, async ({ query }) => {

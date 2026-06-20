@@ -60,7 +60,7 @@ async createApiKey(actorId: string, req: FastifyRequest) {
 }
 ```
 
-> 登录事件（`logLogin`）由 SSO 登录回调（阶段 3 `oidc-client-api`）触发时记录；登出事件（`logLogout`）由 `/auth/oidc/logout` 在 access token blacklist 后 best-effort 记录。
+> 登录事件（`logLogin`）由 SSO 登录回调（阶段 3 `oidc-client-api`）触发时记录；登出事件（`logLogout`）由 `/auth/oidc/logout` 在 access token blacklist 后 best-effort 记录，且不写入 raw token / `jti`。
 > vibecoding Loops 模块的 HTTP 写操作由 `LoopsController` 在成功返回前 best-effort 记录 `CREATE`/`UPDATE` 审计；CLI/内部直接调用 `LoopsService` 不强制写审计，以保留无 DB standalone 使用方式。
 
 ## 5. 验证

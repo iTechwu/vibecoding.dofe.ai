@@ -4,6 +4,7 @@ import { CliLoopsGitAdapter } from '../apps/api/src/modules/loops/adapters/cli-l
 import { LoopsFileStoreService } from '../apps/api/src/modules/loops/loops-file-store.service';
 import { LoopsRunnerService } from '../apps/api/src/modules/loops/loops-runner.service';
 import { LoopsService } from '../apps/api/src/modules/loops/loops.service';
+import { LoopsWorkLockService } from '../apps/api/src/modules/loops/loops-work-lock.service';
 
 type Cleanup = () => Promise<void>;
 
@@ -13,6 +14,7 @@ async function createLoopsService(): Promise<{
 }> {
   const store = new LoopsFileStoreService();
   const runner = new LoopsRunnerService();
+  const workLock = new LoopsWorkLockService();
   const agentAdapter = new DeterministicLoopsAgentAdapter();
   const claudeAdapter = new DeterministicLoopsClaudeAdapter();
   const gitAdapter = new CliLoopsGitAdapter({
@@ -22,7 +24,7 @@ async function createLoopsService(): Promise<{
 
   if (process.env.LOOPS_DB_CLI !== '1') {
     return {
-      service: new LoopsService(store, runner, agentAdapter, claudeAdapter, gitAdapter),
+      service: new LoopsService(store, runner, workLock, agentAdapter, claudeAdapter, gitAdapter),
       cleanup: async () => undefined,
     };
   }
@@ -48,7 +50,15 @@ async function createLoopsService(): Promise<{
   const persistence = new LoopsPersistenceService(db, store);
 
   return {
-    service: new LoopsService(store, runner, agentAdapter, claudeAdapter, gitAdapter, persistence),
+    service: new LoopsService(
+      store,
+      runner,
+      workLock,
+      agentAdapter,
+      claudeAdapter,
+      gitAdapter,
+      persistence,
+    ),
     cleanup: async () => {
       await prisma.$disconnect();
       await pool.end();

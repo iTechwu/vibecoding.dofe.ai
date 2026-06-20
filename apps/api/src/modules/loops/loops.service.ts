@@ -15,6 +15,9 @@ import type {
   LoopIssue,
   LoopIssuesQuery,
   LoopListResponse,
+  LoopMetricsActionItem,
+  LoopMetricsResponse,
+  LoopMetricsRiskItem,
   LoopRecordShardImplementationRequest,
   LoopReviewRecord,
   LoopReviewShardRequest,
@@ -45,14 +48,31 @@ import type { LoopsPersistenceService } from './loops-persistence.service';
 import { LOOPS_PERSISTENCE } from './loops-persistence.token';
 import { resolveAllowedTargetRepo } from './loops-path-policy.util';
 import { readLoopsRuntimeConfig } from './loops-runtime-config.util';
+import { LoopsWorkLockService } from './loops-work-lock.service';
 
 type LoopIssueDetail = Awaited<ReturnType<LoopsFileStoreService['readDetail']>>;
+type LoopListItem = LoopListResponse['list'][number];
+
+const PHASE_LABELS: Record<string, string> = {
+  PHASE_0_INTAKE: 'Intake',
+  PHASE_1_SPEC: 'Spec',
+  PHASE_2_REVIEW: 'Review',
+  PHASE_3_DECOMPOSE: 'Decompose',
+  PHASE_4_IMPLEMENT: 'Implement',
+  PHASE_5_REVIEW: 'Shard Review',
+  PHASE_6_CONVERGE: 'Converge',
+  PHASE_7_GLOBAL_REVIEW: 'Global Review',
+  PHASE_8_ANNOTATE: 'Annotate',
+  CLOSED: 'Closed',
+  PAUSED: 'Paused',
+};
 
 @Injectable()
 export class LoopsService {
   constructor(
     private readonly store: LoopsFileStoreService,
     private readonly runner: LoopsRunnerService,
+    private readonly workLock: LoopsWorkLockService,
     @Inject(LOOPS_AGENT_ADAPTER)
     private readonly agentAdapter: LoopsAgentAdapter,
     @Inject(LOOPS_CLAUDE_ADAPTER)
@@ -321,6 +341,13 @@ export class LoopsService {
 
   async runLoop(issueId: string) {
     const detail = await this.getIssue(issueId);
+    return this.workLock.withIssueAndRepoLock(
+      { issueId, targetRepo: detail.issue.targetRepo },
+      () => this.runLoopUnlocked(issueId, detail),
+    );
+  }
+
+  private async runLoopUnlocked(issueId: string, detail: LoopIssueDetail) {
     if (detail.state.paused) {
       throw new BadRequestException('Paused loop cannot be advanced');
     }
@@ -727,6 +754,69 @@ export class LoopsService {
 
   async cost() {
     return this.store.readCost();
+  }
+
+  async metrics(): Promise<LoopMetricsResponse> {
+    const [list, doctor, cost] = await Promise.all([
+      this.list({ page: 1, limit: 200 }),
+      this.doctor(),
+      this.cost(),
+    ]);
+    const active = list.list.filter(
+      ({ issue }) => !['CLOSED', 'ARCHIVED', 'REJECTED'].includes(issue.status),
+    );
+    const paused = list.list.filter(({ state }) => state?.paused || state?.phase === 'PAUSED');
+    const inLoop = list.list.filter(({ issue }) => issue.status === 'IN_LOOP');
+    const closed = list.list.filter(({ issue }) => issue.status === 'CLOSED');
+    const costTripped = cost.loops.filter((item) => item.tripped);
+    const phaseCounts = list.list.reduce<Record<string, number>>((acc, item) => {
+      const phase = item.state?.phase ?? 'PHASE_0_INTAKE';
+      acc[phase] = (acc[phase] ?? 0) + 1;
+      return acc;
+    }, {});
+    const attention =
+      paused.length +
+      costTripped.length +
+      list.list.filter(
+        ({ issue, state }) => issue.priority === 'P0' || state?.globalVerdict === 'FAIL',
+      ).length;
+
+    return {
+      health: {
+        ok: doctor.ok,
+        root: doctor.root,
+        loops: doctor.loops,
+        issues: doctor.issues,
+        problems: doctor.problems,
+      },
+      summary: {
+        total: list.total,
+        active: active.length,
+        inLoop: inLoop.length,
+        paused: paused.length,
+        attention,
+        closed: closed.length,
+      },
+      phaseDistribution: Object.entries(phaseCounts).map(([phase, count]) => ({
+        phase,
+        label: this.formatPhase(phase),
+        count,
+      })),
+      costSummary: {
+        loops: cost.loops.length,
+        tripped: costTripped.length,
+        totalCalls: cost.loops.reduce((sum, item) => sum + item.costCalls, 0),
+        totalTokens: cost.loops.reduce((sum, item) => sum + item.costTokens, 0),
+        minCallsRemaining: cost.loops.length
+          ? Math.min(...cost.loops.map((item) => item.callsRemaining))
+          : 0,
+        minTokensRemaining: cost.loops.length
+          ? Math.min(...cost.loops.map((item) => item.tokensRemaining))
+          : 0,
+      },
+      riskQueue: this.buildRiskQueue(list.list, cost.loops),
+      actionQueue: this.buildActionQueue(list.list),
+    };
   }
 
   async logs(input: { issueId?: string; limit?: number }) {
@@ -1332,5 +1422,97 @@ export class LoopsService {
       const message = error instanceof Error ? error.message : 'Invalid targetRepo';
       throw new BadRequestException(message);
     }
+  }
+
+  private buildRiskQueue(
+    items: LoopListItem[],
+    costs: Awaited<ReturnType<LoopsFileStoreService['readCost']>>['loops'],
+  ): LoopMetricsRiskItem[] {
+    const costByIssue = new Map(costs.map((item) => [item.issueId, item]));
+    return items
+      .flatMap((item): LoopMetricsRiskItem[] => {
+        const base = {
+          issueId: item.issue.id,
+          title: item.issue.title,
+          priority: item.issue.priority,
+          status: item.issue.status,
+          phase: item.state?.phase,
+          href: `/loops/${item.issue.id}`,
+        };
+        const risks: LoopMetricsRiskItem[] = [];
+        if (item.state?.paused) {
+          risks.push({ ...base, level: 'critical', reason: 'Paused' });
+        }
+        if (costByIssue.get(item.issue.id)?.tripped) {
+          risks.push({ ...base, level: 'critical', reason: 'Cost guard tripped' });
+        }
+        if (item.state?.globalVerdict && item.state.globalVerdict !== 'PASS') {
+          risks.push({
+            ...base,
+            level: item.state.globalVerdict === 'FAIL' ? 'critical' : 'warning',
+            reason: `Global ${item.state.globalVerdict}`,
+          });
+        }
+        if (item.issue.priority === 'P0' || item.issue.priority === 'P1') {
+          risks.push({
+            ...base,
+            level: item.issue.priority === 'P0' ? 'critical' : 'warning',
+            reason: `${item.issue.priority} priority`,
+          });
+        }
+        return risks;
+      })
+      .slice(0, 10);
+  }
+
+  private buildActionQueue(items: LoopListItem[]): LoopMetricsActionItem[] {
+    return items
+      .map((item) => {
+        const action = this.resolveNextAction(item);
+        return {
+          issueId: item.issue.id,
+          title: item.issue.title,
+          action: action.action,
+          label: action.label,
+          priority: item.issue.priority,
+          phase: item.state?.phase,
+          href: `/loops/${item.issue.id}`,
+        };
+      })
+      .filter((item) => item.action !== 'closed')
+      .slice(0, 10);
+  }
+
+  private resolveNextAction(item: LoopListItem): Pick<LoopMetricsActionItem, 'action' | 'label'> {
+    const { issue, state } = item;
+    if (state?.paused) {
+      return { action: 'resume', label: 'Resume loop' };
+    }
+    if (!state || state.specVersion === 'v0') {
+      return { action: 'generate-spec', label: 'Generate spec' };
+    }
+    if (state.phase === 'PHASE_2_REVIEW') {
+      return { action: 'review-spec', label: 'Review spec' };
+    }
+    if (state.phase === 'PHASE_3_DECOMPOSE') {
+      return { action: 'decompose', label: 'Decompose' };
+    }
+    if (state.phase === 'PHASE_6_CONVERGE') {
+      return { action: 'global-review', label: 'Global review' };
+    }
+    if (state.globalVerdict && state.globalVerdict !== 'PASS') {
+      return { action: 'reloop', label: 'Start re-loop' };
+    }
+    if (state.globalVerdict === 'PASS' && !state.finalized) {
+      return { action: 'finalize', label: 'Finalize' };
+    }
+    if (issue.status === 'CLOSED' || state.phase === 'CLOSED' || state.finalized) {
+      return { action: 'closed', label: 'Closed' };
+    }
+    return { action: 'run-step', label: 'Run step' };
+  }
+
+  private formatPhase(phase: string) {
+    return PHASE_LABELS[phase] ?? phase.replace('PHASE_', 'P').replaceAll('_', ' ');
   }
 }

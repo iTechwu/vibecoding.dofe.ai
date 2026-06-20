@@ -52,8 +52,8 @@ export const EmailVerifyRequestSchema = z.object({
   code: z.string().min(1),
 });
 
-// Mobile login request (for binding)
-export const MobileLoginRequestSchema = z.object({
+// Mobile verify request (for binding)
+export const MobileBindRequestSchema = z.object({
   mobile: z.string().regex(/^1[3-9]\d{9}$/),
   code: z.string().min(1),
 });
@@ -70,5 +70,5 @@ export type Brand = z.infer<typeof BrandSchema>;
 export type BrandSettingRequest = z.infer<typeof BrandSettingRequestSchema>;
 export type UsageResponse = z.infer<typeof UsageResponseSchema>;
 export type EmailVerifyRequest = z.infer<typeof EmailVerifyRequestSchema>;
-export type MobileLoginRequest = z.infer<typeof MobileLoginRequestSchema>;
+export type MobileBindRequest = z.infer<typeof MobileBindRequestSchema>;
 export type UpdateAvatarRequest = z.infer<typeof UpdateAvatarRequestSchema>;

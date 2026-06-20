@@ -58,12 +58,12 @@ round 2 回归：
 
 ## v1.2 · 飞书与测试矩阵
 
-| 项                  | 当前状态 | 下一步                                                 |
-| ------------------- | -------- | ------------------------------------------------------ |
-| 飞书 Issue 入口     | blocked  | 缺 Feishu payload 样例、签名配置和应用凭据             |
-| 飞书审批卡片        | blocked  | 缺审批按钮、状态机、幂等策略和用户映射决策             |
-| 飞书反向通知        | blocked  | 缺 Feishu 发送 client 配置、通知目标和重试策略         |
-| 完整 E2E/build 矩阵 | done     | 已新增 `pnpm regression:docs0620` 并接入 CI Loops 回归 |
+| 项                  | 当前状态 | 下一步                                                                          |
+| ------------------- | -------- | ------------------------------------------------------------------------------- |
+| 飞书 Issue 入口     | blocked  | 缺 Feishu payload 样例、签名配置和应用凭据                                      |
+| 飞书审批卡片        | blocked  | 缺审批按钮、状态机、幂等策略和用户映射决策                                      |
+| 飞书反向通知        | partial  | webhook sender 已支持 Feishu URL/token；缺真实应用凭据、通知目标和重试/死信策略 |
+| 完整 E2E/build 矩阵 | done     | 已新增 `pnpm regression:docs0620` 并接入 CI Loops 回归                          |
 
 ### 飞书入口拆解
 
@@ -100,38 +100,38 @@ round 3 已完成非真实 SSO 范围的矩阵固化：
 
 ## v1.3 · 远端协作与执行能力
 
-| 项                | 当前状态 | 下一步                                                 |
-| ----------------- | -------- | ------------------------------------------------------ |
-| 真实远端 PR 打开  | blocked  | 缺 git provider、token 管理、repo allowlist 与权限模型 |
-| 多 Loop 并行队列  | blocked  | 缺队列、锁、幂等、并发限流和部署拓扑确认               |
-| 独立 worker 池    | blocked  | 缺 worker 运行边界、队列协议和资源隔离方案             |
-| 生产级 agent 告警 | blocked  | 缺告警通道、指标口径、SLO 和升级策略                   |
+| 项                | 当前状态 | 下一步                                                             |
+| ----------------- | -------- | ------------------------------------------------------------------ |
+| 真实远端 PR 打开  | partial  | GitHub/GitLab/Gitea provider client 已落地；缺真实 token/仓库验收  |
+| 多 Loop 并行队列  | partial  | 同进程 issue/repo 写锁已落地；缺跨进程队列、幂等和部署拓扑确认     |
+| 独立 worker 池    | blocked  | 缺 worker 运行边界、队列协议和资源隔离方案                         |
+| 生产级 agent 告警 | partial  | notification webhook sender 已落地；缺真实告警通道、SLO 和升级策略 |
 
 ### 真实 PR 能力
 
 最小实现：
 
-- provider client 层封装 GitHub/GitLab/Gitea 之一。
-- `GitAdapter` 从 convergence PR record 真实创建 PR。
-- repo allowlist + branch name sanitizer。
-- 失败时保留本地 record，不影响 CLOSED 判定。
+- provider client 层封装 GitHub/GitLab/Gitea：已完成，配置项为 `LOOPS_PR_PROVIDER`、`LOOPS_PR_API_BASE_URL`、`LOOPS_PR_REPOSITORY`、`LOOPS_PR_TOKEN`、`LOOPS_PR_REPOSITORY_ALLOWLIST`。
+- `GitAdapter` 从 convergence PR record 真实创建 PR：已完成；push 后 provider 成功返回 `OPENED + provider + url`，失败时保留 `PUSHED/DRAFT` 本地 record。
+- repo allowlist：已完成 `LOOPS_PR_REPOSITORY_ALLOWLIST`；branch sanitizer 仍沿用 `loops/<issue-id>` 受 issue id 生成规则约束。
+- 失败时保留本地 record，不影响 CLOSED 判定：已完成。
 
 ### 多 Loop 并行
 
 必须先解决：
 
-- 同一 repo 的写锁。
-- 同一 issue 的幂等锁。
+- 同一 repo 的写锁：同进程已完成，`LoopsWorkLockService` 对 `repo:<targetRepo>` 加锁。
+- 同一 issue 的幂等锁：同进程已完成，`LoopsWorkLockService` 对 `issue:<issueId>` 加锁。
 - agent 资源限流。
 - DB/file 双写一致性。
 
 ## 生产化额外项
 
-| 项                               | 当前状态 | 下一步                                                 |
-| -------------------------------- | -------- | ------------------------------------------------------ |
-| 真实 Codex / Claude CLI 生产可用 | blocked  | 缺生产 CLI 版本、权限、超时、重试和沙箱策略            |
-| 真实 diff 自动回收               | blocked  | 缺真实 git provider/工作区策略和 changedFiles 来源确认 |
-| 成本真实统计与外部告警           | blocked  | 缺真实 token 计量来源、成本口径和外部告警通道          |
+| 项                               | 当前状态 | 下一步                                                                |
+| -------------------------------- | -------- | --------------------------------------------------------------------- |
+| 真实 Codex / Claude CLI 生产可用 | blocked  | 缺生产 CLI 版本、权限、超时、重试和沙箱策略                           |
+| 真实 diff 自动回收               | blocked  | 缺真实 changedFiles 来源确认；PR provider 已支持真实远端打开          |
+| 成本真实统计与外部告警           | partial  | webhook 告警发送已落地；缺真实 token 计量来源、成本口径和真实通道验收 |
 
 ### 最小验收
 
