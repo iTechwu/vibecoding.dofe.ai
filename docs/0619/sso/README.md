@@ -18,7 +18,7 @@
 
 **目标**：统一以 **sso.dofe.ai** 作为用户与文件的唯一权威源；vibecoding（及 scaffold）作为被 sso 保护的客户端，通过 **OIDC 单点登录**接入，文件能力通过 **`@dofe/file-sdk`** 消费 sso。
 
-sso.dofe.ai 已提供一整套 SDK：`@dofe/infra-clients/sso`、`@dofe/sso-node`、`@dofe/sso-browser`、`@dofe/sso-contracts`、`@dofe/file-sdk`。
+sso.dofe.ai 已提供一整套 SDK；本仓库实际采用 `@dofe/infra-clients/sso`、`@dofe/sso-browser`、`@dofe/file-sdk` / `@dofe/file-sdk-web`，OIDC 契约由本仓库 `@repo/contracts` 承载，不保留零引用的 `@dofe/sso-node` / `@dofe/sso-contracts` 依赖。
 
 ## 2. 设计原则
 
@@ -79,7 +79,7 @@ flowchart LR
 
 1. **Token 验证**：沿用 models 的**远程 `verify-token`**（对齐既有实现，降低偏差）；本地 JWKS 缓存验签列为未来优化项。
 2. **文件能力**：采用 **`@dofe/file-sdk` 消费模式**，不复制 sso 的 `FileDomainModule`/`file-api`/`cdn-proxy`（避免引入 tenant/team 多租户耦合）。
-3. **审计日志**：对齐 `models.dofe.ai`，使用本地 `audit_logs` 表与业务主动调用 `AuditLogService`；不注册全局 `AuditLogInterceptor` / `OPERATE_LOG_SERVICE_TOKEN`。
+3. **审计日志**：对齐 `models.dofe.ai`，使用本地 `audit_logs` 表与业务主动调用 `AuditLogService`；OIDC 登录与 Loops HTTP 写操作已接入 best-effort 审计，不注册全局 `AuditLogInterceptor` / `OPERATE_LOG_SERVICE_TOKEN`。
 4. **前端 token**：access 存 localStorage（+ presence cookie），refresh 存 `dofe_rf` HttpOnly。
 5. **命名约定**：`clientId = vibecoding-dofe-ai`，`SSO_CLIENT_SECRET_VIBECODING`，`SSO_SERVICE_NAME = vibecoding.dofe.ai`。
 

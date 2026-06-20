@@ -3,7 +3,7 @@
 > 本目录在 Loops v1 主链路**代码完成且经文件侧 + live-DB 冒烟验证**之后，整理出后续的待实施项、待优化项与未落实（后置）项。
 > 权威实现状态见 [`docs/0619/loops设计/IMPLEMENTATION-ANNOTATIONS.md`](../loops设计/IMPLEMENTATION-ANNOTATIONS.md) 的「最终归档（TASK-08 · round 2）」。
 
-## 当前已验证结论（round 15 / 2026-06-20）
+## 当前已验证结论（round 16 / 2026-06-20）
 
 - v1 主链路（无登录 Web 提交 → DB 三表入库 → `.loops` 真相源 → Loop 开发闭环 → 整体复查/终态标注 → CLOSED）代码全部落地。
 - `pnpm loops:db-smoke`（连真实 DB）3/3 通过：三表写入、生命周期 CLOSED/finalized、doctor 一致性告警。
@@ -20,6 +20,7 @@
 - **round 13 后**：SSO 迁移已提交、`generated/db` 落定，实施 **OPT-3**——`LoopIssue`/`LoopIssueIntake`/`LoopState` 加入 `generate-db-crud.js` 的 `EXCLUDE_MODELS`，删除 3 个孤儿生成目录并由 `ensureExportsInIndex` 收敛 `index.ts`。回归全绿（`quality:gate` 6/6、`loops:doctor`、Loops Jest、API type-check）。本目录待优化项仅剩 `OPT-5`（accepted，非阻断）。
 - **round 14 后**：推进 v1.1 后置项「Loops submitter 接真实 SSO 用户」——`LoopsController` 整体加 `@Auth('api')`，`createIssue` submitter 取自 SSO `userInfo`（`dofe-sso`，忽略客户端伪造）；Web 三个 loops 页面迁到客户端 ts-rest（token 由 `token-manager` 注入），删除无鉴权 `@/lib/api/loops` 与 server actions。CLI 不受影响。详见 [03-not-yet-implemented.md](03-not-yet-implemented.md) 的「v1.1 进度」节。回归全绿（`quality:gate` 6/6、Loops Jest 含 dofe-sso/dev 双路径、web test、`loops:doctor`、api+web type-check）。
 - **round 15 后**：按本文档目录重新逐项复审并实测代码状态，确认 `OPT-3` 已真实落地（生成器排除 + 三个孤儿目录已删除）、Loops HTTP submitter 已接 SSO 用户、`quality:gate` / Loops Jest / web test / contracts-utils-validators 测试 / `loops:doctor` / `loops:db-doctor` 继续全绿。本轮未发现新的 Loops v1 收尾范围待实施项。
+- **round 16 后**：重新对照 `docs/0619/todo` 与当前代码，发现 round 15 文档仍把「用户角色/权限」标为后置，但代码已落地 Loops 最小 RBAC：`LoopsController` 挂载 `@UseGuards(LoopsRbacGuard)`，HTTP 端点按 `read/create/operate/admin` 分组，`LoopsRbacGuard` 支持 admin、非生产 `MODE_USER_ID` 与 `LOOPS_RBAC_*_USER_IDS` allowlist，单测覆盖 403/allow 场景。本文档已修正为「最小 RBAC 已 done；组织级/生产级权限模型与真实 SSO 浏览器 E2E 仍 blocked」。
 - `pnpm quality:gate` ✅ 全绿：`check:architecture` / `check:list-contracts` / `check:sensitive-logs` / `check:utils-hygiene` / `type-check` 五步全部通过；本目录在 Loops v1 收尾范围内已无任何质量门禁阻断。
 - SSO 与 file 唯一真源迁移当前由另一个进程在 `docs/0619/sso` 范围处理（当前进度见 [`docs/0619/sso/09-implementation-status.md`](../sso/09-implementation-status.md)）；本目录只标注 Loops v1 收尾与非 SSO/file 的质量事项。
 
@@ -33,21 +34,21 @@
 
 ## 优先级总览（建议执行顺序）
 
-| #   | 项                                                     | 分类   | 优先级 | 理由                                                              |
-| --- | ------------------------------------------------------ | ------ | ------ | ----------------------------------------------------------------- |
-| 1   | ~~修复既有非 Loops type-check 阻断~~                   | 待实施 | P0     | ✅ round 6 API/Web type-check 通过；SSO/file 真源迁移不纳入本目录 |
-| 2   | ~~`generated/db/index.ts` 去重导出 + 生成器去重~~      | 待实施 | P1     | ✅ round 3 已完成                                                 |
-| 3   | ~~CLI 可选 DB 模式（doctor/status 能查 DB）~~          | 待优化 | P2     | ✅ `loops:db-status` / `loops:db-doctor` 已落地并验证             |
-| 4   | ~~DB 写失败补偿/标记策略明确化~~                       | 待优化 | P2     | ✅ 已在 `08-数据存储设计.md` 记录 v1 runbook                      |
-| 5   | ~~裁剪冗余 per-model 生成 DB Service~~                 | 待优化 | P3     | ✅ round 13 已完成（`EXCLUDE_MODELS` + 删除 3 个孤儿目录）        |
-| 6   | ~~Web 表单 `targetRepo` 默认值可移植化~~               | 待优化 | P3     | ✅ round 3 已完成（服务端解析仓库根）                             |
-| 7   | `jest.config.ts` `process.cwd()` 依赖收敛              | 待优化 | P3     | 🟡 accepted：round 10 复核 showConfig 正常，维持注释约束          |
-| 8   | ~~Task list query/response 标准化闭环~~                | 待优化 | P3     | ✅ `TaskListQuerySchema` + Web 默认分页参数已补齐                 |
-| 9   | ~~Contracts 测试历史导出快照收敛~~                     | 待优化 | P3     | ✅ 当前 contract/schema/error 公共面测试与 typecheck 已通过       |
-| 10  | ~~Loops/API bootstrap architecture `any` 收敛~~        | 待优化 | P3     | ✅ Loops adapter 与 `main.ts` 已无 `as any` 命中                  |
-| 11  | ~~`packages/utils` hygiene 历史基线清理~~              | 待优化 | P3     | ✅ 无 `console.*` / `any` 命中，utils typecheck/test 通过         |
-| 12  | Dofe SSO 登录 / 角色权限                               | 未落实 | v1.1   | 🟡 Loops submitter 已接 SSO；RBAC 与真实浏览器 E2E 仍后置         |
-| 13  | 飞书入口/审批/反向通知                                 | 未落实 | v1.2   | TASK-09 后置                                                      |
-| 14  | 真实远端 PR / 多 Loop 并行 / 独立 worker 池 / 生产告警 | 未落实 | v1.3   | TASK-09 后置                                                      |
+| #   | 项                                                     | 分类   | 优先级 | 理由                                                                         |
+| --- | ------------------------------------------------------ | ------ | ------ | ---------------------------------------------------------------------------- |
+| 1   | ~~修复既有非 Loops type-check 阻断~~                   | 待实施 | P0     | ✅ round 6 API/Web type-check 通过；SSO/file 真源迁移不纳入本目录            |
+| 2   | ~~`generated/db/index.ts` 去重导出 + 生成器去重~~      | 待实施 | P1     | ✅ round 3 已完成                                                            |
+| 3   | ~~CLI 可选 DB 模式（doctor/status 能查 DB）~~          | 待优化 | P2     | ✅ `loops:db-status` / `loops:db-doctor` 已落地并验证                        |
+| 4   | ~~DB 写失败补偿/标记策略明确化~~                       | 待优化 | P2     | ✅ 已在 `08-数据存储设计.md` 记录 v1 runbook                                 |
+| 5   | ~~裁剪冗余 per-model 生成 DB Service~~                 | 待优化 | P3     | ✅ round 13 已完成（`EXCLUDE_MODELS` + 删除 3 个孤儿目录）                   |
+| 6   | ~~Web 表单 `targetRepo` 默认值可移植化~~               | 待优化 | P3     | ✅ round 3 已完成（服务端解析仓库根）                                        |
+| 7   | `jest.config.ts` `process.cwd()` 依赖收敛              | 待优化 | P3     | 🟡 accepted：round 10 复核 showConfig 正常，维持注释约束                     |
+| 8   | ~~Task list query/response 标准化闭环~~                | 待优化 | P3     | ✅ `TaskListQuerySchema` + Web 默认分页参数已补齐                            |
+| 9   | ~~Contracts 测试历史导出快照收敛~~                     | 待优化 | P3     | ✅ 当前 contract/schema/error 公共面测试与 typecheck 已通过                  |
+| 10  | ~~Loops/API bootstrap architecture `any` 收敛~~        | 待优化 | P3     | ✅ Loops adapter 与 `main.ts` 已无 `as any` 命中                             |
+| 11  | ~~`packages/utils` hygiene 历史基线清理~~              | 待优化 | P3     | ✅ 无 `console.*` / `any` 命中，utils typecheck/test 通过                    |
+| 12  | Dofe SSO 登录 / 角色权限                               | 未落实 | v1.1   | 🟡 Loops submitter 与最小 RBAC 已接入；真实浏览器 E2E 与生产级权限模型仍后置 |
+| 13  | 飞书入口/审批/反向通知                                 | 未落实 | v1.2   | TASK-09 后置                                                                 |
+| 14  | 真实远端 PR / 多 Loop 并行 / 独立 worker 池 / 生产告警 | 未落实 | v1.3   | TASK-09 后置                                                                 |
 
-> 注：round 15 复审后，本目录无新的 Loops v1 P0/P1 待实施项；`pnpm quality:gate` 全绿；`OPT-3` 已 done（round 13），仅剩 `OPT-5` 维持 accepted/deferred，不作为阻断。
+> 注：round 16 复审后，本目录无新的 Loops v1 P0/P1 待实施项；`pnpm quality:gate` 全绿；`OPT-3` 已 done（round 13），Loops 最小 RBAC 已 done（docs/0620 round 2），仅剩 `OPT-5` 维持 accepted/deferred，不作为阻断。

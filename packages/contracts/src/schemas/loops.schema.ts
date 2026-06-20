@@ -301,6 +301,8 @@ export const LoopConvergencePrSchema = z.object({
   issueId: z.string(),
   branch: z.string(),
   baseBranch: z.string(),
+  provider: z.enum(['github', 'gitlab', 'gitea']).optional(),
+  url: z.string().url().optional(),
   commits: z.array(
     z.object({
       shardId: z.string(),

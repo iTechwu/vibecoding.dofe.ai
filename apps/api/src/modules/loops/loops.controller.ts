@@ -1,9 +1,13 @@
-import { Controller, Req, UseGuards, VERSION_NEUTRAL } from '@nestjs/common';
+import { Controller, Inject, Req, UseGuards, VERSION_NEUTRAL } from '@nestjs/common';
 import { TsRestHandler, tsRestHandler } from '@ts-rest/nest';
 import { created, success } from '@dofe/infra-common/ts-rest';
 import { loopsContract as c } from '@repo/contracts/api';
 import { Auth } from '@app/auth';
 import type { AuthenticatedRequest } from '@app/auth';
+import { AuditLogService } from '@app/audit-log';
+import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
+import type { Logger } from 'winston';
+import type { Prisma } from '@prisma/client';
 import { LOOPS_PERMISSION, RequireLoopsPermission } from './loops-rbac.decorator';
 import { LoopsRbacGuard } from './loops-rbac.guard';
 import { LoopsService } from './loops.service';
@@ -14,7 +18,11 @@ import { LoopsService } from './loops.service';
   version: VERSION_NEUTRAL,
 })
 export class LoopsController {
-  constructor(private readonly loopsService: LoopsService) {}
+  constructor(
+    private readonly loopsService: LoopsService,
+    private readonly auditLogService: AuditLogService,
+    @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
+  ) {}
 
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.list)
@@ -40,7 +48,13 @@ export class LoopsController {
       // (provider `dofe-sso`), ignoring any client-supplied submitter fields
       // so identity cannot be spoofed. The CLI/internal path calls the service
       // directly without a request and falls back to the `dev` defaults.
-      return created(await this.loopsService.createIssue(body, req.userInfo));
+      const result = await this.loopsService.createIssue(body, req.userInfo);
+      await this.auditLoopCreate(req, result.issue.id, {
+        title: result.issue.title,
+        priority: result.issue.priority,
+        targetRepo: result.issue.targetRepo,
+      });
+      return created(result);
     });
   }
 
@@ -54,91 +68,159 @@ export class LoopsController {
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.generateSpec)
-  async generateSpec() {
+  async generateSpec(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.generateSpec, async ({ params }) => {
-      return success(await this.loopsService.generateSpec(params.issueId));
+      const result = await this.loopsService.generateSpec(params.issueId);
+      await this.auditLoopUpdate(req, params.issueId, 'generateSpec', {
+        specVersion: result.state.specVersion,
+        phase: result.state.phase,
+      });
+      return success(result);
     });
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.reviewSpec)
-  async reviewSpec() {
+  async reviewSpec(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.reviewSpec, async ({ params, body }) => {
-      return success(await this.loopsService.reviewSpec(params.issueId, body));
+      const result = await this.loopsService.reviewSpec(params.issueId, body);
+      await this.auditLoopUpdate(req, params.issueId, 'reviewSpec', {
+        action: body.action,
+        reviewer: body.reviewer,
+        specStatus: result.spec?.status,
+        phase: result.state.phase,
+      });
+      return success(result);
     });
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.decompose)
-  async decompose() {
+  async decompose(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.decompose, async ({ params }) => {
-      return success(await this.loopsService.decompose(params.issueId));
+      const result = await this.loopsService.decompose(params.issueId);
+      await this.auditLoopUpdate(req, params.issueId, 'decompose', {
+        shardsTotal: result.state.shardsTotal,
+        phase: result.state.phase,
+      });
+      return success(result);
     });
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.runShardTests)
-  async runShardTests() {
+  async runShardTests(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.runShardTests, async ({ params, body }) => {
-      return success(await this.loopsService.runShardTests(params.issueId, params.shardId, body));
+      const result = await this.loopsService.runShardTests(params.issueId, params.shardId, body);
+      await this.auditLoopUpdate(req, params.issueId, 'runShardTests', {
+        shardId: params.shardId,
+        status: result.status,
+        commandCount: result.commands.length,
+      });
+      return success(result);
     });
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.recordShardImplementation)
-  async recordShardImplementation() {
+  async recordShardImplementation(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.recordShardImplementation, async ({ params, body }) => {
-      return success(
-        await this.loopsService.recordShardImplementation(params.issueId, params.shardId, body),
+      const result = await this.loopsService.recordShardImplementation(
+        params.issueId,
+        params.shardId,
+        body,
       );
+      await this.auditLoopUpdate(req, params.issueId, 'recordShardImplementation', {
+        shardId: params.shardId,
+        implementer: result.implementer,
+        status: result.status,
+        changedFileCount: result.changedFiles.length,
+      });
+      return success(result);
     });
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.reviewShard)
-  async reviewShard() {
+  async reviewShard(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.reviewShard, async ({ params, body }) => {
-      return success(await this.loopsService.reviewShard(params.issueId, params.shardId, body));
+      const result = await this.loopsService.reviewShard(params.issueId, params.shardId, body);
+      await this.auditLoopUpdate(req, params.issueId, 'reviewShard', {
+        shardId: params.shardId,
+        reviewer: result.reviewer,
+        verdict: result.verdict,
+      });
+      return success(result);
     });
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.runLoop)
-  async runLoop() {
+  async runLoop(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.runLoop, async ({ params }) => {
-      return success(await this.loopsService.runLoop(params.issueId));
+      const result = await this.loopsService.runLoop(params.issueId);
+      await this.auditLoopUpdate(req, params.issueId, 'runLoop', {
+        phase: result.state.phase,
+        shardsDone: result.state.shardsDone,
+        shardsInProgress: result.state.shardsInProgress,
+      });
+      return success(result);
     });
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.reviewGlobal)
-  async reviewGlobal() {
+  async reviewGlobal(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.reviewGlobal, async ({ params }) => {
-      return success(await this.loopsService.reviewGlobal(params.issueId));
+      const result = await this.loopsService.reviewGlobal(params.issueId);
+      await this.auditLoopUpdate(req, params.issueId, 'reviewGlobal', {
+        globalVerdict: result.state.globalVerdict,
+        phase: result.state.phase,
+      });
+      return success(result);
     });
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.reloop)
-  async reloop() {
+  async reloop(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.reloop, async ({ params, body }) => {
-      return success(await this.loopsService.reloop(params.issueId, body));
+      const result = await this.loopsService.reloop(params.issueId, body);
+      await this.auditLoopUpdate(req, params.issueId, 'reloop', {
+        reviewer: body.reviewer,
+        round: result.round,
+        specVersion: result.specVersion,
+        reloopCount: result.reloopCount,
+      });
+      return success(result);
     });
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.finalize)
-  async finalize() {
+  async finalize(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.finalize, async ({ params }) => {
-      return success(await this.loopsService.finalize(params.issueId));
+      const result = await this.loopsService.finalize(params.issueId);
+      await this.auditLoopUpdate(req, params.issueId, 'finalize', {
+        phase: result.state.phase,
+        finalized: result.state.finalized,
+      });
+      return success(result);
     });
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.intervene)
-  async intervene() {
+  async intervene(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.intervene, async ({ params, body }) => {
-      return success(await this.loopsService.intervene(params.issueId, body));
+      const result = await this.loopsService.intervene(params.issueId, body);
+      await this.auditLoopUpdate(req, params.issueId, 'intervene', {
+        action: body.action,
+        actor: body.actor,
+        shardId: body.shardId,
+        phase: result.state.phase,
+      });
+      return success(result);
     });
   }
 
@@ -176,9 +258,64 @@ export class LoopsController {
 
   @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
   @TsRestHandler(c.resume)
-  async resume() {
+  async resume(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.resume, async () => {
-      return success(await this.loopsService.resume());
+      const result = await this.loopsService.resume();
+      await this.auditLog(req, 'UPDATE', 'loops_runtime', 'resume-interrupted-loops', 'resume', {
+        resumedCount: Array.isArray(result) ? result.length : undefined,
+      });
+      return success(result);
     });
+  }
+
+  private async auditLoopCreate(
+    req: AuthenticatedRequest,
+    issueId: string,
+    metadata: Prisma.InputJsonObject,
+  ): Promise<void> {
+    await this.auditLog(req, 'CREATE', 'loop_issue', issueId, 'createIssue', metadata);
+  }
+
+  private async auditLoopUpdate(
+    req: AuthenticatedRequest,
+    issueId: string,
+    operation: string,
+    metadata: Prisma.InputJsonObject,
+  ): Promise<void> {
+    await this.auditLog(req, 'UPDATE', 'loop_issue', issueId, operation, metadata);
+  }
+
+  private async auditLog(
+    req: AuthenticatedRequest,
+    action: 'CREATE' | 'UPDATE',
+    resource: string,
+    resourceId: string,
+    operation: string,
+    metadata: Prisma.InputJsonObject,
+  ): Promise<void> {
+    try {
+      await this.auditLogService.create({
+        action,
+        resource,
+        resourceId,
+        actorType: 'user',
+        actorId: req.userId,
+        metadata: {
+          operation,
+          ...metadata,
+        },
+        ipAddress: req.realIp ?? req.ip,
+        userAgent: req.headers['user-agent'] ?? null,
+      });
+    } catch (error) {
+      this.logger.warn('Failed to record loops audit log', {
+        action,
+        resource,
+        resourceId,
+        operation,
+        actorId: req.userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 }

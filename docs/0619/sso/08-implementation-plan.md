@@ -47,11 +47,12 @@
 ## 阶段 3 · api SSO 认证（在 vibecoding）
 
 - **改动**：
-  - 复制 models `oidc-client-api/`（改默认端口 13100）；复制 `auth lib`（guard/service/user-sync/auth/auth.module）；复制 `@app/sso-client`（05 §1）。
+  - 复制 models `oidc-client-api/`（改默认端口 13100）；复制 `auth lib`（guard/service/user-sync/auth/auth.module）。
+  - 不复制 `@app/sso-client`；SSO 远程校验/用户信息直接使用 `@dofe/infra-clients/sso`，OIDC token 交换直接使用 `openid-client`。
   - `main.ts` 注册 `@fastify/cookie`。
   - 新增 `@repo/contracts` 的 `oidcAuthContract` + `@repo/constants` 的 OIDC 常量（05 §3）。
   - `bootstrap/app-module-imports.bootstrap.ts` 加 `OidcClientApiModule`；`AuthModule` `@Global()` + `APP_GUARD` 链（按 RBAC 裁剪）。
-  - api `package.json` 新增依赖：`@dofe/sso-node`、`@dofe/sso-contracts`、`openid-client`、`@fastify/cookie`。
+  - api `package.json` 新增依赖：`openid-client`、`@fastify/cookie`；不保留零引用的 `@dofe/sso-node`、`@dofe/sso-contracts`。
 - **验证**：`GET /auth/oidc/authorize` 返回 sso 授权 URL；callback 能换 token + 远程 `verify-token` 通过 + 本地建用户；受保护 API 注入 `request.userId`；`dofe_rf` cookie 写入。
 - **回滚**：从 bootstrap 移除 `OidcClientApiModule`、移除 `APP_GUARD`、还原 auth lib。
 
@@ -64,7 +65,7 @@
   - 改造 `AuthProvider` 与 `lib/api.ts` 兼容层：刷新统一走 `tokenManager` + `/auth/oidc/token`，登出统一走 `oidcAuthClient.logout/clearSession`。
   - 删除未被引用的旧 `lib/api/auth-server.ts`，避免继续暴露本地 refresh token 模式。
   - 删除旧本地 `/sign` ts-rest contract、前端 `signClient` 与未使用的 `/sign/*` 配置；认证入口只保留 OIDC contract/client。
-  - web `package.json` 新增依赖：`@dofe/sso-browser`、`@dofe/sso-contracts`。
+  - web `package.json` 新增依赖：`@dofe/sso-browser`；OIDC contract 使用本仓库 `@repo/contracts`，不依赖 `@dofe/sso-contracts`。
 - **验证**：端到端登录闭环（login→sso→callback→success→token 入库）；access 过期自动 refresh；logout 回 `/login`。
 - **回滚**：删除新增路由/lib；还原 `baseFetch`。
 
@@ -131,10 +132,12 @@
 - [x] vibecoding 已新增真实 SSO E2E 入口：`pnpm --filter @repo/web test:e2e:sso`
 - [x] vibecoding SSO 联动 E2E 测试通过（Chromium）
 - [ ] vibecoding `pnpm dev:api` + `pnpm dev:web` + sso 三端联动，登录/刷新/登出闭环
-- [ ] sso `t_oauth_client` 含 vibecoding；业务写接口审计记录正常
+- [x] vibecoding Loops HTTP 写操作已主动调用 `AuditLogService`（best-effort，不阻断业务），业务写接口审计不再停留在登录事件
+- [ ] sso `t_oauth_client` 含 vibecoding；需在目标 sso 环境查询确认 seed 结果
 - [x] vibecoding 文件上传经 sso 返回上传凭证与 CDN 元数据；物理 bucket PUT/CDN GET 不纳入本轮验收
 - [x] 第十四轮：OIDC 登录回调接入 `AuditLogService.logLogin`（vibecoding/scaffold），新增 `@app/audit-log` 别名，兑现审计"业务主动调用"
 - [x] 第十四轮：`@repo/contracts` 重新生成 Prisma enum（`pnpm generate:enums`），移除 `FileBucketVendor/FileEnvType`、新增 `AuditActionType`，同步 `schemas.test.ts`
 - [x] 第十四轮：移除死依赖 `@dofe/sso-node`/`@dofe/sso-contracts`（api+web），两仓 lockfile 更新；`@dofe/sso-browser` 保留
 - [x] 第十四轮：补齐 scaffold `.env.example`（api+web）SSO 变量；修订 05 §1.3 / 02 技术栈 sso-client 描述为"未采用"
 - [x] 第十四轮：vibecoding/scaffold 四项质量门禁全绿，type-check/contracts/web/validators/api jest 全通过
+- [x] 第十五轮：vibecoding LoopsModule 引入 `AuditLogModule`，LoopsController 对 create/generate/review/decompose/run/finalize/intervene/resume 等 HTTP 成功写操作记录 `CREATE`/`UPDATE` 审计；`pnpm --filter @repo/api type-check`、API Jest、四项质量门禁通过

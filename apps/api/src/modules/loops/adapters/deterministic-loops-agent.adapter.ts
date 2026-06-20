@@ -87,9 +87,10 @@ export class DeterministicLoopsAgentAdapter implements LoopsAgentAdapter {
   async review(input: LoopsReviewInput): Promise<LoopsReviewOutput> {
     const { shard, implementationRecord, testRecord } = input;
     const testsPass = testRecord?.status === 'TEST-PASS';
-    const covered = shard.acceptance.every((item) =>
-      implementationRecord.summary.toLowerCase().includes(item.toLowerCase().slice(0, 12)) ||
-      implementationRecord.changedFiles.length > 0,
+    const covered = shard.acceptance.every(
+      (item) =>
+        implementationRecord.summary.toLowerCase().includes(item.toLowerCase().slice(0, 12)) ||
+        implementationRecord.changedFiles.length > 0,
     );
     if (testsPass && covered) {
       return {
@@ -117,7 +118,8 @@ export class DeterministicLoopsAgentAdapter implements LoopsAgentAdapter {
   }
 
   async reviewGlobal(input: LoopsGlobalReviewInput): Promise<LoopsReviewOutput> {
-    const allDone = input.shards.length > 0 && input.shards.every((shard) => shard.status === 'DONE');
+    const allDone =
+      input.shards.length > 0 && input.shards.every((shard) => shard.status === 'DONE');
     const testsPass = input.testRecords.every((record) => record.status === 'TEST-PASS');
     const hasRecords = input.implementationRecords.length > 0 && input.reviewRecords.length > 0;
 
@@ -182,24 +184,45 @@ export class DeterministicLoopsAgentAdapter implements LoopsAgentAdapter {
     const finalAnnotations: LoopAnnotation[] = [...refreshed];
 
     if (passed && input.testMatrix && !existingTargets.has(input.testMatrix.id)) {
-      finalAnnotations.push(this.finalAnnotation(input.testMatrix.id, input.issue.id, [
-        `.loops/tests/${input.issue.id}/matrix.json`,
-        `.loops/tests/${input.issue.id}/matrix.md`,
-      ], 'Test Matrix 已随收敛终态确认。'));
+      finalAnnotations.push(
+        this.finalAnnotation(
+          input.testMatrix.id,
+          input.issue.id,
+          [
+            `.loops/tests/${input.issue.id}/matrix.json`,
+            `.loops/tests/${input.issue.id}/matrix.md`,
+          ],
+          'Test Matrix 已随收敛终态确认。',
+        ),
+      );
     }
 
     if (passed && input.globalReview && !existingTargets.has(input.globalReview.id)) {
-      finalAnnotations.push(this.finalAnnotation(input.globalReview.id, input.issue.id, [
-        `.loops/runs/${input.issue.id}/global-review.json`,
-        `.loops/runs/${input.issue.id}/global-review.md`,
-      ], 'Global Review 已 PASS 并纳入终态标注。'));
+      finalAnnotations.push(
+        this.finalAnnotation(
+          input.globalReview.id,
+          input.issue.id,
+          [
+            `.loops/runs/${input.issue.id}/global-review.json`,
+            `.loops/runs/${input.issue.id}/global-review.md`,
+          ],
+          'Global Review 已 PASS 并纳入终态标注。',
+        ),
+      );
     }
 
     if (passed && input.convergencePr && !existingTargets.has(input.convergencePr.id)) {
-      finalAnnotations.push(this.finalAnnotation(input.convergencePr.id, input.issue.id, [
-        `.loops/runs/${input.issue.id}/convergence-pr.json`,
-        `.loops/runs/${input.issue.id}/convergence-pr.md`,
-      ], 'Convergence PR 记录已生成并纳入终态标注。'));
+      finalAnnotations.push(
+        this.finalAnnotation(
+          input.convergencePr.id,
+          input.issue.id,
+          [
+            `.loops/runs/${input.issue.id}/convergence-pr.json`,
+            `.loops/runs/${input.issue.id}/convergence-pr.md`,
+          ],
+          'Convergence PR 记录已生成并纳入终态标注。',
+        ),
+      );
     }
 
     return finalAnnotations;
@@ -229,7 +252,7 @@ export class DeterministicLoopsAgentAdapter implements LoopsAgentAdapter {
     const checklist = issue.acceptanceCriteria
       .map((item) => `- [ ] ${item} [impl:not-started test:not-run verdict:unreviewed]`)
       .join('\n');
-    return `---\nid: spec-${issue.id.replace('issue-', '')}\nissue: ${issue.id}\nversion: v1\nstatus: DRAFT\ncreated: ${createdAt}\ncontext_budget: 24000\nannotation:\n  impl_status: not-started\n  test_status: not-run\n  verdict: unreviewed\n  coverage: none\n  risk: medium\n---\n\n## 背景与目标\n${issue.body}\n\n## 范围（含明确的不做项）\n- 覆盖目标仓库：${issue.targetRepo}\n- MVP 先落 Web Issue、人工审核、基础拆解、状态与标注，不启动真实 agent 长任务。\n\n## 方案设计\n- 使用 .loops 文件作为状态真相源。\n- 通过 Web 表单创建 IssueIntake 与 Issue。\n- Spec 审核通过后生成串行 MVP Shards。\n\n## 验收标准（可勾选清单）\n${checklist}\n\n## 测试策略（单元 / 集成 / E2E / 回归 / 人工验收）\n- unit: 校验表单 schema 与文件状态写入。\n- integration: 校验 issue -> spec -> review -> decompose 流转。\n- e2e: MVP 暂标记 manual/deferred。\n- regression: pnpm lint / pnpm type-check。\n\n## 风险与依赖\n- 真实 Codex/Claude Code 非交互调用仍需 Adapter 版本核对。\n- Dofe SSO 当前使用 mock user 能力，真实校验后续接入。\n\n## 拆解指引（给 Codex 拆解阶段的提示）\n按 contract、API、Web 控制台、标注与恢复能力拆分，每个 Shard 保持 est_context < 24000。\n`;
+    return `---\nid: spec-${issue.id.replace('issue-', '')}\nissue: ${issue.id}\nversion: v1\nstatus: DRAFT\ncreated: ${createdAt}\ncontext_budget: 24000\nannotation:\n  impl_status: not-started\n  test_status: not-run\n  verdict: unreviewed\n  coverage: none\n  risk: medium\n---\n\n## 背景与目标\n${issue.body}\n\n## 范围（含明确的不做项）\n- 覆盖目标仓库：${issue.targetRepo}\n- MVP 先落 Web Issue、人工审核、基础拆解、状态与标注，不启动真实 agent 长任务。\n\n## 方案设计\n- 使用 .loops 文件作为状态真相源。\n- 通过 Web 表单创建 IssueIntake 与 Issue。\n- Spec 审核通过后生成串行 MVP Shards。\n\n## 验收标准（可勾选清单）\n${checklist}\n\n## 测试策略（单元 / 集成 / E2E / 回归 / 人工验收）\n- unit: 校验表单 schema 与文件状态写入。\n- integration: 校验 issue -> spec -> review -> decompose 流转。\n- e2e: MVP 暂标记 manual/deferred。\n- regression: pnpm lint / pnpm type-check。\n\n## 风险与依赖\n- 真实 Codex/Claude Code 非交互调用仍需 Adapter 版本核对。\n- HTTP 创建路径已由 AuthGuard 派生 dofe-sso submitter；真实浏览器 SSO E2E 仍需外部联调环境验证。\n\n## 拆解指引（给 Codex 拆解阶段的提示）\n按 contract、API、Web 控制台、标注与恢复能力拆分，每个 Shard 保持 est_context < 24000。\n`;
   }
 
   private createMvpShards(issue: LoopIssue, spec: LoopSpec): LoopShard[] {
@@ -300,7 +323,8 @@ export class DeterministicLoopsAgentAdapter implements LoopsAgentAdapter {
         coverage: 'partial',
         location: ['.loops/issues', '.loops/intakes'],
         risk: 'medium',
-        notes: 'MVP Issue Intake 已归一化，真实 SSO 与 agent 调用仍待接入。',
+        notes:
+          'MVP Issue Intake 已归一化；HTTP 路径已派生 dofe-sso submitter，真实浏览器 SSO E2E 与 agent 调用仍待接入。',
       },
       {
         target: spec.id,

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { LoopsDbModule } from '@app/db';
+import { AuditLogModule } from '@app/audit-log';
 import { CliLoopsAgentAdapter } from './adapters/cli-loops-agent.adapter';
 import { CliLoopsClaudeAdapter } from './adapters/cli-loops-claude.adapter';
 import { CliLoopsGitAdapter } from './adapters/cli-loops-git.adapter';
@@ -17,7 +18,7 @@ import { LoopsRunnerService } from './loops-runner.service';
 import { LoopsService } from './loops.service';
 
 @Module({
-  imports: [LoopsDbModule],
+  imports: [LoopsDbModule, AuditLogModule],
   controllers: [LoopsController],
   providers: [
     LoopsService,

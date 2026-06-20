@@ -18,6 +18,7 @@
 - round 9：再次复核确认无新增本仓可实施项；blocked 项解除条件未变化。
 - round 10：再次复核确认无新增本仓可实施项；blocked 项解除条件未变化。
 - round 11：再次复核确认无新增本仓可实施项；blocked 项解除条件未变化。
+- round 12：发现并修复 Loops deterministic spec/annotation 仍描述 SSO mock 的过期标注；生成内容已改为准确说明 HTTP submitter 已由 AuthGuard 派生 `dofe-sso`，真实浏览器 SSO E2E 仍 blocked。
 - `docs/0620` 作为新阶段优化入口，聚焦：
   - accepted 项是否继续维持、转实施或关闭；
   - v1.1+ 后置能力的可执行拆解；

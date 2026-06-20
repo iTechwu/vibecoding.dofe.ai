@@ -186,6 +186,8 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     // generateSpec -> DRAFT spec, waiting for human review.
     detail = await service.generateSpec(created.issue.id);
     expect(detail.spec?.status).toBe('DRAFT');
+    expect(detail.spec?.body).not.toContain('mock user');
+    expect(detail.spec?.body).toContain('真实浏览器 SSO E2E 仍需外部联调环境验证');
 
     // approve -> APPROVED spec, allowed to decompose.
     detail = await service.reviewSpec(created.issue.id, { action: 'approve', reviewer: 'tester' });
@@ -194,6 +196,10 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     // decompose -> MVP shards (deterministic: 2 serial shards).
     detail = await service.decompose(created.issue.id);
     expect(detail.shards.length).toBeGreaterThan(0);
+    const hasAccurateSsoBoundaryAnnotation = detail.annotations.some((annotation) =>
+      annotation.notes.includes('dofe-sso submitter'),
+    );
+    expect(hasAccurateSsoBoundaryAnnotation).toBe(true);
     const shardCount = detail.shards.length;
 
     // runLoop advances one ready shard per call (max_parallel default = 1).

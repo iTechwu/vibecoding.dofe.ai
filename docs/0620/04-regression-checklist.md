@@ -287,6 +287,33 @@ Loops v1 CLOSED 门槛：不受影响；本轮无新增代码实施项。
 
 Loops v1 CLOSED 门槛：不受影响；本轮无新增代码实施项。
 
+## round 12 回归记录（2026-06-20）
+
+范围：
+
+- 复核 `docs/0620` 与当前 Loops 实现标注的一致性。
+- 修复 deterministic Loops spec/annotation 中过期的 “SSO mock user” 描述。
+- 增加 Loops smoke 断言，防止生成 spec/annotation 再次倒退为不准确标注。
+
+实施文件：
+
+- `apps/api/src/modules/loops/adapters/deterministic-loops-agent.adapter.ts`
+- `apps/api/src/modules/loops/loops.service.spec.ts`
+- `docs/0620/README.md`
+- `docs/0620/04-regression-checklist.md`
+
+结果：
+
+- `pnpm --filter @repo/api exec jest src/modules/loops --runInBand`：通过（1 skipped DB smoke，2 passed；8 passed，3 skipped）。
+- `pnpm regression:docs0620`：通过。
+
+仍未完成：
+
+- 真实 SSO 浏览器 E2E：blocked，需真实 SSO client secret、测试账号和可启动联调环境。
+- 飞书、真实远端 PR、多 Loop 并行、worker 池、真实 CLI、真实成本/外部告警：blocked，解除条件见 [05-blockers.md](05-blockers.md)。
+
+Loops v1 CLOSED 门槛：不受影响；本轮为生成文档标注准确性修复，不扩大外部验收口径。
+
 ## 失败处理
 
 | 失败类型          | 处理                                                      |

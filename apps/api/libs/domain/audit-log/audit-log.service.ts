@@ -140,6 +140,16 @@ export class AuditLogService {
     });
   }
 
+  async logLogout(actorId: string, metadata?: Prisma.InputJsonValue): Promise<AuditLog> {
+    return this.create({
+      action: 'LOGOUT',
+      resource: 'auth',
+      actorType: 'user',
+      actorId,
+      metadata,
+    });
+  }
+
   async logExport(
     resource: string,
     actorId: string,

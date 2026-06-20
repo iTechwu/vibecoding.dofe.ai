@@ -7,7 +7,7 @@
 | 能力                | 后置原因                              | 建议阶段 | 当前骨架状态                                                                      |
 | ------------------- | ------------------------------------- | -------- | --------------------------------------------------------------------------------- |
 | Dofe SSO 真实登录   | 第一版明确不加入登录                  | v1.1     | 🟡 进行中：SSO OIDC 登录链路由 `docs/0619/sso` 落地；Loops 面已接真实用户（见下） |
-| 用户角色/权限       | 依赖 SSO                              | v1.1     | 用 targetRepo 白名单 + 本地开发身份，无角色门禁                                   |
+| 用户角色/权限       | 依赖 SSO                              | v1.1     | ✅ Loops 最小 RBAC 已落地；组织/团队级生产权限模型仍后置                          |
 | 飞书 Issue 入口     | Web 表单覆盖主流程                    | v1.2     | 仅 Web 入口                                                                       |
 | 飞书审批卡片        | 依赖飞书入口与用户映射                | v1.2     | Web 审核台覆盖人工门禁                                                            |
 | 飞书反向通知        | v1 用 Web/CLI 通知记录                | v1.2     | `.loops/notifications` + Web/CLI 查询，无真实飞书发送                             |
@@ -17,17 +17,18 @@
 | 完整 E2E/build 矩阵 | v1 先做最小冒烟 + regression commands | v1.2     | 文件侧 + live-DB jest 冒烟、`.loops/config.yaml` `tests.regression_commands`      |
 | 生产级 agent 告警   | v1 先保证失败落日志/状态/通知可见     | v1.3     | 失败落 `log.jsonl` + 状态 + 通知记录                                              |
 
-## v1.1 进度（2026-06-20）：Loops submitter 接真实 SSO 用户
+## v1.1 进度（2026-06-20）：Loops submitter 接真实 SSO 用户 + 最小 RBAC
 
-`docs/0619/sso` 迁移落地 OIDC 登录链路后，已把 Loops 提交/操作面接入真实登录用户（推进「Dofe SSO 真实登录」的 Loops 子项；角色/权限门禁仍未做）：
+`docs/0619/sso` 迁移落地 OIDC 登录链路后，已把 Loops 提交/操作面接入真实登录用户，并在后续实施中补上 Loops HTTP 最小 RBAC（推进「Dofe SSO 真实登录」与「用户角色/权限」的 Loops 子项；生产级组织/团队权限模型仍未做）：
 
 - 后端：`LoopsController` 整体加 `@Auth('api')`（所有 Loops HTTP 端点需登录）；`createIssue` 经 `@Req() req: AuthenticatedRequest` 取 `req.userInfo`，`LoopsService.normalizeSubmitter` 在有认证用户时强制 `provider: 'dofe-sso'`、`userId/name` 取自 SSO 用户，**忽略**客户端提交的 submitter 字段（防伪造）；无认证用户（CLI / 内部直调）仍回退 `dev`。
+- 权限：`LoopsController` 挂载 `@UseGuards(LoopsRbacGuard)`，并按 `read/create/operate/admin` 为列表/创建/执行/管理端点分组。`LoopsRbacGuard` 当前支持 SSO `isAdmin`、非生产 `MODE_USER_ID` bypass，以及 `LOOPS_RBAC_READ_USER_IDS` / `LOOPS_RBAC_CREATE_USER_IDS` / `LOOPS_RBAC_OPERATE_USER_IDS` / `LOOPS_RBAC_ADMIN_USER_IDS` allowlist；无权限返回 `CommonErrorCode.FeatureHasPermissions`（403）。CLI 直调 `LoopsService` 不经过 HTTP RBAC。
 - 前端：`loopsContract` 接入 `tsRestClient`（`apps/web/lib/api/contracts/client.ts`），新增 `hooks/loops.ts`（queries + mutations，token 由 `customFetch` 从 `token-manager` 注入）。`/loops`、`/loops/new`、`/loops/[issueId]` 三个页面从「server component + server action + 无鉴权 `@/lib/requests`」改为客户端 ts-rest（访问 token 仅存客户端 localStorage，server action 无法转发，故必须客户端化）；`/loops/new` 表单用 `useAuth()` 做登录门，未登录跳 `/login`。
 - CLI 不受影响：`scripts/loops-cli.ts` 直调 `LoopsService`（不经 HTTP/AuthGuard），`loops:doctor` / `loops:db-doctor` 仍 `ok: true`。
 - 本地开发：未配置 SSO 时，API 可设 `MODE_USER_ID` 走 AuthGuard bypass；或保持 CLI 文件模式。
-- 回归：`check:architecture` / `quality:gate`（6/6）/ Loops Jest（含 dofe-sso + dev 两条 submitter 用例）/ web test / `loops:doctor` 全绿；api+web type-check 通过。
-- 仍后置：角色/权限门禁（`@Auth` 仅校验登录，无 RBAC）、真实 SSO 浏览器 E2E（需可用 SSO client secret / Redis / DB，命令见 [`docs/0619/sso/09-implementation-status.md`](../sso/09-implementation-status.md)）。
-- round 15 复审：上述代码状态仍成立；本轮实测 `quality:gate`、Loops Jest、web test、`loops:doctor` / `loops:db-doctor` 均通过。RBAC 与真实浏览器 E2E 仍不作为 Loops v1 CLOSED 门槛。
+- 回归：`check:architecture` / `quality:gate`（6/6）/ Loops Jest（含 dofe-sso + dev 两条 submitter用例、RBAC allow/deny 用例）/ web test / `loops:doctor` 全绿；api+web type-check 通过。
+- 仍后置：真实 SSO 浏览器 E2E（需可用 SSO client secret / Redis / DB，命令见 [`docs/0619/sso/09-implementation-status.md`](../sso/09-implementation-status.md)）、组织/团队级生产权限模型、权限管理 UI 与审计运营流程。
+- round 16 复审：上述代码状态仍成立；本轮重新审查 `loops.controller.ts`、`loops-rbac.guard.ts`、`loops-rbac.guard.spec.ts`、`loops.module.ts`，确认最小 RBAC 已真实落地。真实浏览器 E2E 与生产级权限模型仍不作为 Loops v1 CLOSED 门槛。
 
 ## 额外未落实（生产化，非 TASK-09 清单但需在上线前推进）
 

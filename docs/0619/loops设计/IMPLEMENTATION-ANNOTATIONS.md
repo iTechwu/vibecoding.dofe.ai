@@ -2,9 +2,62 @@
 
 > 标注口径：本文件记录本轮代码实施后的真实状态。`done` 表示已落到代码且可调用（DB 运行期写入需迁移后验证时，会在条目中显式标注）；`partial` 表示 MVP 骨架已落地但仍有明确缺口；`not-started` 表示文档要求尚未实施。
 >
-> **权威结论以「最终归档（TASK-08 · round 2 / 2026-06-19）」为准。** 其下方的「最终归档（round 1）」及「总体状态/已完成/未完成」为早期记录，保留作历史，结论已被 round 2 取代。
+> **权威结论以「Round 15 复审 / 2026-06-20」为准。** 其下方的 round 2、round 3 与 round 1 归档均为历史记录，保留用于追溯阶段性判断；若与当前结论冲突，以本节为准。
 
-## 最终归档（TASK-08 · round 2 / 2026-06-19）— 当前权威结论
+## Round 15 复审（2026-06-20）— 当前权威结论
+
+```yaml
+archive_round: loops-round-15-review
+impl_status: done # Loops v1 主链路与本仓可实施收尾项均已完成
+test_status: done # quality:gate、Loops Jest、文件/DB doctor、web/contracts/utils 测试均通过
+verdict: done
+source_of_truth: '.loops 文件与 log.jsonl 仍为文档真相源与冲突裁决依据；DB 为查询索引与状态聚合来源'
+verified_at: 2026-06-20
+```
+
+### 当前状态矩阵
+
+| 范围                    | 状态                | 代码/文档位置                                                                                                | 当前判断                                                                                                                |
+| ----------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| Loops v1 主链路         | done                | `loops.service.ts`, `loops-persistence.service.ts`, `LoopsDbService`, Web `/loops`                           | Issue → DB + `.loops` → spec/decompose/run/review/finalize → CLOSED/finalized 闭环已落地。                              |
+| DB schema / DB Service  | done                | `apps/api/prisma/schema.prisma`, `apps/api/generated/db/modules/loops/loops-db.service.ts`                   | `LoopIssue`/`LoopIssueIntake`/`LoopState` 三表与事务化 `LoopsDbService` 可用；API/Service 层无直接 Prisma 访问。        |
+| `.loops` 文档真相源     | done                | `loops-file-store.service.ts`, `.loops/config.yaml`                                                          | Issue/Intake/State/Spec/Shard/Test/Review/Annotation/log/Notification 文件产物保留，DB 不取代文件真相源。               |
+| DB + `.loops` 同步      | done                | `loops-persistence.service.ts`, `LoopsService.syncAndRead`                                                   | 创建、列表、详情、生命周期、finalize 与 doctor 已覆盖 DB/file 同步与一致性检查。                                        |
+| HTTP 登录与 submitter   | done（v1.1 增量）   | `loops.controller.ts`, `loops.service.ts`, `loops-rbac.guard.ts`                                             | Loops HTTP 端点已 `@Auth('api')` + RBAC guard；HTTP createIssue 从 SSO `req.userInfo` 派生 submitter 并忽略客户端伪造。 |
+| CLI / 内部无登录路径    | done                | `scripts/loops-cli.ts`, `LoopsService.normalizeSubmitter`                                                    | CLI/内部直调不经 HTTP AuthGuard，仍回退 deterministic `dev-user`，保持 v1 本地运维路径可用。                            |
+| Web Loops               | done                | `apps/web/app/loops/**`, `apps/web/lib/api/contracts/client.ts`, `apps/web/lib/api/contracts/hooks/loops.ts` | `/loops`、`/loops/new`、详情页已改为客户端 ts-rest；token 由 `customFetch` 注入；未登录创建页跳转 `/login`。            |
+| 质量门禁                | done                | `scripts/check-architecture.sh`, `scripts/check-list-response-schemas.js`, `loops.service.spec.ts`           | `quality:gate` 全绿；架构边界、列表契约、敏感日志、utils hygiene、全仓 type-check 均通过。                              |
+| Loops DB doctor / smoke | done                | `pnpm loops:doctor`, `pnpm loops:db-doctor`, `loops-persistence.db.spec.ts`                                  | 本轮 `loops:doctor` / `loops:db-doctor` 均 `ok:true`；DB smoke 测试文件存在，默认 Jest 下按 `LOOPS_DB_SMOKE` 跳过。     |
+| 生成物收敛              | done                | `apps/api/scripts/generate-db-crud.js`, `apps/api/generated/db/modules/loops`                                | `LoopIssue`/`LoopIssueIntake`/`LoopState` 已从通用 CRUD 生成排除，Loops DB 访问集中在手写 `LoopsDbService`。            |
+| 后置 / blocked 能力     | blocked（外部输入） | `docs/0619/todo/03-not-yet-implemented.md`, `docs/0620/03-deferred-items.md`, `docs/0620/05-blockers.md`     | 真实 SSO 浏览器 E2E、飞书入口/审批/通知、真实远端 PR、独立 worker 池、生产告警/真实 CLI 稳定性仍需外部凭据与决策。      |
+
+### 本轮复审结果
+
+- 未发现新的 Loops v1 本仓可实施代码缺口；`docs/0619/todo/01-to-implement.md` 当前无 P0/P1 待实施项。
+- `docs/0619/todo/02-to-optimize.md` 仅剩 `OPT-5` 为 accepted 的工程取舍，不阻断交付；其余优化项均为 done 或 documented。
+- `docs/0619/todo/03-not-yet-implemented.md` 与 `docs/0620/05-blockers.md` 中的剩余项均需要真实凭据、联调环境、provider/队列/告警等外部输入，不能在本仓伪实现为 done。
+- 旧 round 2 中的“Web 无登录”是 v1 初始验收口径；当前代码已进入 v1.1+：HTTP/Web 路径要求 SSO token，CLI/内部直调仍保留 dev fallback。
+
+### 本轮回归（2026-06-20 实测）
+
+- `pnpm quality:gate`：通过（architecture、list contracts、sensitive logs、utils hygiene、type-check 全绿）。
+- `pnpm --filter @repo/api exec jest src/modules/loops --runInBand`：2 suites passed、1 suite skipped；8 tests passed、3 skipped（DB smoke 需 `LOOPS_DB_SMOKE=1`）。
+- `pnpm loops:doctor`：通过，`ok:true`。
+- `pnpm loops:db-doctor`：通过，`ok:true`。
+- `pnpm check:architecture`：通过，DB client / Logger / console / any 边界全绿。
+- `pnpm --filter @repo/web test`：通过，1 file / 2 tests passed。
+- `pnpm --filter @repo/contracts test`：通过，3 suites / 43 tests passed。
+- `pnpm --filter @repo/utils test`：通过，2 suites / 60 tests passed。
+
+### 下一阶段入口
+
+1. 真实 SSO 浏览器 E2E：等待 SSO client secret、测试账号、Redis/PostgreSQL/API/Web 联调环境。
+2. 飞书入口 / 审批 / 反向通知：等待 Feishu payload、签名配置、应用凭据、用户映射和审批状态机决策。
+3. 真实远端 PR / diff 自动回收：等待 git provider、token 管理、repo allowlist 与补偿策略。
+4. 多 Loop 并行 / 独立 worker 池：等待队列、锁、资源隔离、部署拓扑与状态同步协议。
+5. 成本计量 / 生产告警 / 真实 CLI 稳定性：等待真实 token 来源、CLI 版本/权限/沙箱策略和告警通道。
+
+## 最终归档（TASK-08 · round 2 / 2026-06-19）— 历史归档
 
 ```yaml
 archive_round: TASK-08-round-2

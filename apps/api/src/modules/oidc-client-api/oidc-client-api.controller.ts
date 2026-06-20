@@ -3,6 +3,7 @@ import { TsRestHandler, tsRestHandler } from '@ts-rest/nest';
 import { oidcAuthContract as c } from '@repo/contracts';
 import { success } from '@dofe/infra-common/ts-rest';
 import { Public } from '@app/auth';
+import { AuditLogService } from '@app/audit-log';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -21,6 +22,7 @@ export class OidcClientApiController {
   constructor(
     private readonly oidcClientService: OidcClientApiService,
     private readonly jwtService: JwtService,
+    private readonly auditLogService: AuditLogService,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
   ) {}
 
@@ -193,18 +195,19 @@ export class OidcClientApiController {
   @TsRestHandler(c.logout)
   async logout() {
     return tsRestHandler(c.logout, async ({ body }) => {
+      let decodedToken: Record<string, unknown> | null = null;
       // Decode JWT payload to extract jti/exp for token blacklisting.
       // We use jwt.decode (no signature verification) because at logout
       // the token may already be expired — we just need its claims.
       // The blacklist is defense-in-depth; the real revocation happens
       // at the SSO provider via the logout redirect.
       try {
-        const decoded = this.jwtService.decode(body.access_token, {
+        decodedToken = this.jwtService.decode(body.access_token, {
           complete: false,
         }) as Record<string, unknown> | null;
-        if (decoded) {
-          const jti = typeof decoded.jti === 'string' ? decoded.jti : undefined;
-          const exp = typeof decoded.exp === 'number' ? decoded.exp : undefined;
+        if (decodedToken) {
+          const jti = typeof decodedToken.jti === 'string' ? decodedToken.jti : undefined;
+          const exp = typeof decodedToken.exp === 'number' ? decodedToken.exp : undefined;
           if (jti && exp) {
             await this.oidcClientService.revokeToken(jti, exp);
           }
@@ -214,6 +217,8 @@ export class OidcClientApiController {
           error: err instanceof Error ? err.message : String(err),
         });
       }
+
+      await this.recordLogoutAudit(decodedToken);
 
       const logoutUrl = this.oidcClientService.getLogoutUrl(body.id_token_hint);
       return success({ logoutUrl });
@@ -230,5 +235,36 @@ export class OidcClientApiController {
       this.setRefreshCookie(reply, '', 0);
       return success({ success: true });
     });
+  }
+
+  private async recordLogoutAudit(decodedToken: Record<string, unknown> | null): Promise<void> {
+    const actorId = this.resolveActorIdFromToken(decodedToken);
+    if (!actorId) {
+      this.logger.warn('Skipped logout audit log because access token has no user claim');
+      return;
+    }
+
+    try {
+      await this.auditLogService.logLogout(actorId, {
+        ssoSub: typeof decodedToken?.sub === 'string' ? decodedToken.sub : undefined,
+        jti: typeof decodedToken?.jti === 'string' ? decodedToken.jti : undefined,
+      });
+    } catch (error) {
+      this.logger.warn('Failed to record logout audit log', {
+        actorId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private resolveActorIdFromToken(decodedToken: Record<string, unknown> | null): string | null {
+    if (!decodedToken) return null;
+    const candidates = [decodedToken.userId, decodedToken.uid, decodedToken.sub];
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string' && candidate.length > 0) {
+        return candidate;
+      }
+    }
+    return null;
   }
 }

@@ -34,7 +34,7 @@
 | `auth.service.ts`      | 仅保留 `extractTokenFromHeader` + `formatLoginResponse`（删除旧 Redis session 逻辑）                                                                                                                |
 | `user-sync.service.ts` | sso `sub` → 本地 `UserInfo`（按 ssoSub / id / email 三级匹配，必要时调 sso `getUser` 回填）                                                                                                         |
 | `auth.ts`              | `@Public()` / `@CurrentUser()` 装饰器                                                                                                                                                               |
-| `auth.module.ts`       | 装配：imports `InfraSsoClientModule`（`@dofe/infra-clients/sso`）、`LocalSsoClientModule`（`@app/sso-client`）、`UserInfoModule`、`RedisModule`、`JwtModule`；注册 `APP_GUARD` 链                   |
+| `auth.module.ts`       | 装配：imports `SsoClientModule`（`@dofe/infra-clients/sso`）、`UserInfoModule`、`RedisModule`、`JwtModule`；注册 `APP_GUARD` 链（未采用 `LocalSsoClientModule` / `@app/sso-client`）                |
 
 ### 1.3 SSO 客户端（实施口径，以 [09](./09-implementation-status.md) 为准）
 
@@ -54,7 +54,7 @@
 models 链：`AuthGuard → TeamContextGuard → PermissionGuard → IpWhitelistGuard`。vibecoding 按实际 RBAC 需求裁剪：
 
 - **最小集**：仅 `AuthGuard`（保证登录态 + 注入 userId）。
-- **如需权限**：追加 `PermissionGuard`（依赖 `@dofe/sso-node` 的 RBAC）。
+- **如需权限**：另行设计本项目权限模型；当前不引入 `@dofe/sso-node` 的 RBAC legacy 包装。
 - tenant/team 相关 guard 视 vibecoding 是否引入多租户再定。
 
 ### 1.5 main.ts
@@ -133,8 +133,11 @@ migration：`pnpm db:migrate:dev --name add_user_sso_sub`。
 
 - `apps/api/src/modules/oidc-client-api/`（整目录，改端口 13100）
 - `apps/api/libs/domain/auth/{auth.guard,auth.service,user-sync.service,auth,auth.module}.ts`
-- `apps/api/libs/infra/clients/internal/sso-client/`（`@app/sso-client`）
 - `main.ts` 追加 `@fastify/cookie` 注册
+
+未采用/不复制：
+
+- `apps/api/libs/infra/clients/internal/sso-client/`（`@app/sso-client`）：本仓库直接使用 `@dofe/infra-clients/sso` + `openid-client`。
 
 前端：
 

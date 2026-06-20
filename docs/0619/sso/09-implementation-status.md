@@ -12,7 +12,8 @@
   - `AuthGuard` 改为通过 `@dofe/infra-clients/sso` 远程 `verifyToken()` 校验 access token。
   - 新增 `UserSyncService`，以 `ssoSub` 同步/创建本地 `UserInfo` 映射缓存。
   - `AuthModule` 全局挂载，并提供 `@Public()`、`@CurrentUser()`、兼容 `@Auth()`。
-  - 审计业务接入：OIDC 登录回调换 token + 建本地用户成功后，`OidcClientApiService` 主动调用 `AuditLogService.logLogin` 记录 `LOGIN` 事件（best-effort，失败仅告警不阻塞登录；仅在真实 token 交换路径触发，重复回调不重复记录）；新增 `@app/audit-log` 路径别名指向 `libs/domain/audit-log`。
+  - 审计业务接入：OIDC 登录回调换 token + 建本地用户成功后，`OidcClientApiService` 主动调用 `AuditLogService.logLogin` 记录 `LOGIN` 事件（best-effort，失败仅告警不阻塞登录；仅在真实 token 交换路径触发，重复回调不重复记录）；OIDC logout 在 access token blacklist 后主动调用 `AuditLogService.logLogout` 记录 `LOGOUT` 事件（best-effort，失败仅告警不阻塞登出）；新增 `@app/audit-log` 路径别名指向 `libs/domain/audit-log`。
+  - Loops HTTP 写操作审计接入：`LoopsModule` 引入 `AuditLogModule`，`LoopsController` 对 create/generate/review/decompose/run/finalize/intervene/resume 等成功写操作主动记录 `CREATE`/`UPDATE` 审计（best-effort，失败仅告警不阻断业务）；CLI/内部直接调用 `LoopsService` 仍保持无审计 DB 强依赖。
 - Prisma schema 收敛：
   - `UserInfo` 仅保留本地业务映射/展示字段：`ssoSub`、`avatarFileId`、`nickname`、`code`、`email`、`mobile` 等。
   - 删除本地 `WechatAuth`、`GoogleAuth`、`DiscordAuth`、`MobileAuth`、`EmailAuth`。
@@ -108,6 +109,9 @@
 - 第十四轮将 05 §1.3 与 02 技术栈表中"复制 models `@app/sso-client` 包装（`@dofe/sso-node`）"修订为"未采用：SSO 客户端直接用 `@dofe/infra-clients/sso` 的 `SsoAuthClient`、OIDC token 交换直接用 `openid-client`，本仓库不引入多租户 RBAC"，对齐实际实现与 09 权威描述。
 - 第十四轮从 vibecoding/scaffold 的 `apps/api`、`apps/web` `package.json` 移除零引用死依赖 `@dofe/sso-node`、`@dofe/sso-contracts`（核查全仓 `apps`/`packages` 源码零 import，`@dofe/sso-browser` peerDeps 仅 `react` 不依赖 sso-contracts），并重新 `pnpm install` 更新两仓 `pnpm-lock.yaml`；`@dofe/sso-browser`（token-manager/sso-session）与 `@dofe/file-sdk(-web)` 保留。
 - 第十四轮补齐 scaffold `apps/api/.env.example` 与 `apps/web/.env.example` 缺失的 SSO 环境变量（`SSO_API_URL`/`SSO_INTERNAL_API_URL`/`SSO_ISSUER`/`SSO_CLIENT_ID=scaffold-dofe-ai`/`SSO_CLIENT_SECRET`/`SSO_SERVICE_NAME=scaffold.dofe.ai`/`INTERNAL_API_SECRET` 与 `SCAFFOLD_INTERNAL_API_URL`/`NEXT_PUBLIC_SSO_BASE_URL`），对齐 vibecoding 模板，恢复 scaffold 作为可运行模板的完整性。
+- 第十五轮复查发现审计层虽然已在 OIDC 登录回调落地，但业务写操作仍未兑现 03 文档中的主动调用验收；已在 vibecoding Loops HTTP 写路径补齐 `AuditLogService` best-effort 调用，覆盖 issue 创建、spec 生成/审核、分解、shard 测试/实现/审核、runLoop、global review、reloop、finalize、intervene、resume 等成功操作。
+- 第十五轮同步修订 `README` / `02` / `05` / `08` 中仍残留的 `@dofe/sso-node`、`@dofe/sso-contracts`、`@app/sso-client` 旧实施口径；当前准确口径为：后端直接用 `@dofe/infra-clients/sso` + `openid-client`，前端保留 `@dofe/sso-browser`，OIDC contract 由 `@repo/contracts` 承载。
+- 第十六轮复查发现审计枚举已包含 `LOGOUT`，但 OIDC logout 只做 access token blacklist 与 SSO logout URL 生成；已补齐 `AuditLogService.logLogout` 与 `/auth/oidc/logout` best-effort 调用，登出审计与登录审计形成闭环。
 
 ## 3. 明确废弃/不再采用
 
@@ -195,6 +199,11 @@
 - `vibecoding.dofe.ai` / `scaffold.dofe.ai`: 第十四轮四项质量门禁通过：`check:architecture`、`check:list-contracts`、`check:sensitive-logs`、`check:utils-hygiene`。
 - `vibecoding.dofe.ai`: 第十四轮修复 `app-module-imports.bootstrap.spec.ts`——重新 `pnpm install` 时 `@dofe/infra-*` 由 0.1.56 升至 0.1.57（caret，intentional 不回退），0.1.57 的 `@dofe/infra-shared-services/system-health` 真实加载链引入 `@dofe/infra-rabbitmq` → `createContextLogger`（infra-utils）调用，而原 spec 的 `jest.mock('@dofe/infra-shared-services')` 仅覆盖精确包名、不覆盖实际 import 的 `/system-health` 子路径；已改为 mock `@dofe/infra-clients/verify`、`@dofe/infra-shared-services/system-health` 子路径，spec 恢复通过。
 - `vibecoding.dofe.ai` / `scaffold.dofe.ai`: 第十四轮残留扫描确认 `@dofe/sso-node`/`@dofe/sso-contracts` 源码零 import、`package.json` 已移除；`FileBucketVendorSchema`/`FileEnvTypeSchema` 业务层与 contracts schema 层无残留（仅 `link-prisma.js`/`main.ts`/`webpack.config.js` 的有意 compat shim 保留）。
+- `vibecoding.dofe.ai`: 第十五轮后 `pnpm --filter @repo/api type-check`
+- `vibecoding.dofe.ai`: 第十五轮后 `pnpm --filter @repo/api exec jest --runInBand`（5 suites passed / 1 skipped；20 tests passed / 3 skipped）
+- `vibecoding.dofe.ai`: 第十五轮后四项质量门禁通过：`check:architecture`、`check:list-contracts`、`check:sensitive-logs`、`check:utils-hygiene`
+- `vibecoding.dofe.ai`: 第十五轮残留扫描确认源码/lockfile 无 `@dofe/sso-node`、`@dofe/sso-contracts`、`@app/sso-client`、`signContract`、`signClient`、旧 `auth-token`、旧 `/api/oidc-auth/refresh-token`、`/settings/password`、`loginSchema/registerSchema` 残留；docs 命中均为“未采用/已移除/不依赖”说明。
+- `vibecoding.dofe.ai`: 第十六轮后 `pnpm --filter @repo/api type-check`
 
 本轮不纳入验收：
 

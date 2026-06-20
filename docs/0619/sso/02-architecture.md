@@ -107,12 +107,12 @@ sequenceDiagram
 
 ### 前端（apps/web）
 
-| 包                                 | 来源                          | 用途                                                                 |
-| ---------------------------------- | ----------------------------- | -------------------------------------------------------------------- |
-| `@dofe/sso-browser`                | npm ^0.1.56（**新增**）       | `createTokenManager`、`checkSsoSession`/`checkSsoSessionViaIframe`   |
-| `@dofe/sso-contracts`              | npm ^0.1.66（**新增**）       | `oidcAuthContract` 等                                                |
-| `@dofe/sso-hooks` / `@dofe/sso-ui` | npm ^0.1.5x（**新增**，按需） | SSO 相关 React hooks / UI 组件（登录态、租户切换等，按界面需要引入） |
-| `@dofe/file-sdk-web`               | npm ^0.1.7+（**新增**）       | 前端文件上传，经 `/api/proxy/sso` 转发到 SSO                         |
+| 包                                 | 来源                    | 用途                                                                      |
+| ---------------------------------- | ----------------------- | ------------------------------------------------------------------------- |
+| `@dofe/sso-browser`                | npm ^0.1.56（**新增**） | `createTokenManager`、`checkSsoSession`/`checkSsoSessionViaIframe`        |
+| `@dofe/sso-contracts`              | ~~npm ^0.1.66~~         | **未采用/已移除**：前端使用本仓库 `@repo/contracts` 的 `oidcAuthContract` |
+| `@dofe/sso-hooks` / `@dofe/sso-ui` | ~~npm ^0.1.5x~~         | **未采用**：当前登录页与 session 逻辑由本仓库路由/token-manager 承载      |
+| `@dofe/file-sdk-web`               | npm ^0.1.7+（**新增**） | 前端文件上传，经 `/api/proxy/sso` 转发到 SSO                              |
 
 ### 本仓库需新增的共享产物
 

@@ -1,6 +1,6 @@
 # 03 · 审计日志集成方案
 
-> **已实施**：vibecoding 与 scaffold 均采用本篇修正后的 models 模式，即本地 `audit_logs` + `AuditLogService` 业务主动调用，不挂全局拦截器。验证记录见 [09-implementation-status.md](./09-implementation-status.md)。
+> **已实施**：vibecoding 与 scaffold 均采用本篇修正后的 models 模式，即本地 `audit_logs` + `AuditLogService` 业务主动调用，不挂全局拦截器。vibecoding 当前已覆盖 OIDC 登录/登出与 Loops HTTP 写操作审计；验证记录见 [09-implementation-status.md](./09-implementation-status.md)。
 
 > ⚠️ **方向修正（重要）**：初版误用 sso.dofe.ai 的全局拦截器方案（`AuditLogInterceptor` + `OPERATE_LOG_SERVICE_TOKEN`）。
 > 经核实 `models.dofe.ai`（用户指定的参考样板），**models 采用「业务主动调用」模式**：本地 `audit_logs` 表 + `AuditLogService` 便捷方法，业务代码按需调用，**不挂全局拦截器**。本篇以 models 为准。
@@ -60,11 +60,12 @@ async createApiKey(actorId: string, req: FastifyRequest) {
 }
 ```
 
-> 登录事件（`logLogin`）由 SSO 登录回调（阶段 3 `oidc-client-api`）触发时记录。
+> 登录事件（`logLogin`）由 SSO 登录回调（阶段 3 `oidc-client-api`）触发时记录；登出事件（`logLogout`）由 `/auth/oidc/logout` 在 access token blacklist 后 best-effort 记录。
+> vibecoding Loops 模块的 HTTP 写操作由 `LoopsController` 在成功返回前 best-effort 记录 `CREATE`/`UPDATE` 审计；CLI/内部直接调用 `LoopsService` 不强制写审计，以保留无 DB standalone 使用方式。
 
 ## 5. 验证
 
 - `pnpm db:generate` 产出 `AuditLogModule/AuditLogService`（`@app/db`）。
 - `pnpm type-check`：审计层无错误（仅依赖 `create/list`，与 generate 模板兼容）。
-- 在一个业务写操作中调用 `audit.logCreate(...)` → `audit_logs` 表产生记录（action/resource/actorId/changes 齐全）。
+- OIDC 登录/登出成功路径调用 `audit.logLogin(...)` / `audit.logLogout(...)`；Loops HTTP 写操作成功后调用 `audit.create(...)`，`audit_logs` 表产生对应 `LOGIN` / `LOGOUT` / `CREATE` / `UPDATE` 记录（action/resource/actorId/metadata 齐全）。
 - 单测：`AuditLogService.create` 的 DTO→PrismaInput 转换（mock `AuditLogDbService`）。
