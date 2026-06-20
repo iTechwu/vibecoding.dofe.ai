@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ApiResponseSchema } from '../base';
 import {
   CreateLoopIssueRequestSchema,
+  LoopCapabilitiesResponseSchema,
   LoopCostResponseSchema,
   LoopDetailSchema,
   LoopInterventionRequestSchema,
@@ -230,6 +231,14 @@ export const loopsContract = c.router(
         200: ApiResponseSchema(LoopMetricsResponseSchema),
       },
       summary: 'Get aggregated Loops control-plane metrics',
+    },
+    capabilities: {
+      method: 'GET',
+      path: '/capabilities',
+      responses: {
+        200: ApiResponseSchema(LoopCapabilitiesResponseSchema),
+      },
+      summary: 'Get the Loops capability registry and planned integration surface',
     },
     logs: {
       method: 'GET',

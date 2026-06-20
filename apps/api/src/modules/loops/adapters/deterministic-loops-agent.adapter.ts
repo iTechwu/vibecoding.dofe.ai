@@ -293,10 +293,14 @@ export class DeterministicLoopsAgentAdapter implements LoopsAgentAdapter {
         acceptance: [
           '未经 APPROVED 的 Spec 不允许 decompose',
           '审核通过后生成自包含 Shards 与基础 Annotation',
+          ...issue.acceptanceCriteria,
         ],
         testRequirements: {
           unit: ['覆盖 reviewSpec action 状态映射'],
-          integration: ['覆盖 generateSpec -> approve -> decompose 流转'],
+          integration: [
+            '覆盖 generateSpec -> approve -> decompose 流转',
+            ...issue.acceptanceCriteria.map((item) => `覆盖初始验收：${item}`),
+          ],
           e2e: ['审核台通过后 Loop 进度页展示 shard 列表（manual/deferred）'],
         },
         filesHint: [

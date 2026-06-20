@@ -131,9 +131,9 @@
 - [x] vibecoding/scaffold SSO 文件代理 rewrite 已修正为 `${NEXT_PUBLIC_SSO_BASE_URL}/:path*`
 - [x] vibecoding 已新增真实 SSO E2E 入口：`pnpm --filter @repo/web test:e2e:sso`
 - [x] vibecoding SSO 联动 E2E 测试通过（Chromium）
-- [ ] vibecoding `pnpm dev:api` + `pnpm dev:web` + sso 三端联动，登录/刷新/登出闭环
+- [x] vibecoding `pnpm dev:api` + `pnpm dev:web` + sso 三端联动，登录/刷新/登出闭环；2026-06-20 已用真实 Chromium E2E 复核通过
 - [x] vibecoding Loops HTTP 写操作已主动调用 `AuditLogService`（best-effort，不阻断业务），业务写接口审计不再停留在登录事件
-- [ ] sso `t_oauth_client` 含 vibecoding；需在目标 sso 环境查询确认 seed 结果
+- [x] sso `t_oauth_client` 含 vibecoding；2026-06-20 本地 SSO DB 复核 `vibecoding-dofe-ai` active/confidential/secret/redirect/scopes/grantTypes 均匹配配置
 - [x] vibecoding 文件上传经 sso 返回上传凭证与 CDN 元数据；物理 bucket PUT/CDN GET 不纳入本轮验收
 - [x] 第十四轮：OIDC 登录回调接入 `AuditLogService.logLogin`（vibecoding/scaffold），新增 `@app/audit-log` 别名，兑现审计"业务主动调用"
 - [x] 第十四轮：`@repo/contracts` 重新生成 Prisma enum（`pnpm generate:enums`），移除 `FileBucketVendor/FileEnvType`、新增 `AuditActionType`，同步 `schemas.test.ts`
@@ -142,3 +142,4 @@
 - [x] 第十四轮：vibecoding/scaffold 四项质量门禁全绿，type-check/contracts/web/validators/api jest 全通过
 - [x] 第十五轮：vibecoding LoopsModule 引入 `AuditLogModule`，LoopsController 对 create/generate/review/decompose/run/finalize/intervene/resume 等 HTTP 成功写操作记录 `CREATE`/`UPDATE` 审计；`pnpm --filter @repo/api type-check`、API Jest、四项质量门禁通过
 - [x] 第十六轮：vibecoding OIDC logout 补齐 `AuditLogService.logLogout` best-effort 调用，`LOGIN`/`LOGOUT` 审计闭环；`pnpm --filter @repo/api type-check`、API Jest、四项质量门禁通过
+- [x] 第十九轮：vibecoding 新增 `/internal/sso/outbox-alerts` 内部告警接收端点，使用 `INTERNAL_API_SECRET` Bearer 鉴权并仅记录脱敏摘要；`sso` 侧 outbox alert webhook 可在目标环境确认密钥与网络可达后启用

@@ -1,10 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+import { Link, useRouter } from '@/i18n/navigation';
 import { useAuth } from '@/providers';
 import { useCreateLoopIssue } from '@/lib/api/contracts/hooks';
+import {
+  DEFAULT_LOOP_ISSUE_TEMPLATE,
+  LOOP_ISSUE_TEMPLATES,
+  type LoopIssueTemplateId,
+} from './loop-issue-templates';
 
 interface NewLoopIssueFormProps {
   /** Server-resolved workspace root; overridable via NEXT_PUBLIC_LOOPS_DEFAULT_REPO. */
@@ -26,9 +30,14 @@ export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueForm
 
   const [title, setTitle] = useState('');
   const [targetRepo, setTargetRepo] = useState(defaultTargetRepo);
-  const [priority, setPriority] = useState<'P0' | 'P1' | 'P2' | 'P3'>('P2');
-  const [body, setBody] = useState('');
-  const [acceptanceCriteria, setAcceptanceCriteria] = useState('');
+  const [templateId, setTemplateId] = useState<LoopIssueTemplateId>(DEFAULT_LOOP_ISSUE_TEMPLATE.id);
+  const [priority, setPriority] = useState<'P0' | 'P1' | 'P2' | 'P3'>(
+    DEFAULT_LOOP_ISSUE_TEMPLATE.priority,
+  );
+  const [body, setBody] = useState(DEFAULT_LOOP_ISSUE_TEMPLATE.body);
+  const [acceptanceCriteria, setAcceptanceCriteria] = useState(
+    DEFAULT_LOOP_ISSUE_TEMPLATE.acceptanceCriteria.join('\n'),
+  );
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -53,8 +62,48 @@ export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueForm
     router.push(`/loops/${issueId}`);
   }
 
+  function applyTemplate(nextTemplateId: LoopIssueTemplateId) {
+    const template =
+      LOOP_ISSUE_TEMPLATES.find((item) => item.id === nextTemplateId) ??
+      DEFAULT_LOOP_ISSUE_TEMPLATE;
+    setTemplateId(template.id);
+    setPriority(template.priority);
+    setBody(template.body);
+    setAcceptanceCriteria(template.acceptanceCriteria.join('\n'));
+  }
+
   return (
     <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
+      <fieldset className="flex flex-col gap-3">
+        <legend className="text-sm font-medium">Loop Template</legend>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {LOOP_ISSUE_TEMPLATES.map((template) => (
+            <button
+              aria-label={template.label}
+              className={`rounded-md border p-4 text-left text-sm hover:bg-muted/30 ${
+                templateId === template.id ? 'bg-foreground text-background' : 'bg-background'
+              }`}
+              key={template.id}
+              onClick={() => applyTemplate(template.id)}
+              type="button"
+            >
+              <span className="flex items-center justify-between gap-3">
+                <span className="font-medium">{template.label}</span>
+                <span
+                  className={`rounded-md border px-2 py-1 text-xs ${
+                    templateId === template.id ? 'border-background/40' : 'text-muted-foreground'
+                  }`}
+                >
+                  {template.priority}
+                </span>
+              </span>
+              <span className="mt-2 block leading-5 opacity-80">{template.description}</span>
+              <span className="mt-2 block text-xs opacity-70">{template.bestFor}</span>
+            </button>
+          ))}
+        </div>
+      </fieldset>
+
       <label className="flex flex-col gap-2 text-sm font-medium">
         Title
         <input

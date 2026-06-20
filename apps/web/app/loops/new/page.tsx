@@ -1,5 +1,5 @@
-import Link from 'next/link';
 import path from 'node:path';
+import { Link } from '@/i18n/navigation';
 import NewLoopIssueForm from './new-loop-issue-form';
 
 // Resolve the workspace root server-side so the default `targetRepo` is portable

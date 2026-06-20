@@ -439,6 +439,73 @@ export const LoopMetricsActionItemSchema = z.object({
   href: z.string(),
 });
 
+export const LoopRequirementCoverageItemSchema = z.object({
+  id: z.string(),
+  criterion: z.string(),
+  inSpec: z.boolean(),
+  shardIds: z.array(z.string()),
+  testIds: z.array(z.string()),
+  implementationRecordIds: z.array(z.string()),
+  reviewRecordIds: z.array(z.string()),
+  status: z.enum(['missing', 'planned', 'implemented', 'tested', 'reviewed', 'accepted']),
+});
+
+export const LoopRequirementCoverageSummarySchema = z.object({
+  total: z.number().int().nonnegative(),
+  accepted: z.number().int().nonnegative(),
+  reviewed: z.number().int().nonnegative(),
+  tested: z.number().int().nonnegative(),
+  implemented: z.number().int().nonnegative(),
+  planned: z.number().int().nonnegative(),
+  missing: z.number().int().nonnegative(),
+  percent: z.number().min(0).max(100),
+});
+
+export const LoopRequirementCoverageSchema = z.object({
+  summary: LoopRequirementCoverageSummarySchema,
+  items: z.array(LoopRequirementCoverageItemSchema),
+});
+
+export const LoopEvidenceArtifactSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  kind: z.enum([
+    'raw-payload',
+    'issue',
+    'intake',
+    'spec',
+    'shards',
+    'test-matrix',
+    'implementation-record',
+    'test-record',
+    'review-record',
+    'global-review',
+    'convergence-pr',
+    'annotations',
+  ]),
+  path: z.string(),
+  status: z.enum(['present', 'pending']),
+  count: z.number().int().nonnegative().optional(),
+  summary: z.string().optional(),
+});
+
+export const LoopTraceSummarySchema = z.object({
+  total: z.number().int().nonnegative(),
+  recent: z.number().int().nonnegative(),
+  lastEventAt: z.string().optional(),
+  eventTypes: z.array(
+    z.object({
+      type: z.string(),
+      count: z.number().int().nonnegative(),
+    }),
+  ),
+});
+
+export const LoopResumeSummarySchema = z.object({
+  resumableShards: z.number().int().nonnegative(),
+  affectedIssues: z.number().int().nonnegative(),
+});
+
 export const LoopMetricsResponseSchema = z.object({
   health: z.object({
     ok: z.boolean(),
@@ -466,6 +533,9 @@ export const LoopMetricsResponseSchema = z.object({
   }),
   riskQueue: z.array(LoopMetricsRiskItemSchema),
   actionQueue: z.array(LoopMetricsActionItemSchema),
+  requirementsCoverage: LoopRequirementCoverageSummarySchema,
+  traceSummary: LoopTraceSummarySchema,
+  resumeSummary: LoopResumeSummarySchema,
 });
 
 export const LoopDetailSchema = z.object({
@@ -483,6 +553,8 @@ export const LoopDetailSchema = z.object({
   state: LoopStateItemSchema,
   globalReview: LoopGlobalReviewRecordSchema.optional(),
   convergencePr: LoopConvergencePrSchema.optional(),
+  requirementsCoverage: LoopRequirementCoverageSchema.optional(),
+  evidenceArtifacts: z.array(LoopEvidenceArtifactSchema).optional(),
 });
 
 export const LoopIssuesQuerySchema = PaginationQuerySchema.extend({
@@ -541,6 +613,89 @@ export const LoopsResumeResponseSchema = z.object({
   ),
 });
 
+export const LoopCapabilityStatusSchema = z.enum(['done', 'planned', 'in-progress']);
+
+export const LoopCapabilityCategorySchema = z.enum([
+  'agent',
+  'tool',
+  'integration',
+  'runtime',
+  'trace',
+  'checkpoint',
+  'evidence',
+]);
+
+export const LoopRegistryLifecycleSchema = z.enum(['active', 'planned', 'experimental']);
+
+export const LoopRegistryPermissionSchema = z.enum([
+  'read-repo',
+  'write-repo',
+  'run-tests',
+  'create-pr',
+  'notify-human',
+  'human-approval-required',
+]);
+
+export const LoopAgentRegistryItemSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  provider: z.enum(['codex', 'claude-code', 'third-party']),
+  lifecycle: LoopRegistryLifecycleSchema,
+  responsibilities: z.array(z.string()),
+  supportedPhases: z.array(LoopPhaseSchema),
+  permissions: z.array(LoopRegistryPermissionSchema),
+  toolIds: z.array(z.string()),
+});
+
+export const LoopToolRegistryItemSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  kind: z.enum(['code-execution', 'review', 'git', 'test', 'notification', 'artifact']),
+  lifecycle: LoopRegistryLifecycleSchema,
+  ownerAgentIds: z.array(z.string()),
+  permissions: z.array(LoopRegistryPermissionSchema),
+  deterministicBoundary: z.string(),
+  compatibility: z.object({
+    codex: z.boolean(),
+    claudeCode: z.boolean(),
+    thirdParty: z.enum(['unsupported', 'planned', 'compatible']),
+  }),
+});
+
+export const LoopAgentToolRegistrySchema = z.object({
+  agents: z.array(LoopAgentRegistryItemSchema),
+  tools: z.array(LoopToolRegistryItemSchema),
+  compatibilityChecks: z.array(
+    z.object({
+      id: z.string(),
+      status: z.enum(['pass', 'planned', 'fail']),
+      summary: z.string(),
+    }),
+  ),
+});
+
+export const LoopCapabilityItemSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  category: LoopCapabilityCategorySchema,
+  status: LoopCapabilityStatusSchema,
+  summary: z.string(),
+  currentFoundation: z.array(z.string()),
+  nextSteps: z.array(z.string()),
+  risks: z.array(z.string()).default([]),
+  agentToolRegistry: LoopAgentToolRegistrySchema.optional(),
+});
+
+export const LoopCapabilitiesResponseSchema = z.object({
+  capabilities: z.array(LoopCapabilityItemSchema),
+  summary: z.object({
+    total: z.number(),
+    done: z.number(),
+    planned: z.number(),
+    inProgress: z.number(),
+  }),
+});
+
 export type CreateLoopIssueRequest = z.infer<typeof CreateLoopIssueRequestSchema>;
 export type LoopSubmitterProvider = z.infer<typeof LoopSubmitterProviderSchema>;
 export type LoopSubmitter = z.infer<typeof LoopSubmitterSchema>;
@@ -571,6 +726,12 @@ export type LoopCostResponse = z.infer<typeof LoopCostResponseSchema>;
 export type LoopMetricsPhaseItem = z.infer<typeof LoopMetricsPhaseItemSchema>;
 export type LoopMetricsRiskItem = z.infer<typeof LoopMetricsRiskItemSchema>;
 export type LoopMetricsActionItem = z.infer<typeof LoopMetricsActionItemSchema>;
+export type LoopRequirementCoverageItem = z.infer<typeof LoopRequirementCoverageItemSchema>;
+export type LoopRequirementCoverageSummary = z.infer<typeof LoopRequirementCoverageSummarySchema>;
+export type LoopRequirementCoverage = z.infer<typeof LoopRequirementCoverageSchema>;
+export type LoopEvidenceArtifact = z.infer<typeof LoopEvidenceArtifactSchema>;
+export type LoopTraceSummary = z.infer<typeof LoopTraceSummarySchema>;
+export type LoopResumeSummary = z.infer<typeof LoopResumeSummarySchema>;
 export type LoopMetricsResponse = z.infer<typeof LoopMetricsResponseSchema>;
 export type LoopDetail = z.infer<typeof LoopDetailSchema>;
 export type LoopIssuesQuery = z.infer<typeof LoopIssuesQuerySchema>;
@@ -581,6 +742,15 @@ export type LoopReviewSpecRequest = z.infer<typeof LoopReviewSpecRequestSchema>;
 export type LoopInterventionRequest = z.infer<typeof LoopInterventionRequestSchema>;
 export type LoopsDoctorResponse = z.infer<typeof LoopsDoctorResponseSchema>;
 export type LoopsResumeResponse = z.infer<typeof LoopsResumeResponseSchema>;
+export type LoopCapabilityStatus = z.infer<typeof LoopCapabilityStatusSchema>;
+export type LoopCapabilityCategory = z.infer<typeof LoopCapabilityCategorySchema>;
+export type LoopRegistryLifecycle = z.infer<typeof LoopRegistryLifecycleSchema>;
+export type LoopRegistryPermission = z.infer<typeof LoopRegistryPermissionSchema>;
+export type LoopAgentRegistryItem = z.infer<typeof LoopAgentRegistryItemSchema>;
+export type LoopToolRegistryItem = z.infer<typeof LoopToolRegistryItemSchema>;
+export type LoopAgentToolRegistry = z.infer<typeof LoopAgentToolRegistrySchema>;
+export type LoopCapabilityItem = z.infer<typeof LoopCapabilityItemSchema>;
+export type LoopCapabilitiesResponse = z.infer<typeof LoopCapabilitiesResponseSchema>;
 export type LoopGlobalVerdict = z.infer<typeof LoopGlobalVerdictSchema>;
 export type LoopGlobalReviewRecord = z.infer<typeof LoopGlobalReviewRecordSchema>;
 export type LoopReloopRequest = z.infer<typeof LoopReloopRequestSchema>;

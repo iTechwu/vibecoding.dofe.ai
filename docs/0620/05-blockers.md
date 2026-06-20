@@ -4,20 +4,23 @@
 
 ## B3 · 真实 SSO 浏览器 E2E
 
-状态：blocked。
+状态：done（round 14，本地真实联调环境）。
 
-解除条件：
+已满足：
 
 - SSO client id / secret / issuer / callback 配置。
 - 可用测试账号与登录策略。
-- 可启动的 API / Web / Redis / PostgreSQL 联调环境。
-- 浏览器 E2E 执行命令、环境变量和 trace 保存位置。
+- 可启动的 SSO API/Web 与 vibecoding API/Web 联调环境。
+- 浏览器 E2E 执行命令与环境变量已记录在 `docs/0619/sso/09-implementation-status.md` 与 `docs/0620/03-deferred-items.md`。
 
-验收后更新：
+已验收：
 
-- `docs/0620/01-execution-plan.md`
-- `docs/0620/03-deferred-items.md`
-- `docs/0620/04-regression-checklist.md`
+- `SSO_E2E_ENABLED=1 E2E_SSO_MOBILE=<test-mobile> E2E_SSO_PASSWORD=<password> E2E_SSO_ORIGIN=http://127.0.0.1:3100 E2E_SSO_LOGIN_ORIGIN=http://127.0.0.1:3000 E2E_API_ORIGIN=http://127.0.0.1:13100 pnpm --filter @repo/web test:e2e:sso`：通过（Chromium，1 passed）。
+
+仍需按环境另行验收：
+
+- 生产/测试域名、生产 SSO secret、生产测试账号策略。
+- 对象存储预签名 PUT 与 CDN GET。
 
 ## B5 · 飞书入口 / 审批 / 反向通知
 

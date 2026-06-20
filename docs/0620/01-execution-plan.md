@@ -19,8 +19,8 @@
 | 批次 | 状态    | 目标                                | 为什么先做                                                          |
 | ---- | ------- | ----------------------------------- | ------------------------------------------------------------------- |
 | B1   | done    | 关闭 `OPT-5`                        | 已改为 config 文件位置解析并通过回归                                |
-| B2   | done    | Loops RBAC 最小门禁                 | 已按 read/create/operate/admin 分组并通过回归                       |
-| B3   | blocked | 真实 SSO 浏览器 E2E                 | 缺真实 SSO client secret、测试账号和可启动环境                      |
+| B2   | done    | Loops SSO 权限门禁                  | 已按 read/create/operate/admin 分组，统一走 sso.dofe.ai 权限源      |
+| B3   | done    | 真实 SSO 浏览器 E2E                 | 本地真实联调环境已启动并通过 browser E2E；生产/测试环境仍需各自验收 |
 | B4   | done    | 完整 E2E/build 矩阵                 | 已固化非真实 SSO 范围回归入口与 CI Loops 检查                       |
 | B5   | blocked | 飞书入口 / 审批 / 反向通知          | 缺 Feishu payload、签名配置、应用凭据和通知目标                     |
 | B6   | partial | 真实远端 PR 与 diff 自动回收        | PR provider client 已落地；真实凭据验收/diff 来源仍 blocked         |
@@ -50,29 +50,31 @@
 - `pnpm quality:gate`：通过。
 - `pnpm loops:doctor` / `pnpm loops:db-doctor`：通过。
 
-## B2 · RBAC 最小门禁
+## B2 · SSO 权限门禁
 
-状态：done（round 2 / 2026-06-20）。
+状态：done（round 2 / 2026-06-20；round 15 / 2026-06-21 对齐 SSO 唯一权限源）。
 
-目标：在已有 `@Auth('api')` 登录校验基础上，为 Loops 操作增加最小角色/权限控制。
+目标：在已有 `@Auth('api')` 登录校验基础上，为 Loops 操作增加角色/权限控制，且权限判断只能来自 `sso.dofe.ai`。
 
 实施结果：
 
-- 已在 `apps/api/src/modules/loops/loops-rbac.decorator.ts` 定义 `loops:read`、`loops:create`、`loops:operate`、`loops:admin`。
-- 已在 `apps/api/src/modules/loops/loops-rbac.guard.ts` 增加 Loops HTTP 局部门禁：管理员拥有全部权限；非生产 `MODE_USER_ID` 保留本地 bypass；其他用户通过 `LOOPS_RBAC_*_USER_IDS` allowlist 授权。
-- 已在 `apps/api/src/modules/loops/loops.controller.ts` 将端点分组标注，并通过 `LoopsRbacGuard` 执行。
-- 权限缺失复用 `CommonErrorCode.FeatureHasPermissions`，HTTP status 为 403，不落成普通 500。
+- 已在 `apps/api/libs/domain/auth/src/sso-permission.client.ts` 和 `permission.service.ts` 接入 SSO Internal API：`GET /internal/permissions/check`。
+- 已在 `apps/api/libs/domain/auth/src/guards/permission.guard.ts` 注册全局模块权限守卫，顺序为先 AuthGuard，后 PermissionGuard。
+- 已在 `apps/api/src/modules/loops/loops-rbac.decorator.ts` 将 Loops 权限映射为 `vibecoding:loops:read/create/operate/admin`。
+- 已移除 Loops 本地 allowlist guard；不再支持 `LOOPS_RBAC_*_USER_IDS` 作为权限源。
+- 权限缺失返回 `CommonErrorCode.UnAuthorized` / `Insufficient permissions`，不再误用 `CommonErrorCode.FeatureHasPermissions`。
 - CLI 直调 `LoopsService` 不经过 controller guard，仍保留无 HTTP RBAC 的内部/CLI 路径。
 
 验收：
 
 - 未登录：仍由全局 `AuthGuard` 拦截。
-- 已登录但无权限：`loops-rbac.guard.spec.ts` 覆盖 403。
-- 有权限用户：管理员、非生产 `MODE_USER_ID`、allowlist 用户均有单测覆盖。
+- 已登录但无 SSO 权限：`permission.guard.spec.ts` 覆盖拒绝路径。
+- 有权限用户：SSO 权限通过；SSO 同步的 `isAdmin=true` 可作为超级管理员短路。
 - CLI 直调 `LoopsService` 不受 HTTP RBAC 影响，Loops service smoke 继续通过。
 
 回归：
 
+- `pnpm --filter @repo/api test -- permission.guard.spec.ts`：通过。
 - `pnpm --filter @repo/api exec jest src/modules/loops --runInBand`：通过。
 - `pnpm --filter @repo/api exec jest src/bootstrap/i18n.bootstrap.spec.ts --runInBand`：通过。
 - `pnpm --filter @repo/api type-check`：通过。
@@ -86,7 +88,7 @@
 
 ## B3 · 真实 SSO 浏览器 E2E
 
-状态：blocked（round 2 / 2026-06-20）。
+状态：done（round 14 / 2026-06-20，本地真实联调环境）。
 
 目标：用真实浏览器路径验证登录、token 注入、Loops 页面访问和提交。
 
@@ -96,15 +98,24 @@
 - Redis / DB / API / Web 本地或测试环境可启动。
 - 可用测试账号。
 
-阻塞原因：当前工作区未提供真实 SSO client secret、可用测试账号、以及 API/Web/Redis/DB 的真实登录联调环境；不得用 mock 登录结果替代“真实 SSO 浏览器 E2E”验收。
+实施结果：
+
+- 已启动 `sso.dofe.ai` API `:3100`、SSO Web `:3000`、vibecoding API `:13100`、vibecoding Web `:3003`。
+- 已用 `apps/web/e2e/sso-real.spec.ts` 走真实浏览器链路：`/login` → SSO 登录 → OIDC callback/exchange → refresh → SSO uploader token/CDN metadata → logout → clear-session → refresh 失败。
+- 该验收使用 `sso.dofe.ai` 作为唯一 SSO 真源，不使用本地密码/SMS/sign 登录。
 
 验收：
 
-- 登录页跳转 OIDC。
-- callback 后写入 token。
-- `/loops` 能加载。
-- `/loops/new` 能提交并由服务端记录 `provider: dofe-sso`。
-- 不泄露 token 到 server action 或日志。
+- 登录页跳转 OIDC：已通过。
+- callback 后写入 token：已通过。
+- refresh token 不返回前端：已通过。
+- SSO 文件上传凭证/CDN metadata 通过 `/api/proxy/sso/api/uploader/token/private` 返回：已通过。
+- logout + clear-session 后 refresh 失败：已通过。
+
+边界：
+
+- 本轮未校验生产域名、生产账号策略、对象存储 PUT 与 CDN GET。
+- `/loops` 页面访问和 `/loops/new` 提交仍由普通 web/API/Loops 回归覆盖；本轮真实浏览器 E2E 聚焦 SSO/OIDC/session/file proxy 闭环。
 
 ## B4 · E2E/build 回归矩阵
 
@@ -130,7 +141,7 @@ round 4 优化：
 
 边界：
 
-- 真实 SSO 浏览器 E2E 仍归属 B3，因缺真实环境保持 blocked。
+- 真实 SSO 浏览器 E2E 已在 round 14 本地真实联调环境通过；生产/测试环境仍需按各自凭据重新验收。
 - CI 真实 DB smoke 仍依赖 workflow 中的 PostgreSQL service 与 `pnpm db:push`。
 
 ## B5-B8 后续批次

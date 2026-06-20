@@ -1,6 +1,6 @@
 # 09 · 实施状态与回归记录
 
-> 更新日期：2026-06-20  
+> 更新日期：2026-06-21  
 > 权威状态：本文件记录本轮实际落地结果。`sso.dofe.ai` 是用户、认证、会话与文件的唯一真源；`models.dofe.ai` 是实现参照。
 
 ## 1. 已完成范围
@@ -54,7 +54,8 @@
   - `vibecoding-dofe-ai` → `SSO_CLIENT_SECRET_VIBECODING`
   - `scaffold-dofe-ai` → `SSO_CLIENT_SECRET_SCAFFOLD`
 - 两个 client 均配置生产、测试、本地 web 与本地 API callback redirect URI。
-- 因两个项目尚未实现 `/internal/sso/outbox-alerts`，`opsConfig.outboxAlertWebhook.enabled` 暂为 `false`。
+- 历史说明：早期因两个项目尚未实现 `/internal/sso/outbox-alerts`，`opsConfig.outboxAlertWebhook.enabled` 曾暂为 `false`；第十九轮后 vibecoding 已实现该端点，scaffold 仍不作为真实告警验收对象。
+- 第十九轮起 vibecoding 已实现 `/internal/sso/outbox-alerts`，可接收 SSO outbox alert webhook；目标环境确认 `INTERNAL_API_SECRET` 与网络可达后可将 vibecoding client 的 `opsConfig.outboxAlertWebhook.enabled` 打开。scaffold 当前仍不作为真实 SSO 登录/告警验收对象。
 
 ## 2. 2026-06-20 深度审查修复
 
@@ -113,6 +114,9 @@
 - 第十五轮同步修订 `README` / `02` / `05` / `08` 中仍残留的 `@dofe/sso-node`、`@dofe/sso-contracts`、`@app/sso-client` 旧实施口径；当前准确口径为：后端直接用 `@dofe/infra-clients/sso` + `openid-client`，前端保留 `@dofe/sso-browser`，OIDC contract 由 `@repo/contracts` 承载。
 - 第十六轮复查发现审计枚举已包含 `LOGOUT`，但 OIDC logout 只做 access token blacklist 与 SSO logout URL 生成；已补齐 `AuditLogService.logLogout` 与 `/auth/oidc/logout` best-effort 调用，登出审计与登录审计形成闭环。登出审计只记录 `ssoSub` 与事件来源，不落 raw token / `jti`。
 - 第十七轮按“登录使用 `sso.dofe.ai` 作为 SSO 唯一真源”口径复查：删除前端兼容层残留的本地密码登录 `LoginRequest` / `login()` 导出；将 settings 手机绑定 schema 从 `MobileLoginRequestSchema` 重命名为 `MobileBindRequestSchema`，避免资料绑定接口继续出现 login 命名。当前登录入口仅为 `/login` → `/api/auth/oidc/authorize` → `sso.dofe.ai` OIDC。
+- 第十八轮在用户允许启动服务后重新执行真实本地联调：确认 `sso.dofe.ai` API `:3100`、SSO Web `:3000`、vibecoding API `:13100`、vibecoding Web `:3003` 均可用；先直接运行 `pnpm --filter @repo/web test:e2e:sso` 失败于缺少 `E2E_SSO_MOBILE`/`E2E_SSO_EMAIL`（该脚本会强制 `SSO_E2E_ENABLED=1`，必须提供测试账号）；随后使用本地 SSO seed 测试账号环境变量执行真实 Chromium E2E，`login → callback/exchange → refresh → SSO upload token/CDN metadata → logout → clear-session → refresh failed` 全链路通过。
+- 第十九轮继续扫描 `docs/0619/sso` 与当前代码，发现 `08-implementation-plan.md` 仍有两个未勾选项但已实际满足：三端联动真实 E2E 与 `vibecoding-dofe-ai` OAuth client seed；已用 SSO DB 检查脚本确认 vibecoding client active/confidential/secret/redirect/scopes/grantTypes 匹配。另发现 `06`/`09` 仍标注 `/internal/sso/outbox-alerts` 未实现；本轮新增 `apps/api/src/modules/sso-internal/`，提供内部 webhook，使用 `INTERNAL_API_SECRET` Bearer 鉴权并只记录脱敏摘要。真实 SSO E2E 复跑时发现 SSO 登录页字段定位不稳会把密码追加到手机号框，已将 `apps/web/e2e/sso-real.spec.ts` 改为优先按 accessible role/name 定位并在提交前断言字段值；随后又发现受控密码框在 `fill()` 后偶发回空，进一步改为滚动、点击、清空、逐字符输入并断言，真实 Chromium E2E 已复跑通过。
+- 第二十轮（2026-06-21）再次从 `docs/0619/sso` 与当前代码出发复核：`01-gap-analysis.md` 中的“缺失”仍为实施前历史记录，当前权威状态以本文件为准；代码扫描确认无 `signClient`/`signContract`/本地登录请求 schema/旧 `/sign/*`/旧 `auth-token`/`/settings/password` 入口复活，`refresh_token` 命中仅为 OIDC 服务端交换、HttpOnly cookie 注释、历史 migration 或第三方 TikTok OAuth server action，与 dofe SSO 用户真源无冲突。本轮补跑单条 `pnpm test`、真实 SSO Chromium E2E 与内部 webhook 真实 HTTP 401/403/200 验证，均通过。
 
 ## 3. 明确废弃/不再采用
 
@@ -216,11 +220,24 @@
 - `vibecoding.dofe.ai`: 第十七轮后 `pnpm --filter @repo/web test`（6 passed）+ `pnpm --filter @repo/validators test`（40 passed）
 - `vibecoding.dofe.ai`: 第十七轮后四项质量门禁通过：`check:architecture`、`check:list-contracts`、`check:sensitive-logs`、`check:utils-hygiene`
 - `vibecoding.dofe.ai`: 第十七轮登录旁路扫描确认无 `LoginRequest`、`MobileLoginRequest`、`loginSchema/registerSchema`、`signClient/signContract`、旧 `/sign/*`、旧 `auth-token`、本地 password login / SMS login contract 残留。
+- `vibecoding.dofe.ai`: 第十八轮服务启动确认：`lsof` 显示 `:3100`、`:3000`、`:13100`、`:3003` 均处于 LISTEN。
+- `vibecoding.dofe.ai`: 第十八轮 `pnpm --filter @repo/web test:e2e:sso`（未提供账号 env）失败，原因明确为 `E2E_SSO_EMAIL or E2E_SSO_MOBILE is required for SSO_E2E_ENABLED=1`；trace 位于 `apps/web/test-results/sso-real-login---callback--2fb96-en-CDN-metadata-through-SSO-chromium/trace.zip`。
+- `vibecoding.dofe.ai`: 第十八轮 `SSO_E2E_ENABLED=1 E2E_SSO_MOBILE=<test-mobile> E2E_SSO_PASSWORD=<password> E2E_SSO_ORIGIN=http://127.0.0.1:3100 E2E_SSO_LOGIN_ORIGIN=http://127.0.0.1:3000 E2E_API_ORIGIN=http://127.0.0.1:13100 pnpm --filter @repo/web test:e2e:sso`（Chromium，1 passed）。
+- `sso.dofe.ai`: 第十九轮 `check-oauth-clients.ts` 复核 `vibecoding-dofe-ai`：client 存在且配置正确；脚本后续因当前环境未提供 `SSO_CLIENT_SECRET_SCAFFOLD` 在 `scaffold-dofe-ai` 检查处失败，该失败不影响 vibecoding client 验收。
+- `vibecoding.dofe.ai`: 第十九轮 `pnpm --filter @repo/api exec jest src/modules/sso-internal --runInBand`（1 suite passed / 3 tests passed）。
+- `vibecoding.dofe.ai`: 第十九轮 `pnpm --filter @repo/api type-check` 通过。
+- `vibecoding.dofe.ai`: 第十九轮真实 HTTP 验证 `POST /internal/sso/outbox-alerts`：无 token 返回 401、错误 token 返回 403、正确 `INTERNAL_API_SECRET` 返回 200 `{ accepted: true }`。
+- `vibecoding.dofe.ai`: 第十九轮修复 E2E 登录页字段定位与受控输入框回空问题后，`SSO_E2E_ENABLED=1 E2E_SSO_MOBILE=<test-mobile> E2E_SSO_PASSWORD=<password> E2E_SSO_ORIGIN=http://127.0.0.1:3100 E2E_SSO_LOGIN_ORIGIN=http://127.0.0.1:3000 E2E_API_ORIGIN=http://127.0.0.1:13100 pnpm --filter @repo/web test:e2e:sso`（Chromium，1 passed）。
+- `vibecoding.dofe.ai`: 第二十轮服务端口确认：`lsof` 显示 `:3100`、`:3000`、`:13100`、`:3003` 均处于 LISTEN。
+- `vibecoding.dofe.ai`: 第二十轮单条全仓测试 `pnpm test` 通过（Turbo 9 tasks successful；api 9 suites passed / 1 skipped、33 passed / 3 skipped；contracts 44 passed；utils 60 passed；validators 40 passed；web 8 passed）。
+- `vibecoding.dofe.ai`: 第二十轮真实 Chromium E2E 复跑：`SSO_E2E_ENABLED=1 E2E_SSO_MOBILE=<test-mobile> E2E_SSO_PASSWORD=<password> E2E_SSO_ORIGIN=http://127.0.0.1:3100 E2E_SSO_LOGIN_ORIGIN=http://127.0.0.1:3000 E2E_API_ORIGIN=http://127.0.0.1:13100 pnpm --filter @repo/web test:e2e:sso`（Chromium，1 passed）。
+- `vibecoding.dofe.ai`: 第二十轮真实 HTTP 复验 `POST /internal/sso/outbox-alerts`：无 token 返回 401、错误 token 返回 403、正确 `INTERNAL_API_SECRET` 返回 200 `{ accepted: true }`。
 
 本轮不纳入验收：
 
 - 预签名 URL 对象存储 PUT 与 CDN GET：`dofe-public/private/system` 三桶按 SSO 规划先配置，后续由存储侧创建/绑定/CORS/CDN 处理；本轮仅验证 vibecoding 经 SSO 成功拿到上传凭证、物理 bucket 路由与 CDN 元数据。
-- `pnpm test` 全量 monorepo 测试未作为单条命令执行；本轮已执行可本地隔离验证的 api/contracts/web 测试，E2E 仍依赖真实 SSO 环境。
+- scaffold `scaffold-dofe-ai` OAuth client：当前 SSO DB 检查脚本因缺 `SSO_CLIENT_SECRET_SCAFFOLD` 未完成 scaffold client 创建/校验；scaffold 不作为本轮真实 SSO 验收对象。
+- 历史说明：第十九轮未将 `pnpm test` 作为单条命令执行；第二十轮已补跑单条 `pnpm test` 并通过。真实 SSO E2E 仍依赖可用 SSO API/Web、vibecoding API/Web 与测试账号。
 
 已验证：
 

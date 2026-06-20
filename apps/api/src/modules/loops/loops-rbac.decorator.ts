@@ -1,15 +1,13 @@
-import { SetMetadata } from '@nestjs/common';
-
-export const LOOPS_PERMISSION_KEY = 'loopsPermission';
+import { RequireModulePermission } from '@app/auth';
 
 export const LOOPS_PERMISSION = {
-  READ: 'loops:read',
-  CREATE: 'loops:create',
-  OPERATE: 'loops:operate',
-  ADMIN: 'loops:admin',
+  READ: 'read',
+  CREATE: 'create',
+  OPERATE: 'operate',
+  ADMIN: 'admin',
 } as const;
 
 export type LoopsPermission = (typeof LOOPS_PERMISSION)[keyof typeof LOOPS_PERMISSION];
 
 export const RequireLoopsPermission = (permission: LoopsPermission) =>
-  SetMetadata(LOOPS_PERMISSION_KEY, permission);
+  RequireModulePermission('vibecoding', 'loops', permission);

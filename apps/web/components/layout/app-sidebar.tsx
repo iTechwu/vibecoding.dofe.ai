@@ -15,7 +15,7 @@ import {
   SidebarTrigger,
 } from '@repo/ui';
 import { cn } from '@repo/ui/lib/utils';
-import { LayoutDashboard, Settings, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Link, usePathname } from '@/i18n/navigation';
 import { useApp, useIsAdmin } from '@/providers';
@@ -45,16 +45,6 @@ const navGroups: NavGroup[] = [
         titleKey: 'dashboard',
         href: '/',
         icon: LayoutDashboard,
-      },
-    ],
-  },
-  {
-    groupKey: 'settings',
-    items: [
-      {
-        titleKey: 'settings',
-        href: '/settings',
-        icon: Settings,
       },
     ],
   },

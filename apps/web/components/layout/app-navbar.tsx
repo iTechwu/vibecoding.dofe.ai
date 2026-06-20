@@ -16,7 +16,7 @@ import {
   Separator,
   SidebarTrigger,
 } from '@repo/ui';
-import { LogOut, Search, Settings, User } from 'lucide-react';
+import { LayoutDashboard, LogOut, Search, User } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { LocaleSwitcher } from './locale-switcher';
@@ -68,16 +68,9 @@ export function AppNavbar() {
         >
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-8 rounded-full"
-              >
+              <Button variant="ghost" size="icon" className="size-8 rounded-full">
                 <Avatar className="size-8">
-                  <AvatarImage
-                    src={user?.headerImg || ''}
-                    alt={user?.nickname || 'User'}
-                  />
+                  <AvatarImage src={user?.headerImg || ''} alt={user?.nickname || 'User'} />
                   <AvatarFallback className="text-xs">
                     {initials || <User className="size-4" />}
                   </AvatarFallback>
@@ -85,20 +78,12 @@ export function AppNavbar() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel>
-                {user?.nickname || t('account')}
-              </DropdownMenuLabel>
+              <DropdownMenuLabel>{user?.nickname || t('account')}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
-                <Link href="/settings">
-                  <User className="mr-2 size-4" />
-                  {t('profile')}
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/settings">
-                  <Settings className="mr-2 size-4" />
-                  {t('settings')}
+                <Link href="/">
+                  <LayoutDashboard className="mr-2 size-4" />
+                  {t('dashboard')}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />

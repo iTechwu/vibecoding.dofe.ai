@@ -15,6 +15,8 @@ export const loopsKeys = {
   detail: (issueId: string) => [...loopsKeys.all, 'detail', issueId] as const,
   doctor: () => [...loopsKeys.all, 'doctor'] as const,
   cost: () => [...loopsKeys.all, 'cost'] as const,
+  metrics: () => [...loopsKeys.all, 'metrics'] as const,
+  capabilities: () => [...loopsKeys.all, 'capabilities'] as const,
   logs: (query: Record<string, unknown>) => [...loopsKeys.all, 'logs', query] as const,
   notifications: (query: Record<string, unknown>) =>
     [...loopsKeys.all, 'notifications', query] as const,
@@ -40,6 +42,18 @@ export function useLoopsDoctor() {
 export function useLoopsCost() {
   const queryKey = loopsKeys.cost();
   return tsRestClient.loops.cost.useQuery(queryKey, {}, { queryKey, staleTime: 0 });
+}
+
+/** Aggregated Loops control-plane metrics. */
+export function useLoopsMetrics() {
+  const queryKey = loopsKeys.metrics();
+  return tsRestClient.loops.metrics.useQuery(queryKey, {}, { queryKey, staleTime: 0 });
+}
+
+/** Loops capability registry and planned integration surface. */
+export function useLoopsCapabilities() {
+  const queryKey = loopsKeys.capabilities();
+  return tsRestClient.loops.capabilities.useQuery(queryKey, {}, { queryKey, staleTime: 0 });
 }
 
 /** Recent Loops log events. */
@@ -77,6 +91,7 @@ function useInvalidateIssue(issueId?: string) {
     }
     queryClient.invalidateQueries({ queryKey: loopsKeys.doctor() });
     queryClient.invalidateQueries({ queryKey: loopsKeys.cost() });
+    queryClient.invalidateQueries({ queryKey: loopsKeys.metrics() });
   };
 }
 

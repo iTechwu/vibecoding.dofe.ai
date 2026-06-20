@@ -68,7 +68,7 @@ export const SECRET_ENV_MAP: Record<string, string> = {
   grantTypes: ['authorization_code', 'refresh_token'],
   scopes: ['openid', 'profile', 'email', 'tenant', 'offline_access'],
   isConfidential: true,
-  // 可选：仅当 vibecoding 实现 /internal/sso/outbox-alerts 端点时启用
+  // 可选：vibecoding 已实现 /internal/sso/outbox-alerts，可在目标环境确认 INTERNAL_API_SECRET 后启用
   opsConfig: {
     outboxAlertWebhook: {
       enabled: true,
@@ -82,7 +82,7 @@ export const SECRET_ENV_MAP: Record<string, string> = {
 > 说明：
 >
 > - OIDC callback 由 **api** 处理（`/auth/oidc/callback`），故必须含 api 端口 `13100` 的回调；web 端口 `3003` 的各回调用于前端转发路由与 login 页。
-> - `outboxAlertWebhook.url` 用 vibecoding api 端口 13100（对齐 models=3101/agents=3102）。若 vibecoding 暂未实现该端点，置 `enabled: false` 或移除 `opsConfig`。
+> - `outboxAlertWebhook.url` 用 vibecoding api 端口 13100（对齐 models=3101/agents=3102）。vibecoding 当前已提供 `/internal/sso/outbox-alerts`，目标 SSO 环境可在确认 `INTERNAL_API_SECRET` 与网络可达后启用。
 
 ### 3.3 颁发凭证
 
@@ -105,3 +105,4 @@ pnpm db:seed
 - seed 后查询：`SELECT client_id, redirect_uris FROM t_oauth_client WHERE client_id='vibecoding-dofe-ai';` 命中且字段正确。
 - 在 vibecoding 发起 `/auth/oidc/authorize` → 跳转 sso 不报 `invalid redirect_uri`。
 - 回调 `http://127.0.0.1:13100/auth/oidc/callback` 被 sso 接受。
+- 2026-06-20 本地 SSO DB 复核：`vibecoding-dofe-ai` 已存在、`isActive=true`、`isConfidential=true`、secret 校验通过、redirect URI/scopes/grantTypes 与配置一致。复核脚本继续检查到 `scaffold-dofe-ai` 时因当前环境未提供 `SSO_CLIENT_SECRET_SCAFFOLD` 失败；该失败不影响 vibecoding client 验收。

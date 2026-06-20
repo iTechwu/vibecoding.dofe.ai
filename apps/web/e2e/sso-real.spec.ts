@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const enabled = process.env.SSO_E2E_ENABLED === '1';
 const email = process.env.E2E_SSO_EMAIL;
@@ -19,15 +19,30 @@ function requireEnv(name: string, value: string | undefined): string {
   return value;
 }
 
+async function fillStable(locator: Locator, value: string): Promise<void> {
+  await locator.scrollIntoViewIfNeeded();
+  await locator.click();
+  await locator.fill('');
+  await locator.pressSequentially(value);
+  await expect(locator).toHaveValue(value);
+}
+
 async function fillIfVisible(page: Page, selectors: string[], value: string): Promise<boolean> {
   for (const selector of selectors) {
     const locator = page.locator(selector).first();
     if (await locator.isVisible().catch(() => false)) {
-      await locator.fill(value);
+      await fillStable(locator, value);
       return true;
     }
   }
   return false;
+}
+
+async function fillRequired(page: Page, label: string, selectors: string[], value: string) {
+  const filled = await fillIfVisible(page, selectors, value);
+  if (!filled) {
+    throw new Error(`Unable to find visible ${label} field on SSO login page`);
+  }
 }
 
 async function clickFirstVisible(page: Page, selectors: string[]): Promise<boolean> {
@@ -49,44 +64,62 @@ async function completeSsoLogin(page: Page): Promise<void> {
   await page.waitForLoadState('domcontentloaded');
 
   if (email) {
-    await fillIfVisible(
-      page,
-      [
-        '#login-email',
-        'input[name="email"]',
-        'input[type="email"]',
-        'input[autocomplete="email"]',
-        'input[placeholder*="email" i]',
-      ],
-      email,
-    );
+    const emailField = page.getByRole('textbox', { name: /email/i }).first();
+    if (await emailField.isVisible().catch(() => false)) {
+      await fillStable(emailField, email);
+    } else {
+      await fillRequired(
+        page,
+        'email',
+        [
+          'input#login-email',
+          'input[name="email"]',
+          'input[type="email"]',
+          'input[autocomplete="email"]',
+          'input[placeholder*="email" i]',
+        ],
+        email,
+      );
+    }
   } else if (mobile) {
-    await fillIfVisible(
-      page,
-      [
-        '#login-mobile',
-        'input[name="mobile"]',
-        'input[type="tel"]',
-        'input[autocomplete="tel"]',
-        'input[placeholder="Enter your mobile number"]',
-        'input[placeholder*="mobile" i]',
-      ],
-      mobile,
-    );
+    const mobileField = page.getByRole('textbox', { name: /mobile number/i }).first();
+    if (await mobileField.isVisible().catch(() => false)) {
+      await fillStable(mobileField, mobile);
+    } else {
+      await fillRequired(
+        page,
+        'mobile',
+        [
+          'input#login-mobile',
+          'input[name="mobile"]',
+          'input[type="tel"]',
+          'input[autocomplete="tel"]',
+          'input[placeholder="Enter your mobile number"]',
+          'input[placeholder*="mobile" i]',
+        ],
+        mobile,
+      );
+    }
   }
 
-  await fillIfVisible(
-    page,
-    [
-      '#login-password',
-      'input[name="password"]',
-      'input[type="password"]',
-      'input[autocomplete="current-password"]',
-      'input[placeholder="Enter your password"]',
-      'input[placeholder*="password" i]',
-    ],
-    password!,
-  );
+  const passwordField = page.getByRole('textbox', { name: /^password$/i }).first();
+  if (await passwordField.isVisible().catch(() => false)) {
+    await fillStable(passwordField, password!);
+  } else {
+    await fillRequired(
+      page,
+      'password',
+      [
+        'input#login-password',
+        'input[name="password"]',
+        'input[type="password"]',
+        'input[autocomplete="current-password"]',
+        'input[placeholder="Enter your password"]',
+        'input[placeholder*="password" i]',
+      ],
+      password!,
+    );
+  }
 
   const submitted = await clickFirstVisible(page, [
     'button[type="submit"]',

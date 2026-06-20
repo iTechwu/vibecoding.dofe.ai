@@ -17,12 +17,14 @@ export class UserSyncService {
 
   async ensureLocalUserExists(ssoSub: string): Promise<UserInfo> {
     const existingUser = await this.userInfoService.get({ ssoSub });
-    if (existingUser) return existingUser;
+    if (existingUser) {
+      return this.syncLocalUserFromSso(existingUser, ssoSub);
+    }
 
     const legacyUser = await this.userInfoService.getById(ssoSub);
     if (legacyUser) {
       await this.backfillSsoSub(legacyUser.id, ssoSub);
-      return legacyUser;
+      return this.syncLocalUserFromSso(legacyUser, ssoSub);
     }
 
     let ssoUser: {
@@ -56,7 +58,7 @@ export class UserSyncService {
       const emailUser = await this.userInfoService.get({ email: ssoUser.email });
       if (emailUser) {
         await this.backfillSsoSub(emailUser.id, ssoSub);
-        return emailUser;
+        return this.syncLocalUserFromSso(emailUser, ssoSub, ssoUser);
       }
     }
 
@@ -76,14 +78,14 @@ export class UserSyncService {
       });
 
       const retryBySsoSub = await this.userInfoService.get({ ssoSub });
-      if (retryBySsoSub) return retryBySsoSub;
+      if (retryBySsoSub) return this.syncLocalUserFromSso(retryBySsoSub, ssoSub, ssoUser);
 
       const retryById = await this.userInfoService.getById(ssoSub);
-      if (retryById) return retryById;
+      if (retryById) return this.syncLocalUserFromSso(retryById, ssoSub, ssoUser);
 
       if (ssoUser.email) {
         const retryByEmail = await this.userInfoService.get({ email: ssoUser.email });
-        if (retryByEmail) return retryByEmail;
+        if (retryByEmail) return this.syncLocalUserFromSso(retryByEmail, ssoSub, ssoUser);
       }
 
       throw apiError(CommonErrorCode.UnAuthorized, {
@@ -100,6 +102,71 @@ export class UserSyncService {
         userId,
         ssoSub,
         error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async syncLocalUserFromSso(
+    user: UserInfo,
+    ssoSub: string,
+    providedSsoUser?: {
+      nickname?: string | null;
+      email?: string | null;
+      mobile?: string | null;
+      isAdmin?: boolean;
+      isActive?: boolean;
+    },
+  ): Promise<UserInfo> {
+    const ssoUser = providedSsoUser ?? (await this.fetchSsoUser(ssoSub));
+
+    if (ssoUser.isActive === false) {
+      throw apiError(CommonErrorCode.UnAuthorized, {
+        message: 'SSO user account is inactive',
+      });
+    }
+
+    const update: Partial<Pick<UserInfo, 'ssoSub' | 'nickname' | 'email' | 'mobile' | 'isAdmin'>> =
+      {};
+
+    if (user.ssoSub !== ssoSub) update.ssoSub = ssoSub;
+    if (ssoUser.nickname && user.nickname !== ssoUser.nickname) {
+      update.nickname = ssoUser.nickname;
+    }
+    if (ssoUser.email && user.email !== ssoUser.email) {
+      update.email = ssoUser.email;
+    }
+    if (ssoUser.mobile && user.mobile !== ssoUser.mobile) {
+      update.mobile = ssoUser.mobile;
+    }
+    if (typeof ssoUser.isAdmin === 'boolean' && user.isAdmin !== ssoUser.isAdmin) {
+      update.isAdmin = ssoUser.isAdmin;
+    }
+
+    if (Object.keys(update).length === 0) {
+      return user;
+    }
+
+    await this.userInfoService.update({ id: user.id }, update);
+    return { ...user, ...update };
+  }
+
+  private async fetchSsoUser(ssoSub: string): Promise<{
+    id: string;
+    nickname?: string | null;
+    email?: string | null;
+    mobile?: string | null;
+    isAdmin?: boolean;
+    isActive?: boolean;
+  }> {
+    try {
+      return await this.ssoAuthClient.getUser(ssoSub);
+    } catch (error) {
+      this.logger.error('Failed to fetch user from SSO', {
+        ssoSub,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw apiError(CommonErrorCode.UnAuthorized, {
+        message: 'SSO user not found or inaccessible',
       });
     }
   }

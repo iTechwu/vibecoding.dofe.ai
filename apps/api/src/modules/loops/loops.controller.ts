@@ -1,4 +1,4 @@
-import { Controller, Inject, Req, UseGuards, VERSION_NEUTRAL } from '@nestjs/common';
+import { Controller, Inject, Req, VERSION_NEUTRAL } from '@nestjs/common';
 import { TsRestHandler, tsRestHandler } from '@ts-rest/nest';
 import { created, success } from '@dofe/infra-common/ts-rest';
 import { loopsContract as c } from '@repo/contracts/api';
@@ -9,11 +9,9 @@ import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
 import type { Prisma } from '@prisma/client';
 import { LOOPS_PERMISSION, RequireLoopsPermission } from './loops-rbac.decorator';
-import { LoopsRbacGuard } from './loops-rbac.guard';
 import { LoopsService } from './loops.service';
 
 @Auth('api')
-@UseGuards(LoopsRbacGuard)
 @Controller({
   version: VERSION_NEUTRAL,
 })
@@ -245,6 +243,14 @@ export class LoopsController {
   async metrics() {
     return tsRestHandler(c.metrics, async () => {
       return success(await this.loopsService.metrics());
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.capabilities)
+  async capabilities() {
+    return tsRestHandler(c.capabilities, async () => {
+      return success(await this.loopsService.capabilities());
     });
   }
 

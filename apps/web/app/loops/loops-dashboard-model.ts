@@ -1,4 +1,9 @@
-import type { LoopCostResponse, LoopListResponse } from '@repo/contracts';
+import type {
+  LoopCostResponse,
+  LoopListResponse,
+  LoopMetricsActionItem,
+  LoopNotification,
+} from '@repo/contracts';
 
 export type LoopListItem = LoopListResponse['list'][number];
 export type RiskLevel = 'critical' | 'warning' | 'info';
@@ -11,6 +16,49 @@ export interface RiskItem {
   reason: string;
   meta: string;
 }
+
+export interface AgingItem {
+  id: string;
+  title: string;
+  href: string;
+  level: RiskLevel;
+  ageHours: number;
+  phase: string;
+  updated: string;
+}
+
+export interface ReviewInboxItem {
+  id: string;
+  title: string;
+  href: string;
+  source: 'action' | 'notification';
+  priority: RiskLevel;
+  label: string;
+  meta: string;
+}
+
+const HUMAN_ACTIONS = new Set<LoopMetricsActionItem['action']>([
+  'review-spec',
+  'resume',
+  'reloop',
+  'finalize',
+]);
+
+const HUMAN_NOTIFICATION_KINDS = new Set<LoopNotification['kind']>([
+  'SPEC_REVIEW_REQUESTED',
+  'HUMAN_INTERVENTION',
+  'COST_GUARD_TRIPPED',
+  'CONVERGENCE_READY',
+  'SHARD_REDO_LIMIT',
+  'RELOOP_LIMIT',
+  'CONTEXT_BUDGET_EXCEEDED',
+]);
+
+export const AGING_QUEUE_SLA_POLICY = {
+  warningHours: 24,
+  criticalHours: 72,
+  label: 'Warning at 24h stale; critical at 72h stale.',
+} as const;
 
 export const PHASE_LABELS: Record<string, string> = {
   PHASE_0_INTAKE: 'Intake',
@@ -121,6 +169,88 @@ export function buildRiskQueue(items: LoopListItem[], cost?: LoopCostResponse): 
       return risks;
     })
     .slice(0, 6);
+}
+
+export function buildAgingQueue(items: LoopListItem[], now = new Date()): AgingItem[] {
+  const nowMs = now.getTime();
+  return items
+    .filter(({ issue }) => !['CLOSED', 'ARCHIVED', 'REJECTED'].includes(issue.status))
+    .map((item) => {
+      const updated = item.state?.updated ?? item.issue.updated;
+      const updatedMs = new Date(updated).getTime();
+      const ageHours = Number.isFinite(updatedMs)
+        ? Math.max(0, Math.floor((nowMs - updatedMs) / 3_600_000))
+        : 0;
+      return {
+        id: `${item.issue.id}-aging`,
+        title: item.issue.title,
+        href: `/loops/${item.issue.id}`,
+        level:
+          ageHours >= AGING_QUEUE_SLA_POLICY.criticalHours
+            ? 'critical'
+            : ageHours >= AGING_QUEUE_SLA_POLICY.warningHours
+              ? 'warning'
+              : 'info',
+        ageHours,
+        phase: item.state?.phase ?? 'PHASE_0_INTAKE',
+        updated,
+      } satisfies AgingItem;
+    })
+    .filter((item) => item.ageHours >= AGING_QUEUE_SLA_POLICY.warningHours)
+    .sort((a, b) => b.ageHours - a.ageHours)
+    .slice(0, 6);
+}
+
+export function buildReviewInbox(
+  actions: LoopMetricsActionItem[],
+  notifications: LoopNotification[] = [],
+): ReviewInboxItem[] {
+  const actionItems = actions
+    .filter((item) => HUMAN_ACTIONS.has(item.action))
+    .map(
+      (item): ReviewInboxItem => ({
+        id: `action-${item.issueId}-${item.action}`,
+        title: item.title,
+        href: item.href,
+        source: 'action',
+        priority:
+          item.action === 'resume' || item.action === 'reloop'
+            ? 'critical'
+            : item.action === 'review-spec'
+              ? 'warning'
+              : 'info',
+        label: item.label,
+        meta: `${formatPhase(item.phase ?? 'PHASE_0_INTAKE')} · ${item.priority}`,
+      }),
+    );
+
+  const notificationItems = notifications
+    .filter((item) => HUMAN_NOTIFICATION_KINDS.has(item.kind))
+    .map(
+      (item): ReviewInboxItem => ({
+        id: `notification-${item.id}`,
+        title: item.title,
+        href: item.actionHref ?? `/loops/${item.issueId}`,
+        source: 'notification',
+        priority:
+          item.kind === 'COST_GUARD_TRIPPED' ||
+          item.kind === 'SHARD_REDO_LIMIT' ||
+          item.kind === 'RELOOP_LIMIT' ||
+          item.kind === 'CONTEXT_BUDGET_EXCEEDED'
+            ? 'critical'
+            : 'warning',
+        label: item.kind.replaceAll('_', ' '),
+        meta: `${item.status} · ${item.created}`,
+      }),
+    );
+
+  const severityRank: Record<RiskLevel, number> = { critical: 0, warning: 1, info: 2 };
+  return [...actionItems, ...notificationItems]
+    .sort(
+      (a, b) =>
+        severityRank[a.priority] - severityRank[b.priority] || a.title.localeCompare(b.title),
+    )
+    .slice(0, 8);
 }
 
 export function formatPhase(phase: string) {

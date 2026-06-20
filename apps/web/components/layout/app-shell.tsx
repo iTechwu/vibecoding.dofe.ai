@@ -11,7 +11,7 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   return (
     <SidebarProvider defaultOpen={true}>
-      <div className="flex h-screen flex-col w-full">
+      <div className="flex h-dvh flex-col w-full">
         {/* Full-width navbar at top */}
         <AppNavbar />
 

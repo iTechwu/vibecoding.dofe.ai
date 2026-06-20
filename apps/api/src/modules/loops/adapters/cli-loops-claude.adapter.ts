@@ -141,13 +141,14 @@ export class CliLoopsClaudeAdapter implements LoopsClaudeAdapter {
       `标题: ${shard.title}`,
       `验收标准:`,
       ...shard.acceptance.map((item) => `- ${item}`),
+      `请逐条对照上述验收标准实施，尤其不要遗漏来自用户初始需求的验收项。`,
       `测试要求(unit/integration/e2e):`,
       ...[
         ...shard.testRequirements.unit,
         ...shard.testRequirements.integration,
         ...shard.testRequirements.e2e,
       ].map((item) => `- ${item}`),
-      `完成后请输出 JSON：{"summary": string, "changedFiles": string[], "testsChanged": string[], "tokens": number}。`,
+      `完成后请输出 JSON：{"summary": string, "changedFiles": string[], "testsChanged": string[], "tokens": number}，summary 中必须说明每条验收标准的覆盖证据。`,
     ].join('\n');
   }
 }

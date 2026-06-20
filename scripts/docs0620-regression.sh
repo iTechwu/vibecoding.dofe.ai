@@ -21,6 +21,10 @@ pnpm --filter @repo/api exec jest src/modules/loops --runInBand
 
 pnpm loops:doctor
 pnpm loops:db-doctor
+pnpm loops:metrics
+pnpm loops:db-metrics
+pnpm loops:digest
+pnpm loops:db-digest
 
 if [[ "${LOOPS_DB_SMOKE:-}" == "1" ]]; then
   pnpm --filter @repo/api exec jest src/modules/loops/loops-persistence.db.spec.ts --runInBand

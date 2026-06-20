@@ -1,8 +1,8 @@
 'use client';
 
-import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import type { LoopDetail } from '@repo/contracts';
+import { Link } from '@/i18n/navigation';
+import type { LoopDetail, LoopEvidenceArtifact, LoopLogEntry } from '@repo/contracts';
 import { useFormState } from './use-loop-operations';
 import { useLoopIssue } from '@/lib/api/contracts/hooks';
 
@@ -86,6 +86,16 @@ function summarizeEvidence(detail: LoopDetail) {
   ] as const;
 }
 
+function requirementStatusClass(status: string) {
+  if (status === 'accepted' || status === 'reviewed') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100';
+  }
+  if (status === 'missing') {
+    return 'border-red-200 bg-red-50 text-red-950 dark:border-red-900/70 dark:bg-red-950/20 dark:text-red-100';
+  }
+  return 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100';
+}
+
 function actionToneClass(tone: string) {
   if (tone === 'attention') {
     return 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100';
@@ -94,6 +104,197 @@ function actionToneClass(tone: string) {
     return 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100';
   }
   return 'border-border bg-muted/40 text-foreground';
+}
+
+function traceToneClass(type: string) {
+  if (type.includes('REVIEW') || type.includes('VERDICT')) {
+    return 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100';
+  }
+  if (type.includes('TEST')) {
+    return 'border-sky-200 bg-sky-50 text-sky-950 dark:border-sky-900/70 dark:bg-sky-950/20 dark:text-sky-100';
+  }
+  if (type.includes('IMPLEMENT') || type.includes('FINAL')) {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100';
+  }
+  return 'border-border bg-muted/40 text-foreground';
+}
+
+function summarizeLogPayload(entry: LoopLogEntry) {
+  const payloadItems = Object.entries(entry.payload ?? {})
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .slice(0, 3)
+    .map(([key, value]) => {
+      if (Array.isArray(value)) {
+        return `${key}: ${value.length} items`;
+      }
+      if (typeof value === 'object') {
+        return `${key}: object`;
+      }
+      return `${key}: ${String(value)}`;
+    });
+
+  return payloadItems.join(' · ');
+}
+
+function buildTraceTimeline(logs: LoopLogEntry[]) {
+  return logs.slice(0, 16).map((entry, index) => ({
+    id: `${entry.ts}-${entry.type}-${entry.shard ?? entry.issue ?? entry.loop ?? index}`,
+    time: entry.ts,
+    type: entry.type,
+    scope: entry.shard ?? entry.issue ?? entry.loop ?? 'loop',
+    signal: entry.verdict ?? entry.status ?? entry.action ?? '',
+    payload: summarizeLogPayload(entry),
+  }));
+}
+
+function buildTraceScopeSummary(logs: LoopLogEntry[]) {
+  const scopeMap = new Map<
+    string,
+    {
+      id: string;
+      eventCount: number;
+      lastEvent: string;
+      lastType: string;
+      signal: string;
+    }
+  >();
+
+  for (const entry of logs) {
+    const id = entry.shard ?? entry.issue ?? entry.loop ?? 'loop';
+    const existing = scopeMap.get(id);
+    if (existing) {
+      existing.eventCount += 1;
+      continue;
+    }
+    scopeMap.set(id, {
+      id,
+      eventCount: 1,
+      lastEvent: entry.ts,
+      lastType: entry.type,
+      signal: entry.verdict ?? entry.status ?? entry.action ?? '',
+    });
+  }
+
+  return Array.from(scopeMap.values())
+    .sort((a, b) => b.eventCount - a.eventCount || b.lastEvent.localeCompare(a.lastEvent))
+    .slice(0, 6);
+}
+
+function buildResumeCheckpoints(detail: LoopDetail) {
+  const latestEventByShard = new Map<string, LoopLogEntry>();
+  for (const entry of detail.logs) {
+    if (entry.shard && !latestEventByShard.has(entry.shard)) {
+      latestEventByShard.set(entry.shard, entry);
+    }
+  }
+
+  if (detail.shards.length === 0) {
+    const latestEvent = detail.logs[0];
+    return [
+      {
+        id: `${detail.issue.id}-phase`,
+        label: 'Issue phase',
+        status: detail.state.paused ? 'paused' : detail.state.phase,
+        action: detail.state.paused ? 'Resume loop' : getNextAction(detail).label,
+        meta: `round ${detail.state.round} · ${detail.state.specVersion}`,
+        lastEvent: latestEvent?.ts,
+        lastSignal: latestEvent
+          ? `${latestEvent.type}${(latestEvent.verdict ?? latestEvent.status ?? latestEvent.action) ? ` · ${latestEvent.verdict ?? latestEvent.status ?? latestEvent.action}` : ''}`
+          : undefined,
+      },
+    ];
+  }
+
+  return detail.shards.map((shard) => {
+    const latestEvent = latestEventByShard.get(shard.id);
+    const isResumable =
+      detail.state.paused ||
+      shard.status === 'IN_PROGRESS' ||
+      shard.status === 'BLOCKED' ||
+      shard.status === 'TIMEOUT' ||
+      shard.status === 'FAILED' ||
+      shard.status === 'NEEDS-WORK';
+    return {
+      id: shard.id,
+      label: shard.title,
+      status: shard.status,
+      action: isResumable
+        ? 'Resume or take over'
+        : shard.status === 'DONE'
+          ? 'No action'
+          : 'Run step',
+      meta: `${shard.estEffort} effort · ${shard.acceptance.length} acceptance checks`,
+      lastEvent: latestEvent?.ts,
+      lastSignal: latestEvent
+        ? `${latestEvent.type}${(latestEvent.verdict ?? latestEvent.status ?? latestEvent.action) ? ` · ${latestEvent.verdict ?? latestEvent.status ?? latestEvent.action}` : ''}`
+        : undefined,
+    };
+  });
+}
+
+function buildCheckpointDiff(detail: LoopDetail) {
+  const coverage = detail.requirementsCoverage?.summary;
+  const passingTests = detail.testRecords.filter((record) => record.status === 'TEST-PASS').length;
+  const failedTests = detail.testRecords.filter((record) => record.status !== 'TEST-PASS').length;
+  const blockedShards = detail.shards.filter((shard) =>
+    ['BLOCKED', 'FAILED', 'TIMEOUT', 'NEEDS-WORK'].includes(shard.status),
+  );
+  return [
+    {
+      label: 'Spec revision',
+      before: detail.state.round > 1 ? `round ${detail.state.round - 1}` : 'intake',
+      after: `${detail.state.specVersion} · round ${detail.state.round}`,
+    },
+    {
+      label: 'Requirements',
+      before: `${coverage?.missing ?? detail.issue.acceptanceCriteria.length} missing`,
+      after: `${coverage?.percent ?? 0}% covered`,
+    },
+    {
+      label: 'Shards',
+      before: `${blockedShards.length} blocked`,
+      after: `${detail.state.shardsDone}/${detail.state.shardsTotal} done`,
+    },
+    {
+      label: 'Tests',
+      before: `${failedTests} failing`,
+      after: `${passingTests} passing`,
+    },
+  ];
+}
+
+function artifactGroup(kind: LoopEvidenceArtifact['kind']) {
+  if (kind === 'raw-payload' || kind === 'issue' || kind === 'intake') return 'Request';
+  if (kind === 'spec' || kind === 'shards' || kind === 'test-matrix') return 'Planning';
+  if (kind === 'implementation-record') return 'Implementation';
+  if (kind === 'test-record') return 'Test';
+  if (kind === 'review-record' || kind === 'global-review' || kind === 'annotations') {
+    return 'Review';
+  }
+  return 'Delivery';
+}
+
+function artifactRecoveryHint(artifact: LoopEvidenceArtifact) {
+  if (artifact.status === 'present') return 'Ready for audit';
+  if (artifact.kind === 'spec') return 'Generate or approve the spec';
+  if (artifact.kind === 'shards') return 'Decompose the approved spec';
+  if (artifact.kind === 'test-matrix') return 'Decompose shards to create the matrix';
+  if (artifact.kind === 'implementation-record') return 'Record implementation evidence';
+  if (artifact.kind === 'test-record') return 'Run shard or regression tests';
+  if (artifact.kind === 'review-record') return 'Record shard review evidence';
+  if (artifact.kind === 'global-review') return 'Run global review';
+  if (artifact.kind === 'convergence-pr') return 'Finalize the loop';
+  return 'Capture the missing artifact';
+}
+
+function buildArtifactWorkspace(artifacts: LoopEvidenceArtifact[]) {
+  const order = ['Request', 'Planning', 'Implementation', 'Test', 'Review', 'Delivery'];
+  return order
+    .map((group) => ({
+      group,
+      artifacts: artifacts.filter((artifact) => artifactGroup(artifact.kind) === group),
+    }))
+    .filter((item) => item.artifacts.length > 0);
 }
 
 export default function LoopIssueDetailPage() {
@@ -116,6 +317,59 @@ export default function LoopIssueDetailPage() {
 
   const nextAction = getNextAction(detail);
   const evidence = summarizeEvidence(detail);
+  const requirementsCoverage = detail.requirementsCoverage ?? {
+    summary: {
+      total: detail.issue.acceptanceCriteria.length,
+      accepted: 0,
+      reviewed: 0,
+      tested: 0,
+      implemented: 0,
+      planned: 0,
+      missing: detail.issue.acceptanceCriteria.length,
+      percent: detail.issue.acceptanceCriteria.length === 0 ? 100 : 0,
+    },
+    items: detail.issue.acceptanceCriteria.map((criterion, index) => ({
+      id: `REQ-${index + 1}`,
+      criterion,
+      inSpec: false,
+      shardIds: [],
+      testIds: [],
+      implementationRecordIds: [],
+      reviewRecordIds: [],
+      status: 'missing' as const,
+    })),
+  };
+  const evidenceArtifacts = detail.evidenceArtifacts ?? [
+    {
+      id: `${detail.issue.id}-raw-payload`,
+      label: 'Raw Payload',
+      kind: 'raw-payload',
+      path: detail.issue.rawPayloadRef,
+      status: 'present',
+      summary: 'Original request payload captured for audit.',
+    },
+    {
+      id: `${detail.issue.id}-issue`,
+      label: 'Issue Record',
+      kind: 'issue',
+      path: `.loops/issues/${detail.issue.id}.json`,
+      status: 'present',
+      summary: `${detail.issue.priority} ${detail.issue.status} issue with ${detail.issue.acceptanceCriteria.length} acceptance criteria.`,
+    },
+    {
+      id: `${detail.issue.id}-intake`,
+      label: 'Intake Record',
+      kind: 'intake',
+      path: `.loops/intakes/${detail.intake.id}.json`,
+      status: 'present',
+      summary: `${detail.intake.status} intake normalized from ${detail.intake.sourceChannel}.`,
+    },
+  ];
+  const traceTimeline = buildTraceTimeline(detail.logs);
+  const traceScopeSummary = buildTraceScopeSummary(detail.logs);
+  const resumeCheckpoints = buildResumeCheckpoints(detail);
+  const checkpointDiff = buildCheckpointDiff(detail);
+  const artifactWorkspace = buildArtifactWorkspace(evidenceArtifacts);
 
   return (
     <main className="min-h-screen bg-background px-6 py-8">
@@ -271,6 +525,45 @@ export default function LoopIssueDetailPage() {
                 </div>
               </dl>
               <p className="mt-5 whitespace-pre-wrap text-sm">{detail.issue.body}</p>
+            </div>
+
+            <div className="rounded-lg border p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold">Initial Requirements Coverage</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {requirementsCoverage.summary.accepted}/{requirementsCoverage.summary.total}{' '}
+                    accepted · {requirementsCoverage.summary.percent}%
+                  </p>
+                </div>
+                <span
+                  className={`rounded-md border px-2 py-1 text-xs font-medium ${requirementStatusClass(
+                    requirementsCoverage.summary.percent === 100 ? 'accepted' : 'missing',
+                  )}`}
+                >
+                  {requirementsCoverage.summary.percent === 100 ? 'covered' : 'needs work'}
+                </span>
+              </div>
+              <div className="mt-4 flex flex-col gap-3">
+                {requirementsCoverage.items.map((item) => (
+                  <div className="rounded-md border p-3" key={item.id}>
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-sm font-medium">{item.criterion}</p>
+                      <span
+                        className={`shrink-0 rounded-md border px-2 py-1 text-xs ${requirementStatusClass(
+                          item.status,
+                        )}`}
+                      >
+                        {item.status}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      spec {item.inSpec ? 'yes' : 'no'} · shards {item.shardIds.length} · tests{' '}
+                      {item.testIds.length} · reviews {item.reviewRecordIds.length}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="rounded-lg border p-5">
@@ -474,6 +767,49 @@ export default function LoopIssueDetailPage() {
 
             <div className="rounded-lg border p-5">
               <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold">Evidence Artifact Workspace</h2>
+                <span className="text-xs text-muted-foreground">
+                  {evidenceArtifacts.filter((item) => item.status === 'present').length}/
+                  {evidenceArtifacts.length} present
+                </span>
+              </div>
+              <div className="mt-4 flex flex-col gap-4">
+                {artifactWorkspace.map(({ group, artifacts }) => (
+                  <div className="rounded-md border p-3" key={group}>
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-sm font-medium">{group}</h3>
+                      <span className="text-xs text-muted-foreground">
+                        {artifacts.filter((item) => item.status === 'present').length}/
+                        {artifacts.length}
+                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-col gap-2">
+                      {artifacts.map((artifact) => (
+                        <div className="rounded-md bg-muted/30 p-3" key={artifact.id}>
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="truncate text-sm font-medium">{artifact.label}</p>
+                            <span className="text-xs text-muted-foreground">{artifact.status}</span>
+                          </div>
+                          <p className="mt-2 break-all text-xs text-muted-foreground">
+                            {artifact.kind} · {artifact.path}
+                            {artifact.count !== undefined ? ` · ${artifact.count}` : ''}
+                          </p>
+                          {artifact.summary ? (
+                            <p className="mt-2 text-xs text-foreground">{artifact.summary}</p>
+                          ) : null}
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            {artifactRecoveryHint(artifact)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border p-5">
+              <div className="flex items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold">Global Review</h2>
                 <span className="text-xs text-muted-foreground">
                   {detail.globalReview?.verdict ?? 'none'}
@@ -615,6 +951,118 @@ export default function LoopIssueDetailPage() {
                         {annotation.risk}
                       </p>
                       <p className="mt-2 text-xs">{annotation.notes}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-lg border p-5">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold">Resume Checkpoints</h2>
+                <span className="text-xs text-muted-foreground">
+                  {resumeCheckpoints.length} checkpoints
+                </span>
+              </div>
+              <div className="mt-4 flex flex-col gap-3">
+                <div className="rounded-md border bg-muted/20 p-3">
+                  <h3 className="text-sm font-medium">Checkpoint Diff</h3>
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {checkpointDiff.map((item) => (
+                      <div className="rounded-md bg-background p-3 text-xs" key={item.label}>
+                        <p className="font-medium">{item.label}</p>
+                        <p className="mt-1 text-muted-foreground">
+                          {item.before} to {item.after}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {resumeCheckpoints.map((checkpoint) => (
+                  <div className="rounded-md border p-3" key={checkpoint.id}>
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium">{checkpoint.label}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{checkpoint.meta}</p>
+                      </div>
+                      <span className="rounded-md border bg-muted/40 px-2 py-1 text-xs">
+                        {checkpoint.status}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {checkpoint.action}
+                      {checkpoint.lastSignal ? ` · ${checkpoint.lastSignal}` : ''}
+                      {checkpoint.lastEvent ? ` · last event ${checkpoint.lastEvent}` : ''}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border p-5">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold">Trace Timeline</h2>
+                <span className="text-xs text-muted-foreground">
+                  {traceTimeline.length}/{detail.logs.length} events
+                </span>
+              </div>
+              <div className="mt-4">
+                <h3 className="text-sm font-medium">Scope Summary</h3>
+                <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+                  {traceScopeSummary.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No trace scopes yet.</p>
+                  ) : (
+                    traceScopeSummary.map((scope) => (
+                      <div className="rounded-md border bg-muted/20 p-3" key={scope.id}>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="truncate text-sm font-medium">{scope.id}</p>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {scope.eventCount} events
+                          </span>
+                        </div>
+                        <p className="mt-1 truncate text-xs text-muted-foreground">
+                          {scope.lastType}
+                          {scope.signal ? ` · ${scope.signal}` : ''} · last {scope.lastEvent}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+              <div className="mt-4 flex flex-col gap-3">
+                {traceTimeline.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No trace events yet.</p>
+                ) : (
+                  traceTimeline.map((entry) => (
+                    <div className="grid grid-cols-[18px_1fr] gap-3" key={entry.id}>
+                      <div className="flex flex-col items-center">
+                        <span className="mt-1 h-2.5 w-2.5 rounded-full bg-foreground" />
+                        <span className="mt-1 min-h-8 w-px flex-1 bg-border" />
+                      </div>
+                      <div className="rounded-md border p-3">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-medium">{entry.type}</p>
+                            <p className="mt-1 break-all text-xs text-muted-foreground">
+                              {entry.time} · {entry.scope}
+                            </p>
+                          </div>
+                          {entry.signal ? (
+                            <span
+                              className={`rounded-md border px-2 py-1 text-xs ${traceToneClass(
+                                entry.type,
+                              )}`}
+                            >
+                              {entry.signal}
+                            </span>
+                          ) : null}
+                        </div>
+                        {entry.payload ? (
+                          <p className="mt-2 break-words text-xs text-muted-foreground">
+                            {entry.payload}
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
                   ))
                 )}

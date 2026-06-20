@@ -8,6 +8,9 @@ import {
 import type {
   CreateLoopIssueRequest,
   LoopAnnotation,
+  LoopCapabilitiesResponse,
+  LoopCapabilityItem,
+  LoopEvidenceArtifact,
   LoopGlobalReviewRecord,
   LoopImplementationRecord,
   LoopIntake,
@@ -18,6 +21,11 @@ import type {
   LoopMetricsActionItem,
   LoopMetricsResponse,
   LoopMetricsRiskItem,
+  LoopRequirementCoverage,
+  LoopRequirementCoverageItem,
+  LoopRequirementCoverageSummary,
+  LoopResumeSummary,
+  LoopTraceSummary,
   LoopRecordShardImplementationRequest,
   LoopReviewRecord,
   LoopReviewShardRequest,
@@ -122,7 +130,7 @@ export class LoopsService {
 
   async getIssue(issueId: string) {
     try {
-      return await this.readDetail(issueId);
+      return this.withRequirementsCoverage(await this.readDetail(issueId));
     } catch {
       throw new NotFoundException(`Issue ${issueId} not found`);
     }
@@ -205,11 +213,11 @@ export class LoopsService {
   private async syncAndRead(issueId: string): Promise<LoopIssueDetail> {
     const detail = await this.store.readDetail(issueId);
     if (!this.persistence) {
-      return detail;
+      return this.withRequirementsCoverage(detail);
     }
 
     await this.persistence.syncState(detail.state, detail.issue.status);
-    return this.persistence.readDetail(issueId);
+    return this.withRequirementsCoverage(await this.persistence.readDetail(issueId));
   }
 
   private async readDetail(issueId: string): Promise<LoopIssueDetail> {
@@ -757,11 +765,16 @@ export class LoopsService {
   }
 
   async metrics(): Promise<LoopMetricsResponse> {
-    const [list, doctor, cost] = await Promise.all([
+    const [list, doctor, cost, logs] = await Promise.all([
       this.list({ page: 1, limit: 200 }),
       this.doctor(),
       this.cost(),
+      this.store.readLogs({ limit: 200 }),
     ]);
+    const coverageSummaries = await Promise.all(
+      list.list.map(async (item) => this.readCoverageSummary(item.issue.id)),
+    );
+    const requirementsCoverage = this.aggregateCoverageSummaries(coverageSummaries);
     const active = list.list.filter(
       ({ issue }) => !['CLOSED', 'ARCHIVED', 'REJECTED'].includes(issue.status),
     );
@@ -779,7 +792,8 @@ export class LoopsService {
       costTripped.length +
       list.list.filter(
         ({ issue, state }) => issue.priority === 'P0' || state?.globalVerdict === 'FAIL',
-      ).length;
+      ).length +
+      coverageSummaries.filter((summary) => summary.missing > 0 || summary.percent < 100).length;
 
     return {
       health: {
@@ -814,9 +828,309 @@ export class LoopsService {
           ? Math.min(...cost.loops.map((item) => item.tokensRemaining))
           : 0,
       },
-      riskQueue: this.buildRiskQueue(list.list, cost.loops),
+      riskQueue: this.buildRiskQueue(list.list, cost.loops, coverageSummaries),
       actionQueue: this.buildActionQueue(list.list),
+      requirementsCoverage,
+      traceSummary: this.buildTraceSummary(logs),
+      resumeSummary: this.buildResumeSummary(list.list),
     };
+  }
+
+  async capabilities(): Promise<LoopCapabilitiesResponse> {
+    const capabilities: LoopCapabilityItem[] = [
+      {
+        id: 'codex-claude-adapters',
+        label: 'Codex / Claude Code Adapters',
+        category: 'agent',
+        status: 'done',
+        summary: 'Primary implementation and review agents are wired into the Loops lifecycle.',
+        currentFoundation: [
+          'Codex and Claude adapter interfaces exist behind deterministic service boundaries.',
+          'Loop execution records implementation, review, test, and final annotation evidence.',
+        ],
+        nextSteps: ['Promote adapter health and model routing into the registry view.'],
+        risks: [],
+      },
+      {
+        id: 'a2a-tool-registry',
+        label: 'A2A / Tool Registry',
+        category: 'tool',
+        status: 'in-progress',
+        summary:
+          'Expose agent-to-agent capabilities, tool ownership, permissions, and compatibility checks as a deterministic registry.',
+        currentFoundation: [
+          'Codex and Claude adapters already run behind stable Loops service contracts.',
+          'Capability registry API now provides a product-visible planning index.',
+          'Agent/tool ownership and deterministic execution boundaries are now represented in the registry payload.',
+        ],
+        nextSteps: [
+          'Add third-party agent lifecycle states and compatibility checks.',
+          'Promote registry entries from static service metadata to admin-managed configuration.',
+        ],
+        risks: ['Tool execution permissions and tenant isolation require explicit policy review.'],
+        agentToolRegistry: {
+          agents: [
+            {
+              id: 'codex-planner-reviewer',
+              label: 'Codex Planner / Reviewer',
+              provider: 'codex',
+              lifecycle: 'active',
+              responsibilities: [
+                'Normalize initial requirements into specs and shards.',
+                'Review implementation evidence before convergence.',
+                'Refresh final annotations and requirement coverage.',
+              ],
+              supportedPhases: [
+                'PHASE_1_SPEC',
+                'PHASE_2_REVIEW',
+                'PHASE_3_DECOMPOSE',
+                'PHASE_5_REVIEW',
+                'PHASE_7_GLOBAL_REVIEW',
+                'PHASE_8_ANNOTATE',
+              ],
+              permissions: ['read-repo', 'run-tests', 'human-approval-required'],
+              toolIds: ['spec-shard-planner', 'implementation-reviewer', 'trace-evidence-reader'],
+            },
+            {
+              id: 'claude-code-implementer',
+              label: 'Claude Code Implementer',
+              provider: 'claude-code',
+              lifecycle: 'active',
+              responsibilities: [
+                'Implement approved shards inside the target repository.',
+                'Report changed files, tests changed, duration, and token/call estimates.',
+              ],
+              supportedPhases: ['PHASE_4_IMPLEMENT'],
+              permissions: ['read-repo', 'write-repo', 'run-tests', 'human-approval-required'],
+              toolIds: ['repo-code-editor', 'test-runner', 'trace-evidence-reader'],
+            },
+            {
+              id: 'third-party-agent-slot',
+              label: 'Third-party Agent Slot',
+              provider: 'third-party',
+              lifecycle: 'planned',
+              responsibilities: [
+                'Declare compatible phases, permissions, and tool ownership before execution.',
+                'Pass registry compatibility checks before receiving loop work.',
+              ],
+              supportedPhases: ['PHASE_4_IMPLEMENT', 'PHASE_5_REVIEW'],
+              permissions: ['read-repo', 'human-approval-required'],
+              toolIds: [],
+            },
+          ],
+          tools: [
+            {
+              id: 'spec-shard-planner',
+              label: 'Spec / Shard Planner',
+              kind: 'artifact',
+              lifecycle: 'active',
+              ownerAgentIds: ['codex-planner-reviewer'],
+              permissions: ['read-repo'],
+              deterministicBoundary:
+                'Writes spec, shard, test matrix, and annotation records through LoopsService only.',
+              compatibility: { codex: true, claudeCode: false, thirdParty: 'planned' },
+            },
+            {
+              id: 'repo-code-editor',
+              label: 'Repository Code Editor',
+              kind: 'code-execution',
+              lifecycle: 'active',
+              ownerAgentIds: ['claude-code-implementer'],
+              permissions: ['read-repo', 'write-repo', 'human-approval-required'],
+              deterministicBoundary:
+                'Requires approved shard scope and records changed files before review.',
+              compatibility: { codex: false, claudeCode: true, thirdParty: 'planned' },
+            },
+            {
+              id: 'test-runner',
+              label: 'Shard Test Runner',
+              kind: 'test',
+              lifecycle: 'active',
+              ownerAgentIds: ['claude-code-implementer', 'codex-planner-reviewer'],
+              permissions: ['run-tests'],
+              deterministicBoundary:
+                'Runs only recorded test commands and persists stdout/stderr in test records.',
+              compatibility: { codex: true, claudeCode: true, thirdParty: 'planned' },
+            },
+            {
+              id: 'implementation-reviewer',
+              label: 'Implementation Reviewer',
+              kind: 'review',
+              lifecycle: 'active',
+              ownerAgentIds: ['codex-planner-reviewer'],
+              permissions: ['read-repo'],
+              deterministicBoundary:
+                'Consumes implementation and test records, then emits PASS/NEEDS-WORK/FAIL.',
+              compatibility: { codex: true, claudeCode: false, thirdParty: 'planned' },
+            },
+            {
+              id: 'convergence-pr-provider',
+              label: 'Convergence PR Provider',
+              kind: 'git',
+              lifecycle: 'experimental',
+              ownerAgentIds: ['codex-planner-reviewer'],
+              permissions: ['read-repo', 'create-pr', 'human-approval-required'],
+              deterministicBoundary:
+                'Creates convergence PR evidence only after all shards pass global review.',
+              compatibility: { codex: true, claudeCode: false, thirdParty: 'unsupported' },
+            },
+            {
+              id: 'human-notification-sender',
+              label: 'Human Notification Sender',
+              kind: 'notification',
+              lifecycle: 'active',
+              ownerAgentIds: ['codex-planner-reviewer'],
+              permissions: ['notify-human'],
+              deterministicBoundary:
+                'Records notification attempts and skips external channels without configuration.',
+              compatibility: { codex: true, claudeCode: false, thirdParty: 'planned' },
+            },
+            {
+              id: 'trace-evidence-reader',
+              label: 'Trace Evidence Reader',
+              kind: 'artifact',
+              lifecycle: 'active',
+              ownerAgentIds: ['codex-planner-reviewer', 'claude-code-implementer'],
+              permissions: ['read-repo'],
+              deterministicBoundary:
+                'Reads Loops logs, records, and evidence artifacts without arbitrary file access.',
+              compatibility: { codex: true, claudeCode: true, thirdParty: 'planned' },
+            },
+          ],
+          compatibilityChecks: [
+            {
+              id: 'phase-tool-ownership',
+              status: 'pass',
+              summary: 'Every active tool is owned by at least one active Loops agent.',
+            },
+            {
+              id: 'write-repo-approval-boundary',
+              status: 'pass',
+              summary: 'Repository write tools require human approval and shard scope.',
+            },
+            {
+              id: 'third-party-lifecycle',
+              status: 'planned',
+              summary:
+                'Third-party agents must declare lifecycle, permissions, and compatible tools before execution.',
+            },
+          ],
+        },
+      },
+      {
+        id: 'feishu-integration',
+        label: 'Feishu Integration',
+        category: 'integration',
+        status: 'planned',
+        summary: 'Support Feishu as an intake, approval, and notification channel.',
+        currentFoundation: [
+          'Loops notification sender supports Feishu webhook configuration.',
+          'Notification records are already visible in the control plane.',
+        ],
+        nextSteps: [
+          'Add Feishu intake client and signed webhook validation.',
+          'Map Feishu approval commands into Loops intervention actions.',
+        ],
+        risks: ['Workspace credentials and command permission mapping are deployment-specific.'],
+      },
+      {
+        id: 'remote-pr-diff',
+        label: 'Remote PR / Diff',
+        category: 'integration',
+        status: 'planned',
+        summary: 'Ingest remote provider pull requests, diffs, and review artifacts into Loops.',
+        currentFoundation: [
+          'Convergence PR evidence exists in the finalize phase.',
+          'Git adapter boundaries isolate provider-specific commit and PR behavior.',
+        ],
+        nextSteps: [
+          'Add provider client auth and diff artifact ingestion.',
+          'Link recovered evidence back to shard and global review records.',
+        ],
+        risks: ['Provider rate limits and fork permission models need runtime handling.'],
+      },
+      {
+        id: 'worker-concurrency',
+        label: 'Worker / Concurrency',
+        category: 'runtime',
+        status: 'planned',
+        summary: 'Run Loops safely across workers while preserving deterministic issue state.',
+        currentFoundation: [
+          'Work lock service protects issue-level execution.',
+          'Resume endpoint can recover interrupted shard states.',
+        ],
+        nextSteps: [
+          'Introduce queue worker ownership and concurrency limits.',
+          'Define repo lock policy for multi-issue execution.',
+        ],
+        risks: ['Repository mutation conflicts must be prevented before parallel writes.'],
+      },
+      {
+        id: 'complete-span-trace',
+        label: 'Complete Span Trace',
+        category: 'trace',
+        status: 'planned',
+        summary: 'Represent every loop step as parent/child spans with lifecycle timing.',
+        currentFoundation: [
+          'Immutable log entries and trace summary are exposed by metrics.',
+          'Dashboard already surfaces recent event types and last signal timing.',
+        ],
+        nextSteps: [
+          'Add span id, parent id, start/end timestamps, and outcome fields.',
+          'Render a per-issue span tree beside existing recent events.',
+        ],
+        risks: ['Trace volume needs retention and filtering policy before production scale.'],
+      },
+      {
+        id: 'checkpoint-snapshot-browser',
+        label: 'Backend Checkpoint Snapshot Browser',
+        category: 'checkpoint',
+        status: 'planned',
+        summary:
+          'Browse backend checkpoints and restore candidates without inspecting files manually.',
+        currentFoundation: [
+          'Resume summary exposes resumable shard and affected issue counts.',
+          'Issue detail includes logs, records, state, and evidence artifacts.',
+        ],
+        nextSteps: [
+          'Persist immutable checkpoint snapshots for state transitions.',
+          'Add browser API with snapshot metadata, diff, and restore eligibility.',
+        ],
+        risks: ['Snapshot visibility must avoid leaking repo paths or sensitive payloads.'],
+      },
+      {
+        id: 'snapshot-storage-recovery',
+        label: 'Snapshot Storage / Recovery Semantics',
+        category: 'checkpoint',
+        status: 'planned',
+        summary: 'Define durable snapshot storage, replay, restore, and rollback semantics.',
+        currentFoundation: [
+          '.loops remains the source of truth with DB indexing for control-plane reads.',
+          'Resume endpoint repairs interrupted shard status from persisted state.',
+        ],
+        nextSteps: [
+          'Introduce immutable snapshot records with retention policy.',
+          'Define replay, restore, rollback guard, and audit requirements.',
+        ],
+        risks: ['Recovery must remain deterministic across file store and DB index drift.'],
+      },
+    ];
+    const summary = capabilities.reduce(
+      (acc, item) => {
+        acc.total += 1;
+        if (item.status === 'done') {
+          acc.done += 1;
+        } else if (item.status === 'planned') {
+          acc.planned += 1;
+        } else {
+          acc.inProgress += 1;
+        }
+        return acc;
+      },
+      { total: 0, done: 0, planned: 0, inProgress: 0 },
+    );
+
+    return { capabilities, summary };
   }
 
   async logs(input: { issueId?: string; limit?: number }) {
@@ -1184,6 +1498,18 @@ export class LoopsService {
   private collectGlobalEvidenceIssues(detail: Awaited<ReturnType<LoopsService['getIssue']>>) {
     const issues: Array<{ severity: 'minor' | 'major' | 'critical'; desc: string }> = [];
     const currentRound = detail.state.round;
+    const requirementsCoverage =
+      detail.requirementsCoverage ?? this.buildRequirementsCoverage(detail);
+    const uncovered = requirementsCoverage.items.filter(
+      (item) => item.status !== 'reviewed' && item.status !== 'accepted',
+    );
+
+    for (const item of uncovered) {
+      issues.push({
+        severity: item.status === 'missing' ? 'critical' : 'major',
+        desc: `Initial requirement ${item.id} is ${item.status}: ${item.criterion}`,
+      });
+    }
 
     for (const shard of detail.shards) {
       const implementation = detail.implementationRecords.find(
@@ -1427,8 +1753,12 @@ export class LoopsService {
   private buildRiskQueue(
     items: LoopListItem[],
     costs: Awaited<ReturnType<LoopsFileStoreService['readCost']>>['loops'],
+    coverageSummaries: LoopRequirementCoverageSummary[],
   ): LoopMetricsRiskItem[] {
     const costByIssue = new Map(costs.map((item) => [item.issueId, item]));
+    const coverageByIssue = new Map(
+      items.map((item, index) => [item.issue.id, coverageSummaries[index]]),
+    );
     return items
       .flatMap((item): LoopMetricsRiskItem[] => {
         const base = {
@@ -1445,6 +1775,14 @@ export class LoopsService {
         }
         if (costByIssue.get(item.issue.id)?.tripped) {
           risks.push({ ...base, level: 'critical', reason: 'Cost guard tripped' });
+        }
+        const coverage = coverageByIssue.get(item.issue.id);
+        if (coverage && coverage.total > 0 && coverage.percent < 100) {
+          risks.push({
+            ...base,
+            level: coverage.missing > 0 ? 'critical' : 'warning',
+            reason: `Requirements coverage ${coverage.percent}%`,
+          });
         }
         if (item.state?.globalVerdict && item.state.globalVerdict !== 'PASS') {
           risks.push({
@@ -1514,5 +1852,308 @@ export class LoopsService {
 
   private formatPhase(phase: string) {
     return PHASE_LABELS[phase] ?? phase.replace('PHASE_', 'P').replaceAll('_', ' ');
+  }
+
+  private buildTraceSummary(
+    logs: Awaited<ReturnType<LoopsFileStoreService['readLogs']>>,
+  ): LoopTraceSummary {
+    const eventCounts = logs.reduce<Record<string, number>>((acc, entry) => {
+      acc[entry.type] = (acc[entry.type] ?? 0) + 1;
+      return acc;
+    }, {});
+    return {
+      total: logs.length,
+      recent: logs.slice(0, 20).length,
+      lastEventAt: logs[0]?.ts,
+      eventTypes: Object.entries(eventCounts)
+        .map(([type, count]) => ({ type, count }))
+        .sort((a, b) => b.count - a.count || a.type.localeCompare(b.type))
+        .slice(0, 8),
+    };
+  }
+
+  private buildResumeSummary(items: LoopListItem[]): LoopResumeSummary {
+    const affected = new Set<string>();
+    let resumableShards = 0;
+    for (const item of items) {
+      if (!item.state) continue;
+      resumableShards += item.state.shardsInProgress;
+      if (item.state.paused || item.state.phase === 'PAUSED' || item.state.shardsInProgress > 0) {
+        affected.add(item.issue.id);
+      }
+    }
+    return {
+      resumableShards,
+      affectedIssues: affected.size,
+    };
+  }
+
+  private withRequirementsCoverage(detail: LoopIssueDetail): LoopIssueDetail {
+    return {
+      ...detail,
+      requirementsCoverage: this.buildRequirementsCoverage(detail),
+      evidenceArtifacts: this.buildEvidenceArtifacts(detail),
+    };
+  }
+
+  private buildEvidenceArtifacts(detail: LoopIssueDetail): LoopEvidenceArtifact[] {
+    const issueId = detail.issue.id;
+    const artifacts: LoopEvidenceArtifact[] = [
+      {
+        id: `${issueId}-raw-payload`,
+        label: 'Raw Payload',
+        kind: 'raw-payload',
+        path: detail.issue.rawPayloadRef,
+        status: 'present',
+        summary: `Original ${detail.issue.sourceChannel}/${detail.issue.sourceKind} request from ${detail.issue.submitterName ?? detail.issue.submitterId}.`,
+      },
+      {
+        id: `${issueId}-issue`,
+        label: 'Issue Record',
+        kind: 'issue',
+        path: `.loops/issues/${issueId}.json`,
+        status: 'present',
+        summary: `${detail.issue.priority} ${detail.issue.status} issue with ${detail.issue.acceptanceCriteria.length} initial acceptance criteria.`,
+      },
+      {
+        id: `${issueId}-intake`,
+        label: 'Intake Record',
+        kind: 'intake',
+        path: `.loops/intakes/${detail.intake.id}.json`,
+        status: 'present',
+        summary: `${detail.intake.status} intake normalized from ${detail.intake.sourceChannel}/${detail.intake.sourceKind}.`,
+      },
+      {
+        id: `${issueId}-spec`,
+        label: 'Spec',
+        kind: 'spec',
+        path: `.loops/specs/${issueId}/spec.${detail.state.specVersion}.json`,
+        status: detail.spec ? 'present' : 'pending',
+        summary: detail.spec
+          ? `${detail.spec.status} spec ${detail.spec.version} maps ${detail.issue.acceptanceCriteria.length} initial acceptance criteria.`
+          : `Spec ${detail.state.specVersion} has not been generated yet.`,
+      },
+      {
+        id: `${issueId}-shards`,
+        label: 'Shards',
+        kind: 'shards',
+        path: `.loops/shards/${issueId}/shards.json`,
+        status: detail.shards.length > 0 ? 'present' : 'pending',
+        count: detail.shards.length,
+        summary:
+          detail.shards.length > 0
+            ? `${detail.shards.filter((shard) => shard.status === 'DONE').length}/${detail.shards.length} shards done; ${detail.shards.filter((shard) => shard.status === 'IN_PROGRESS').length} in progress.`
+            : 'No implementation shards have been decomposed yet.',
+      },
+      {
+        id: `${issueId}-test-matrix`,
+        label: 'Test Matrix',
+        kind: 'test-matrix',
+        path: `.loops/tests/${issueId}/matrix.json`,
+        status: detail.testMatrix ? 'present' : 'pending',
+        count: detail.testMatrix?.requiredTests.length,
+        summary: detail.testMatrix
+          ? `${detail.testMatrix.requiredTests.length} required tests across ${detail.testMatrix.regressionScope.length} regression targets.`
+          : 'Test matrix is pending until decomposition completes.',
+      },
+      {
+        id: `${issueId}-annotations`,
+        label: 'Annotations',
+        kind: 'annotations',
+        path: `.loops/annotations/${issueId}.json`,
+        status: detail.annotations.length > 0 ? 'present' : 'pending',
+        count: detail.annotations.length,
+        summary:
+          detail.annotations.length > 0
+            ? `${detail.annotations.length} reviewer annotations captured for requirement coverage.`
+            : 'No reviewer annotations have been recorded yet.',
+      },
+    ];
+
+    artifacts.push(
+      ...detail.implementationRecords.map((record) => ({
+        id: record.id,
+        label: `Implementation ${record.shardId}`,
+        kind: 'implementation-record' as const,
+        path: `.loops/runs/${issueId}/${record.shardId}/${record.round}/implementation.json`,
+        status: 'present' as const,
+        count: record.changedFiles.length,
+        summary: `${record.status} implementation for ${record.shardId}; ${record.changedFiles.length} changed files recorded.`,
+      })),
+      ...detail.testRecords.map((record) => ({
+        id: record.id,
+        label: `Test ${record.shardId}`,
+        kind: 'test-record' as const,
+        path: `.loops/tests/${issueId}/records/${record.id}.json`,
+        status: 'present' as const,
+        count: record.commands.length,
+        summary: `${record.status} test run for ${record.shardId}; ${record.commands.length} commands executed.`,
+      })),
+      ...detail.reviewRecords.map((record) => ({
+        id: record.id,
+        label: `Review ${record.shardId}`,
+        kind: 'review-record' as const,
+        path: `.loops/runs/${issueId}/${record.shardId}/${record.round}/review.json`,
+        status: 'present' as const,
+        count: record.issues.length,
+        summary: `${record.verdict} review for ${record.shardId}; ${record.issues.length} issues recorded.`,
+      })),
+    );
+
+    artifacts.push({
+      id: `${issueId}-global-review`,
+      label: 'Global Review',
+      kind: 'global-review',
+      path: `.loops/runs/${issueId}/global-review.json`,
+      status: detail.globalReview ? 'present' : 'pending',
+      summary: detail.globalReview
+        ? `${detail.globalReview.verdict} global review with ${detail.globalReview.issues.length} cross-shard issues.`
+        : 'Global review has not been run yet.',
+    });
+    artifacts.push({
+      id: `${issueId}-convergence-pr`,
+      label: 'Convergence PR',
+      kind: 'convergence-pr',
+      path: `.loops/runs/${issueId}/convergence-pr.json`,
+      status: detail.convergencePr ? 'present' : 'pending',
+      count: detail.convergencePr?.commits.length,
+      summary: detail.convergencePr
+        ? `Convergence package references ${detail.convergencePr.commits.length} commits.`
+        : 'Convergence PR evidence is pending until finalization.',
+    });
+
+    return artifacts;
+  }
+
+  private async readCoverageSummary(issueId: string): Promise<LoopRequirementCoverageSummary> {
+    try {
+      const detail = await this.getIssue(issueId);
+      return (detail.requirementsCoverage ?? this.buildRequirementsCoverage(detail)).summary;
+    } catch {
+      return this.emptyCoverageSummary();
+    }
+  }
+
+  private buildRequirementsCoverage(detail: LoopIssueDetail): LoopRequirementCoverage {
+    const items = detail.issue.acceptanceCriteria.map((criterion, index) => {
+      const normalized = this.normalizeCoverageText(criterion);
+      const shardIds = detail.shards
+        .filter((shard) =>
+          shard.acceptance.some((item) => this.coverageTextMatches(item, normalized)),
+        )
+        .map((shard) => shard.id);
+      const testIds =
+        detail.testMatrix?.requiredTests
+          .filter(
+            (test) =>
+              shardIds.includes(test.shardId) || this.coverageTextMatches(test.title, normalized),
+          )
+          .map((test) => test.id) ?? [];
+      const implementationRecordIds = detail.implementationRecords
+        .filter((record) => shardIds.includes(record.shardId))
+        .map((record) => record.id);
+      const reviewRecordIds = detail.reviewRecords
+        .filter((record) => shardIds.includes(record.shardId) && record.verdict === 'PASS')
+        .map((record) => record.id);
+      const inSpec = detail.spec ? this.coverageTextMatches(detail.spec.body, normalized) : false;
+      const status = this.resolveRequirementStatus({
+        inSpec,
+        shardIds,
+        testIds,
+        implementationRecordIds,
+        reviewRecordIds,
+        globalVerdict: detail.state.globalVerdict,
+      });
+
+      return {
+        id: `REQ-${index + 1}`,
+        criterion,
+        inSpec,
+        shardIds,
+        testIds,
+        implementationRecordIds,
+        reviewRecordIds,
+        status,
+      };
+    });
+
+    return {
+      summary: this.summarizeRequirementsCoverage(items),
+      items,
+    };
+  }
+
+  private resolveRequirementStatus(input: {
+    inSpec: boolean;
+    shardIds: string[];
+    testIds: string[];
+    implementationRecordIds: string[];
+    reviewRecordIds: string[];
+    globalVerdict?: LoopStateItem['globalVerdict'];
+  }): LoopRequirementCoverageItem['status'] {
+    if (input.globalVerdict === 'PASS' && input.reviewRecordIds.length > 0) return 'accepted';
+    if (input.reviewRecordIds.length > 0) return 'reviewed';
+    if (input.testIds.length > 0 && input.implementationRecordIds.length > 0) return 'tested';
+    if (input.implementationRecordIds.length > 0) return 'implemented';
+    if (input.inSpec && input.shardIds.length > 0 && input.testIds.length > 0) return 'planned';
+    return 'missing';
+  }
+
+  private summarizeRequirementsCoverage(
+    items: LoopRequirementCoverageItem[],
+  ): LoopRequirementCoverageSummary {
+    const summary = this.emptyCoverageSummary(items.length);
+    for (const item of items) {
+      summary[item.status] += 1;
+    }
+    summary.percent =
+      summary.total === 0 ? 100 : Math.round((summary.accepted / summary.total) * 100);
+    return summary;
+  }
+
+  private aggregateCoverageSummaries(
+    summaries: LoopRequirementCoverageSummary[],
+  ): LoopRequirementCoverageSummary {
+    const total = summaries.reduce((acc, item) => acc + item.total, 0);
+    const summary = this.emptyCoverageSummary(total);
+    for (const item of summaries) {
+      summary.accepted += item.accepted;
+      summary.reviewed += item.reviewed;
+      summary.tested += item.tested;
+      summary.implemented += item.implemented;
+      summary.planned += item.planned;
+      summary.missing += item.missing;
+    }
+    summary.percent = total === 0 ? 100 : Math.round((summary.accepted / total) * 100);
+    return summary;
+  }
+
+  private emptyCoverageSummary(total = 0): LoopRequirementCoverageSummary {
+    return {
+      total,
+      accepted: 0,
+      reviewed: 0,
+      tested: 0,
+      implemented: 0,
+      planned: 0,
+      missing: 0,
+      percent: total === 0 ? 100 : 0,
+    };
+  }
+
+  private coverageTextMatches(text: string, normalizedNeedle: string) {
+    const haystack = this.normalizeCoverageText(text);
+    return Boolean(
+      normalizedNeedle &&
+      (haystack.includes(normalizedNeedle) || normalizedNeedle.includes(haystack)),
+    );
+  }
+
+  private normalizeCoverageText(value: string) {
+    return value
+      .toLowerCase()
+      .replace(/^-+\s*/, '')
+      .replace(/\[[^\]]+\]/g, '')
+      .replace(/[^\p{Letter}\p{Number}]+/gu, '');
   }
 }

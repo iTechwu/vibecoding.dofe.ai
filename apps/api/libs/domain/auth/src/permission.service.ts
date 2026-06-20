@@ -1,0 +1,102 @@
+import { Inject, Injectable } from '@nestjs/common';
+import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
+import type { Logger } from 'winston';
+import type { ModulePermissionMeta } from './decorators/rbac.decorator';
+import { SsoPermissionClient } from './sso-permission.client';
+
+@Injectable()
+export class PermissionService {
+  constructor(
+    private readonly ssoPermissionClient: SsoPermissionClient,
+    @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
+  ) {}
+
+  async checkModulePermission(
+    userId: string,
+    module: string,
+    resource: string,
+    action: string,
+    teamId?: string,
+  ): Promise<boolean> {
+    const permission = `${module}:${resource}:${action}`;
+
+    try {
+      return await this.ssoPermissionClient.checkPermission(userId, permission, teamId);
+    } catch (error) {
+      this.logger.error('[PermissionService] SSO permission check failed', {
+        userId,
+        permission,
+        teamId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return false;
+    }
+  }
+
+  async checkAnyModulePermission(
+    userId: string,
+    permissions: ModulePermissionMeta[],
+    teamId?: string,
+  ): Promise<boolean> {
+    for (const permission of permissions) {
+      const granted = await this.checkModulePermission(
+        userId,
+        permission.module,
+        permission.resource,
+        permission.action,
+        teamId,
+      );
+      if (granted) return true;
+    }
+    return false;
+  }
+
+  async checkAllModulePermissions(
+    userId: string,
+    permissions: ModulePermissionMeta[],
+    teamId?: string,
+  ): Promise<boolean> {
+    for (const permission of permissions) {
+      const granted = await this.checkModulePermission(
+        userId,
+        permission.module,
+        permission.resource,
+        permission.action,
+        teamId,
+      );
+      if (!granted) return false;
+    }
+    return true;
+  }
+
+  async getUserPermissions(
+    userId: string,
+    teamId?: string,
+  ): Promise<{ resource: string; action: string }[]> {
+    try {
+      const permissions = await this.ssoPermissionClient.getUserPermissions(userId, teamId);
+
+      return permissions.permissions.map((permission) => {
+        const parts = permission.split(':');
+        if (parts.length === 3) {
+          return { resource: parts[1], action: parts[2] };
+        }
+        if (parts.length === 2) {
+          return { resource: parts[0], action: parts[1] };
+        }
+        return { resource: permission, action: 'unknown' };
+      });
+    } catch (error) {
+      this.logger.error('[PermissionService] Get user permissions failed', {
+        userId,
+        teamId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  }
+
+  isSuperAdmin(isAdmin?: boolean): boolean {
+    return isAdmin === true;
+  }
+}

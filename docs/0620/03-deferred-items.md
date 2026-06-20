@@ -2,11 +2,11 @@
 
 ## v1.1 · 身份与权限
 
-| 项                  | 当前状态 | 下一步                                                        |
-| ------------------- | -------- | ------------------------------------------------------------- |
-| Dofe SSO 登录       | blocked  | `docs/0619/sso` 为唯一真源；本目录仅等待真实 SSO E2E 环境输入 |
-| 用户角色/权限       | done     | Loops 最小 RBAC 已实现并通过 round 2 回归                     |
-| 真实 SSO 浏览器 E2E | blocked  | 缺真实 SSO client secret、测试账号和可启动联调环境            |
+| 项                  | 当前状态 | 下一步                                                       |
+| ------------------- | -------- | ------------------------------------------------------------ |
+| Dofe SSO 登录       | done     | `docs/0619/sso` 为唯一真源；本地真实 SSO 浏览器 E2E 已通过   |
+| 用户角色/权限       | done     | Loops 最小 RBAC 已实现并通过 round 2 回归                    |
+| 真实 SSO 浏览器 E2E | done     | 本地 `sso.dofe.ai` + vibecoding 联调环境已通过 round 14 验收 |
 
 ### RBAC 最小方案
 
@@ -29,23 +29,25 @@
 验收：
 
 - 无 token：401 或现有 AuthGuard 标准错误。
-- 无权限：403，已由 `loops-rbac.guard.spec.ts` 覆盖。
+- 无权限：由全局 `PermissionGuard` 通过 SSO Internal API 判定，已由 `permission.guard.spec.ts` 覆盖。
 - 有权限：管理员、非生产 `MODE_USER_ID`、allowlist 用户均已覆盖。
 - CLI 直调不受 HTTP RBAC 影响，`LoopsService` smoke 继续通过。
 
 实施文件：
 
 - `apps/api/src/modules/loops/loops-rbac.decorator.ts`
-- `apps/api/src/modules/loops/loops-rbac.guard.ts`
-- `apps/api/src/modules/loops/loops-rbac.guard.spec.ts`
+- `apps/api/libs/domain/auth/src/sso-permission.client.ts`
+- `apps/api/libs/domain/auth/src/permission.service.ts`
+- `apps/api/libs/domain/auth/src/guards/permission.guard.ts`
+- `apps/api/libs/domain/auth/src/guards/permission.guard.spec.ts`
 - `apps/api/src/modules/loops/loops.controller.ts`
 - `apps/api/src/modules/loops/loops.module.ts`
 
 当前权限来源：
 
-- `request.userInfo.isAdmin`：全部 Loops 权限。
-- 非生产 `MODE_USER_ID`：本地开发 bypass，生产环境不得使用。
-- `LOOPS_RBAC_READ_USER_IDS` / `LOOPS_RBAC_CREATE_USER_IDS` / `LOOPS_RBAC_OPERATE_USER_IDS` / `LOOPS_RBAC_ADMIN_USER_IDS`：逗号分隔用户 ID allowlist。
+- `sso.dofe.ai` Internal API：`GET /internal/permissions/check`，权限字符串为 `vibecoding:loops:<action>`。
+- `request.isAdmin` / `request.userInfo.isAdmin` 只作为 SSO 同步镜像的超级管理员短路。
+- 本项目不再维护本地 Loops allowlist 权限源。
 
 round 2 回归：
 
@@ -55,6 +57,32 @@ round 2 回归：
 - `pnpm quality:gate`
 - `pnpm loops:doctor`
 - `pnpm loops:db-doctor`
+
+### 真实 SSO 浏览器 E2E 验收
+
+round 14 已用真实本地联调环境完成：
+
+- SSO API：`http://127.0.0.1:3100`
+- SSO Web：`http://127.0.0.1:3000`
+- vibecoding API：`http://127.0.0.1:13100`
+- vibecoding Web：`http://127.0.0.1:3003`
+
+执行结果：
+
+- `SSO_E2E_ENABLED=1 E2E_SSO_MOBILE=<test-mobile> E2E_SSO_PASSWORD=<password> E2E_SSO_ORIGIN=http://127.0.0.1:3100 E2E_SSO_LOGIN_ORIGIN=http://127.0.0.1:3000 E2E_API_ORIGIN=http://127.0.0.1:13100 pnpm --filter @repo/web test:e2e:sso`：通过（Chromium，1 passed）。
+
+覆盖：
+
+- 登录页跳转 `sso.dofe.ai` OIDC。
+- OIDC callback/exchange 后写入 access token。
+- `/auth/oidc/token` refresh 不返回 refresh token。
+- `/api/proxy/sso/api/uploader/token/private` 可从 SSO 返回上传 token、`fileId`、`key`、`bucket=dofe-public`、`cdnUrl`。
+- logout + clear-session 后 refresh 失败。
+
+边界：
+
+- 生产域名、生产 SSO secret、生产测试账号策略仍需在对应环境重新验收。
+- 本轮不校验对象存储预签名 PUT 与 CDN GET。
 
 ## v1.2 · 飞书与测试矩阵
 
@@ -94,7 +122,7 @@ round 3 已完成非真实 SSO 范围的矩阵固化：
 - `package.json` 的 `regression:docs0620`
 - `.github/workflows/ci.yml` 的 Loops Jest + doctor/db-doctor
 
-真实 SSO 浏览器 E2E 仍因 B3 外部环境缺失保持 blocked。
+真实 SSO 浏览器 E2E 已在 round 14 本地真实联调环境通过；生产/测试环境验收仍按各环境凭据另行执行。
 
 解除 blocked 需要的外部输入统一见 [05-blockers.md](05-blockers.md)。
 

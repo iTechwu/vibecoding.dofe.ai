@@ -5,8 +5,47 @@ import { LoopsFileStoreService } from '../apps/api/src/modules/loops/loops-file-
 import { LoopsRunnerService } from '../apps/api/src/modules/loops/loops-runner.service';
 import { LoopsService } from '../apps/api/src/modules/loops/loops.service';
 import { LoopsWorkLockService } from '../apps/api/src/modules/loops/loops-work-lock.service';
+import type { LoopMetricsResponse } from '../packages/contracts/src/schemas/loops.schema';
 
 type Cleanup = () => Promise<void>;
+
+function formatLoopsDigest(metrics: LoopMetricsResponse) {
+  const lines = [
+    'Loops Daily Digest',
+    `Health: ${metrics.health.ok ? 'ok' : 'attention'} (${metrics.health.issues} issues, ${metrics.health.problems.length} problems)`,
+    `Summary: ${metrics.summary.active} active, ${metrics.summary.inLoop} in loop, ${metrics.summary.paused} paused, ${metrics.summary.attention} need attention, ${metrics.summary.closed} closed`,
+    `Requirements: ${metrics.requirementsCoverage.percent}% covered (${metrics.requirementsCoverage.accepted}/${metrics.requirementsCoverage.total} accepted, ${metrics.requirementsCoverage.missing} missing)`,
+    `Cost: ${metrics.costSummary.tripped} tripped, ${metrics.costSummary.totalCalls} calls, ${metrics.costSummary.totalTokens} tokens, min remaining ${metrics.costSummary.minCallsRemaining} calls / ${metrics.costSummary.minTokensRemaining} tokens`,
+    `Trace: ${metrics.traceSummary.recent}/${metrics.traceSummary.total} recent events${metrics.traceSummary.lastEventAt ? `, last ${metrics.traceSummary.lastEventAt}` : ''}`,
+    `Resume: ${metrics.resumeSummary.resumableShards} resumable shards across ${metrics.resumeSummary.affectedIssues} issues`,
+  ];
+
+  const phases = metrics.phaseDistribution
+    .slice(0, 5)
+    .map((item) => `${item.label}:${item.count}`)
+    .join(', ');
+  lines.push(`Phases: ${phases || 'none'}`);
+
+  if (metrics.riskQueue.length > 0) {
+    lines.push('Top Risks:');
+    for (const item of metrics.riskQueue.slice(0, 5)) {
+      lines.push(`- [${item.level}] ${item.title} (${item.phase}): ${item.reason}`);
+    }
+  } else {
+    lines.push('Top Risks: none');
+  }
+
+  if (metrics.actionQueue.length > 0) {
+    lines.push('Next Actions:');
+    for (const item of metrics.actionQueue.slice(0, 5)) {
+      lines.push(`- ${item.label}: ${item.title} (${item.phase})`);
+    }
+  } else {
+    lines.push('Next Actions: none');
+  }
+
+  return lines.join('\n');
+}
 
 async function createLoopsService(): Promise<{
   service: LoopsService;
@@ -95,6 +134,16 @@ async function main() {
 
     if (command === 'cost') {
       console.log(JSON.stringify(await service.cost(), null, 2));
+      return;
+    }
+
+    if (command === 'metrics') {
+      console.log(JSON.stringify(await service.metrics(), null, 2));
+      return;
+    }
+
+    if (command === 'digest') {
+      console.log(formatLoopsDigest(await service.metrics()));
       return;
     }
 
@@ -241,7 +290,7 @@ async function main() {
 
     console.error(`Unknown loops command: ${command}`);
     console.error(
-      'Usage: pnpm loops:status | pnpm loops:doctor | pnpm loops:db-status | pnpm loops:db-doctor | pnpm loops:cost | pnpm loops:logs [issueId] [limit] | pnpm loops:notifications [issueId] [limit] | pnpm loops:resume | pnpm loops:pause <issueId> | pnpm loops:resume-loop <issueId> | pnpm loops:take <issueId> <shardId> [notes] | pnpm loops:run <issueId> | pnpm loops:global-review <issueId> | pnpm loops:reloop <issueId> [notes] | pnpm loops:finalize <issueId>',
+      'Usage: pnpm loops:status | pnpm loops:doctor | pnpm loops:db-status | pnpm loops:db-doctor | pnpm loops:cost | pnpm loops:metrics | pnpm loops:db-metrics | pnpm loops:digest | pnpm loops:db-digest | pnpm loops:logs [issueId] [limit] | pnpm loops:notifications [issueId] [limit] | pnpm loops:resume | pnpm loops:pause <issueId> | pnpm loops:resume-loop <issueId> | pnpm loops:take <issueId> <shardId> [notes] | pnpm loops:run <issueId> | pnpm loops:global-review <issueId> | pnpm loops:reloop <issueId> [notes] | pnpm loops:finalize <issueId>',
     );
     process.exitCode = 1;
   } finally {

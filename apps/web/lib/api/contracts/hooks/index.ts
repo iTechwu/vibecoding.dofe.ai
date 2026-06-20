@@ -34,6 +34,8 @@ export {
   useLoopsList,
   useLoopsDoctor,
   useLoopsCost,
+  useLoopsMetrics,
+  useLoopsCapabilities,
   useLoopsLogs,
   useLoopsNotifications,
   useLoopIssue,

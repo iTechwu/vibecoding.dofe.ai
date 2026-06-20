@@ -165,6 +165,92 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(created.intake.submitter.provider).toBe('dev');
   });
 
+  it('returns control-plane metrics for the Loops dashboard', async () => {
+    const created = await service.createIssue({
+      title: 'Metrics dashboard issue',
+      targetRepo: workspace,
+      body: 'Metrics should expose summary, phase distribution, risks, and actions.',
+      priority: 'P0',
+      acceptanceCriteria: ['- metrics exposes generate spec action'],
+    });
+
+    const metrics = await service.metrics();
+
+    expect(metrics.health.ok).toBe(true);
+    expect(metrics.summary.total).toBe(1);
+    expect(metrics.summary.active).toBe(1);
+    expect(metrics.summary.attention).toBe(2);
+    expect(metrics.requirementsCoverage).toEqual({
+      total: 1,
+      accepted: 0,
+      reviewed: 0,
+      tested: 0,
+      implemented: 0,
+      planned: 0,
+      missing: 1,
+      percent: 0,
+    });
+    expect(metrics.traceSummary.total).toBeGreaterThan(0);
+    expect(metrics.traceSummary.eventTypes).toEqual(
+      expect.arrayContaining([expect.objectContaining({ type: 'ISSUE_NORMALIZED' })]),
+    );
+    expect(metrics.resumeSummary).toEqual({ resumableShards: 0, affectedIssues: 0 });
+    expect(metrics.phaseDistribution).toEqual([{ phase: 'PHASE_1_SPEC', label: 'Spec', count: 1 }]);
+    expect(metrics.riskQueue).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          issueId: created.issue.id,
+          level: 'critical',
+          reason: 'P0 priority',
+        }),
+      ]),
+    );
+    expect(metrics.actionQueue).toEqual([
+      expect.objectContaining({
+        issueId: created.issue.id,
+        action: 'generate-spec',
+        label: 'Generate spec',
+      }),
+    ]);
+  });
+
+  it('returns a capability registry with requested external items planned', async () => {
+    const capabilities = await service.capabilities();
+    const a2a = capabilities.capabilities.find((item) => item.id === 'a2a-tool-registry');
+
+    expect(capabilities.summary.total).toBe(capabilities.capabilities.length);
+    expect(capabilities.summary.inProgress).toBeGreaterThanOrEqual(1);
+    expect(a2a).toEqual(
+      expect.objectContaining({
+        id: 'a2a-tool-registry',
+        status: 'in-progress',
+        agentToolRegistry: expect.objectContaining({
+          agents: expect.arrayContaining([
+            expect.objectContaining({ id: 'codex-planner-reviewer', lifecycle: 'active' }),
+            expect.objectContaining({ id: 'claude-code-implementer', lifecycle: 'active' }),
+          ]),
+          tools: expect.arrayContaining([
+            expect.objectContaining({ id: 'repo-code-editor', kind: 'code-execution' }),
+            expect.objectContaining({ id: 'test-runner', kind: 'test' }),
+          ]),
+          compatibilityChecks: expect.arrayContaining([
+            expect.objectContaining({ id: 'phase-tool-ownership', status: 'pass' }),
+          ]),
+        }),
+      }),
+    );
+    expect(capabilities.capabilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'feishu-integration', status: 'planned' }),
+        expect.objectContaining({ id: 'remote-pr-diff', status: 'planned' }),
+        expect.objectContaining({ id: 'worker-concurrency', status: 'planned' }),
+        expect.objectContaining({ id: 'complete-span-trace', status: 'planned' }),
+        expect.objectContaining({ id: 'checkpoint-snapshot-browser', status: 'planned' }),
+        expect.objectContaining({ id: 'snapshot-storage-recovery', status: 'planned' }),
+      ]),
+    );
+  });
+
   it('runs createIssue -> generateSpec -> approve -> decompose -> runLoop -> reviewGlobal -> finalize', async () => {
     // Smoke 1 · no-login intake writes issue/intake/initial state to `.loops`.
     const created = await service.createIssue({
@@ -184,6 +270,17 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(queued.list[0].issue.id).toBe(created.issue.id);
     let detail = await service.getIssue(created.issue.id);
     expect(detail.issue.id).toBe(created.issue.id);
+    expect(detail.evidenceArtifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'raw-payload', status: 'present' }),
+        expect.objectContaining({
+          kind: 'issue',
+          status: 'present',
+          summary: expect.stringContaining('initial acceptance criteria'),
+        }),
+        expect.objectContaining({ kind: 'intake', status: 'present' }),
+      ]),
+    );
 
     // generateSpec -> DRAFT spec, waiting for human review.
     detail = await service.generateSpec(created.issue.id);
@@ -225,6 +322,16 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(detail.issue.status).toBe('CLOSED');
     expect(detail.state.phase).toBe('CLOSED');
     expect(detail.state.finalized).toBe(true);
+    expect(detail.evidenceArtifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'global-review', status: 'present' }),
+        expect.objectContaining({
+          kind: 'convergence-pr',
+          status: 'present',
+          summary: expect.stringContaining('Convergence package references'),
+        }),
+      ]),
+    );
 
     // Smoke 4 · doctor reports a healthy `.loops` for the closed issue.
     const doctor = await service.doctor();

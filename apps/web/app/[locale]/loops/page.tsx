@@ -1,9 +1,9 @@
 'use client';
 
 import { AppShell } from '@/components/layout';
-import LoopsPage from '../loops/page';
+import LoopsPage from '../../loops/page';
 
-export default function LocalePage() {
+export default function LocaleLoopsPage() {
   return (
     <AppShell>
       <LoopsPage />
