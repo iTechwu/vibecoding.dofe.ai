@@ -1,13 +1,15 @@
 import type { Config } from 'jest';
 import { pathsToModuleNameMapper } from 'ts-jest';
 import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
 
 // tsconfig.json is JSONC (contains comments), parse manually.
 // NOTE: jest 30 evaluates a `.ts` config in an ES-module scope where `__dirname`
-// is undefined; `process.cwd()` is a Node global available in both CJS and ESM,
-// and jest is always launched from the `apps/api` package directory.
-const tsconfigRaw = readFileSync(resolve(process.cwd(), 'tsconfig.json'), 'utf-8');
+// is undefined. Resolve from this config file instead of `process.cwd()` so the
+// config works when invoked from the repo root or the `apps/api` package dir.
+const configDir = dirname(fileURLToPath(import.meta.url));
+const tsconfigRaw = readFileSync(resolve(configDir, 'tsconfig.json'), 'utf-8');
 const tsconfig = JSON.parse(tsconfigRaw.replace(/^\s*\/\/.*$/gm, ''));
 const { paths, ...restCompilerOptions } = tsconfig.compilerOptions;
 // Exclude the wildcard "*" path which breaks module resolution

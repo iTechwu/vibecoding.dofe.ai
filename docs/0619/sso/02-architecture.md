@@ -91,19 +91,19 @@ sequenceDiagram
 
 ### 后端（apps/api）
 
-| 包                            | 来源                    | 用途                                                                                               |
-| ----------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------- |
-| `@dofe/infra-clients`         | npm ^0.1.56（已依赖）   | `SsoAuthClient`/`SsoClientModule`（`/sso` 子路径）                                                 |
-| `@dofe/infra-shared-services` | npm ^0.1.56（已依赖）   | 历史依赖保留；本轮文件能力不再通过本地 `FileCdnModule`/`UploaderModule` 承载                       |
-| `@dofe/infra-common`          | npm ^0.1.56（已依赖）   | `HttpExceptionFilter` 等通用能力；审计不使用 `AuditLogInterceptor`/`OPERATE_LOG_SERVICE_TOKEN`     |
-| `@dofe/infra-jwt`             | npm ^0.1.56（已依赖）   | `JwtModule`（decode access_token 用于 logout）                                                     |
-| `@dofe/infra-redis`           | npm ^0.1.56（已依赖）   | OIDC state/exchange-code 存储                                                                      |
-| `@dofe/sso-node`              | npm ^0.1.43（**新增**） | `createSsoLegacyClient`（RBAC/团队/用户 internal API 包装）                                        |
-| `@dofe/sso-nestjs`            | npm ^0.1.43（**新增**） | `@dofe/sso-node` 的 NestJS 模块封装（`@app/sso-client` 依赖，实施时按 models `package.json` 对齐） |
-| `@dofe/sso-contracts`         | npm ^0.1.66（**新增**） | ssoClient 枚举契约（如需）                                                                         |
-| `@dofe/file-sdk`              | npm ^0.1.7+（**新增**） | 后端消费 SSO 文件服务                                                                              |
-| `openid-client`               | npm ^6.8.4（**新增**）  | discovery / authorizationCodeGrant / PKCE                                                          |
-| `@fastify/cookie`             | npm（**新增**）         | `dofe_rf` HttpOnly cookie                                                                          |
+| 包                            | 来源                    | 用途                                                                                              |
+| ----------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------- |
+| `@dofe/infra-clients`         | npm ^0.1.56（已依赖）   | `SsoAuthClient`/`SsoClientModule`（`/sso` 子路径）                                                |
+| `@dofe/infra-shared-services` | npm ^0.1.56（已依赖）   | 历史依赖保留；本轮文件能力不再通过本地 `FileCdnModule`/`UploaderModule` 承载                      |
+| `@dofe/infra-common`          | npm ^0.1.56（已依赖）   | `HttpExceptionFilter` 等通用能力；审计不使用 `AuditLogInterceptor`/`OPERATE_LOG_SERVICE_TOKEN`    |
+| `@dofe/infra-jwt`             | npm ^0.1.56（已依赖）   | `JwtModule`（decode access_token 用于 logout）                                                    |
+| `@dofe/infra-redis`           | npm ^0.1.56（已依赖）   | OIDC state/exchange-code 存储                                                                     |
+| `@dofe/sso-node`              | ~~npm ^0.1.43~~         | **未采用/已移除**：无多租户 RBAC，不需要 `createSsoLegacyClient`；第十四轮已从依赖移除            |
+| `@dofe/sso-nestjs`            | ~~npm ^0.1.43~~         | **未采用**：无 `@app/sso-client` 包装                                                             |
+| `@dofe/sso-contracts`         | ~~npm ^0.1.66~~         | **未采用/已移除**：OIDC 契约由本仓库 `@repo/contracts` 的 `oidcAuthContract` 承载；第十四轮已移除 |
+| `@dofe/file-sdk`              | npm ^0.1.7+（**新增**） | 后端消费 SSO 文件服务                                                                             |
+| `openid-client`               | npm ^6.8.4（**新增**）  | discovery / authorizationCodeGrant / PKCE                                                         |
+| `@fastify/cookie`             | npm（**新增**）         | `dofe_rf` HttpOnly cookie                                                                         |
 
 ### 前端（apps/web）
 

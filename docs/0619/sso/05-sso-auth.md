@@ -36,12 +36,18 @@
 | `auth.ts`              | `@Public()` / `@CurrentUser()` 装饰器                                                                                                                                                               |
 | `auth.module.ts`       | 装配：imports `InfraSsoClientModule`（`@dofe/infra-clients/sso`）、`LocalSsoClientModule`（`@app/sso-client`）、`UserInfoModule`、`RedisModule`、`JwtModule`；注册 `APP_GUARD` 链                   |
 
-### 1.3 `@app/sso-client` 包装
+### 1.3 SSO 客户端（实施口径，以 [09](./09-implementation-status.md) 为准）
 
-复制 models `apps/api/libs/infra/clients/internal/sso-client/`（`@app/sso-client` 别名）：
+> **实施修正**：本仓库**未采用** models 的本地 `@app/sso-client` 包装（`@dofe/sso-node` 的 `createSsoLegacyClient`）。
 
-- `sso-client.service.ts` = `@dofe/sso-node` 的 `createSsoLegacyClient` 薄封装（RBAC/团队/用户 internal API）。
-- 读 `SSO_INTERNAL_API_URL` / `SSO_API_URL` / `INTERNAL_API_SECRET` / `SSO_SERVICE_NAME`。
+实际实现：
+
+- SSO 远程校验/用户信息直接使用 `@dofe/infra-clients/sso` 的 `SsoAuthClient`（`verifyToken` / `getUser`）。
+- OIDC token 交换（discovery / authorizationCodeGrant / PKCE / refresh）直接使用 `openid-client`。
+- 本仓库不引入多租户 RBAC（`PermissionGuard` / `TeamContextGuard`），故不需要 `@dofe/sso-node` 的 legacy internal API 包装。
+- 配置读 `SSO_INTERNAL_API_URL` / `SSO_API_URL` / `INTERNAL_API_SECRET` / `SSO_SERVICE_NAME`（由 `@dofe/infra-clients/sso` 消费）。
+
+> 因此 `@dofe/sso-node`、`@dofe/sso-contracts` 不作为运行依赖（已于 2026-06-20 第十四轮从 vibecoding/scaffold 的 `package.json` 移除）。下方 §1.2 装配表与 §4 复制清单中提及的 `LocalSsoClientModule` / `@app/sso-client` 复制项不再适用，保留仅为方案过程记录。
 
 ### 1.4 AuthGuard 链裁剪
 

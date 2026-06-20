@@ -12,6 +12,7 @@
   - `AuthGuard` 改为通过 `@dofe/infra-clients/sso` 远程 `verifyToken()` 校验 access token。
   - 新增 `UserSyncService`，以 `ssoSub` 同步/创建本地 `UserInfo` 映射缓存。
   - `AuthModule` 全局挂载，并提供 `@Public()`、`@CurrentUser()`、兼容 `@Auth()`。
+  - 审计业务接入：OIDC 登录回调换 token + 建本地用户成功后，`OidcClientApiService` 主动调用 `AuditLogService.logLogin` 记录 `LOGIN` 事件（best-effort，失败仅告警不阻塞登录；仅在真实 token 交换路径触发，重复回调不重复记录）；新增 `@app/audit-log` 路径别名指向 `libs/domain/audit-log`。
 - Prisma schema 收敛：
   - `UserInfo` 仅保留本地业务映射/展示字段：`ssoSub`、`avatarFileId`、`nickname`、`code`、`email`、`mobile` 等。
   - 删除本地 `WechatAuth`、`GoogleAuth`、`DiscordAuth`、`MobileAuth`、`EmailAuth`。
@@ -101,6 +102,12 @@
 - 第十二轮新增 vibecoding 专用真实 E2E：`apps/web/e2e/sso-real.spec.ts` + `apps/web/playwright.config.ts` + `pnpm --filter @repo/web test:e2e:sso`，覆盖 login → callback → refresh → logout 与 SSO 上传凭证/CDN 元数据返回；默认未设置 `SSO_E2E_ENABLED=1` 时跳过，不影响普通回归。
 - 第十三轮在用户已启动 SSO 后执行真实 Chromium E2E：`login → callback → refresh → logout` 已通过；文件链路已验证到 `/api/proxy/sso/api/uploader/token/private` 经 SSO 返回 `fileId/key/bucket=dofe-public/cdnUrl/token`。`dofe-public/private/system` 三桶当前按 SSO 规划先配置，后续由存储侧处理；本轮不校验预签名 URL PUT 和 CDN GET。
 - 第十三轮补齐 SSO 侧 browser upload 与 FileSource key 类型修复：`sso.dofe.ai` 允许已认证浏览器请求使用 `signature=browser-upload` 获取上传凭证，并将 `f_file_source.key` 从 UUID 约束调整为字符串 key；已执行 SSO 迁移、Prisma generate 与 API type-check。
+- 第十四轮独立核查（不轻信文档、以代码为准）修复 vibecoding/scaffold 的审计空转与文档/依赖偏差：审计 domain（`libs/domain/audit-log`）此前已建好但无任何业务调用，已在 OIDC 登录回调接入 `AuditLogService.logLogin`（新增 `@app/audit-log` 别名），兑现 03 文档"业务主动调用"声明；vibecoding 与 scaffold 同步。
+- 第十四轮重新生成 `@repo/contracts` 的 Prisma enum schema（`pnpm generate:enums`，源读 `apps/api/prisma/schema.prisma`），移除与 schema 不一致的 `FileBucketVendorSchema`/`FileEnvTypeSchema`（schema 已无 `FileSource`），新增 `AuditActionTypeSchema`，并同步更新 `packages/contracts/src/__tests__/schemas.test.ts` 断言。`prisma-enums.generated.ts` 为 gitignore 产物，重新生成即与 schema 对齐。
+- 第十四轮核查确认 `apps/api/scripts/link-prisma.js`、`apps/api/src/main.ts`、`apps/api/webpack.config.js` 中的 `FileBucketVendor`/`FileEnvType` 兼容导出是**有意保留的运行时兼容层**（统一标记 `SSO_FILE_ENUM_COMPAT_SHIM`，为 `@dofe/infra-*` file-storage 模块初始化兜底），并非"未清理残留"；本轮保留不动，仅在此澄清性质。
+- 第十四轮将 05 §1.3 与 02 技术栈表中"复制 models `@app/sso-client` 包装（`@dofe/sso-node`）"修订为"未采用：SSO 客户端直接用 `@dofe/infra-clients/sso` 的 `SsoAuthClient`、OIDC token 交换直接用 `openid-client`，本仓库不引入多租户 RBAC"，对齐实际实现与 09 权威描述。
+- 第十四轮从 vibecoding/scaffold 的 `apps/api`、`apps/web` `package.json` 移除零引用死依赖 `@dofe/sso-node`、`@dofe/sso-contracts`（核查全仓 `apps`/`packages` 源码零 import，`@dofe/sso-browser` peerDeps 仅 `react` 不依赖 sso-contracts），并重新 `pnpm install` 更新两仓 `pnpm-lock.yaml`；`@dofe/sso-browser`（token-manager/sso-session）与 `@dofe/file-sdk(-web)` 保留。
+- 第十四轮补齐 scaffold `apps/api/.env.example` 与 `apps/web/.env.example` 缺失的 SSO 环境变量（`SSO_API_URL`/`SSO_INTERNAL_API_URL`/`SSO_ISSUER`/`SSO_CLIENT_ID=scaffold-dofe-ai`/`SSO_CLIENT_SECRET`/`SSO_SERVICE_NAME=scaffold.dofe.ai`/`INTERNAL_API_SECRET` 与 `SCAFFOLD_INTERNAL_API_URL`/`NEXT_PUBLIC_SSO_BASE_URL`），对齐 vibecoding 模板，恢复 scaffold 作为可运行模板的完整性。
 
 ## 3. 明确废弃/不再采用
 
@@ -114,6 +121,7 @@
 - 不接受请求体传递 refresh token；刷新只读取 `dofe_rf` HttpOnly cookie。
 - 不读取旧 `auth-token` cookie 作为 web proxy 认证依据。
 - 不采用 sso 的全局 `AuditLogInterceptor` / `OPERATE_LOG_SERVICE_TOKEN` 方案；审计与 `models.dofe.ai` 一致，使用业务主动调用。
+- 不在 vibecoding/scaffold 依赖中保留 `@dofe/sso-node`、`@dofe/sso-contracts`（零引用死依赖，第十四轮移除）；不复制 models 的本地 `@app/sso-client` 包装。
 
 ## 4. 回归验证
 

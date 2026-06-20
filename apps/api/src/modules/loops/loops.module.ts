@@ -12,6 +12,7 @@ import { LoopsController } from './loops.controller';
 import { LoopsFileStoreService } from './loops-file-store.service';
 import { LoopsPersistenceService } from './loops-persistence.service';
 import { LOOPS_PERSISTENCE } from './loops-persistence.token';
+import { LoopsRbacGuard } from './loops-rbac.guard';
 import { LoopsRunnerService } from './loops-runner.service';
 import { LoopsService } from './loops.service';
 
@@ -22,6 +23,7 @@ import { LoopsService } from './loops.service';
     LoopsService,
     LoopsFileStoreService,
     LoopsPersistenceService,
+    LoopsRbacGuard,
     // Alias the concrete persistence service to the injection token used by
     // `LoopsService`, so the DB-backed implementation is only pulled into the
     // NestJS graph and never into standalone `ts-node` consumers.

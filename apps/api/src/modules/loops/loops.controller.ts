@@ -1,18 +1,22 @@
-import { Controller, Req, VERSION_NEUTRAL } from '@nestjs/common';
+import { Controller, Req, UseGuards, VERSION_NEUTRAL } from '@nestjs/common';
 import { TsRestHandler, tsRestHandler } from '@ts-rest/nest';
 import { created, success } from '@dofe/infra-common/ts-rest';
 import { loopsContract as c } from '@repo/contracts/api';
 import { Auth } from '@app/auth';
 import type { AuthenticatedRequest } from '@app/auth';
+import { LOOPS_PERMISSION, RequireLoopsPermission } from './loops-rbac.decorator';
+import { LoopsRbacGuard } from './loops-rbac.guard';
 import { LoopsService } from './loops.service';
 
 @Auth('api')
+@UseGuards(LoopsRbacGuard)
 @Controller({
   version: VERSION_NEUTRAL,
 })
 export class LoopsController {
   constructor(private readonly loopsService: LoopsService) {}
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.list)
   async list() {
     return tsRestHandler(c.list, async ({ query }) => {
@@ -20,6 +24,7 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.listLegacy)
   async listLegacy() {
     return tsRestHandler(c.listLegacy, async ({ query }) => {
@@ -27,6 +32,7 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.CREATE)
   @TsRestHandler(c.createIssue)
   async createIssue(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.createIssue, async ({ body }) => {
@@ -38,6 +44,7 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.getIssue)
   async getIssue() {
     return tsRestHandler(c.getIssue, async ({ params }) => {
@@ -45,6 +52,7 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.generateSpec)
   async generateSpec() {
     return tsRestHandler(c.generateSpec, async ({ params }) => {
@@ -52,6 +60,7 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.reviewSpec)
   async reviewSpec() {
     return tsRestHandler(c.reviewSpec, async ({ params, body }) => {
@@ -59,6 +68,7 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.decompose)
   async decompose() {
     return tsRestHandler(c.decompose, async ({ params }) => {
@@ -66,6 +76,7 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.runShardTests)
   async runShardTests() {
     return tsRestHandler(c.runShardTests, async ({ params, body }) => {
@@ -73,6 +84,7 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.recordShardImplementation)
   async recordShardImplementation() {
     return tsRestHandler(c.recordShardImplementation, async ({ params, body }) => {
@@ -82,6 +94,7 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.reviewShard)
   async reviewShard() {
     return tsRestHandler(c.reviewShard, async ({ params, body }) => {
@@ -89,6 +102,7 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.runLoop)
   async runLoop() {
     return tsRestHandler(c.runLoop, async ({ params }) => {
@@ -96,6 +110,7 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.reviewGlobal)
   async reviewGlobal() {
     return tsRestHandler(c.reviewGlobal, async ({ params }) => {
@@ -103,6 +118,7 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.reloop)
   async reloop() {
     return tsRestHandler(c.reloop, async ({ params, body }) => {
@@ -110,6 +126,7 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.finalize)
   async finalize() {
     return tsRestHandler(c.finalize, async ({ params }) => {
@@ -117,6 +134,7 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.intervene)
   async intervene() {
     return tsRestHandler(c.intervene, async ({ params, body }) => {
@@ -124,6 +142,7 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
   @TsRestHandler(c.doctor)
   async doctor() {
     return tsRestHandler(c.doctor, async () => {
@@ -131,6 +150,7 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.cost)
   async cost() {
     return tsRestHandler(c.cost, async () => {
@@ -138,6 +158,7 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.logs)
   async logs() {
     return tsRestHandler(c.logs, async ({ query }) => {
@@ -145,6 +166,7 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.notifications)
   async notifications() {
     return tsRestHandler(c.notifications, async ({ query }) => {
@@ -152,6 +174,7 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
   @TsRestHandler(c.resume)
   async resume() {
     return tsRestHandler(c.resume, async () => {
