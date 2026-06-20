@@ -104,3 +104,4 @@ packages/contracts/src/schemas/prisma-enums.generated.ts
 
 # Claude Code
 .claude/
+apps/web/test-results/*

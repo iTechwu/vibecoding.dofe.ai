@@ -25,6 +25,7 @@ import type {
   LoopStateItem,
   LoopSubmitter,
 } from '@repo/contracts';
+import type { AuthUserInfo } from '@app/auth';
 import { LoopsFileStoreService } from './loops-file-store.service';
 import { LoopsRunnerService } from './loops-runner.service';
 import {
@@ -107,13 +108,13 @@ export class LoopsService {
     }
   }
 
-  async createIssue(input: CreateLoopIssueRequest) {
+  async createIssue(input: CreateLoopIssueRequest, authUser?: AuthUserInfo) {
     const now = new Date().toISOString();
     const issueId = this.createIssueId(now);
     const intakeId = this.store.intakeId(issueId);
     const rawPayloadRef = `.loops/intakes/${intakeId}.raw.json`;
     const targetRepo = await this.resolveTargetRepo(input.targetRepo);
-    const submitter = this.normalizeSubmitter(input);
+    const submitter = this.normalizeSubmitter(input, authUser);
     const issue: LoopIssue = {
       id: issueId,
       title: input.title,
@@ -159,7 +160,21 @@ export class LoopsService {
     return { issue, intake, state };
   }
 
-  private normalizeSubmitter(input: CreateLoopIssueRequest): LoopSubmitter {
+  private normalizeSubmitter(
+    input: CreateLoopIssueRequest,
+    authUser?: AuthUserInfo,
+  ): LoopSubmitter {
+    // Authenticated HTTP path: the SSO user (set by AuthGuard) is the source of
+    // truth — client-supplied submitter fields are ignored to prevent spoofing.
+    if (authUser) {
+      return {
+        provider: 'dofe-sso',
+        userId: authUser.id,
+        name: authUser.nickname ?? authUser.code ?? authUser.id,
+      };
+    }
+    // CLI / internal / unauthenticated path: fall back to request-provided or
+    // deterministic dev defaults.
     return {
       provider: input.submitter?.provider ?? 'dev',
       userId: input.submitter?.userId ?? input.submitterId ?? 'dev-user',

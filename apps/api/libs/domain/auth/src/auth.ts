@@ -3,10 +3,8 @@ import {
   createParamDecorator,
   ExecutionContext,
   SetMetadata,
-  UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth } from '@nestjs/swagger';
-import { AuthGuard } from './auth.guard';
 import type { AuthenticatedRequest, AuthUserInfo } from './types/auth.interface';
 
 export const IS_PUBLIC_KEY = 'isPublic';
@@ -41,7 +39,6 @@ export function Auth(
     SetMetadata('auths', [authType, guardType]),
     SetMetadata('enableRbac', enableRbac),
     SetMetadata('enableModulePermission', enableModulePermission),
-    UseGuards(AuthGuard),
     ApiBearerAuth() as ClassDecorator & MethodDecorator,
   );
 }

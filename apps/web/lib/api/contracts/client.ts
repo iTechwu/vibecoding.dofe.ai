@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import {
   analyticsContract,
   downloadContract,
+  loopsContract,
   messageContract,
   settingContract,
   smsContract,
@@ -379,6 +380,11 @@ export const taskClient = initClient(taskContract, clientOptions);
  */
 export const systemClient = initClient(systemContract, clientOptions);
 
+/**
+ * Loops client - imperative calls (authed via token-manager in customFetch)
+ */
+export const loopsClient = initClient(loopsContract, clientOptions);
+
 // ============================================================================
 // React Query Clients (for hooks)
 // ============================================================================
@@ -418,6 +424,11 @@ export const taskApi = initQueryClient(taskContract, clientOptions);
  */
 export const systemApi = initQueryClient(systemContract, clientOptions);
 
+/**
+ * Loops API - React Query hooks (authed via token-manager in customFetch)
+ */
+export const loopsApi = initQueryClient(loopsContract, clientOptions);
+
 // ============================================================================
 // Generic ts-rest Client (for custom contracts)
 // ============================================================================
@@ -445,10 +456,12 @@ export const tsRestClient = {
   user: userApi,
   task: taskApi,
   system: systemApi,
+  loops: loopsApi,
   // Direct clients (for imperative calls)
   analyticsClient,
   messageClient,
   userClient,
   taskClient,
   systemClient,
+  loopsClient,
 };

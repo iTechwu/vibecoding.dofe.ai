@@ -74,6 +74,10 @@ const nextConfig: NextConfig = {
     const ssoApiUrl = process.env.NEXT_PUBLIC_SSO_BASE_URL || 'https://sso.dofe.ai';
     return [
       {
+        source: '/api/proxy/sso/api/:path*',
+        destination: `${ssoApiUrl}/:path*`,
+      },
+      {
         source: '/api/proxy/sso/:path*',
         destination: `${ssoApiUrl}/:path*`,
       },

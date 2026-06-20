@@ -129,6 +129,40 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     rmSync(workspace, { recursive: true, force: true });
   });
 
+  it('attributes createIssue to the authenticated SSO user, ignoring client submitter fields (dofe-sso)', async () => {
+    const created = await service.createIssue(
+      {
+        title: 'SSO-attributed submission',
+        targetRepo: workspace,
+        body: 'The authenticated user must own the issue; client submitter fields are ignored.',
+        priority: 'P2',
+        acceptanceCriteria: ['- submitter derived server-side from AuthGuard'],
+        // Client-supplied submitter must be ignored when an auth user is present.
+        submitter: { provider: 'dev', userId: 'spoofed', name: 'Spoofer' },
+      },
+      { id: 'sso-user-42', nickname: 'Ada', code: 'ada', isAdmin: false, isAnonymity: false },
+    );
+    expect(created.issue.submitterId).toBe('sso-user-42');
+    expect(created.issue.submitterName).toBe('Ada');
+    expect(created.intake.submitter).toEqual({
+      provider: 'dofe-sso',
+      userId: 'sso-user-42',
+      name: 'Ada',
+    });
+  });
+
+  it('falls back to dev defaults when no authenticated user is present (CLI/internal path)', async () => {
+    const created = await service.createIssue({
+      title: 'Anonymous CLI submission',
+      targetRepo: workspace,
+      body: 'Without an auth user the service keeps the deterministic dev defaults.',
+      priority: 'P2',
+      acceptanceCriteria: ['- dev fallback preserved for unauthenticated callers'],
+    });
+    expect(created.issue.submitterId).toBe('dev-user');
+    expect(created.intake.submitter.provider).toBe('dev');
+  });
+
   it('runs createIssue -> generateSpec -> approve -> decompose -> runLoop -> reviewGlobal -> finalize', async () => {
     // Smoke 1 · no-login intake writes issue/intake/initial state to `.loops`.
     const created = await service.createIssue({

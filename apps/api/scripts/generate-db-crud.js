@@ -38,7 +38,21 @@ const DB_INDEX_PATH = path.resolve(__dirname, '../generated/db/index.ts');
 // the standard CRUD service (auth only uses `.get()`), restoring the export.
 // `CountryCode` stays excluded — its canonical module now lives in
 // `@dofe/infra-shared-db` (ip-info imports it from there).
-const EXCLUDE_MODELS = new Set(['Message', 'MessageRecipient', 'CountryCode']);
+// `LoopIssue` / `LoopIssueIntake` / `LoopState` are excluded — all Loops DB
+// access goes through the hand-written `LoopsDbService`
+// (generated/db/modules/loops/loops-db.service.ts). The generic per-model CRUD
+// services these models would emit are unused (rg-verified: no business imports
+// of LoopIssueService/LoopStateService/LoopIssueIntakeService anywhere in
+// src/libs/packages/web), so excluding them stops regenerating dead code on
+// every `pnpm db:generate`.
+const EXCLUDE_MODELS = new Set([
+  'Message',
+  'MessageRecipient',
+  'CountryCode',
+  'LoopIssue',
+  'LoopIssueIntake',
+  'LoopState',
+]);
 
 function pascalToKebab(str) {
   return str
@@ -180,7 +194,7 @@ function generateService(model) {
     getByMethods += `
   @HandlePrismaError(DbOperationType.QUERY)
   async ${fn}(value: string, additional?: ${additionalType}): Promise<${name} | null> {
-    return this.getReadClient().${clientName}.findUnique({
+    return this.getReadClient().${clientName}.${hasIsDeleted ? 'findFirst' : 'findUnique'}({
       where: { ${f}: value${hasIsDeleted ? ', isDeleted: false' : ''} },
       ...additional,
     });
@@ -220,7 +234,7 @@ export class ${name}Service extends TransactionalServiceBase {
     id: string,
     additional?: ${additionalType},
   ): Promise<${name} | null> {
-    return this.getReadClient().${clientName}.findUnique({
+    return this.getReadClient().${clientName}.${hasIsDeleted ? 'findFirst' : 'findUnique'}({
       where: { ${idField}: id${hasIsDeleted ? ', isDeleted: false' : ''} },
       ...additional,
     });
@@ -327,7 +341,7 @@ ${hasIsDeleted ? `
     where: ${whereUniqueInput},
     additional?: ${additionalType},
   ): Promise<${name}> {
-    const record = await this.getReadClient().${clientName}.findUnique({
+    const record = await this.getReadClient().${clientName}.${hasIsDeleted ? 'findFirst' : 'findUnique'}({
       where: { ...where${hasIsDeleted ? ', isDeleted: false' : ''} },
       ...additional,
     });

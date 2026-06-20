@@ -1,9 +1,12 @@
-import { Controller, VERSION_NEUTRAL } from '@nestjs/common';
+import { Controller, Req, VERSION_NEUTRAL } from '@nestjs/common';
 import { TsRestHandler, tsRestHandler } from '@ts-rest/nest';
 import { created, success } from '@dofe/infra-common/ts-rest';
 import { loopsContract as c } from '@repo/contracts/api';
+import { Auth } from '@app/auth';
+import type { AuthenticatedRequest } from '@app/auth';
 import { LoopsService } from './loops.service';
 
+@Auth('api')
 @Controller({
   version: VERSION_NEUTRAL,
 })
@@ -25,9 +28,13 @@ export class LoopsController {
   }
 
   @TsRestHandler(c.createIssue)
-  async createIssue() {
+  async createIssue(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.createIssue, async ({ body }) => {
-      return created(await this.loopsService.createIssue(body));
+      // Submitter is derived server-side from the authenticated SSO user
+      // (provider `dofe-sso`), ignoring any client-supplied submitter fields
+      // so identity cannot be spoofed. The CLI/internal path calls the service
+      // directly without a request and falls back to the `dev` defaults.
+      return created(await this.loopsService.createIssue(body, req.userInfo));
     });
   }
 

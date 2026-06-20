@@ -17,6 +17,7 @@
 - **round 10 后**：复核 `OPT-3` / `OPT-5` 后维持 accepted 决策：业务代码未引用 Loops per-model 生成 DB Service，实际访问集中在 `LoopsDbService`；API Jest config 的 `process.cwd()` 依赖已有注释约束且 `jest --showConfig` 确认从 `apps/api` 解析正确。上述两项不作为待实施阻断。
 - **round 11 后**：再次深度复审本目录，无新的非 SSO/file 待实施项；`api/web/contracts/utils` type-check、contracts/utils tests、Loops Jest、`loops:doctor`、`loops:db-doctor`、list/sensitive/utils gates 均通过。
 - **round 12 后**：回归复核发现 `docs/0619/sso` 迁移进程（已推进至第十二轮）已修复此前阻断 `check:architecture` 的 auth/SSO 命中——`resource-owner.guard.ts` 改注入 Winston `WINSTON_MODULE_PROVIDER` Logger（不再用 Nest 内置 Logger）、`streaming-asr-session.guard.ts` 已移除 `as any`。**`pnpm check:architecture` 与 `pnpm quality:gate` 现已全绿**，本目录此前记录的「quality:gate 被 auth/SSO 短路」结论已失效。
+- **round 13 后**：SSO 迁移已提交、`generated/db` 落定，实施 **OPT-3**——`LoopIssue`/`LoopIssueIntake`/`LoopState` 加入 `generate-db-crud.js` 的 `EXCLUDE_MODELS`，删除 3 个孤儿生成目录并由 `ensureExportsInIndex` 收敛 `index.ts`。回归全绿（`quality:gate` 6/6、`loops:doctor`、Loops Jest、API type-check）。本目录待优化项仅剩 `OPT-5`（accepted，非阻断）。
 - `pnpm quality:gate` ✅ 全绿：`check:architecture` / `check:list-contracts` / `check:sensitive-logs` / `check:utils-hygiene` / `type-check` 五步全部通过；本目录在 Loops v1 收尾范围内已无任何质量门禁阻断。
 - SSO 与 file 唯一真源迁移当前由另一个进程在 `docs/0619/sso` 范围处理（当前进度见 [`docs/0619/sso/09-implementation-status.md`](../sso/09-implementation-status.md)）；本目录只标注 Loops v1 收尾与非 SSO/file 的质量事项。
 
@@ -36,7 +37,7 @@
 | 2   | ~~`generated/db/index.ts` 去重导出 + 生成器去重~~      | 待实施 | P1     | ✅ round 3 已完成                                                 |
 | 3   | ~~CLI 可选 DB 模式（doctor/status 能查 DB）~~          | 待优化 | P2     | ✅ `loops:db-status` / `loops:db-doctor` 已落地并验证             |
 | 4   | ~~DB 写失败补偿/标记策略明确化~~                       | 待优化 | P2     | ✅ 已在 `08-数据存储设计.md` 记录 v1 runbook                      |
-| 5   | 裁剪冗余 per-model 生成 DB Service                     | 待优化 | P3     | 🟡 accepted：round 10 复核无业务引用，生成产物保留                |
+| 5   | ~~裁剪冗余 per-model 生成 DB Service~~                 | 待优化 | P3     | ✅ round 13 已完成（`EXCLUDE_MODELS` + 删除 3 个孤儿目录）        |
 | 6   | ~~Web 表单 `targetRepo` 默认值可移植化~~               | 待优化 | P3     | ✅ round 3 已完成（服务端解析仓库根）                             |
 | 7   | `jest.config.ts` `process.cwd()` 依赖收敛              | 待优化 | P3     | 🟡 accepted：round 10 复核 showConfig 正常，维持注释约束          |
 | 8   | ~~Task list query/response 标准化闭环~~                | 待优化 | P3     | ✅ `TaskListQuerySchema` + Web 默认分页参数已补齐                 |
@@ -47,4 +48,4 @@
 | 13  | 飞书入口/审批/反向通知                                 | 未落实 | v1.2   | TASK-09 后置                                                      |
 | 14  | 真实远端 PR / 多 Loop 并行 / 独立 worker 池 / 生产告警 | 未落实 | v1.3   | TASK-09 后置                                                      |
 
-> 注：round 12 复审后，本目录无新的 Loops v1 P0/P1 待实施项；`pnpm quality:gate` 已全绿（auth/SSO architecture 命中已被 `docs/0619/sso` 迁移修复）。`OPT-3` / `OPT-5` 维持 accepted/deferred，不作为阻断。
+> 注：round 13 实施后，本目录无新的 Loops v1 P0/P1 待实施项；`pnpm quality:gate` 全绿；`OPT-3` 已 done（round 13），仅剩 `OPT-5` 维持 accepted/deferred，不作为阻断。

@@ -27,7 +27,7 @@ export class UserInfoService extends TransactionalServiceBase {
     id: string,
     additional?: { select?: Prisma.UserInfoSelect },
   ): Promise<UserInfo | null> {
-    return this.getReadClient().userInfo.findUnique({
+    return this.getReadClient().userInfo.findFirst({
       where: { id: id, isDeleted: false },
       ...additional,
     });
@@ -38,7 +38,7 @@ export class UserInfoService extends TransactionalServiceBase {
     value: string,
     additional?: { select?: Prisma.UserInfoSelect },
   ): Promise<UserInfo | null> {
-    return this.getReadClient().userInfo.findUnique({
+    return this.getReadClient().userInfo.findFirst({
       where: { ssoSub: value, isDeleted: false },
       ...additional,
     });
@@ -49,7 +49,7 @@ export class UserInfoService extends TransactionalServiceBase {
     value: string,
     additional?: { select?: Prisma.UserInfoSelect },
   ): Promise<UserInfo | null> {
-    return this.getReadClient().userInfo.findUnique({
+    return this.getReadClient().userInfo.findFirst({
       where: { code: value, isDeleted: false },
       ...additional,
     });
@@ -152,7 +152,7 @@ export class UserInfoService extends TransactionalServiceBase {
     where: Prisma.UserInfoWhereUniqueInput,
     additional?: { select?: Prisma.UserInfoSelect },
   ): Promise<UserInfo> {
-    const record = await this.getReadClient().userInfo.findUnique({
+    const record = await this.getReadClient().userInfo.findFirst({
       where: { ...where, isDeleted: false },
       ...additional,
     });
