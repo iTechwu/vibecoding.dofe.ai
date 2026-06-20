@@ -185,6 +185,16 @@
 - `scaffold.dofe.ai`: 第十三轮后 `pnpm --filter @repo/web type-check`
 - `sso.dofe.ai`: 第十三轮后 `pnpm --filter @repo/api type-check`
 - `vibecoding.dofe.ai`: 第十三轮残留扫描确认旧本地认证/文件入口未复活；命中项仅为 OIDC 内部合法 refresh token 交换、历史 migration 字段、已移除说明或测试断言。
+- `vibecoding.dofe.ai` / `scaffold.dofe.ai`: 第十四轮后 `pnpm --filter @repo/api type-check` 全绿
+- `vibecoding.dofe.ai` / `scaffold.dofe.ai`: 第十四轮后 `pnpm --filter @repo/web type-check` 全绿
+- `vibecoding.dofe.ai`: 第十四轮后 `pnpm --filter @repo/contracts test`（43 passed）
+- `scaffold.dofe.ai`: 第十四轮后 `pnpm --filter @repo/contracts test`（41 passed）
+- `vibecoding.dofe.ai`: 第十四轮后 `pnpm --filter @repo/api exec jest --runInBand`（5 suites passed / 1 skipped；20 tests passed / 3 skipped）
+- `vibecoding.dofe.ai`: 第十四轮后 `pnpm --filter @repo/validators test`（40 passed）+ `pnpm --filter @repo/web test`（2 passed）
+- `scaffold.dofe.ai`: 第十四轮后 `pnpm --filter @repo/web test`（2 passed）+ `pnpm --filter @repo/api exec jest --runInBand --passWithNoTests`（无 spec，配置可解析）
+- `vibecoding.dofe.ai` / `scaffold.dofe.ai`: 第十四轮四项质量门禁通过：`check:architecture`、`check:list-contracts`、`check:sensitive-logs`、`check:utils-hygiene`。
+- `vibecoding.dofe.ai`: 第十四轮修复 `app-module-imports.bootstrap.spec.ts`——重新 `pnpm install` 时 `@dofe/infra-*` 由 0.1.56 升至 0.1.57（caret，intentional 不回退），0.1.57 的 `@dofe/infra-shared-services/system-health` 真实加载链引入 `@dofe/infra-rabbitmq` → `createContextLogger`（infra-utils）调用，而原 spec 的 `jest.mock('@dofe/infra-shared-services')` 仅覆盖精确包名、不覆盖实际 import 的 `/system-health` 子路径；已改为 mock `@dofe/infra-clients/verify`、`@dofe/infra-shared-services/system-health` 子路径，spec 恢复通过。
+- `vibecoding.dofe.ai` / `scaffold.dofe.ai`: 第十四轮残留扫描确认 `@dofe/sso-node`/`@dofe/sso-contracts` 源码零 import、`package.json` 已移除；`FileBucketVendorSchema`/`FileEnvTypeSchema` 业务层与 contracts schema 层无残留（仅 `link-prisma.js`/`main.ts`/`webpack.config.js` 的有意 compat shim 保留）。
 
 本轮不纳入验收：
 

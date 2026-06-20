@@ -133,3 +133,8 @@
 - [ ] vibecoding `pnpm dev:api` + `pnpm dev:web` + sso 三端联动，登录/刷新/登出闭环
 - [ ] sso `t_oauth_client` 含 vibecoding；业务写接口审计记录正常
 - [x] vibecoding 文件上传经 sso 返回上传凭证与 CDN 元数据；物理 bucket PUT/CDN GET 不纳入本轮验收
+- [x] 第十四轮：OIDC 登录回调接入 `AuditLogService.logLogin`（vibecoding/scaffold），新增 `@app/audit-log` 别名，兑现审计"业务主动调用"
+- [x] 第十四轮：`@repo/contracts` 重新生成 Prisma enum（`pnpm generate:enums`），移除 `FileBucketVendor/FileEnvType`、新增 `AuditActionType`，同步 `schemas.test.ts`
+- [x] 第十四轮：移除死依赖 `@dofe/sso-node`/`@dofe/sso-contracts`（api+web），两仓 lockfile 更新；`@dofe/sso-browser` 保留
+- [x] 第十四轮：补齐 scaffold `.env.example`（api+web）SSO 变量；修订 05 §1.3 / 02 技术栈 sso-client 描述为"未采用"
+- [x] 第十四轮：vibecoding/scaffold 四项质量门禁全绿，type-check/contracts/web/validators/api jest 全通过

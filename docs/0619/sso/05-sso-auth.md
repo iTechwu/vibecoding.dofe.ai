@@ -125,7 +125,7 @@ ssoSub String? @unique @map("sso_sub") @db.VarChar(255)
 
 migration：`pnpm db:migrate:dev --name add_user_sso_sub`。
 
-### 3.4 `@repo/contracts`：`UserInfo` schema 补 `ssoSub`。
+### 3.4 `@repo/contracts`：`UserInfo` schema 补 `ssoSub`
 
 ## 4. 复制文件清单（models → vibecoding）
 

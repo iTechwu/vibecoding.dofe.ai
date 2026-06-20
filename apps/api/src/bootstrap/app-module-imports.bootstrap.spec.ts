@@ -21,11 +21,11 @@ jest.mock('@dofe/infra-jwt', () => ({
   JwtModule: class JwtModule {},
 }));
 
-jest.mock('@dofe/infra-clients', () => ({
+jest.mock('@dofe/infra-clients/verify', () => ({
   VerifyModule: class VerifyModule {},
 }));
 
-jest.mock('@dofe/infra-shared-services', () => ({
+jest.mock('@dofe/infra-shared-services/system-health', () => ({
   SystemHealthModule: class SystemHealthModule {},
 }));
 
