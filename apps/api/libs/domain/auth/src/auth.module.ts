@@ -1,23 +1,46 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@dofe/infra-jwt';
+import { RedisModule } from '@dofe/infra-redis';
+import { SsoClientModule as InfraSsoClientModule } from '@dofe/infra-clients/sso';
+import { FileClient } from '@dofe/file-sdk';
+import { UserInfoModule } from '@app/db';
 import { AuthGuard } from './auth.guard';
 import { AuthService } from './auth.service';
 import { AuthValidationService } from './auth-validation.service';
-import { ConfigModule } from '@nestjs/config';
-import { RedisModule } from '@dofe/infra-redis';
-import { JwtModule } from '@dofe/infra-jwt';
-import { UserInfoModule, FileSourceModule } from '@app/db';
-import { FileCdnModule } from '@dofe/infra-clients';
+import { UserSyncService } from './user-sync.service';
 
+@Global()
 @Module({
-  imports: [
-    ConfigModule,
-    RedisModule,
+  imports: [ConfigModule, RedisModule, JwtModule, InfraSsoClientModule, UserInfoModule],
+  providers: [
+    AuthGuard,
+    AuthService,
+    {
+      provide: FileClient,
+      useFactory: (config: ConfigService) =>
+        new FileClient({
+          baseUrl: config.getOrThrow<string>('SSO_API_URL'),
+          internalSecret: config.getOrThrow<string>('INTERNAL_API_SECRET'),
+        }),
+      inject: [ConfigService],
+    },
+    AuthValidationService,
+    UserSyncService,
+    {
+      provide: APP_GUARD,
+      useClass: AuthGuard,
+    },
+  ],
+  exports: [
+    AuthGuard,
+    AuthService,
+    AuthValidationService,
+    UserSyncService,
     JwtModule,
     UserInfoModule,
-    FileSourceModule,
-    FileCdnModule,
+    InfraSsoClientModule,
   ],
-  providers: [AuthGuard, AuthService, AuthValidationService],
-  exports: [AuthGuard, AuthService, AuthValidationService],
 })
 export class AuthModule {}

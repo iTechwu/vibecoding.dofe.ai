@@ -2,6 +2,8 @@
  * Shared constants between frontend and backend
  */
 
+export * from './auth';
+
 // HTTP Status codes
 export const HTTP_STATUS = {
   OK: 200,

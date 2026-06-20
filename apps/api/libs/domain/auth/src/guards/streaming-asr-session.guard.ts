@@ -15,18 +15,16 @@
  * @module auth/guards/streaming-asr-session
  */
 
-import {
-  Injectable,
-  CanActivate,
-  ExecutionContext,
-  Inject,
-  forwardRef,
-} from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext, Inject, forwardRef } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { FastifyRequest } from 'fastify';
 import { apiError } from '@dofe/infra-common';
-import { ApiErrorCode, CommonErrorCode } from '@repo/contracts/errors';
+import { CommonErrorCode } from '@repo/contracts/errors';
+// `apiError` (from @dofe/infra-common) expects the `@dofe/infra-contracts`
+// ApiErrorCode type; importing it from there (not the @repo/contracts mirror)
+// keeps the two nominal types aligned so the `as ApiErrorCode` cast type-checks.
+import { ApiErrorCode } from '@dofe/infra-contracts';
 import { StreamingAsrService } from '@dofe/infra-shared-services';
 
 /**
@@ -59,7 +57,7 @@ interface SessionTokenPayload {
  * ```typescript
  * @UseGuards(StreamingAsrSessionGuard)
  * @Post('/streaming-asr/sessions/:sessionId/audio')
- * async sendAudioChunk(@Req() req: any) {
+ * async sendAudioChunk(@Req() req: FastifyRequest) {
  *   // req.userId, req.sessionId 已注入
  * }
  * ```
@@ -109,9 +107,7 @@ export class StreamingAsrSessionGuard implements CanActivate {
 
     // 4. 验证 session 是否存在且有效
     try {
-      const session = await this.streamingAsrService.getSessionStatus(
-        payload.sessionId,
-      );
+      const session = await this.streamingAsrService.getSessionStatus(payload.sessionId);
 
       // Session 不存在或已失效
       if (!session) {
@@ -134,7 +130,7 @@ export class StreamingAsrSessionGuard implements CanActivate {
       // completed 状态也允许继续（可能用户还在发送数据）
     } catch (error) {
       // Session 不存在
-      if ((error as any).status === 404) {
+      if (hasHttpStatus(error, 404)) {
         throw apiError(CommonErrorCode.SessionExpired as ApiErrorCode, {
           message: 'Session not found',
         });
@@ -158,21 +154,27 @@ export class StreamingAsrSessionGuard implements CanActivate {
    */
   private extractSessionToken(request: FastifyRequest): string | null {
     // 优先从 header 获取
-    const headerToken = request.headers['x-session-token'] as
-      | string
-      | undefined;
+    const headerToken = request.headers['x-session-token'] as string | undefined;
     if (headerToken) {
       return headerToken;
     }
 
     // 从 query 获取（用于 SSE）
-    const queryToken = (request.query as any)?.session_token as
-      | string
-      | undefined;
+    const query = request.query as { session_token?: unknown };
+    const queryToken = typeof query.session_token === 'string' ? query.session_token : undefined;
     if (queryToken) {
       return decodeURIComponent(queryToken);
     }
 
     return null;
   }
+}
+
+function hasHttpStatus(error: unknown, status: number): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'status' in error &&
+    (error as { status?: unknown }).status === status
+  );
 }

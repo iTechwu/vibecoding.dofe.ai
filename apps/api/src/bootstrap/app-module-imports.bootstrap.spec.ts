@@ -33,12 +33,16 @@ jest.mock('@app/services/ip-info', () => ({
   IpInfoServiceModule: class IpInfoServiceModule {},
 }));
 
-jest.mock('../modules/uploader/uploader.module', () => ({
-  UploaderModule: class UploaderModule {},
-}));
-
 jest.mock('../modules/loops/loops.module', () => ({
   LoopsModule: class LoopsModule {},
+}));
+
+jest.mock('../modules/oidc-client-api/oidc-client-api.module', () => ({
+  OidcClientApiModule: class OidcClientApiModule {},
+}));
+
+jest.mock('@app/auth', () => ({
+  AuthModule: class AuthModule {},
 }));
 
 describe('app module imports bootstrap', () => {
@@ -64,6 +68,9 @@ describe('app module imports bootstrap', () => {
       'SystemHealthModule',
       'JwtModule',
     ]);
-    expect(names).toEqual(expect.arrayContaining(['UploaderModule', 'LoopsModule']));
+    expect(names).toEqual(
+      expect.arrayContaining(['OidcClientApiModule', 'AuthModule', 'LoopsModule']),
+    );
+    expect(names).not.toContain('UploaderModule');
   });
 });

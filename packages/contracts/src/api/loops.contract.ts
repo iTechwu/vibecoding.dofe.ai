@@ -47,6 +47,9 @@ export const loopsContract = c.router(
         200: ApiResponseSchema(LoopListResponseSchema),
       },
       summary: 'List Loops issues and state (legacy route)',
+      deprecated: true,
+      description:
+        'Deprecated: alias of `list` (`GET /issues`). Kept only for backward compatibility with older clients; new consumers must use `list`. Scheduled for removal in a future version.',
     },
     createIssue: {
       method: 'POST',

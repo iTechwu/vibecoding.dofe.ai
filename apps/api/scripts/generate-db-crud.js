@@ -32,12 +32,13 @@ const MODULES_DIR = path.resolve(__dirname, '../generated/db/modules');
 const DB_INDEX_PATH = path.resolve(__dirname, '../generated/db/index.ts');
 
 // 不生成、保留手写逻辑的 model（可在此增加）
-const EXCLUDE_MODELS = new Set([
-  'Message',
-  'MessageRecipient',
-  'UserInfo',
-  'CountryCode',
-]);
+// Note: `UserInfo` was previously excluded expecting a hand-written service, but
+// that service was removed during the infra migration while `auth` still imports
+// `UserInfoModule/Service` from `@app/db`. Un-excluding lets the generator emit
+// the standard CRUD service (auth only uses `.get()`), restoring the export.
+// `CountryCode` stays excluded — its canonical module now lives in
+// `@dofe/infra-shared-db` (ip-info imports it from there).
+const EXCLUDE_MODELS = new Set(['Message', 'MessageRecipient', 'CountryCode']);
 
 function pascalToKebab(str) {
   return str
@@ -434,20 +435,13 @@ function main() {
 function ensureExportsInIndex(generatedKebabs) {
   const dbDir = path.dirname(DB_INDEX_PATH);
   if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
+  const content = fs.existsSync(DB_INDEX_PATH) ? fs.readFileSync(DB_INDEX_PATH, 'utf8') : '';
 
-  let content = '';
-  if (fs.existsSync(DB_INDEX_PATH)) {
-    content = fs.readFileSync(DB_INDEX_PATH, 'utf8');
+  const ordered = [];
+  const manualExports = ['loops'];
+  for (const k of manualExports) {
+    if (fs.existsSync(path.join(MODULES_DIR, k))) ordered.push(k);
   }
-
-  // Preserve existing module exports (including hand-written ones like `loops`),
-  // merge in the newly generated kebabs, dedup (first-seen wins) and rewrite the
-  // index as a clean list. This is idempotent and prevents duplicate `export *`
-  // lines from repeated generator runs (a prior bug under pnpm/manual edits).
-  const existing = (content.match(/from\s+['"]\.\/modules\/([^'"]+)['"]/g) || []).map(
-    (m) => (m.match(/modules\/([^'"]+)/) || [])[1],
-  );
-  const ordered = [...existing];
   for (const k of generatedKebabs) {
     if (!ordered.includes(k)) ordered.push(k);
   }

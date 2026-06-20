@@ -1,58 +1,42 @@
-import {
-  CanActivate,
-  ExecutionContext,
-  Inject,
-  Injectable,
-} from '@nestjs/common';
-import { AuthService } from './auth.service';
-import { JwtService } from '@nestjs/jwt';
-import { CommonErrorCode } from '@repo/contracts/errors';
-import { apiError } from '@dofe/infra-common';
-import { ConfigService } from '@nestjs/config';
-import { stringUtil, environmentUtil } from '@dofe/infra-utils';
-import { FastifyRequest } from 'fastify';
+import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { JwtService } from '@nestjs/jwt';
+import { SsoAuthClient } from '@dofe/infra-clients/sso';
+import { apiError } from '@dofe/infra-common';
+import { environmentUtil } from '@dofe/infra-utils';
+import { RedisService } from '@dofe/infra-redis';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
-import { Logger } from 'winston';
-import { MPTRAIL_HEADER } from '@repo/constants';
+import type { Logger } from 'winston';
+import { CommonErrorCode } from '@repo/contracts/errors';
+import { MPTRAIL_HEADER, TOKEN_BLACKLIST_PREFIX } from '@repo/constants';
+import { AuthService } from './auth.service';
+import { IS_PUBLIC_KEY } from './auth';
+import { UserSyncService } from './user-sync.service';
+import type { AuthenticatedRequest } from './types/auth.interface';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
-  private readonly outOfAnonymityPathConfig: Record<string, string[]>;
-  private readonly outOfUserPathConfig: Record<string, string[]>;
-
   constructor(
     private readonly auth: AuthService,
-    private readonly jwt: JwtService,
-    private readonly config: ConfigService,
+    private readonly ssoAuth: SsoAuthClient,
+    private readonly userSync: UserSyncService,
     private readonly reflector: Reflector,
+    private readonly jwtService: JwtService,
+    private readonly redisService: RedisService,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
-  ) {
-    this.outOfAnonymityPathConfig =
-      this.config.getOrThrow<Record<string, string[]>>('outOfAnonymityPath');
-    this.outOfUserPathConfig =
-      this.config.getOrThrow<Record<string, string[]>>('outOfUserPath');
-  }
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<FastifyRequest>();
-    const requestMethod = request.method.toLowerCase();
-    const requestPath = stringUtil.trimSlashes(
-      stringUtil.splitString(request.url, '?')[0],
-    );
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
 
-    // 检查是否在白名单路径中
-    if (
-      this.outOfUserPathConfig[requestMethod]?.some((pattern: string) =>
-        new RegExp(`^${pattern.replace(/:\w+/g, '[^/]+')}$`).test(
-          requestPath.replace('api/', ''),
-        ),
-      )
-    ) {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) {
       return true;
     }
 
-    // 从方法处理器获取元数据
     let authTypes = this.reflector.get<string[]>('auths', context.getHandler());
     if (!authTypes) {
       authTypes = this.reflector.get<string[]>('auths', context.getClass());
@@ -60,68 +44,59 @@ export class AuthGuard implements CanActivate {
 
     const [authType = 'api', guardType = 'api'] = authTypes || ['api', 'api'];
     const isMpTest = request.headers[MPTRAIL_HEADER] === 'true';
-    let userId,
-      isAdmin = false,
-      isAnonymity = false;
+
+    let userId: string | undefined;
+    let isAdmin = false;
+    let isAnonymity = false;
 
     if (!process.env.MODE_USER_ID) {
-      let access;
-      if (guardType === 'sse') {
-        access = decodeURIComponent((request.query as Record<string, string>)['access_token']);
-      } else {
-        access = this.auth.extractTokenFromHeader(request);
-        if (!access) {
-          throw apiError(CommonErrorCode.UnAuthorized);
-        }
-      }
+      const access =
+        guardType === 'sse'
+          ? decodeURIComponent((request.query as Record<string, string>)['access_token'] ?? '')
+          : this.auth.extractTokenFromHeader(request);
+
       if (!access) {
         throw apiError(CommonErrorCode.UnAuthorized);
       }
 
-      let payload;
-      try {
-        const secret = this.config.getOrThrow<string>('JWT_SECRET');
-        payload = await this.jwt.verifyAsync(access, {
-          secret,
-        });
-      } catch (error) {
+      await this.assertTokenNotBlacklisted(access);
+
+      const verifyResult = await this.ssoAuth.verifyToken(access);
+      if (!verifyResult.valid || !verifyResult.userId) {
+        this.logger.warn('AuthGuard token verification failed via SSO');
         throw apiError(CommonErrorCode.UnAuthorized);
       }
 
-      userId = payload?.sub;
-      isAnonymity = payload?.isAnonymity;
-      isAdmin = payload?.isAdmin;
-
-      if (isAnonymity) {
-        throw apiError(CommonErrorCode.UnAuthorized);
-      }
-
-      // 将 JWT payload 中的用户信息设置到 request 中
+      const localUser = await this.userSync.ensureLocalUserExists(verifyResult.userId);
+      userId = localUser.id;
+      isAdmin = localUser.isAdmin ?? false;
+      isAnonymity = false;
       request.userInfo = {
-        id: userId,
-        nickname: payload?.nickname,
-        code: payload?.code,
-        headerImg: payload?.headerImg,
-        sex: payload?.sex,
-        isAdmin: isAdmin,
-        isAnonymity: isAnonymity,
+        id: localUser.id,
+        nickname: localUser.nickname ?? undefined,
+        code: localUser.code ?? undefined,
+        headerImg: undefined,
+        sex: localUser.sex ?? undefined,
+        isAdmin,
+        isAnonymity,
       };
     } else {
       if (process.env.NODE_ENV === 'prod') {
-        this.logger.error(
-          'CRITICAL SECURITY ERROR: MODE_USER_ID is set in prod environment!',
-        );
+        this.logger.error('CRITICAL SECURITY ERROR: MODE_USER_ID is set in prod environment');
         throw apiError(CommonErrorCode.UnAuthorized);
       }
 
-      this.logger.warn(
-        'Auth Guard is running in insecure bypass mode. DO NOT USE IN PROD.',
-        { bypassUserId: process.env.MODE_USER_ID },
-      );
-
+      this.logger.warn('AuthGuard is running in insecure bypass mode. DO NOT USE IN PROD.', {
+        bypassUserId: process.env.MODE_USER_ID,
+      });
       userId = process.env.MODE_USER_ID;
       isAdmin = true;
       isAnonymity = false;
+      request.userInfo = {
+        id: userId,
+        isAdmin,
+        isAnonymity,
+      };
     }
 
     if (!userId) {
@@ -131,10 +106,7 @@ export class AuthGuard implements CanActivate {
     if (
       request.method.toLowerCase() === 'post' &&
       process.env?.PREVIEW_MODE === 'true' &&
-      // FastifyRequest version mismatch between scaffold pnpm store and infra package node_modules
-      // Runtime types are compatible across Fastify 5.x minor versions
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      environmentUtil.isWeChatMiniProgram(request as any) &&
+      environmentUtil.isWeChatMiniProgram(request as never) &&
       isMpTest &&
       process.env?.PREVIEW_USER_ID
     ) {
@@ -145,23 +117,36 @@ export class AuthGuard implements CanActivate {
       throw apiError(CommonErrorCode.UnAuthorized);
     }
 
-    // 检查匿名用户访问限制
-    if (
-      this.outOfAnonymityPathConfig[requestMethod]?.some((pattern: string) =>
-        new RegExp(`^${pattern.replace(/:\w+/g, '[^/]+')}$`).test(
-          requestPath.replace('api/', ''),
-        ),
-      ) &&
-      isAnonymity
-    ) {
-      throw apiError(CommonErrorCode.UnAuthorized);
-    }
-
-    // 将用户信息设置到request对象中
     request.userId = userId;
-    request.isAnonymity = isAnonymity;
     request.isAdmin = isAdmin;
+    request.isAnonymity = isAnonymity;
 
     return true;
+  }
+
+  private async assertTokenNotBlacklisted(accessToken: string): Promise<void> {
+    let blacklistedJti: string | undefined;
+
+    try {
+      const decoded = this.jwtService.decode(accessToken, {
+        complete: false,
+      }) as Record<string, unknown> | null;
+      const jti = typeof decoded?.jti === 'string' ? decoded.jti : undefined;
+      if (!jti) return;
+
+      const blacklisted = await this.redisService.get(`${TOKEN_BLACKLIST_PREFIX}${jti}`);
+      if (blacklisted) {
+        blacklistedJti = jti;
+      }
+    } catch (error) {
+      this.logger.warn('AuthGuard token blacklist check failed; falling back to SSO verify', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    if (blacklistedJti) {
+      this.logger.warn('AuthGuard rejected blacklisted access token', { jti: blacklistedJti });
+      throw apiError(CommonErrorCode.UnAuthorized);
+    }
   }
 }

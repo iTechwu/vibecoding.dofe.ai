@@ -3,6 +3,7 @@ export * from './auth.service';
 export * from './auth-validation.service';
 export * from './auth.guard';
 export * from './auth';
+export * from './user-sync.service';
 export * from './dto/auth.dto';
 // RBAC exports
 export * from './decorators/rbac.decorator';

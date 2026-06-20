@@ -95,6 +95,9 @@ importers:
       '@darabonba/typescript':
         specifier: ^1.0.4
         version: 1.0.4
+      '@dofe/file-sdk':
+        specifier: 0.1.7
+        version: 0.1.7
       '@dofe/infra-clients':
         specifier: ^0.1.56
         version: 0.1.56(9d7ec435a0bc82716649a9e54a8d8606)
@@ -128,6 +131,12 @@ importers:
       '@dofe/infra-utils':
         specifier: ^0.1.56
         version: 0.1.56(@dofe/infra-contracts@0.1.56)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)
+      '@dofe/sso-contracts':
+        specifier: ^0.1.66
+        version: 0.1.66(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
+      '@dofe/sso-node':
+        specifier: 0.1.43
+        version: 0.1.43
       '@fastify/compress':
         specifier: ^8.3.1
         version: 8.3.1
@@ -314,6 +323,9 @@ importers:
       openai:
         specifier: ^6.17.0
         version: 6.44.0(ws@8.21.0)(zod@4.4.3)
+      openid-client:
+        specifier: ^6.8.4
+        version: 6.8.4
       passport:
         specifier: ^0.7.0
         version: 0.7.0
@@ -495,6 +507,15 @@ importers:
 
   apps/web:
     dependencies:
+      '@dofe/file-sdk-web':
+        specifier: 0.1.7
+        version: 0.1.7
+      '@dofe/sso-browser':
+        specifier: ^0.1.56
+        version: 0.1.56(react@19.2.6)
+      '@dofe/sso-contracts':
+        specifier: ^0.1.66
+        version: 0.1.66(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
       '@hookform/resolvers':
         specifier: ^5.4.0
         version: 5.4.0(react-hook-form@7.79.0(react@19.2.6))
@@ -722,10 +743,10 @@ importers:
         version: 30.0.0
       jest:
         specifier: ^30.4.2
-        version: 30.4.2(@types/node@25.9.4)
+        version: 30.4.2(@types/node@25.9.4)(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@25.9.4)(typescript@6.0.3))
       ts-jest:
         specifier: ^29.4.11
-        version: 29.4.11(@babel/core@7.29.7)(@jest/transform@30.4.1)(@jest/types@30.4.1)(babel-jest@30.4.1(@babel/core@7.29.7))(jest-util@30.4.1)(jest@30.4.2(@types/node@25.9.4))(typescript@6.0.3)
+        version: 29.4.11(@babel/core@7.29.7)(@jest/transform@30.4.1)(@jest/types@30.4.1)(babel-jest@30.4.1(@babel/core@7.29.7))(jest-util@30.4.1)(jest@30.4.2(@types/node@25.9.4)(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@25.9.4)(typescript@6.0.3)))(typescript@6.0.3)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -911,9 +932,6 @@ importers:
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
-      uuid:
-        specifier: ^14.0.0
-        version: 14.0.0
     devDependencies:
       '@types/bcrypt':
         specifier: ^6.0.0
@@ -929,10 +947,10 @@ importers:
         version: 4.17.24
       jest:
         specifier: ^30.4.2
-        version: 30.4.2(@types/node@25.9.4)
+        version: 30.4.2(@types/node@25.9.4)(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@25.9.4)(typescript@6.0.3))
       ts-jest:
         specifier: ^29.4.11
-        version: 29.4.11(@babel/core@7.29.7)(@jest/transform@30.4.1)(@jest/types@30.4.1)(babel-jest@30.4.1(@babel/core@7.29.7))(jest-util@30.4.1)(jest@30.4.2)(typescript@6.0.3)
+        version: 29.4.11(@babel/core@7.29.7)(@jest/transform@30.4.1)(@jest/types@30.4.1)(babel-jest@30.4.1(@babel/core@7.29.7))(jest-util@30.4.1)(jest@30.4.2(@types/node@25.9.4)(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@25.9.4)(typescript@6.0.3)))(typescript@6.0.3)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -955,10 +973,10 @@ importers:
         version: 30.0.0
       jest:
         specifier: ^30.4.2
-        version: 30.4.2(@types/node@25.9.4)
+        version: 30.4.2(@types/node@25.9.4)(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@25.9.4)(typescript@6.0.3))
       ts-jest:
         specifier: ^29.4.11
-        version: 29.4.11(@babel/core@7.29.7)(@jest/transform@30.4.1)(@jest/types@30.4.1)(babel-jest@30.4.1(@babel/core@7.29.7))(jest-util@30.4.1)(jest@30.4.2)(typescript@6.0.3)
+        version: 29.4.11(@babel/core@7.29.7)(@jest/transform@30.4.1)(@jest/types@30.4.1)(babel-jest@30.4.1(@babel/core@7.29.7))(jest-util@30.4.1)(jest@30.4.2(@types/node@25.9.4)(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@25.9.4)(typescript@6.0.3)))(typescript@6.0.3)
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -1437,6 +1455,12 @@ packages:
     resolution: {integrity: sha512-Xc3VhU02wqZ1HvHRJUwL09HkZSTvidqY5Ya0NXBSYOxAp+Ln9dcJr9fySI+CkONzP3PekQo9WdzCv0PGER/mOA==}
     engines: {node: '>=14.17.0'}
 
+  '@dofe/file-sdk-web@0.1.7':
+    resolution: {integrity: sha512-Y+eFrd+AN+aFRIuNZ/GRtr9VeEnpJFkC8EHTTzi+4GpG5T4OOU7Kys78q7tI3VRIzQP06g8g5Rr+br+oD4HkOg==}
+
+  '@dofe/file-sdk@0.1.7':
+    resolution: {integrity: sha512-fTUiuH1/mPz+lowg3OIvw5LSWTiPnT6cQtud9NrgvNlsKBzlP+kZmHK8g78V5kZJp4aqQ8AlE0OCYgkOjTv+qg==}
+
   '@dofe/infra-clients@0.1.56':
     resolution: {integrity: sha512-IGVYHtLgvkYaqxbgmyumVcDNIGUDmnssf7jpZre1sJIY2VREaYDdOZ7YBFmjBccu2ZPzYPqvgfJA1hr/EfrGZg==}
     peerDependencies:
@@ -1499,6 +1523,12 @@ packages:
       uuid: ^14.0.0
       winston: ^3.13.0
       zod: ^4.3.6
+
+  '@dofe/infra-contracts-base@0.1.56':
+    resolution: {integrity: sha512-sES0R1+3UlWQXJe3SYbYvBwYW4fYwsC+L1QKgcjUubfuTIqjOAMAmS0LWJ6y4M+2BGugdKKD4HaOX2sdYchOGQ==}
+    peerDependencies:
+      '@ts-rest/core': 3.53.0-rc.1
+      zod: ^4.0.0
 
   '@dofe/infra-contracts@0.1.56':
     resolution: {integrity: sha512-1zrG04/S969CQvsWCh3o/JbhSpF4NxOYd2dyNKhGHfsu+sVQ1s1JQGvnhSdxc3pumTaQ23JwYhYUdO9vOaH7nw==}
@@ -1634,6 +1664,21 @@ packages:
       pinyin-pro: ^3.0.0
       winston: ^3.13.0
       winston-daily-rotate-file: ^5.0.0
+
+  '@dofe/sso-browser@0.1.56':
+    resolution: {integrity: sha512-8svSX5jUpNOJ+icaK5oRZCe95Y/P2rizz+c6Cwt1tr7thV7o+/9+P6HJdgeLHddVa1lwsgnk34jZlsd2esKZBQ==}
+    peerDependencies:
+      react: '>=18'
+
+  '@dofe/sso-contracts@0.1.66':
+    resolution: {integrity: sha512-y5TZJP+XfG000FrjXMuC4tBefEP2KQiRk83FfLTq1/wI2td5MSWpSUOENIZY9WxS6be6hhZduGlll5pVQTUY4A==}
+    peerDependencies:
+      '@ts-rest/core': '>=3.53.0-rc.1'
+      zod: ^4.4.3
+
+  '@dofe/sso-node@0.1.43':
+    resolution: {integrity: sha512-fdD/ziBPRYhtJ1bk0BhIMkBztJ+Csko/vWlrTl5TQ9Dogav6D1+vsXS1R+zbm6YwlwCougOGlbgPhZdrv1xYeg==}
+    engines: {node: '>=18.0.0'}
 
   '@electric-sql/pglite-socket@0.1.1':
     resolution: {integrity: sha512-p2hoXw3Z3LQHwTeikdZNsFBOvXGqKY2hk51BBw+8NKND8eoH+8LFOtW9Z8CQKmTJ2qqGYu82ipqiyFZOTTXNfw==}
@@ -7350,6 +7395,9 @@ packages:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
 
+  jose@6.2.3:
+    resolution: {integrity: sha512-YYVDInQKFJfR/xa3ojUTl8c2KoTwiL1R5Wg9YCydwH0x0B9grbzlg5HC7mMjCtUJjbQ/YnGEZIhI5tCgfTb4Hw==}
+
   js-base64@2.6.4:
     resolution: {integrity: sha512-pZe//GGmwJndub7ZghVHz7vjb2LgC1m8B07Au3eYqeqv9emhESByMXxaEgkUkEqJe87oBbSniGYoQNIBklc7IQ==}
 
@@ -8039,6 +8087,9 @@ packages:
   nprogress@0.2.0:
     resolution: {integrity: sha512-I19aIingLgR1fmhftnbWWO3dXc0hSxqHQHQb3H8m+K3TnEn/iSeTZZOyvKXWqQESMwuUVnatlCnZdLBZZt2VSA==}
 
+  oauth4webapi@3.8.6:
+    resolution: {integrity: sha512-iwemM91xz8nryHti2yTmg5fhyEMVOkOXwHNqbvcATjyajb5oQxCQzrNOA6uElRHuMhQQTKUyFKV9y/CNyg25BQ==}
+
   oauth@0.10.2:
     resolution: {integrity: sha512-JtFnB+8nxDEXgNyniwz573xxbKSOu3R8D40xQKqcjwJ2CDkYqUDI53o6IuzDJBx60Z8VKCm271+t8iFjakrl8Q==}
 
@@ -8117,6 +8168,9 @@ packages:
         optional: true
       zod:
         optional: true
+
+  openid-client@6.8.4:
+    resolution: {integrity: sha512-QSw0BA08piujetEwfZsHoTrDpMEha7GDZDicQqVwX4u0ChCjefvjDB++TZ8BTg76UpwhzIQgdvvfgfl3HpCSAw==}
 
   optionator@0.9.4:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
@@ -10777,6 +10831,10 @@ snapshots:
 
   '@discoveryjs/json-ext@1.1.0': {}
 
+  '@dofe/file-sdk-web@0.1.7': {}
+
+  '@dofe/file-sdk@0.1.7': {}
+
   '@dofe/infra-clients@0.1.56(9d7ec435a0bc82716649a9e54a8d8606)':
     dependencies:
       '@alicloud/dysmsapi20170525': 4.5.1
@@ -10867,6 +10925,11 @@ snapshots:
       - moment-timezone
       - pinyin-pro
       - winston-daily-rotate-file
+
+  '@dofe/infra-contracts-base@0.1.56(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)':
+    dependencies:
+      '@ts-rest/core': 3.53.0-rc.1(@types/node@25.9.4)
+      zod: 4.4.3
 
   '@dofe/infra-contracts@0.1.56': {}
 
@@ -11103,6 +11166,19 @@ snapshots:
       pinyin-pro: 3.28.1
       winston: 3.19.0
       winston-daily-rotate-file: 5.0.0(winston@3.19.0)
+
+  '@dofe/sso-browser@0.1.56(react@19.2.6)':
+    dependencies:
+      react: 19.2.6
+
+  '@dofe/sso-contracts@0.1.66(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)':
+    dependencies:
+      '@dofe/infra-contracts': 0.1.56
+      '@dofe/infra-contracts-base': 0.1.56(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
+      '@ts-rest/core': 3.53.0-rc.1(@types/node@25.9.4)
+      zod: 4.4.3
+
+  '@dofe/sso-node@0.1.43': {}
 
   '@electric-sql/pglite-socket@0.1.1(@electric-sql/pglite@0.4.1)':
     dependencies:
@@ -17054,25 +17130,6 @@ snapshots:
       - babel-plugin-macros
       - supports-color
 
-  jest-cli@30.4.2(@types/node@25.9.4):
-    dependencies:
-      '@jest/core': 30.4.2(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@25.9.4)(typescript@6.0.3))
-      '@jest/test-result': 30.4.1
-      '@jest/types': 30.4.1
-      chalk: 4.1.2
-      exit-x: 0.2.2
-      import-local: 3.2.0
-      jest-config: 30.4.2(@types/node@25.9.4)(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@25.9.4)(typescript@6.0.3))
-      jest-util: 30.4.1
-      jest-validate: 30.4.1
-      yargs: 17.7.3
-    transitivePeerDependencies:
-      - '@types/node'
-      - babel-plugin-macros
-      - esbuild-register
-      - supports-color
-      - ts-node
-
   jest-cli@30.4.2(@types/node@25.9.4)(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@25.9.4)(typescript@6.0.3)):
     dependencies:
       '@jest/core': 30.4.2(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@25.9.4)(typescript@6.0.3))
@@ -17346,32 +17403,6 @@ snapshots:
       merge-stream: 2.0.0
       supports-color: 8.1.1
 
-  jest@30.4.2:
-    dependencies:
-      '@jest/core': 30.4.2(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@25.9.4)(typescript@6.0.3))
-      '@jest/types': 30.4.1
-      import-local: 3.2.0
-      jest-cli: 30.4.2(@types/node@25.9.4)
-    transitivePeerDependencies:
-      - '@types/node'
-      - babel-plugin-macros
-      - esbuild-register
-      - supports-color
-      - ts-node
-
-  jest@30.4.2(@types/node@25.9.4):
-    dependencies:
-      '@jest/core': 30.4.2(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@25.9.4)(typescript@6.0.3))
-      '@jest/types': 30.4.1
-      import-local: 3.2.0
-      jest-cli: 30.4.2(@types/node@25.9.4)
-    transitivePeerDependencies:
-      - '@types/node'
-      - babel-plugin-macros
-      - esbuild-register
-      - supports-color
-      - ts-node
-
   jest@30.4.2(@types/node@25.9.4)(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@25.9.4)(typescript@6.0.3)):
     dependencies:
       '@jest/core': 30.4.2(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@25.9.4)(typescript@6.0.3))
@@ -17386,6 +17417,8 @@ snapshots:
       - ts-node
 
   jiti@2.7.0: {}
+
+  jose@6.2.3: {}
 
   js-base64@2.6.4: {}
 
@@ -18068,6 +18101,8 @@ snapshots:
 
   nprogress@0.2.0: {}
 
+  oauth4webapi@3.8.6: {}
+
   oauth@0.10.2: {}
 
   object-assign@4.1.1: {}
@@ -18147,6 +18182,11 @@ snapshots:
     optionalDependencies:
       ws: 8.21.0
       zod: 4.4.3
+
+  openid-client@6.8.4:
+    dependencies:
+      jose: 6.2.3
+      oauth4webapi: 3.8.6
 
   optionator@0.9.4:
     dependencies:
@@ -19626,46 +19666,6 @@ snapshots:
       fast-json-stable-stringify: 2.1.0
       handlebars: 4.7.9
       jest: 30.4.2(@types/node@25.9.4)(ts-node@10.9.2(@swc/core@1.15.41)(@types/node@25.9.4)(typescript@6.0.3))
-      json5: 2.2.3
-      lodash.memoize: 4.1.2
-      make-error: 1.3.6
-      semver: 7.8.4
-      type-fest: 4.41.0
-      typescript: 6.0.3
-      yargs-parser: 21.1.1
-    optionalDependencies:
-      '@babel/core': 7.29.7
-      '@jest/transform': 30.4.1
-      '@jest/types': 30.4.1
-      babel-jest: 30.4.1(@babel/core@7.29.7)
-      jest-util: 30.4.1
-
-  ts-jest@29.4.11(@babel/core@7.29.7)(@jest/transform@30.4.1)(@jest/types@30.4.1)(babel-jest@30.4.1(@babel/core@7.29.7))(jest-util@30.4.1)(jest@30.4.2(@types/node@25.9.4))(typescript@6.0.3):
-    dependencies:
-      bs-logger: 0.2.6
-      fast-json-stable-stringify: 2.1.0
-      handlebars: 4.7.9
-      jest: 30.4.2(@types/node@25.9.4)
-      json5: 2.2.3
-      lodash.memoize: 4.1.2
-      make-error: 1.3.6
-      semver: 7.8.4
-      type-fest: 4.41.0
-      typescript: 6.0.3
-      yargs-parser: 21.1.1
-    optionalDependencies:
-      '@babel/core': 7.29.7
-      '@jest/transform': 30.4.1
-      '@jest/types': 30.4.1
-      babel-jest: 30.4.1(@babel/core@7.29.7)
-      jest-util: 30.4.1
-
-  ts-jest@29.4.11(@babel/core@7.29.7)(@jest/transform@30.4.1)(@jest/types@30.4.1)(babel-jest@30.4.1(@babel/core@7.29.7))(jest-util@30.4.1)(jest@30.4.2)(typescript@6.0.3):
-    dependencies:
-      bs-logger: 0.2.6
-      fast-json-stable-stringify: 2.1.0
-      handlebars: 4.7.9
-      jest: 30.4.2
       json5: 2.2.3
       lodash.memoize: 4.1.2
       make-error: 1.3.6

@@ -18,11 +18,14 @@ import {
   VersionDecoratorModule,
 } from '@dofe/infra-common';
 import { JwtModule } from '@dofe/infra-jwt';
-import { VerifyModule } from '@dofe/infra-clients';
-import { SystemHealthModule } from '@dofe/infra-shared-services';
+// Import via direct subpaths. Barrels eagerly load file-storage, whose Prisma
+// enums are intentionally absent because files are owned by sso.dofe.ai.
+import { VerifyModule } from '@dofe/infra-clients/verify';
+import { SystemHealthModule } from '@dofe/infra-shared-services/system-health';
 import { IpInfoServiceModule } from '@app/services/ip-info';
-import { UploaderModule } from '../modules/uploader/uploader.module';
 import { LoopsModule } from '../modules/loops/loops.module';
+import { OidcClientApiModule } from '../modules/oidc-client-api/oidc-client-api.module';
+import { AuthModule } from '@app/auth';
 import { createBullMqRootOptions } from './bullmq.bootstrap';
 import type { BootstrapLogger, RedisVersionCheckClientFactory } from './bullmq.bootstrap';
 import { createI18nRootOptions } from './i18n.bootstrap';
@@ -91,7 +94,8 @@ export function createAppModuleImports(
     VerifyModule,
     SystemHealthModule,
     JwtModule,
-    UploaderModule,
+    OidcClientApiModule,
+    AuthModule,
     LoopsModule,
   ];
 }

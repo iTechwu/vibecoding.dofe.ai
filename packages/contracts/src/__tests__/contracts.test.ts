@@ -9,68 +9,54 @@ import * as contracts from '../api';
 describe('API Contracts', () => {
   describe('Contract Exports', () => {
     const expectedContracts = [
-      'assessmentContract',
-      'audioTranscribeContract',
-      'collaborateContract',
+      'analyticsContract',
       'downloadContract',
-      'knowledgeBaseContract',
-      'logContract',
+      'loopsContract',
       'messageContract',
-      'oauthContract',
-      'passwordContract',
-      'qrcodeContract',
-      'rbacContract',
-      'recycleBinContract',
+      'oidcAuthContract',
       'riskWordsContract',
       'settingContract',
-      'signContract',
       'smsContract',
-      'spaceContract',
       'systemContract',
       'taskContract',
-      'teamContract',
-      'transferSaveContract',
-      'uploaderContract',
       'userContract',
-      'videoTranscodeContract',
       'webhookContract',
     ];
 
     expectedContracts.forEach((contractName) => {
       it(`should export ${contractName}`, () => {
-        expect(
-          (contracts as Record<string, unknown>)[contractName],
-        ).toBeDefined();
+        expect((contracts as Record<string, unknown>)[contractName]).toBeDefined();
       });
     });
   });
 
   describe('Contract Structure', () => {
-    it('should have valid team contract structure', () => {
-      const { teamContract } = contracts;
-      expect(teamContract).toBeDefined();
+    const exportedContractNames = Object.keys(contracts).filter((name) =>
+      name.endsWith('Contract'),
+    );
 
-      // Check that it has router structure
-      expect(typeof teamContract).toBe('object');
+    it('should only expose current contract objects', () => {
+      expect(exportedContractNames.sort()).toEqual(
+        [
+          'analyticsContract',
+          'downloadContract',
+          'loopsContract',
+          'messageContract',
+          'oidcAuthContract',
+          'riskWordsContract',
+          'settingContract',
+          'smsContract',
+          'systemContract',
+          'taskContract',
+          'userContract',
+          'webhookContract',
+        ].sort(),
+      );
     });
 
-    it('should have valid space contract structure', () => {
-      const { spaceContract } = contracts;
-      expect(spaceContract).toBeDefined();
-      expect(typeof spaceContract).toBe('object');
-    });
-
-
-    it('should have valid download contract with typed error responses', () => {
-      const { downloadContract } = contracts;
-      expect(downloadContract).toBeDefined();
-      expect(typeof downloadContract).toBe('object');
-    });
-
-    it('should have valid recycle-bin contract with typed error responses', () => {
-      const { recycleBinContract } = contracts;
-      expect(recycleBinContract).toBeDefined();
-      expect(typeof recycleBinContract).toBe('object');
+    it.each(exportedContractNames)('%s should be a router object', (name) => {
+      expect((contracts as Record<string, unknown>)[name]).toBeDefined();
+      expect(typeof (contracts as Record<string, unknown>)[name]).toBe('object');
     });
   });
 

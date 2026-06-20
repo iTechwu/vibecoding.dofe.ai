@@ -8,17 +8,16 @@ import {
   downloadContract,
   messageContract,
   settingContract,
-  signContract,
   smsContract,
   systemContract,
   taskContract,
-  uploaderContract,
   userContract,
+  oidcAuthContract,
 } from '@repo/contracts';
 import { getHeaders } from '@repo/utils/headers';
 import { API_VERSION_HEADER, APP_BUILD_HEADER } from '@repo/constants';
 import { API_CONFIG } from '@/config';
-import { getToken, ensureValidToken, clearToken } from '../../api';
+import { getToken, ensureValidToken, clearToken, refreshToken } from '../../token-manager';
 import { APP_VERSION } from '@/lib/version';
 import {
   handleVersionMismatch,
@@ -49,6 +48,12 @@ import { checkDeprecationWarning } from '@/lib/deprecation-warning';
 const errorMessageCache = new Map<string, number>();
 const ERROR_DEDUP_INTERVAL = 2000; // 2秒
 const MAX_CACHE_SIZE = 50; // 最大缓存数量
+const SESSION_EXPIRED_MESSAGES = [
+  'No refresh token available',
+  'Refresh token expired',
+  'Session expired',
+] as const;
+const REFRESH_ENDPOINT_PATTERN = /\/auth\/oidc\/token(?:$|[?#/])/;
 
 /**
  * 清理过期的错误缓存
@@ -92,9 +97,13 @@ const shouldDeduplicateError = (errorKey: string): boolean => {
 
 /**
  * Base fetch function with standard headers (no auth check)
- * Used for public endpoints like login, register
+ * Used for public endpoints such as OIDC exchange/refresh and SMS code sending.
  */
-const baseFetch = async (args: ApiFetcherArgs, requireAuth: boolean = true) => {
+const baseFetch = async (
+  args: ApiFetcherArgs,
+  requireAuth: boolean = true,
+  allowRecovery: boolean = true,
+) => {
   // Only ensure valid token for authenticated requests
   if (requireAuth) {
     try {
@@ -151,25 +160,28 @@ const baseFetch = async (args: ApiFetcherArgs, requireAuth: boolean = true) => {
   let requestBody: string | undefined;
   if (args.body !== undefined && args.body !== null) {
     // If body is already a string, use it directly; otherwise stringify it
-    requestBody =
-      typeof args.body === 'string' ? args.body : JSON.stringify(args.body);
+    requestBody = typeof args.body === 'string' ? args.body : JSON.stringify(args.body);
   }
 
-  const response = await fetch(args.path, {
-    method: args.method,
-    headers,
-    body: requestBody,
-    credentials: 'include',
-  });
+  let response: Response;
+  try {
+    response = await fetch(args.path, {
+      method: args.method,
+      headers,
+      body: requestBody,
+      credentials: 'include',
+    });
+  } catch (cause) {
+    const name = cause instanceof Error ? cause.name : 'TypeError';
+    const msg = cause instanceof Error ? cause.message : String(cause);
+    throw new Error(`${name}: ${msg}`, { cause });
+  }
 
   const contentType = response.headers.get('content-type');
   let body;
 
   // Handle empty responses (204 No Content, etc.)
-  if (
-    response.status === 204 ||
-    response.headers.get('content-length') === '0'
-  ) {
+  if (response.status === 204 || response.headers.get('content-length') === '0') {
     body = null;
   } else if (contentType?.includes('application/json')) {
     const text = await response.text();
@@ -187,6 +199,21 @@ const baseFetch = async (args: ApiFetcherArgs, requireAuth: boolean = true) => {
 
   // Check for API deprecation warnings
   checkDeprecationWarning(response.headers, args.path);
+
+  const isSessionExpiredError = (errorMsg: string, statusCode: number | string): boolean => {
+    const normalizedStatus = Number(statusCode);
+    return (
+      normalizedStatus === 401 ||
+      normalizedStatus === 410 ||
+      SESSION_EXPIRED_MESSAGES.some((message) => errorMsg.includes(message))
+    );
+  };
+
+  const shouldAttemptRecovery = (errorMsg: string, statusCode: number | string): boolean =>
+    requireAuth &&
+    allowRecovery &&
+    !REFRESH_ENDPOINT_PATTERN.test(args.path) &&
+    isSessionExpiredError(errorMsg, statusCode);
 
   // Global error handling with deduplication
   const handleError = (errorMsg: string, statusCode: number) => {
@@ -207,11 +234,10 @@ const baseFetch = async (args: ApiFetcherArgs, requireAuth: boolean = true) => {
       return;
     }
 
-    // Handle 401 Unauthorized - clear storage and redirect to login
-    if (statusCode === 401) {
+    if (isSessionExpiredError(errorMsg, statusCode)) {
       clearToken();
       toast.error(errorMsg || '登录已过期，请重新登录');
-      window.location.href = '/login';
+      window.location.replace('/login');
     } else {
       // Show error toast for other error codes
       toast.error(errorMsg);
@@ -220,16 +246,48 @@ const baseFetch = async (args: ApiFetcherArgs, requireAuth: boolean = true) => {
 
   // Check HTTP status code first
   if (!response.ok) {
-    const errorMsg =
-      typeof body === 'object' && body?.msg ? body.msg : '请求失败';
+    const errorMsg = typeof body === 'object' && body?.msg ? body.msg : '请求失败';
+    if (REFRESH_ENDPOINT_PATTERN.test(args.path)) {
+      return {
+        status: response.status,
+        body,
+        headers: response.headers,
+      };
+    }
+
+    if (shouldAttemptRecovery(errorMsg, response.status)) {
+      try {
+        await refreshToken();
+        return baseFetch(args, requireAuth, false);
+      } catch {
+        // Fall through to the normal session-expired redirect.
+      }
+    }
     handleError(errorMsg, response.status);
   } else if (
     typeof body === 'object' &&
     body?.code !== undefined &&
-    body.code !== 200
+    body.code !== 200 &&
+    body.code !== 201
   ) {
     // HTTP 200 but business code is not 0 - show error
     const errorMsg = body?.msg || '请求失败';
+    if (REFRESH_ENDPOINT_PATTERN.test(args.path)) {
+      return {
+        status: response.status,
+        body,
+        headers: response.headers,
+      };
+    }
+
+    if (shouldAttemptRecovery(errorMsg, body.code)) {
+      try {
+        await refreshToken();
+        return baseFetch(args, requireAuth, false);
+      } catch {
+        // Fall through to the normal session-expired redirect.
+      }
+    }
     handleError(errorMsg, body.code);
   }
 
@@ -248,7 +306,7 @@ const customFetch = async (args: ApiFetcherArgs) => baseFetch(args, true);
 
 /**
  * Public fetch - does not require token
- * Used for login, register, and other public endpoints
+ * Used for OIDC and other public endpoints.
  */
 const publicFetch = async (args: ApiFetcherArgs) => baseFetch(args, false);
 
@@ -287,11 +345,6 @@ export const downloadClient = initClient(downloadContract, clientOptions);
  * Notification API - Direct client
  */
 /**
- * Sign API - Direct client (PUBLIC - no auth required)
- */
-export const signClient = initClient(signContract, publicClientOptions);
-
-/**
  * User API - Direct client
  */
 export const userClient = initClient(userContract, clientOptions);
@@ -302,9 +355,9 @@ export const userClient = initClient(userContract, clientOptions);
 export const smsClient = initClient(smsContract, publicClientOptions);
 
 /**
- * Uploader API - Direct client
+ * OIDC Auth API - Direct client (PUBLIC - no auth required)
  */
-export const uploaderClient = initClient(uploaderContract, clientOptions);
+export const oidcAuthClient = initClient(oidcAuthContract, publicClientOptions);
 
 /**
  * Analytics API - Direct client (for imperative calls)
