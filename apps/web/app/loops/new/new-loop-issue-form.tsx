@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@/i18n/navigation';
 import { useAuth } from '@/providers';
 import { useCreateLoopIssue } from '@/lib/api/contracts/hooks';
@@ -24,9 +25,14 @@ interface NewLoopIssueFormProps {
  * bounced to /login; the global 401 handler in `customFetch` is the backstop.
  */
 export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueFormProps) {
+  const t = useTranslations('loops.newIssue');
   const router = useRouter();
   const { isAuthenticated, isLoading } = useAuth();
   const createIssue = useCreateLoopIssue();
+  const getTemplateBody = (template: typeof DEFAULT_LOOP_ISSUE_TEMPLATE) =>
+    t(`${template.translationKey}.body`);
+  const getTemplateCriteria = (template: typeof DEFAULT_LOOP_ISSUE_TEMPLATE) =>
+    t.raw(`${template.translationKey}.criteria`) as string[];
 
   const [title, setTitle] = useState('');
   const [targetRepo, setTargetRepo] = useState(defaultTargetRepo);
@@ -34,9 +40,9 @@ export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueForm
   const [priority, setPriority] = useState<'P0' | 'P1' | 'P2' | 'P3'>(
     DEFAULT_LOOP_ISSUE_TEMPLATE.priority,
   );
-  const [body, setBody] = useState(DEFAULT_LOOP_ISSUE_TEMPLATE.body);
-  const [acceptanceCriteria, setAcceptanceCriteria] = useState(
-    DEFAULT_LOOP_ISSUE_TEMPLATE.acceptanceCriteria.join('\n'),
+  const [body, setBody] = useState(() => getTemplateBody(DEFAULT_LOOP_ISSUE_TEMPLATE));
+  const [acceptanceCriteria, setAcceptanceCriteria] = useState(() =>
+    getTemplateCriteria(DEFAULT_LOOP_ISSUE_TEMPLATE).join('\n'),
   );
 
   useEffect(() => {
@@ -46,7 +52,7 @@ export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueForm
   }, [isLoading, isAuthenticated, router]);
 
   if (!isAuthenticated) {
-    return <p className="text-sm text-muted-foreground">Redirecting to login…</p>;
+    return <p className="text-sm text-muted-foreground">{t('redirecting')}</p>;
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -68,44 +74,69 @@ export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueForm
       DEFAULT_LOOP_ISSUE_TEMPLATE;
     setTemplateId(template.id);
     setPriority(template.priority);
-    setBody(template.body);
-    setAcceptanceCriteria(template.acceptanceCriteria.join('\n'));
+    setBody(getTemplateBody(template));
+    setAcceptanceCriteria(getTemplateCriteria(template).join('\n'));
   }
 
   return (
     <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
       <fieldset className="flex flex-col gap-3">
-        <legend className="text-sm font-medium">Loop Template</legend>
+        <legend className="text-sm font-medium">{t('template')}</legend>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {LOOP_ISSUE_TEMPLATES.map((template) => (
-            <button
-              aria-label={template.label}
-              className={`rounded-md border p-4 text-left text-sm hover:bg-muted/30 ${
-                templateId === template.id ? 'bg-foreground text-background' : 'bg-background'
-              }`}
-              key={template.id}
-              onClick={() => applyTemplate(template.id)}
-              type="button"
-            >
-              <span className="flex items-center justify-between gap-3">
-                <span className="font-medium">{template.label}</span>
+          {LOOP_ISSUE_TEMPLATES.map((template) => {
+            const isSelected = templateId === template.id;
+
+            return (
+              <button
+                aria-label={t(`${template.translationKey}.label`)}
+                aria-pressed={isSelected}
+                className={`group rounded-md border p-4 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                  isSelected
+                    ? 'border-foreground bg-foreground text-background hover:border-foreground hover:bg-foreground hover:text-background'
+                    : 'border-border bg-background text-foreground hover:border-foreground/35 hover:bg-muted/40 hover:text-foreground'
+                }`}
+                key={template.id}
+                onClick={() => applyTemplate(template.id)}
+                type="button"
+              >
+                <span className="flex items-center justify-between gap-3">
+                  <span className="font-medium">{t(`${template.translationKey}.label`)}</span>
+                  <span
+                    className={`rounded-md border px-2 py-1 text-xs font-medium transition-colors ${
+                      isSelected
+                        ? 'border-background/45 bg-background/10 text-background'
+                        : 'border-border bg-muted/30 text-muted-foreground group-hover:border-foreground/25 group-hover:text-foreground'
+                    }`}
+                  >
+                    {template.priority}
+                  </span>
+                </span>
                 <span
-                  className={`rounded-md border px-2 py-1 text-xs ${
-                    templateId === template.id ? 'border-background/40' : 'text-muted-foreground'
+                  className={`mt-2 block leading-5 transition-colors ${
+                    isSelected
+                      ? 'text-background/85'
+                      : 'text-muted-foreground group-hover:text-foreground/80'
                   }`}
                 >
-                  {template.priority}
+                  {t(`${template.translationKey}.description`)}
                 </span>
-              </span>
-              <span className="mt-2 block leading-5 opacity-80">{template.description}</span>
-              <span className="mt-2 block text-xs opacity-70">{template.bestFor}</span>
-            </button>
-          ))}
+                <span
+                  className={`mt-2 block text-xs transition-colors ${
+                    isSelected
+                      ? 'text-background/70'
+                      : 'text-muted-foreground/80 group-hover:text-muted-foreground'
+                  }`}
+                >
+                  {t(`${template.translationKey}.bestFor`)}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </fieldset>
 
       <label className="flex flex-col gap-2 text-sm font-medium">
-        Title
+        {t('titleLabel')}
         <input
           className="h-10 rounded-md border bg-background px-3 text-sm"
           onChange={(e) => setTitle(e.target.value)}
@@ -115,7 +146,7 @@ export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueForm
       </label>
 
       <label className="flex flex-col gap-2 text-sm font-medium">
-        Target Repository
+        {t('targetRepo')}
         <input
           className="h-10 rounded-md border bg-background px-3 text-sm"
           onChange={(e) => setTargetRepo(e.target.value)}
@@ -126,7 +157,7 @@ export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueForm
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-2 text-sm font-medium">
-          Priority
+          {t('priority')}
           <select
             className="h-10 rounded-md border bg-background px-3 text-sm"
             onChange={(e) => setPriority(e.target.value as 'P0' | 'P1' | 'P2' | 'P3')}
@@ -141,7 +172,7 @@ export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueForm
       </div>
 
       <label className="flex flex-col gap-2 text-sm font-medium">
-        Requirement Body
+        {t('body')}
         <textarea
           className="min-h-36 rounded-md border bg-background px-3 py-2 text-sm"
           onChange={(e) => setBody(e.target.value)}
@@ -151,33 +182,31 @@ export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueForm
       </label>
 
       <label className="flex flex-col gap-2 text-sm font-medium">
-        Acceptance Criteria
+        {t('acceptanceCriteria')}
         <textarea
           className="min-h-28 rounded-md border bg-background px-3 py-2 text-sm"
           onChange={(e) => setAcceptanceCriteria(e.target.value)}
-          placeholder="One acceptance item per line"
+          placeholder={t('criteriaPlaceholder')}
           required
           value={acceptanceCriteria}
         />
       </label>
 
-      {createIssue.isError ? (
-        <p className="text-sm text-destructive">Failed to create issue. Please try again.</p>
-      ) : null}
+      {createIssue.isError ? <p className="text-sm text-destructive">{t('error')}</p> : null}
 
       <div className="flex justify-end gap-3">
         <Link
           className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium hover:bg-muted/30"
           href="/loops"
         >
-          Cancel
+          {t('cancel')}
         </Link>
         <button
           className="inline-flex h-10 items-center justify-center rounded-md bg-foreground px-4 text-sm font-medium text-background disabled:opacity-60"
           disabled={createIssue.isPending}
           type="submit"
         >
-          {createIssue.isPending ? 'Creating…' : 'Create Issue'}
+          {createIssue.isPending ? t('creating') : t('create')}
         </button>
       </div>
     </form>

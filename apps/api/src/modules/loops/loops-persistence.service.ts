@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
+import type { Logger } from 'winston';
 import { LoopsDbService } from '@app/db';
 import type {
   LoopIntake,
@@ -23,7 +25,19 @@ export class LoopsPersistenceService {
   constructor(
     private readonly db: LoopsDbService,
     private readonly store: LoopsFileStoreService,
+    @Optional()
+    @Inject(WINSTON_MODULE_PROVIDER)
+    private readonly logger?: Logger,
   ) {}
+
+  /** Winston-backed structured log; no-op for standalone (non-Nest) consumers. */
+  private log(
+    level: 'info' | 'warn' | 'error' | 'debug',
+    message: string,
+    meta?: Record<string, unknown>,
+  ): void {
+    this.logger?.[level](message, meta);
+  }
 
   async list(query: LoopIssuesQuery): Promise<LoopListResponse> {
     const result = await this.db.listIssues(query);
@@ -156,6 +170,15 @@ export class LoopsPersistenceService {
     }
 
     const problems = [...fileDoctor.fileProblems, ...dbProblems, ...consistencyProblems];
+
+    if (problems.length > 0) {
+      this.log('warn', `[Loops] doctor detected ${problems.length} problem(s)`, {
+        count: problems.length,
+        fileProblems: fileDoctor.fileProblems.length,
+        dbProblems: dbProblems.length,
+        consistencyProblems: consistencyProblems.length,
+      });
+    }
 
     return {
       ...fileDoctor,

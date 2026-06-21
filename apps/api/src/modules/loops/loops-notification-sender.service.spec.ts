@@ -1,5 +1,10 @@
+import { of } from 'rxjs';
 import type { LoopNotification } from '@repo/contracts';
 import { LoopsNotificationSender } from './loops-notification-sender.service';
+
+type HttpServiceLike = {
+  post: jest.Mock;
+};
 
 function notification(channel: LoopNotification['channel']): LoopNotification {
   return {
@@ -69,5 +74,34 @@ describe('LoopsNotificationSender', () => {
     await expect(new LoopsNotificationSender().send(notification('feishu'))).resolves.toBe(
       'FAILED',
     );
+  });
+
+  describe('HttpService path (production / Rule 3)', () => {
+    it('sends via HttpService and resolves SENT on 2xx', async () => {
+      process.env.LOOPS_ALERT_WEBHOOK_URL = 'https://alerts.example/loops';
+      const httpService: HttpServiceLike = {
+        post: jest.fn().mockReturnValue(of({ status: 200, data: {} })),
+      };
+
+      await expect(
+        new LoopsNotificationSender(httpService as never).send(notification('web')),
+      ).resolves.toBe('SENT');
+      expect(httpService.post).toHaveBeenCalledWith(
+        'https://alerts.example/loops',
+        expect.objectContaining({ id: 'notification-1' }),
+        expect.objectContaining({ validateStatus: expect.any(Function) }),
+      );
+    });
+
+    it('resolves FAILED on non-2xx without throwing', async () => {
+      process.env.LOOPS_FEISHU_WEBHOOK_URL = 'https://open.feishu.cn/webhook';
+      const httpService: HttpServiceLike = {
+        post: jest.fn().mockReturnValue(of({ status: 503, data: {} })),
+      };
+
+      await expect(
+        new LoopsNotificationSender(httpService as never).send(notification('feishu')),
+      ).resolves.toBe('FAILED');
+    });
   });
 });

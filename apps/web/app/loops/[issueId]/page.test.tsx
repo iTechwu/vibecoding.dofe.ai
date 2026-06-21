@@ -1,6 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import type { LoopDetail } from '@repo/contracts';
+import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it, vi } from 'vitest';
+import loopsMessages from '@/locales/en/loops.json';
 import LoopIssueDetailPage from './page';
 
 const detail: LoopDetail = {
@@ -183,9 +185,17 @@ vi.mock('./use-loop-operations', () => ({
   }),
 }));
 
+function renderWithIntl(ui: React.ReactElement) {
+  return render(
+    <NextIntlClientProvider locale="en" messages={{ loops: loopsMessages }}>
+      {ui}
+    </NextIntlClientProvider>,
+  );
+}
+
 describe('LoopIssueDetailPage', () => {
   it('renders a scannable trace timeline from issue logs', () => {
-    render(<LoopIssueDetailPage />);
+    renderWithIntl(<LoopIssueDetailPage />);
 
     expect(screen.getByText('Trace Timeline')).toBeInTheDocument();
     expect(screen.getByText('Scope Summary')).toBeInTheDocument();

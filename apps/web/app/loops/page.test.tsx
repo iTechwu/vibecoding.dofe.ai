@@ -1,7 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import { renderToString } from 'react-dom/server';
 import { hydrateRoot } from 'react-dom/client';
+import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import loopsMessages from '@/locales/en/loops.json';
 import LoopsPage from './page';
 
 vi.mock('@/i18n/navigation', () => ({
@@ -332,6 +334,18 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
   useResumeLoops: () => ({ isPending: false, mutate }),
 }));
 
+function IntlWrapper({ children }: { children: React.ReactNode }) {
+  return (
+    <NextIntlClientProvider locale="en" messages={{ loops: loopsMessages }}>
+      {children}
+    </NextIntlClientProvider>
+  );
+}
+
+function renderWithIntl(ui: React.ReactElement) {
+  return render(ui, { wrapper: IntlWrapper });
+}
+
 describe('LoopsPage', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -343,7 +357,7 @@ describe('LoopsPage', () => {
   });
 
   it('renders the control plane dashboard from loop metrics', () => {
-    render(<LoopsPage />);
+    renderWithIntl(<LoopsPage />);
 
     expect(screen.getByText('Agent Delivery Console')).toBeInTheDocument();
     expect(screen.getByText('Needs Attention')).toBeInTheDocument();
@@ -375,7 +389,11 @@ describe('LoopsPage', () => {
 
   it('hydrates without time-dependent markup mismatches', async () => {
     vi.setSystemTime(new Date('2026-06-21T01:00:00.000Z'));
-    const html = renderToString(<LoopsPage />);
+    const html = renderToString(
+      <IntlWrapper>
+        <LoopsPage />
+      </IntlWrapper>,
+    );
     const container = document.createElement('div');
     container.innerHTML = html;
     document.body.appendChild(container);
@@ -386,7 +404,12 @@ describe('LoopsPage', () => {
 
     try {
       vi.setSystemTime(new Date('2026-06-23T01:00:00.000Z'));
-      hydrateRoot(container, <LoopsPage />);
+      hydrateRoot(
+        container,
+        <IntlWrapper>
+          <LoopsPage />
+        </IntlWrapper>,
+      );
       await vi.waitFor(() => {
         expect(consoleError).not.toHaveBeenCalledWith(
           expect.stringContaining(

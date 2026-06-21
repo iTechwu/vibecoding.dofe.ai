@@ -1,4 +1,6 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
+import type { Logger } from 'winston';
 import { existsSync } from 'fs';
 import { promises as fs } from 'fs';
 import * as path from 'path';
@@ -53,7 +55,19 @@ export class LoopsFileStoreService {
   constructor(
     @Optional()
     private readonly notificationSender: LoopsNotificationSender = new LoopsNotificationSender(),
+    @Optional()
+    @Inject(WINSTON_MODULE_PROVIDER)
+    private readonly logger?: Logger,
   ) {}
+
+  /** Winston-backed structured log; no-op for standalone (non-Nest) consumers. */
+  private log(
+    level: 'info' | 'warn' | 'error' | 'debug',
+    message: string,
+    meta?: Record<string, unknown>,
+  ): void {
+    this.logger?.[level](message, meta);
+  }
 
   private readonly root = path.join(this.findWorkspaceRoot(), '.loops');
 
@@ -980,7 +994,19 @@ export class LoopsFileStoreService {
   private async readOptionalJson<T>(relativePath: string): Promise<T | undefined> {
     try {
       return await this.readJson<T>(relativePath);
-    } catch {
+    } catch (error) {
+      // A genuinely missing file (ENOENT) is normal for a fresh issue; any
+      // other failure means the file exists but is corrupt/unreadable, which
+      // is otherwise indistinguishable from "missing" and silently degrades
+      // the loop. Surface it so it can be diagnosed.
+      const code = (error as NodeJS.ErrnoException)?.code;
+      if (code !== 'ENOENT') {
+        this.log('warn', `[Loops] corrupt or unreadable state file: ${relativePath}`, {
+          relativePath,
+          code,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
       return undefined;
     }
   }

@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
+import type { Logger } from 'winston';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type { LoopRunShardTestsRequest, LoopTestRecord } from '@repo/contracts';
@@ -13,6 +15,21 @@ type Coverage = NonNullable<LoopTestRecord['coverage']>;
 
 @Injectable()
 export class LoopsRunnerService {
+  constructor(
+    @Optional()
+    @Inject(WINSTON_MODULE_PROVIDER)
+    private readonly logger?: Logger,
+  ) {}
+
+  /** Winston-backed structured log; no-op for standalone (non-Nest) consumers. */
+  private log(
+    level: 'info' | 'warn' | 'error' | 'debug',
+    message: string,
+    meta?: Record<string, unknown>,
+  ): void {
+    this.logger?.[level](message, meta);
+  }
+
   async runShardTests(input: {
     issueId: string;
     shardId: string;
@@ -75,6 +92,7 @@ export class LoopsRunnerService {
   }
 
   private blockedCommand(command: string): CommandResult {
+    this.log('warn', '[Loops] blocked test command not in allowed_commands', { command });
     return {
       command,
       exitCode: 126,
@@ -108,6 +126,11 @@ export class LoopsRunnerService {
         stderr?: string;
         message?: string;
       };
+      this.log('warn', '[Loops] test command exited non-zero', {
+        command,
+        exitCode: typeof err.code === 'number' ? err.code : null,
+        signal: err.signal,
+      });
       return {
         command,
         exitCode: typeof err.code === 'number' ? err.code : null,

@@ -1,6 +1,7 @@
 'use client';
 
 import { useParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import type { LoopDetail, LoopEvidenceArtifact, LoopLogEntry } from '@repo/contracts';
 import { useFormState } from './use-loop-operations';
@@ -8,66 +9,30 @@ import { useLoopIssue } from '@/lib/api/contracts/hooks';
 
 function getNextAction(detail: LoopDetail) {
   if (detail.state.paused) {
-    return {
-      label: 'Resume loop',
-      body: 'This issue is paused. Resume it before running more agent steps.',
-      tone: 'attention',
-    };
+    return { key: 'resume', tone: 'attention' };
   }
   if (!detail.spec || detail.spec.status === 'REVISION_REQUESTED') {
-    return {
-      label: 'Generate spec',
-      body: 'Create or refresh the product spec before decomposition.',
-      tone: 'default',
-    };
+    return { key: 'generateSpec', tone: 'default' };
   }
   if (detail.spec.status === 'DRAFT') {
-    return {
-      label: 'Review spec',
-      body: 'Approve, request changes, or reject the draft spec.',
-      tone: 'attention',
-    };
+    return { key: 'reviewSpec', tone: 'attention' };
   }
   if (detail.spec.status === 'APPROVED' && detail.shards.length === 0) {
-    return {
-      label: 'Decompose',
-      body: 'Split the approved spec into self-contained implementation shards.',
-      tone: 'default',
-    };
+    return { key: 'decompose', tone: 'default' };
   }
   if (detail.state.phase === 'PHASE_6_CONVERGE') {
-    return {
-      label: 'Global review',
-      body: 'Run the cross-shard review before final annotation and delivery.',
-      tone: 'attention',
-    };
+    return { key: 'globalReview', tone: 'attention' };
   }
   if (detail.state.globalVerdict && detail.state.globalVerdict !== 'PASS') {
-    return {
-      label: 'Start re-loop',
-      body: 'Global review found remaining work. Create the next spec revision.',
-      tone: 'attention',
-    };
+    return { key: 'reloop', tone: 'attention' };
   }
   if (detail.state.globalVerdict === 'PASS' && !detail.state.finalized) {
-    return {
-      label: 'Finalize',
-      body: 'Close the issue and emit the convergence record.',
-      tone: 'default',
-    };
+    return { key: 'finalize', tone: 'default' };
   }
   if (detail.state.phase === 'CLOSED' || detail.state.finalized) {
-    return {
-      label: 'Closed',
-      body: 'Delivery is finalized. Review the records below for audit evidence.',
-      tone: 'success',
-    };
+    return { key: 'closed', tone: 'success' };
   }
-  return {
-    label: 'Run step',
-    body: 'Advance the next runnable shard through implementation, tests, and review.',
-    tone: 'default',
-  };
+  return { key: 'runStep', tone: 'default' };
 }
 
 function summarizeEvidence(detail: LoopDetail) {
@@ -79,10 +44,10 @@ function summarizeEvidence(detail: LoopDetail) {
     (annotation) => annotation.coverage !== 'none',
   ).length;
   return [
-    ['Implemented', implemented, total],
-    ['Tested', tested, total],
-    ['Reviewed', reviewed, total],
-    ['Annotated', annotated, Math.max(detail.annotations.length, total)],
+    ['implemented', implemented, total],
+    ['tested', tested, total],
+    ['reviewed', reviewed, total],
+    ['annotated', annotated, Math.max(detail.annotations.length, total)],
   ] as const;
 }
 
@@ -180,7 +145,10 @@ function buildTraceScopeSummary(logs: LoopLogEntry[]) {
     .slice(0, 6);
 }
 
-function buildResumeCheckpoints(detail: LoopDetail) {
+function buildResumeCheckpoints(
+  detail: LoopDetail,
+  format: (key: string, values?: Record<string, string | number>) => string,
+) {
   const latestEventByShard = new Map<string, LoopLogEntry>();
   for (const entry of detail.logs) {
     if (entry.shard && !latestEventByShard.has(entry.shard)) {
@@ -193,10 +161,15 @@ function buildResumeCheckpoints(detail: LoopDetail) {
     return [
       {
         id: `${detail.issue.id}-phase`,
-        label: 'Issue phase',
+        label: format('resumeCheckpoints.issuePhase'),
         status: detail.state.paused ? 'paused' : detail.state.phase,
-        action: detail.state.paused ? 'Resume loop' : getNextAction(detail).label,
-        meta: `round ${detail.state.round} · ${detail.state.specVersion}`,
+        action: detail.state.paused
+          ? format('nextAction.resume.label')
+          : format(`nextAction.${getNextAction(detail).key}.label`),
+        meta: format('resumeCheckpoints.meta', {
+          round: detail.state.round,
+          version: detail.state.specVersion,
+        }),
         lastEvent: latestEvent?.ts,
         lastSignal: latestEvent
           ? `${latestEvent.type}${(latestEvent.verdict ?? latestEvent.status ?? latestEvent.action) ? ` · ${latestEvent.verdict ?? latestEvent.status ?? latestEvent.action}` : ''}`
@@ -219,11 +192,14 @@ function buildResumeCheckpoints(detail: LoopDetail) {
       label: shard.title,
       status: shard.status,
       action: isResumable
-        ? 'Resume or take over'
+        ? format('resumeCheckpoints.resumeOrTakeOver')
         : shard.status === 'DONE'
-          ? 'No action'
-          : 'Run step',
-      meta: `${shard.estEffort} effort · ${shard.acceptance.length} acceptance checks`,
+          ? format('resumeCheckpoints.noAction')
+          : format('nextAction.runStep.label'),
+      meta: format('resumeCheckpoints.shardMeta', {
+        effort: shard.estEffort,
+        checks: shard.acceptance.length,
+      }),
       lastEvent: latestEvent?.ts,
       lastSignal: latestEvent
         ? `${latestEvent.type}${(latestEvent.verdict ?? latestEvent.status ?? latestEvent.action) ? ` · ${latestEvent.verdict ?? latestEvent.status ?? latestEvent.action}` : ''}`
@@ -232,7 +208,10 @@ function buildResumeCheckpoints(detail: LoopDetail) {
   });
 }
 
-function buildCheckpointDiff(detail: LoopDetail) {
+function buildCheckpointDiff(
+  detail: LoopDetail,
+  format: (key: string, values?: Record<string, string | number>) => string,
+) {
   const coverage = detail.requirementsCoverage?.summary;
   const passingTests = detail.testRecords.filter((record) => record.status === 'TEST-PASS').length;
   const failedTests = detail.testRecords.filter((record) => record.status !== 'TEST-PASS').length;
@@ -241,54 +220,64 @@ function buildCheckpointDiff(detail: LoopDetail) {
   );
   return [
     {
-      label: 'Spec revision',
-      before: detail.state.round > 1 ? `round ${detail.state.round - 1}` : 'intake',
-      after: `${detail.state.specVersion} · round ${detail.state.round}`,
+      label: format('resumeCheckpoints.labels.specRevision'),
+      before:
+        detail.state.round > 1
+          ? format('resumeCheckpoints.values.round', { round: detail.state.round - 1 })
+          : format('resumeCheckpoints.values.intake'),
+      after: `${detail.state.specVersion} · ${format('resumeCheckpoints.values.round', {
+        round: detail.state.round,
+      })}`,
     },
     {
-      label: 'Requirements',
-      before: `${coverage?.missing ?? detail.issue.acceptanceCriteria.length} missing`,
-      after: `${coverage?.percent ?? 0}% covered`,
+      label: format('resumeCheckpoints.labels.requirements'),
+      before: format('resumeCheckpoints.values.missing', {
+        count: coverage?.missing ?? detail.issue.acceptanceCriteria.length,
+      }),
+      after: format('resumeCheckpoints.values.covered', { percent: coverage?.percent ?? 0 }),
     },
     {
-      label: 'Shards',
-      before: `${blockedShards.length} blocked`,
-      after: `${detail.state.shardsDone}/${detail.state.shardsTotal} done`,
+      label: format('resumeCheckpoints.labels.shards'),
+      before: format('resumeCheckpoints.values.blocked', { count: blockedShards.length }),
+      after: format('resumeCheckpoints.values.done', {
+        done: detail.state.shardsDone,
+        total: detail.state.shardsTotal,
+      }),
     },
     {
-      label: 'Tests',
-      before: `${failedTests} failing`,
-      after: `${passingTests} passing`,
+      label: format('resumeCheckpoints.labels.tests'),
+      before: format('resumeCheckpoints.values.failing', { count: failedTests }),
+      after: format('resumeCheckpoints.values.passing', { count: passingTests }),
     },
   ];
 }
 
 function artifactGroup(kind: LoopEvidenceArtifact['kind']) {
-  if (kind === 'raw-payload' || kind === 'issue' || kind === 'intake') return 'Request';
-  if (kind === 'spec' || kind === 'shards' || kind === 'test-matrix') return 'Planning';
-  if (kind === 'implementation-record') return 'Implementation';
-  if (kind === 'test-record') return 'Test';
+  if (kind === 'raw-payload' || kind === 'issue' || kind === 'intake') return 'request';
+  if (kind === 'spec' || kind === 'shards' || kind === 'test-matrix') return 'planning';
+  if (kind === 'implementation-record') return 'implementation';
+  if (kind === 'test-record') return 'test';
   if (kind === 'review-record' || kind === 'global-review' || kind === 'annotations') {
-    return 'Review';
+    return 'review';
   }
-  return 'Delivery';
+  return 'delivery';
 }
 
-function artifactRecoveryHint(artifact: LoopEvidenceArtifact) {
-  if (artifact.status === 'present') return 'Ready for audit';
-  if (artifact.kind === 'spec') return 'Generate or approve the spec';
-  if (artifact.kind === 'shards') return 'Decompose the approved spec';
-  if (artifact.kind === 'test-matrix') return 'Decompose shards to create the matrix';
-  if (artifact.kind === 'implementation-record') return 'Record implementation evidence';
-  if (artifact.kind === 'test-record') return 'Run shard or regression tests';
-  if (artifact.kind === 'review-record') return 'Record shard review evidence';
-  if (artifact.kind === 'global-review') return 'Run global review';
-  if (artifact.kind === 'convergence-pr') return 'Finalize the loop';
-  return 'Capture the missing artifact';
+function artifactRecoveryHintKey(artifact: LoopEvidenceArtifact) {
+  if (artifact.status === 'present') return 'ready';
+  if (artifact.kind === 'spec') return 'spec';
+  if (artifact.kind === 'shards') return 'shards';
+  if (artifact.kind === 'test-matrix') return 'testMatrix';
+  if (artifact.kind === 'implementation-record') return 'implementationRecord';
+  if (artifact.kind === 'test-record') return 'testRecord';
+  if (artifact.kind === 'review-record') return 'reviewRecord';
+  if (artifact.kind === 'global-review') return 'globalReview';
+  if (artifact.kind === 'convergence-pr') return 'convergencePr';
+  return 'fallback';
 }
 
 function buildArtifactWorkspace(artifacts: LoopEvidenceArtifact[]) {
-  const order = ['Request', 'Planning', 'Implementation', 'Test', 'Review', 'Delivery'];
+  const order = ['request', 'planning', 'implementation', 'test', 'review', 'delivery'];
   return order
     .map((group) => ({
       group,
@@ -298,6 +287,7 @@ function buildArtifactWorkspace(artifacts: LoopEvidenceArtifact[]) {
 }
 
 export default function LoopIssueDetailPage() {
+  const t = useTranslations('loops.detail');
   const { issueId } = useParams<{ issueId: string }>();
   const detailQuery = useLoopIssue(issueId);
   const detail = detailQuery.data?.body.data;
@@ -308,7 +298,7 @@ export default function LoopIssueDetailPage() {
       <main className="min-h-screen bg-background px-6 py-8">
         <div className="mx-auto max-w-6xl">
           <p className="text-sm text-muted-foreground">
-            {detailQuery.isLoading ? 'Loading issue…' : 'Issue not found.'}
+            {detailQuery.isLoading ? t('loading') : t('notFound')}
           </p>
         </div>
       </main>
@@ -342,33 +332,40 @@ export default function LoopIssueDetailPage() {
   const evidenceArtifacts = detail.evidenceArtifacts ?? [
     {
       id: `${detail.issue.id}-raw-payload`,
-      label: 'Raw Payload',
+      label: t('artifacts.fallback.rawPayload'),
       kind: 'raw-payload',
       path: detail.issue.rawPayloadRef,
       status: 'present',
-      summary: 'Original request payload captured for audit.',
+      summary: t('artifacts.fallback.rawSummary'),
     },
     {
       id: `${detail.issue.id}-issue`,
-      label: 'Issue Record',
+      label: t('artifacts.fallback.issueRecord'),
       kind: 'issue',
       path: `.loops/issues/${detail.issue.id}.json`,
       status: 'present',
-      summary: `${detail.issue.priority} ${detail.issue.status} issue with ${detail.issue.acceptanceCriteria.length} acceptance criteria.`,
+      summary: t('artifacts.fallback.issueSummary', {
+        priority: detail.issue.priority,
+        status: detail.issue.status,
+        count: detail.issue.acceptanceCriteria.length,
+      }),
     },
     {
       id: `${detail.issue.id}-intake`,
-      label: 'Intake Record',
+      label: t('artifacts.fallback.intakeRecord'),
       kind: 'intake',
       path: `.loops/intakes/${detail.intake.id}.json`,
       status: 'present',
-      summary: `${detail.intake.status} intake normalized from ${detail.intake.sourceChannel}.`,
+      summary: t('artifacts.fallback.intakeSummary', {
+        status: detail.intake.status,
+        channel: detail.intake.sourceChannel,
+      }),
     },
   ];
   const traceTimeline = buildTraceTimeline(detail.logs);
   const traceScopeSummary = buildTraceScopeSummary(detail.logs);
-  const resumeCheckpoints = buildResumeCheckpoints(detail);
-  const checkpointDiff = buildCheckpointDiff(detail);
+  const resumeCheckpoints = buildResumeCheckpoints(detail, t);
+  const checkpointDiff = buildCheckpointDiff(detail, t);
   const artifactWorkspace = buildArtifactWorkspace(evidenceArtifacts);
 
   return (
@@ -377,7 +374,7 @@ export default function LoopIssueDetailPage() {
         <header className="flex items-start justify-between border-b pb-5">
           <div>
             <Link className="text-sm text-muted-foreground hover:text-foreground" href="/loops">
-              Back to queue
+              {t('back')}
             </Link>
             <h1 className="mt-2 text-3xl font-semibold tracking-normal">{detail.issue.title}</h1>
             <p className="mt-2 text-sm text-muted-foreground">
@@ -391,7 +388,7 @@ export default function LoopIssueDetailPage() {
               onClick={ops.generateSpec}
               type="button"
             >
-              Generate Spec
+              {t('actions.generateSpec')}
             </button>
             <button
               className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium disabled:opacity-50"
@@ -403,7 +400,7 @@ export default function LoopIssueDetailPage() {
               onClick={ops.runLoop}
               type="button"
             >
-              Run Step
+              {t('actions.runStep')}
             </button>
             <button
               className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium disabled:opacity-50"
@@ -411,7 +408,7 @@ export default function LoopIssueDetailPage() {
               onClick={ops.globalReview}
               type="button"
             >
-              Global Review
+              {t('actions.globalReview')}
             </button>
             <button
               className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium disabled:opacity-50"
@@ -419,7 +416,7 @@ export default function LoopIssueDetailPage() {
               onClick={ops.finalizeLoop}
               type="button"
             >
-              Finalize
+              {t('actions.finalize')}
             </button>
             <button
               className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium disabled:opacity-50"
@@ -427,7 +424,7 @@ export default function LoopIssueDetailPage() {
               onClick={ops.pauseLoop}
               type="button"
             >
-              Pause
+              {t('actions.pause')}
             </button>
             <button
               className="inline-flex h-10 items-center justify-center rounded-md bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50"
@@ -435,19 +432,19 @@ export default function LoopIssueDetailPage() {
               onClick={ops.resumeLoop}
               type="button"
             >
-              Resume
+              {t('actions.resume')}
             </button>
           </div>
         </header>
 
         <section className="grid grid-cols-1 gap-4 md:grid-cols-6">
           {[
-            ['Round', detail.state.round],
-            ['Spec', detail.state.specVersion],
-            ['Shards', `${detail.state.shardsDone}/${detail.state.shardsTotal}`],
-            ['Calls', detail.state.costCalls],
-            ['Tokens', detail.state.costTokens],
-            ['Paused', detail.state.paused ? 'yes' : 'no'],
+            [t('stats.round'), detail.state.round],
+            [t('stats.spec'), detail.state.specVersion],
+            [t('stats.shards'), `${detail.state.shardsDone}/${detail.state.shardsTotal}`],
+            [t('stats.calls'), detail.state.costCalls],
+            [t('stats.tokens'), detail.state.costTokens],
+            [t('stats.paused'), detail.state.paused ? t('stats.yes') : t('stats.no')],
           ].map(([label, value]) => (
             <div className="rounded-lg border p-4" key={label}>
               <p className="text-sm text-muted-foreground">{label}</p>
@@ -458,21 +455,26 @@ export default function LoopIssueDetailPage() {
 
         <section className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1.4fr]">
           <div className={`rounded-lg border p-4 ${actionToneClass(nextAction.tone)}`}>
-            <p className="text-sm font-medium">Next Action</p>
-            <h2 className="mt-2 text-xl font-semibold">{nextAction.label}</h2>
-            <p className="mt-2 text-sm opacity-80">{nextAction.body}</p>
+            <p className="text-sm font-medium">{t('nextAction.title')}</p>
+            <h2 className="mt-2 text-xl font-semibold">
+              {t(`nextAction.${nextAction.key}.label`)}
+            </h2>
+            <p className="mt-2 text-sm opacity-80">{t(`nextAction.${nextAction.key}.body`)}</p>
           </div>
           <div className="rounded-lg border p-4">
             <div className="flex items-center justify-between gap-4">
-              <h2 className="text-sm font-semibold">Evidence Coverage</h2>
+              <h2 className="text-sm font-semibold">{t('evidence.title')}</h2>
               <span className="text-xs text-muted-foreground">
-                {detail.shards.length} shards · {detail.annotations.length} annotations
+                {t('evidence.summary', {
+                  shards: detail.shards.length,
+                  annotations: detail.annotations.length,
+                })}
               </span>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
               {evidence.map(([label, done, total]) => (
                 <div className="rounded-md bg-muted/40 p-3" key={label}>
-                  <p className="text-xs text-muted-foreground">{label}</p>
+                  <p className="text-xs text-muted-foreground">{t(`evidence.${label}`)}</p>
                   <p className="mt-2 text-lg font-semibold">
                     {done}/{total}
                   </p>
@@ -484,19 +486,18 @@ export default function LoopIssueDetailPage() {
 
         {detail.state.globalVerdict && detail.state.globalVerdict !== 'PASS' ? (
           <section className="rounded-lg border p-5">
-            <h2 className="text-lg font-semibold">Re-loop</h2>
+            <h2 className="text-lg font-semibold">{t('reloop.title')}</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Global verdict is {detail.state.globalVerdict}. Create the next spec revision and send
-              it back through human review.
+              {t('reloop.body', { verdict: detail.state.globalVerdict })}
             </p>
             <form className="mt-4 flex flex-col gap-3 sm:flex-row" onSubmit={ops.reloop}>
               <input
                 className="h-10 flex-1 rounded-md border bg-background px-3 text-sm"
                 name="notes"
-                placeholder="Revision notes"
+                placeholder={t('reloop.placeholder')}
               />
               <button className="h-10 rounded-md border px-4 text-sm font-medium" type="submit">
-                Start Re-loop
+                {t('reloop.start')}
               </button>
             </form>
           </section>
@@ -505,22 +506,22 @@ export default function LoopIssueDetailPage() {
         <section className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_420px]">
           <div className="flex flex-col gap-6">
             <div className="rounded-lg border p-5">
-              <h2 className="text-lg font-semibold">Issue Intake</h2>
+              <h2 className="text-lg font-semibold">{t('intake.title')}</h2>
               <dl className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
                 <div>
-                  <dt className="text-muted-foreground">Submitter</dt>
+                  <dt className="text-muted-foreground">{t('intake.submitter')}</dt>
                   <dd>{detail.issue.submitterName}</dd>
                 </div>
                 <div>
-                  <dt className="text-muted-foreground">Target Repo</dt>
+                  <dt className="text-muted-foreground">{t('intake.targetRepo')}</dt>
                   <dd className="break-all">{detail.issue.targetRepo}</dd>
                 </div>
                 <div>
-                  <dt className="text-muted-foreground">Raw Payload</dt>
+                  <dt className="text-muted-foreground">{t('intake.rawPayload')}</dt>
                   <dd>{detail.issue.rawPayloadRef}</dd>
                 </div>
                 <div>
-                  <dt className="text-muted-foreground">Source</dt>
+                  <dt className="text-muted-foreground">{t('intake.source')}</dt>
                   <dd>{detail.intake.sourceChannel}</dd>
                 </div>
               </dl>
@@ -530,10 +531,13 @@ export default function LoopIssueDetailPage() {
             <div className="rounded-lg border p-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-lg font-semibold">Initial Requirements Coverage</h2>
+                  <h2 className="text-lg font-semibold">{t('requirements.title')}</h2>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {requirementsCoverage.summary.accepted}/{requirementsCoverage.summary.total}{' '}
-                    accepted · {requirementsCoverage.summary.percent}%
+                    {t('requirements.summary', {
+                      accepted: requirementsCoverage.summary.accepted,
+                      total: requirementsCoverage.summary.total,
+                      percent: requirementsCoverage.summary.percent,
+                    })}
                   </p>
                 </div>
                 <span
@@ -541,7 +545,9 @@ export default function LoopIssueDetailPage() {
                     requirementsCoverage.summary.percent === 100 ? 'accepted' : 'missing',
                   )}`}
                 >
-                  {requirementsCoverage.summary.percent === 100 ? 'covered' : 'needs work'}
+                  {requirementsCoverage.summary.percent === 100
+                    ? t('requirements.covered')
+                    : t('requirements.needsWork')}
                 </span>
               </div>
               <div className="mt-4 flex flex-col gap-3">
@@ -558,8 +564,12 @@ export default function LoopIssueDetailPage() {
                       </span>
                     </div>
                     <p className="mt-2 text-xs text-muted-foreground">
-                      spec {item.inSpec ? 'yes' : 'no'} · shards {item.shardIds.length} · tests{' '}
-                      {item.testIds.length} · reviews {item.reviewRecordIds.length}
+                      {t('requirements.meta', {
+                        spec: item.inSpec ? t('stats.yes') : t('stats.no'),
+                        shards: item.shardIds.length,
+                        tests: item.testIds.length,
+                        reviews: item.reviewRecordIds.length,
+                      })}
                     </p>
                   </div>
                 ))}
@@ -567,7 +577,7 @@ export default function LoopIssueDetailPage() {
             </div>
 
             <div className="rounded-lg border p-5">
-              <h2 className="text-lg font-semibold">Spec Review</h2>
+              <h2 className="text-lg font-semibold">{t('specReview.title')}</h2>
               {detail.spec ? (
                 <>
                   <p className="mt-2 text-sm text-muted-foreground">
@@ -583,19 +593,19 @@ export default function LoopIssueDetailPage() {
                       onClick={ops.approveSpec}
                       type="button"
                     >
-                      Approve
+                      {t('specReview.approve')}
                     </button>
                     <form className="flex gap-2" onSubmit={ops.requestRevision}>
                       <input
                         className="h-10 rounded-md border bg-background px-3 text-sm"
                         name="notes"
-                        placeholder="Revision note"
+                        placeholder={t('specReview.revisionPlaceholder')}
                       />
                       <button
                         className="h-10 rounded-md border px-4 text-sm font-medium"
                         type="submit"
                       >
-                        Request Revision
+                        {t('specReview.requestRevision')}
                       </button>
                     </form>
                     <button
@@ -604,22 +614,22 @@ export default function LoopIssueDetailPage() {
                       onClick={ops.decompose}
                       type="button"
                     >
-                      Decompose
+                      {t('specReview.decompose')}
                     </button>
                   </div>
                 </>
               ) : (
-                <p className="mt-3 text-sm text-muted-foreground">No spec yet.</p>
+                <p className="mt-3 text-sm text-muted-foreground">{t('specReview.empty')}</p>
               )}
             </div>
           </div>
 
           <aside className="flex flex-col gap-6">
             <div className="rounded-lg border p-5">
-              <h2 className="text-lg font-semibold">Shards</h2>
+              <h2 className="text-lg font-semibold">{t('shards.title')}</h2>
               <div className="mt-4 flex flex-col gap-3">
                 {detail.shards.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No shards yet.</p>
+                  <p className="text-sm text-muted-foreground">{t('shards.empty')}</p>
                 ) : (
                   detail.shards.map((shard) => (
                     <div className="rounded-md border p-3" key={shard.id}>
@@ -628,21 +638,24 @@ export default function LoopIssueDetailPage() {
                         <span className="text-xs text-muted-foreground">{shard.status}</span>
                       </div>
                       <p className="mt-2 text-xs text-muted-foreground">
-                        est_context {shard.estContext} · depends {shard.dependsOn.length || 0}
+                        {t('shards.meta', {
+                          context: shard.estContext,
+                          depends: shard.dependsOn.length || 0,
+                        })}
                       </p>
                       <form className="mt-3 flex flex-col gap-2" onSubmit={(e) => ops.takeShard(e)}>
                         <input name="shardId" type="hidden" value={shard.id} />
                         <input
                           className="h-8 rounded-md border bg-background px-2 text-xs"
                           name="notes"
-                          placeholder="Takeover note"
+                          placeholder={t('shards.takeoverNote')}
                         />
                         <button
                           className="h-8 rounded-md border px-3 text-xs font-medium hover:bg-muted/30 disabled:opacity-50"
                           disabled={shard.status === 'DONE'}
                           type="submit"
                         >
-                          Take Over
+                          {t('shards.takeOver')}
                         </button>
                       </form>
                       <form
@@ -654,24 +667,24 @@ export default function LoopIssueDetailPage() {
                         <textarea
                           className="min-h-16 rounded-md border bg-background px-2 py-1 text-xs"
                           name="summary"
-                          placeholder="Implementation summary"
+                          placeholder={t('shards.implementationSummary')}
                           required
                         />
                         <textarea
                           className="min-h-14 rounded-md border bg-background px-2 py-1 text-xs"
                           name="changedFiles"
-                          placeholder="Changed files, one per line"
+                          placeholder={t('shards.changedFiles')}
                         />
                         <input
                           className="h-8 rounded-md border bg-background px-2 text-xs"
                           name="notes"
-                          placeholder="Notes"
+                          placeholder={t('shards.notes')}
                         />
                         <button
                           className="h-8 rounded-md border px-3 text-xs font-medium hover:bg-muted/30"
                           type="submit"
                         >
-                          Record Implementation
+                          {t('shards.recordImplementation')}
                         </button>
                       </form>
                       <form
@@ -688,7 +701,7 @@ export default function LoopIssueDetailPage() {
                           className="h-8 rounded-md border px-3 text-xs font-medium hover:bg-muted/30"
                           type="submit"
                         >
-                          Run Tests
+                          {t('shards.runTests')}
                         </button>
                       </form>
                       <form
@@ -708,7 +721,7 @@ export default function LoopIssueDetailPage() {
                         <input
                           className="h-8 rounded-md border bg-background px-2 text-xs"
                           name="summary"
-                          placeholder="Review summary"
+                          placeholder={t('shards.reviewSummary')}
                           required
                         />
                         <select
@@ -723,18 +736,18 @@ export default function LoopIssueDetailPage() {
                         <textarea
                           className="min-h-14 rounded-md border bg-background px-2 py-1 text-xs"
                           name="issues"
-                          placeholder="Issue description"
+                          placeholder={t('shards.issueDescription')}
                         />
                         <textarea
                           className="min-h-14 rounded-md border bg-background px-2 py-1 text-xs"
                           name="fixInstructions"
-                          placeholder="Fix instructions, one per line"
+                          placeholder={t('shards.fixInstructions')}
                         />
                         <button
                           className="h-8 rounded-md border px-3 text-xs font-medium hover:bg-muted/30"
                           type="submit"
                         >
-                          Record Review
+                          {t('shards.recordReview')}
                         </button>
                       </form>
                     </div>
@@ -744,10 +757,10 @@ export default function LoopIssueDetailPage() {
             </div>
 
             <div className="rounded-lg border p-5">
-              <h2 className="text-lg font-semibold">Implementation Records</h2>
+              <h2 className="text-lg font-semibold">{t('records.implementation')}</h2>
               <div className="mt-4 flex flex-col gap-3">
                 {detail.implementationRecords.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No implementation records yet.</p>
+                  <p className="text-sm text-muted-foreground">{t('records.noImplementation')}</p>
                 ) : (
                   detail.implementationRecords.map((record) => (
                     <div className="rounded-md border p-3" key={record.id}>
@@ -757,7 +770,10 @@ export default function LoopIssueDetailPage() {
                       </div>
                       <p className="mt-2 text-xs">{record.summary}</p>
                       <p className="mt-2 text-xs text-muted-foreground">
-                        {record.changedFiles.length} files · round {record.round}
+                        {t('records.filesRound', {
+                          files: record.changedFiles.length,
+                          round: record.round,
+                        })}
                       </p>
                     </div>
                   ))
@@ -767,17 +783,19 @@ export default function LoopIssueDetailPage() {
 
             <div className="rounded-lg border p-5">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold">Evidence Artifact Workspace</h2>
+                <h2 className="text-lg font-semibold">{t('records.artifacts')}</h2>
                 <span className="text-xs text-muted-foreground">
-                  {evidenceArtifacts.filter((item) => item.status === 'present').length}/
-                  {evidenceArtifacts.length} present
+                  {t('records.present', {
+                    present: evidenceArtifacts.filter((item) => item.status === 'present').length,
+                    total: evidenceArtifacts.length,
+                  })}
                 </span>
               </div>
               <div className="mt-4 flex flex-col gap-4">
                 {artifactWorkspace.map(({ group, artifacts }) => (
                   <div className="rounded-md border p-3" key={group}>
                     <div className="flex items-center justify-between gap-3">
-                      <h3 className="text-sm font-medium">{group}</h3>
+                      <h3 className="text-sm font-medium">{t(`artifacts.groups.${group}`)}</h3>
                       <span className="text-xs text-muted-foreground">
                         {artifacts.filter((item) => item.status === 'present').length}/
                         {artifacts.length}
@@ -798,7 +816,7 @@ export default function LoopIssueDetailPage() {
                             <p className="mt-2 text-xs text-foreground">{artifact.summary}</p>
                           ) : null}
                           <p className="mt-2 text-xs text-muted-foreground">
-                            {artifactRecoveryHint(artifact)}
+                            {t(`artifacts.hints.${artifactRecoveryHintKey(artifact)}`)}
                           </p>
                         </div>
                       ))}
@@ -810,36 +828,41 @@ export default function LoopIssueDetailPage() {
 
             <div className="rounded-lg border p-5">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold">Global Review</h2>
+                <h2 className="text-lg font-semibold">{t('records.globalReview')}</h2>
                 <span className="text-xs text-muted-foreground">
-                  {detail.globalReview?.verdict ?? 'none'}
+                  {detail.globalReview?.verdict ?? t('records.none')}
                 </span>
               </div>
               {detail.globalReview ? (
                 <div className="mt-4 rounded-md border p-3 text-sm">
                   <p>{detail.globalReview.summary}</p>
                   <p className="mt-2 text-xs text-muted-foreground">
-                    round {detail.globalReview.round} · {detail.globalReview.created}
+                    {t('records.roundCreated', {
+                      round: detail.globalReview.round,
+                      created: detail.globalReview.created,
+                    })}
                   </p>
                 </div>
               ) : (
-                <p className="mt-3 text-sm text-muted-foreground">No global review yet.</p>
+                <p className="mt-3 text-sm text-muted-foreground">{t('records.noGlobalReview')}</p>
               )}
             </div>
 
             <div className="rounded-lg border p-5">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold">Convergence PR</h2>
+                <h2 className="text-lg font-semibold">{t('records.convergencePr')}</h2>
                 <span className="text-xs text-muted-foreground">
-                  {detail.convergencePr?.status ?? 'none'}
+                  {detail.convergencePr?.status ?? t('records.none')}
                 </span>
               </div>
               {detail.convergencePr ? (
                 <div className="mt-4 rounded-md border p-3 text-sm">
                   <p className="font-medium">{detail.convergencePr.branch}</p>
                   <p className="mt-2 text-xs text-muted-foreground">
-                    {detail.convergencePr.commits.length} commits · base{' '}
-                    {detail.convergencePr.baseBranch}
+                    {t('records.commitsBase', {
+                      commits: detail.convergencePr.commits.length,
+                      base: detail.convergencePr.baseBranch,
+                    })}
                   </p>
                   {detail.convergencePr.url ? (
                     <a
@@ -848,17 +871,19 @@ export default function LoopIssueDetailPage() {
                       rel="noreferrer"
                       target="_blank"
                     >
-                      Open {detail.convergencePr.provider ?? 'remote'} PR
+                      {t('records.openPr', {
+                        provider: detail.convergencePr.provider ?? t('records.remote'),
+                      })}
                     </a>
                   ) : null}
                 </div>
               ) : (
-                <p className="mt-3 text-sm text-muted-foreground">No convergence PR yet.</p>
+                <p className="mt-3 text-sm text-muted-foreground">{t('records.noConvergencePr')}</p>
               )}
             </div>
 
             <div className="rounded-lg border p-5">
-              <h2 className="text-lg font-semibold">Test Matrix</h2>
+              <h2 className="text-lg font-semibold">{t('records.testMatrix')}</h2>
               {detail.testMatrix ? (
                 <div className="mt-4 flex flex-col gap-3">
                   <div className="rounded-md border p-3">
@@ -869,8 +894,10 @@ export default function LoopIssueDetailPage() {
                       </span>
                     </div>
                     <p className="mt-2 text-xs text-muted-foreground">
-                      {detail.testMatrix.requiredTests.length} required ·{' '}
-                      {detail.testMatrix.regressionScope.length} regression files
+                      {t('records.requiredRegression', {
+                        required: detail.testMatrix.requiredTests.length,
+                        files: detail.testMatrix.regressionScope.length,
+                      })}
                     </p>
                   </div>
                   {detail.testMatrix.requiredTests.slice(0, 8).map((test) => (
@@ -884,15 +911,15 @@ export default function LoopIssueDetailPage() {
                   ))}
                 </div>
               ) : (
-                <p className="mt-3 text-sm text-muted-foreground">No test matrix yet.</p>
+                <p className="mt-3 text-sm text-muted-foreground">{t('records.noTestMatrix')}</p>
               )}
             </div>
 
             <div className="rounded-lg border p-5">
-              <h2 className="text-lg font-semibold">Review Records</h2>
+              <h2 className="text-lg font-semibold">{t('records.review')}</h2>
               <div className="mt-4 flex flex-col gap-3">
                 {detail.reviewRecords.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No review records yet.</p>
+                  <p className="text-sm text-muted-foreground">{t('records.noReview')}</p>
                 ) : (
                   detail.reviewRecords.map((record) => (
                     <div className="rounded-md border p-3" key={record.id}>
@@ -902,7 +929,10 @@ export default function LoopIssueDetailPage() {
                       </div>
                       <p className="mt-2 text-xs">{record.summary}</p>
                       <p className="mt-2 text-xs text-muted-foreground">
-                        {record.issues.length} issues · round {record.round}
+                        {t('records.issuesRound', {
+                          issues: record.issues.length,
+                          round: record.round,
+                        })}
                       </p>
                     </div>
                   ))
@@ -911,10 +941,10 @@ export default function LoopIssueDetailPage() {
             </div>
 
             <div className="rounded-lg border p-5">
-              <h2 className="text-lg font-semibold">Test Records</h2>
+              <h2 className="text-lg font-semibold">{t('records.test')}</h2>
               <div className="mt-4 flex flex-col gap-3">
                 {detail.testRecords.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No test records yet.</p>
+                  <p className="text-sm text-muted-foreground">{t('records.noTest')}</p>
                 ) : (
                   detail.testRecords.map((record) => (
                     <div className="rounded-md border p-3" key={record.id}>
@@ -923,12 +953,17 @@ export default function LoopIssueDetailPage() {
                         <span className="text-xs text-muted-foreground">{record.status}</span>
                       </div>
                       <p className="mt-2 text-xs text-muted-foreground">
-                        {record.commands.length} commands · round {record.round}
+                        {t('records.commandsRound', {
+                          commands: record.commands.length,
+                          round: record.round,
+                        })}
                       </p>
                       {record.coverage ? (
                         <p className="mt-1 text-xs text-muted-foreground">
-                          coverage lines {record.coverage.lines ?? '-'}% · branches{' '}
-                          {record.coverage.branches ?? '-'}%
+                          {t('records.coverage', {
+                            lines: record.coverage.lines ?? '-',
+                            branches: record.coverage.branches ?? '-',
+                          })}
                         </p>
                       ) : null}
                     </div>
@@ -938,10 +973,10 @@ export default function LoopIssueDetailPage() {
             </div>
 
             <div className="rounded-lg border p-5">
-              <h2 className="text-lg font-semibold">Annotations</h2>
+              <h2 className="text-lg font-semibold">{t('records.annotations')}</h2>
               <div className="mt-4 flex flex-col gap-3">
                 {detail.annotations.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No annotations yet.</p>
+                  <p className="text-sm text-muted-foreground">{t('records.noAnnotations')}</p>
                 ) : (
                   detail.annotations.map((annotation) => (
                     <div className="rounded-md border p-3" key={annotation.target}>
@@ -959,20 +994,23 @@ export default function LoopIssueDetailPage() {
 
             <div className="rounded-lg border p-5">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold">Resume Checkpoints</h2>
+                <h2 className="text-lg font-semibold">{t('resumeCheckpoints.title')}</h2>
                 <span className="text-xs text-muted-foreground">
-                  {resumeCheckpoints.length} checkpoints
+                  {t('resumeCheckpoints.count', { count: resumeCheckpoints.length })}
                 </span>
               </div>
               <div className="mt-4 flex flex-col gap-3">
                 <div className="rounded-md border bg-muted/20 p-3">
-                  <h3 className="text-sm font-medium">Checkpoint Diff</h3>
+                  <h3 className="text-sm font-medium">{t('resumeCheckpoints.diff')}</h3>
                   <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {checkpointDiff.map((item) => (
                       <div className="rounded-md bg-background p-3 text-xs" key={item.label}>
                         <p className="font-medium">{item.label}</p>
                         <p className="mt-1 text-muted-foreground">
-                          {item.before} to {item.after}
+                          {t('resumeCheckpoints.to', {
+                            before: item.before,
+                            after: item.after,
+                          })}
                         </p>
                       </div>
                     ))}
@@ -992,7 +1030,9 @@ export default function LoopIssueDetailPage() {
                     <p className="mt-2 text-xs text-muted-foreground">
                       {checkpoint.action}
                       {checkpoint.lastSignal ? ` · ${checkpoint.lastSignal}` : ''}
-                      {checkpoint.lastEvent ? ` · last event ${checkpoint.lastEvent}` : ''}
+                      {checkpoint.lastEvent
+                        ? ` · ${t('resumeCheckpoints.lastEvent', { time: checkpoint.lastEvent })}`
+                        : ''}
                     </p>
                   </div>
                 ))}
@@ -1001,28 +1041,29 @@ export default function LoopIssueDetailPage() {
 
             <div className="rounded-lg border p-5">
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold">Trace Timeline</h2>
+                <h2 className="text-lg font-semibold">{t('trace.timeline')}</h2>
                 <span className="text-xs text-muted-foreground">
-                  {traceTimeline.length}/{detail.logs.length} events
+                  {t('trace.events', { shown: traceTimeline.length, total: detail.logs.length })}
                 </span>
               </div>
               <div className="mt-4">
-                <h3 className="text-sm font-medium">Scope Summary</h3>
+                <h3 className="text-sm font-medium">{t('trace.scopeSummary')}</h3>
                 <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
                   {traceScopeSummary.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No trace scopes yet.</p>
+                    <p className="text-sm text-muted-foreground">{t('trace.noScopes')}</p>
                   ) : (
                     traceScopeSummary.map((scope) => (
                       <div className="rounded-md border bg-muted/20 p-3" key={scope.id}>
                         <div className="flex items-center justify-between gap-3">
                           <p className="truncate text-sm font-medium">{scope.id}</p>
                           <span className="shrink-0 text-xs text-muted-foreground">
-                            {scope.eventCount} events
+                            {t('trace.scopeEvents', { count: scope.eventCount })}
                           </span>
                         </div>
                         <p className="mt-1 truncate text-xs text-muted-foreground">
                           {scope.lastType}
-                          {scope.signal ? ` · ${scope.signal}` : ''} · last {scope.lastEvent}
+                          {scope.signal ? ` · ${scope.signal}` : ''} ·{' '}
+                          {t('trace.last', { time: scope.lastEvent })}
                         </p>
                       </div>
                     ))
@@ -1031,7 +1072,7 @@ export default function LoopIssueDetailPage() {
               </div>
               <div className="mt-4 flex flex-col gap-3">
                 {traceTimeline.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No trace events yet.</p>
+                  <p className="text-sm text-muted-foreground">{t('trace.noEvents')}</p>
                 ) : (
                   traceTimeline.map((entry) => (
                     <div className="grid grid-cols-[18px_1fr] gap-3" key={entry.id}>
@@ -1070,10 +1111,10 @@ export default function LoopIssueDetailPage() {
             </div>
 
             <div className="rounded-lg border p-5">
-              <h2 className="text-lg font-semibold">Event Log</h2>
+              <h2 className="text-lg font-semibold">{t('eventLog.title')}</h2>
               <div className="mt-4 flex flex-col divide-y">
                 {detail.logs.length === 0 ? (
-                  <p className="py-3 text-sm text-muted-foreground">No events yet.</p>
+                  <p className="py-3 text-sm text-muted-foreground">{t('eventLog.empty')}</p>
                 ) : (
                   detail.logs.slice(0, 12).map((entry) => (
                     <div
@@ -1094,10 +1135,10 @@ export default function LoopIssueDetailPage() {
             </div>
 
             <div className="rounded-lg border p-5">
-              <h2 className="text-lg font-semibold">Notifications</h2>
+              <h2 className="text-lg font-semibold">{t('notifications.title')}</h2>
               <div className="mt-4 flex flex-col divide-y">
                 {detail.notifications.length === 0 ? (
-                  <p className="py-3 text-sm text-muted-foreground">No notifications yet.</p>
+                  <p className="py-3 text-sm text-muted-foreground">{t('notifications.empty')}</p>
                 ) : (
                   detail.notifications.slice(0, 12).map((notification) => (
                     <div className="py-3 text-xs" key={notification.id}>

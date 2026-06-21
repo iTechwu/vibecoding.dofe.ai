@@ -9,5 +9,6 @@
   "hint": "提示",
   "skip": "跳过",
   "progress": "进度",
-  "days": "{count} 天"
+  "days": "{count} 天",
+  "days_plural": "{count} 天"
 }

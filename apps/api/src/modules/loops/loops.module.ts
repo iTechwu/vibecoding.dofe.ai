@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { HttpModule } from '@nestjs/axios';
 import { LoopsDbModule } from '@app/db';
 import { AuditLogModule } from '@app/audit-log';
 import { CliLoopsAgentAdapter } from './adapters/cli-loops-agent.adapter';
@@ -20,7 +21,10 @@ import { LoopsService } from './loops.service';
 import { LoopsWorkLockService } from './loops-work-lock.service';
 
 @Module({
-  imports: [LoopsDbModule, AuditLogModule],
+  // HttpModule provides HttpService to LoopsNotificationSender and
+  // LoopsPrProviderClient so external HTTP goes through @nestjs/axios (Rule 3)
+  // instead of global `fetch` on the production path.
+  imports: [HttpModule, LoopsDbModule, AuditLogModule],
   controllers: [LoopsController],
   providers: [
     LoopsService,

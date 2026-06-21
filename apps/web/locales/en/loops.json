@@ -1,0 +1,441 @@
+{
+  "dashboard": {
+    "eyebrow": "Loops Control Plane",
+    "title": "Agent Delivery Console",
+    "resume": "Resume Interrupted",
+    "resuming": "Resuming",
+    "newIssue": "New Issue",
+    "metrics": {
+      "active": "Active",
+      "activeNote": "{total} total indexed issues",
+      "inLoop": "In Loop",
+      "inLoopNote": "currently under agent execution",
+      "needsAttention": "Needs Attention",
+      "attentionNote": "{paused} paused · {guards} cost guards",
+      "runway": "Runway",
+      "runwayNote": "{tokens} min tokens remaining",
+      "runwayValue": "{calls} calls",
+      "closed": "Closed",
+      "closedNote": "finalized delivery loops"
+    },
+    "health": {
+      "title": "Runtime Health",
+      "ok": "File state and DB index are currently consistent.",
+      "attention": "State doctor found issues that need review.",
+      "loading": "Loading doctor status.",
+      "okBadge": "OK",
+      "attentionBadge": "Attention",
+      "loadingBadge": "Loading",
+      "loops": "Loops",
+      "issues": "Issues",
+      "problems": "Problems"
+    },
+    "riskQueue": {
+      "title": "Risk Queue",
+      "loading": "Loading risk queue.",
+      "empty": "No priority risks detected."
+    },
+    "actionQueue": {
+      "title": "Action Queue",
+      "summary": "{count} next actions sorted by the loop scheduler",
+      "emptySummary": "No scheduler actions are waiting.",
+      "loading": "Loading action queue.",
+      "empty": "No pending actions.",
+      "noPhase": "No phase"
+    },
+    "reviewInbox": {
+      "title": "Review Inbox",
+      "summary": "{count} human review and takeover items",
+      "emptySummary": "No human review items are waiting.",
+      "loading": "Loading review inbox.",
+      "empty": "No review items."
+    },
+    "traceSummary": {
+      "title": "Trace Summary",
+      "summary": "{recent} recent events from {total} indexed entries",
+      "loading": "Loading trace summary.",
+      "empty": "No trace events yet.",
+      "lastEvent": "Last event {time}"
+    },
+    "resumeSummary": {
+      "title": "Resume Summary",
+      "summary": "{shards} shards can be recovered across {issues} issues",
+      "loading": "Loading resume summary.",
+      "resumableShards": "Resumable Shards",
+      "affectedIssues": "Affected Issues"
+    },
+    "capabilities": {
+      "title": "Capability Registry",
+      "summary": "{planned} planned · {done} done · {inProgress} in progress",
+      "loading": "Loading capability registry.",
+      "loadingIntegrations": "Loading planned integrations.",
+      "empty": "No capabilities registered.",
+      "next": "Next: {step}",
+      "noNextStep": "No next step recorded",
+      "agentRegistry": "Agent Registry",
+      "toolRegistry": "Tool Registry",
+      "compatibilityChecks": "Compatibility Checks",
+      "tools": "{count} tools",
+      "owners": "{count} owners"
+    },
+    "agingQueue": {
+      "title": "Aging Queue",
+      "loading": "Loading aging queue.",
+      "empty": "No stale active issues.",
+      "stale": "{hours}h stale",
+      "updated": "updated {time}"
+    },
+    "phaseDistribution": {
+      "title": "Phase Distribution",
+      "loading": "Loading phases.",
+      "empty": "No phase data yet."
+    },
+    "notifications": {
+      "title": "Recent Notifications",
+      "loading": "Loading notifications.",
+      "empty": "No notifications yet."
+    },
+    "events": {
+      "title": "Recent Events",
+      "entries": "{count} entries",
+      "loading": "Loading events.",
+      "empty": "No events yet.",
+      "global": "global"
+    },
+    "table": {
+      "issue": "Issue",
+      "status": "Status",
+      "phase": "Phase",
+      "priority": "Priority",
+      "loading": "Loading issues.",
+      "empty": "No Loops issues yet.",
+      "costGuard": "cost guard"
+    },
+    "phaseLabels": {
+      "PHASE_0_INTAKE": "Intake",
+      "PHASE_1_SPEC": "Spec",
+      "PHASE_2_REVIEW": "Review",
+      "PHASE_3_DECOMPOSE": "Decompose",
+      "PHASE_4_IMPLEMENT": "Implement",
+      "PHASE_5_REVIEW": "Shard Review",
+      "PHASE_6_CONVERGE": "Converge",
+      "PHASE_7_GLOBAL_REVIEW": "Global Review",
+      "PHASE_8_ANNOTATE": "Annotate",
+      "CLOSED": "Closed",
+      "PAUSED": "Paused"
+    },
+    "riskReasons": {
+      "Paused": "Paused",
+      "Cost guard tripped": "Cost guard tripped"
+    }
+  },
+  "newIssue": {
+    "eyebrow": "Web Issue Intake",
+    "title": "New Loops Issue",
+    "back": "Back",
+    "redirecting": "Redirecting to login...",
+    "template": "Loop Template",
+    "titleLabel": "Title",
+    "targetRepo": "Target Repository",
+    "priority": "Priority",
+    "body": "Requirement Body",
+    "acceptanceCriteria": "Acceptance Criteria",
+    "criteriaPlaceholder": "One acceptance item per line",
+    "error": "Failed to create issue. Please try again.",
+    "cancel": "Cancel",
+    "creating": "Creating...",
+    "create": "Create Issue",
+    "templates": {
+      "feature": {
+        "label": "Feature Loop",
+        "description": "Plan and deliver a user-facing capability with evidence across UX, API, and tests.",
+        "bestFor": "New product workflows or visible user value",
+        "body": "Background:\n-\n\nUser goal:\n-\n\nScope:\n-\n\nOut of scope:\n-",
+        "criteria": [
+          "Primary happy path is implemented end to end",
+          "User-facing states cover loading, empty, success, and error outcomes",
+          "Backend/API contract is validated with tests when data changes are involved",
+          "Regression tests pass and implementation evidence is recorded"
+        ]
+      },
+      "bugfix": {
+        "label": "Bugfix Loop",
+        "description": "Capture reproduction, isolate root cause, and require regression coverage.",
+        "bestFor": "Production defects or behavior regressions",
+        "body": "Observed behavior:\n-\n\nExpected behavior:\n-\n\nReproduction steps:\n1.\n2.\n3.\n\nImpact:\n-",
+        "criteria": [
+          "Root cause is identified and described in the implementation evidence",
+          "The reproduction path now passes",
+          "A regression test covers the fixed behavior",
+          "No unrelated behavior is changed"
+        ]
+      },
+      "refactor": {
+        "label": "Refactor Loop",
+        "description": "Change internals while protecting public behavior and contracts.",
+        "bestFor": "Complexity reduction without product behavior changes",
+        "body": "Current pain:\n-\n\nRefactor target:\n-\n\nBehavior that must stay unchanged:\n-\n\nRisk areas:\n-",
+        "criteria": [
+          "External behavior and public contracts remain compatible",
+          "Duplication or complexity is reduced in the target area",
+          "Existing tests pass and focused coverage is added for touched shared behavior",
+          "No unrelated formatting or metadata churn is introduced"
+        ]
+      },
+      "docs": {
+        "label": "Docs Loop",
+        "description": "Update product, architecture, or implementation docs with explicit status labels.",
+        "bestFor": "Specification, runbook, and release-note work",
+        "body": "Audience:\n-\n\nDocumentation goal:\n-\n\nSource of truth:\n-\n\nPages or files to update:\n-",
+        "criteria": [
+          "Documentation matches the current implementation",
+          "Status labels clearly distinguish done, accepted, planned, and blocked work",
+          "Commands or examples are accurate and runnable where applicable",
+          "Any deferred work includes the reason and required next input"
+        ]
+      },
+      "integration": {
+        "label": "Integration Loop",
+        "description": "Define external system boundaries, credentials, failure handling, and evidence.",
+        "bestFor": "Git provider, Feishu, worker, or third-party API work",
+        "body": "External system:\n-\n\nTrigger or data flow:\n-\n\nCredentials or environment needed:\n-\n\nFailure handling:\n-",
+        "criteria": [
+          "Integration client boundary is isolated from service logic",
+          "Missing credentials or external failures degrade safely",
+          "Success and failure paths are covered by tests or documented smoke checks",
+          "Operational logs avoid raw sensitive values"
+        ]
+      },
+      "flow": {
+        "label": "Flow Loop",
+        "description": "Model a stateful agent workflow with triggers, HITL gates, resume, and tracing.",
+        "bestFor": "CrewAI-style Flow, approval, or recovery workflows",
+        "body": "Trigger:\n-\n\nState transitions:\n-\n\nHuman-in-the-loop gate:\n-\n\nResume point:\n-\n\nObservability:\n-",
+        "criteria": [
+          "Trigger conditions and input payload are explicitly defined",
+          "State transitions include success, failure, pause, and resume paths",
+          "Human approval or takeover gate is visible before irreversible work",
+          "Resume point and recovery behavior are documented with evidence",
+          "Trace, notification, and regression evidence are recorded for the flow"
+        ]
+      }
+    }
+  },
+  "detail": {
+    "loading": "Loading issue...",
+    "notFound": "Issue not found.",
+    "back": "Back to queue",
+    "actions": {
+      "generateSpec": "Generate Spec",
+      "runStep": "Run Step",
+      "globalReview": "Global Review",
+      "finalize": "Finalize",
+      "pause": "Pause",
+      "resume": "Resume"
+    },
+    "stats": {
+      "round": "Round",
+      "spec": "Spec",
+      "shards": "Shards",
+      "calls": "Calls",
+      "tokens": "Tokens",
+      "paused": "Paused",
+      "yes": "yes",
+      "no": "no"
+    },
+    "nextAction": {
+      "title": "Next Action",
+      "resume": {
+        "label": "Resume loop",
+        "body": "This issue is paused. Resume it before running more agent steps."
+      },
+      "generateSpec": {
+        "label": "Generate spec",
+        "body": "Create or refresh the product spec before decomposition."
+      },
+      "reviewSpec": {
+        "label": "Review spec",
+        "body": "Approve, request changes, or reject the draft spec."
+      },
+      "decompose": {
+        "label": "Decompose",
+        "body": "Split the approved spec into self-contained implementation shards."
+      },
+      "globalReview": {
+        "label": "Global review",
+        "body": "Run the cross-shard review before final annotation and delivery."
+      },
+      "reloop": {
+        "label": "Start re-loop",
+        "body": "Global review found remaining work. Create the next spec revision."
+      },
+      "finalize": {
+        "label": "Finalize",
+        "body": "Close the issue and emit the convergence record."
+      },
+      "closed": {
+        "label": "Closed",
+        "body": "Delivery is finalized. Review the records below for audit evidence."
+      },
+      "runStep": {
+        "label": "Run step",
+        "body": "Advance the next runnable shard through implementation, tests, and review."
+      }
+    },
+    "evidence": {
+      "title": "Evidence Coverage",
+      "summary": "{shards} shards · {annotations} annotations",
+      "implemented": "Implemented",
+      "tested": "Tested",
+      "reviewed": "Reviewed",
+      "annotated": "Annotated"
+    },
+    "reloop": {
+      "title": "Re-loop",
+      "body": "Global verdict is {verdict}. Create the next spec revision and send it back through human review.",
+      "placeholder": "Revision notes",
+      "start": "Start Re-loop"
+    },
+    "intake": {
+      "title": "Issue Intake",
+      "submitter": "Submitter",
+      "targetRepo": "Target Repo",
+      "rawPayload": "Raw Payload",
+      "source": "Source"
+    },
+    "requirements": {
+      "title": "Initial Requirements Coverage",
+      "summary": "{accepted}/{total} accepted · {percent}%",
+      "covered": "covered",
+      "needsWork": "needs work",
+      "meta": "spec {spec} · shards {shards} · tests {tests} · reviews {reviews}"
+    },
+    "specReview": {
+      "title": "Spec Review",
+      "approve": "Approve",
+      "revisionPlaceholder": "Revision note",
+      "requestRevision": "Request Revision",
+      "decompose": "Decompose",
+      "empty": "No spec yet."
+    },
+    "shards": {
+      "title": "Shards",
+      "empty": "No shards yet.",
+      "meta": "est_context {context} · depends {depends}",
+      "takeoverNote": "Takeover note",
+      "takeOver": "Take Over",
+      "implementationSummary": "Implementation summary",
+      "changedFiles": "Changed files, one per line",
+      "notes": "Notes",
+      "recordImplementation": "Record Implementation",
+      "runTests": "Run Tests",
+      "reviewSummary": "Review summary",
+      "issueDescription": "Issue description",
+      "fixInstructions": "Fix instructions, one per line",
+      "recordReview": "Record Review"
+    },
+    "records": {
+      "implementation": "Implementation Records",
+      "noImplementation": "No implementation records yet.",
+      "filesRound": "{files} files · round {round}",
+      "artifacts": "Evidence Artifact Workspace",
+      "present": "{present}/{total} present",
+      "globalReview": "Global Review",
+      "none": "none",
+      "roundCreated": "round {round} · {created}",
+      "noGlobalReview": "No global review yet.",
+      "convergencePr": "Convergence PR",
+      "commitsBase": "{commits} commits · base {base}",
+      "openPr": "Open {provider} PR",
+      "remote": "remote",
+      "noConvergencePr": "No convergence PR yet.",
+      "testMatrix": "Test Matrix",
+      "requiredRegression": "{required} required · {files} regression files",
+      "noTestMatrix": "No test matrix yet.",
+      "review": "Review Records",
+      "noReview": "No review records yet.",
+      "issuesRound": "{issues} issues · round {round}",
+      "test": "Test Records",
+      "noTest": "No test records yet.",
+      "commandsRound": "{commands} commands · round {round}",
+      "coverage": "coverage lines {lines}% · branches {branches}%",
+      "annotations": "Annotations",
+      "noAnnotations": "No annotations yet."
+    },
+    "resumeCheckpoints": {
+      "title": "Resume Checkpoints",
+      "count": "{count} checkpoints",
+      "diff": "Checkpoint Diff",
+      "to": "{before} to {after}",
+      "issuePhase": "Issue phase",
+      "resumeOrTakeOver": "Resume or take over",
+      "noAction": "No action",
+      "meta": "round {round} · {version}",
+      "shardMeta": "{effort} effort · {checks} acceptance checks",
+      "lastEvent": "last event {time}",
+      "labels": {
+        "specRevision": "Spec revision",
+        "requirements": "Requirements",
+        "shards": "Shards",
+        "tests": "Tests"
+      },
+      "values": {
+        "round": "round {round}",
+        "intake": "intake",
+        "missing": "{count} missing",
+        "covered": "{percent}% covered",
+        "blocked": "{count} blocked",
+        "done": "{done}/{total} done",
+        "failing": "{count} failing",
+        "passing": "{count} passing"
+      }
+    },
+    "trace": {
+      "timeline": "Trace Timeline",
+      "events": "{shown}/{total} events",
+      "scopeSummary": "Scope Summary",
+      "noScopes": "No trace scopes yet.",
+      "scopeEvents": "{count} events",
+      "last": "last {time}",
+      "noEvents": "No trace events yet."
+    },
+    "eventLog": {
+      "title": "Event Log",
+      "empty": "No events yet."
+    },
+    "notifications": {
+      "title": "Notifications",
+      "empty": "No notifications yet."
+    },
+    "artifacts": {
+      "groups": {
+        "request": "Request",
+        "planning": "Planning",
+        "implementation": "Implementation",
+        "test": "Test",
+        "review": "Review",
+        "delivery": "Delivery"
+      },
+      "fallback": {
+        "rawPayload": "Raw Payload",
+        "issueRecord": "Issue Record",
+        "intakeRecord": "Intake Record",
+        "rawSummary": "Original request payload captured for audit.",
+        "issueSummary": "{priority} {status} issue with {count} acceptance criteria.",
+        "intakeSummary": "{status} intake normalized from {channel}."
+      },
+      "hints": {
+        "ready": "Ready for audit",
+        "spec": "Generate or approve the spec",
+        "shards": "Decompose the approved spec",
+        "testMatrix": "Decompose shards to create the matrix",
+        "implementationRecord": "Record implementation evidence",
+        "testRecord": "Run shard or regression tests",
+        "reviewRecord": "Record shard review evidence",
+        "globalReview": "Run global review",
+        "convergencePr": "Finalize the loop",
+        "fallback": "Capture the missing artifact"
+      }
+    }
+  }
+}

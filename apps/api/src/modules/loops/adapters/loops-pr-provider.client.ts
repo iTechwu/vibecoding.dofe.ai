@@ -1,4 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
 
 export type LoopsPrProvider = 'github' | 'gitlab' | 'gitea';
 
@@ -47,6 +49,8 @@ export class LoopsPrProviderClient {
     @Optional()
     @Inject(LOOPS_PR_PROVIDER_CONFIG)
     private readonly config: LoopsPrProviderConfig = readPrProviderConfig(),
+    @Optional()
+    private readonly httpService?: HttpService,
   ) {}
 
   async openPullRequest(input: LoopsOpenPrInput): Promise<LoopsOpenPrResult> {
@@ -65,17 +69,20 @@ export class LoopsPrProviderClient {
       return { opened: false, reason: 'repository not allowlisted', provider };
     }
 
-    const response = await fetch(this.endpoint(provider, repository), {
-      method: 'POST',
-      headers: this.headers(provider, this.config.token),
-      body: JSON.stringify(this.payload(provider, input)),
-    });
-    if (!response.ok) {
-      return { opened: false, reason: `provider api returned ${response.status}`, provider };
+    const data = await this.postJson(
+      this.endpoint(provider, repository),
+      this.payload(provider, input),
+      this.headers(provider, this.config.token),
+    );
+    if (!data) {
+      return { opened: false, reason: 'provider api request failed', provider };
+    }
+    if (data.status < 200 || data.status >= 300) {
+      return { opened: false, reason: `provider api returned ${data.status}`, provider };
     }
 
-    const data = (await response.json()) as ProviderResponse;
-    const url = this.extractUrl(data);
+    const body = data.body as ProviderResponse;
+    const url = this.extractUrl(body);
     if (!url) {
       return { opened: false, reason: 'provider response missing url', provider };
     }
@@ -84,8 +91,44 @@ export class LoopsPrProviderClient {
       opened: true,
       provider,
       url,
-      id: this.extractId(data) ?? url,
+      id: this.extractId(body) ?? url,
     };
+  }
+
+  /**
+   * Perform the provider POST via @nestjs/axios HttpService (Rule 3) when wired
+   * by the Nest container; fall back to global `fetch` only for standalone
+   * (ts-node / non-Nest) consumers. `validateStatus: () => true` keeps non-2xx
+   * responses from throwing so the caller can map status codes to outcomes.
+   */
+  private async postJson(
+    url: string,
+    payload: Record<string, string>,
+    headers: Record<string, string>,
+  ): Promise<{ status: number; body: unknown } | undefined> {
+    try {
+      if (this.httpService) {
+        const response = await firstValueFrom(
+          this.httpService.post(url, payload, {
+            headers,
+            timeout: 15_000,
+            validateStatus: () => true,
+          }),
+        );
+        return { status: response.status, body: response.data };
+      }
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        return { status: response.status, body: undefined };
+      }
+      return { status: response.status, body: await response.json() };
+    } catch {
+      return undefined;
+    }
   }
 
   private missingConfig(): string | undefined {

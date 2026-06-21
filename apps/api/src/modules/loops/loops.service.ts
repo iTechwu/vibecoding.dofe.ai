@@ -5,6 +5,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import type {
   CreateLoopIssueRequest,
   LoopAnnotation,
@@ -57,6 +58,8 @@ import { LOOPS_PERSISTENCE } from './loops-persistence.token';
 import { resolveAllowedTargetRepo } from './loops-path-policy.util';
 import { readLoopsRuntimeConfig } from './loops-runtime-config.util';
 import { LoopsWorkLockService } from './loops-work-lock.service';
+import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
+import type { Logger } from 'winston';
 
 type LoopIssueDetail = Awaited<ReturnType<LoopsFileStoreService['readDetail']>>;
 type LoopListItem = LoopListResponse['list'][number];
@@ -97,6 +100,9 @@ export class LoopsService {
     @Optional()
     @Inject(LOOPS_PERSISTENCE)
     private readonly persistence?: LoopsPersistenceService,
+    @Optional()
+    @Inject(WINSTON_MODULE_PROVIDER)
+    private readonly logger?: Logger,
   ) {}
 
   async list(query: LoopIssuesQuery): Promise<LoopListResponse> {
@@ -131,9 +137,25 @@ export class LoopsService {
   async getIssue(issueId: string) {
     try {
       return this.withRequirementsCoverage(await this.readDetail(issueId));
-    } catch {
+    } catch (error) {
+      // Surface the original failure (corrupted workspace vs. genuinely
+      // missing issue are otherwise indistinguishable) before normalising to
+      // a 404 for the client.
+      this.log('warn', `[Loops] getIssue failed for ${issueId}`, {
+        issueId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw new NotFoundException(`Issue ${issueId} not found`);
     }
+  }
+
+  /** Winston-backed structured log; no-op for standalone (non-Nest) consumers. */
+  private log(
+    level: 'info' | 'warn' | 'error' | 'debug',
+    message: string,
+    meta?: Record<string, unknown>,
+  ): void {
+    this.logger?.[level](message, meta);
   }
 
   async createIssue(input: CreateLoopIssueRequest, authUser?: AuthUserInfo) {
@@ -264,11 +286,10 @@ export class LoopsService {
       ...detail.state,
       phase: 'PHASE_2_REVIEW',
       specVersion: version,
-      costCalls: detail.state.costCalls + 1,
       updated: now,
     };
 
-    await this.store.writeSpec(detail.issue, spec, await this.store.enforceCostGuard(state));
+    await this.store.writeSpec(detail.issue, spec, await this.costGuardedState(state));
     return this.syncAndRead(issueId);
   }
 
@@ -331,10 +352,9 @@ export class LoopsService {
       shardsTotal: shards.length,
       shardsDone: 0,
       shardsInProgress: 0,
-      costCalls: detail.state.costCalls + 1,
       updated: now,
     };
-    const guardedState = await this.store.enforceCostGuard(state);
+    const guardedState = await this.costGuardedState(state);
 
     await this.store.writeShards({
       issue: detail.issue,
@@ -411,12 +431,20 @@ export class LoopsService {
       return this.syncAndRead(issueId);
     }
 
-    if (detail.shards.length > 0 && detail.shards.every((item) => item.status === 'DONE')) {
+    // Convergence must be judged against the freshest shard snapshot
+    // (`currentDetail`, updated inside the loop above), not the stale
+    // `detail` captured before the first advancement — otherwise a loop that
+    // drives the final shard to DONE within this call could be mis-promoted
+    // or, conversely, fail to promote to PHASE_6_CONVERGE.
+    if (
+      currentDetail.shards.length > 0 &&
+      currentDetail.shards.every((item) => item.status === 'DONE')
+    ) {
       const now = new Date().toISOString();
       await this.store.upsertState({
-        ...detail.state,
+        ...currentDetail.state,
         phase: 'PHASE_6_CONVERGE',
-        shardsDone: detail.shards.length,
+        shardsDone: currentDetail.shards.length,
         shardsInProgress: 0,
         updated: now,
       });
@@ -1405,6 +1433,9 @@ export class LoopsService {
       shardsInProgress: 0,
       updated: now,
     };
+    // Account the review transition (agentAdapter.review + reviewTests) so the
+    // cost guard sees review-only routes instead of being bypassed by them.
+    const guardedState = await this.costGuardedState(nextState);
 
     await this.store.writeReviewRecord({
       issueId,
@@ -1412,7 +1443,7 @@ export class LoopsService {
       record,
       annotations: nextAnnotations,
       shards: nextShards,
-      state: nextState,
+      state: guardedState,
     });
 
     if (redoLimitExceeded) {
@@ -1475,14 +1506,15 @@ export class LoopsService {
     const nextShards = detail.shards.map((item) =>
       item.id === shardId ? { ...item, status: 'IMPLEMENTED' as const } : item,
     );
-    const nextState = await this.store.enforceCostGuard({
-      ...detail.state,
-      phase: 'PHASE_5_REVIEW',
-      shardsInProgress: 0,
-      costCalls: detail.state.costCalls + 1,
-      costTokens: detail.state.costTokens + (record.tokens ?? 0),
-      updated: new Date().toISOString(),
-    });
+    const nextState = await this.costGuardedState(
+      {
+        ...detail.state,
+        phase: 'PHASE_5_REVIEW',
+        shardsInProgress: 0,
+        updated: new Date().toISOString(),
+      },
+      { calls: 1, tokens: record.tokens ?? 0 },
+    );
 
     await this.store.writeImplementationRecord({
       issueId,
@@ -1600,8 +1632,36 @@ export class LoopsService {
 
   private createIssueId(now: string) {
     const date = now.slice(0, 10).replace(/-/g, '');
-    const suffix = Math.random().toString(36).slice(2, 8);
+    // Cryptographic suffix avoids the birthday-bound collision risk of the
+    // previous `Math.random()` 6-char base36 suffix. 8 hex chars (32 bits)
+    // scoped per day is ample for any realistic Loops deployment.
+    const suffix = randomUUID().replace(/-/g, '').slice(0, 8);
     return `issue-${date}-${suffix}`;
+  }
+
+  /**
+   * Apply a cost delta (LLM/agent calls + tokens) to a candidate state and
+   * route it through the cost guard. Centralising this ensures every
+   * cost-incurring transition is accounted consistently and can trip the
+   * guard. Previously review/test paths wrote state without accounting, so
+   * the cap could be bypassed by routes that only invoked reviews.
+   *
+   * The caller passes the desired next-state WITHOUT `costCalls`/`costTokens`
+   * (this helper adds the delta); `updated` is refreshed here too so callers
+   * don't have to.
+   */
+  private async costGuardedState(
+    state: LoopStateItem,
+    delta: { calls?: number; tokens?: number } = {},
+  ): Promise<LoopStateItem> {
+    const calls = delta.calls ?? 1;
+    const tokens = delta.tokens ?? 0;
+    return this.store.enforceCostGuard({
+      ...state,
+      costCalls: state.costCalls + calls,
+      costTokens: state.costTokens + tokens,
+      updated: new Date().toISOString(),
+    });
   }
 
   private nextResumePhase(state: LoopStateItem): LoopStateItem['phase'] {

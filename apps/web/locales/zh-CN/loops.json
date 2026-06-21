@@ -1,0 +1,441 @@
+{
+  "dashboard": {
+    "eyebrow": "Loops 控制平面",
+    "title": "Agent 交付控制台",
+    "resume": "恢复中断任务",
+    "resuming": "恢复中",
+    "newIssue": "新建 Issue",
+    "metrics": {
+      "active": "活跃",
+      "activeNote": "共索引 {total} 个 issue",
+      "inLoop": "执行中",
+      "inLoopNote": "当前正在由 agent 执行",
+      "needsAttention": "需要关注",
+      "attentionNote": "{paused} 个已暂停 · {guards} 个成本保护",
+      "runway": "余量",
+      "runwayNote": "最少剩余 {tokens} tokens",
+      "runwayValue": "{calls} 次调用",
+      "closed": "已关闭",
+      "closedNote": "已完成交付闭环"
+    },
+    "health": {
+      "title": "运行健康度",
+      "ok": "文件状态与数据库索引当前一致。",
+      "attention": "状态检查发现需要审阅的问题。",
+      "loading": "正在加载检查状态。",
+      "okBadge": "正常",
+      "attentionBadge": "需关注",
+      "loadingBadge": "加载中",
+      "loops": "Loops",
+      "issues": "Issues",
+      "problems": "问题"
+    },
+    "riskQueue": {
+      "title": "风险队列",
+      "loading": "正在加载风险队列。",
+      "empty": "未发现高优先级风险。"
+    },
+    "actionQueue": {
+      "title": "动作队列",
+      "summary": "{count} 个下一步动作已按调度器排序",
+      "emptySummary": "当前没有等待调度的动作。",
+      "loading": "正在加载动作队列。",
+      "empty": "没有待处理动作。",
+      "noPhase": "无阶段"
+    },
+    "reviewInbox": {
+      "title": "审阅收件箱",
+      "summary": "{count} 个人工审阅与接管项",
+      "emptySummary": "当前没有等待人工审阅的事项。",
+      "loading": "正在加载审阅收件箱。",
+      "empty": "没有审阅项。"
+    },
+    "traceSummary": {
+      "title": "追踪摘要",
+      "summary": "{total} 条索引记录中的 {recent} 条近期事件",
+      "loading": "正在加载追踪摘要。",
+      "empty": "暂无追踪事件。",
+      "lastEvent": "最近事件 {time}"
+    },
+    "resumeSummary": {
+      "title": "恢复摘要",
+      "summary": "{issues} 个 issue 中有 {shards} 个 shard 可恢复",
+      "loading": "正在加载恢复摘要。",
+      "resumableShards": "可恢复 Shards",
+      "affectedIssues": "受影响 Issues"
+    },
+    "capabilities": {
+      "title": "能力注册表",
+      "summary": "{planned} 个计划中 · {done} 个已完成 · {inProgress} 个进行中",
+      "loading": "正在加载能力注册表。",
+      "loadingIntegrations": "正在加载计划集成。",
+      "empty": "尚未注册能力。",
+      "next": "下一步：{step}",
+      "noNextStep": "未记录下一步",
+      "agentRegistry": "Agent 注册表",
+      "toolRegistry": "工具注册表",
+      "compatibilityChecks": "兼容性检查",
+      "tools": "{count} 个工具",
+      "owners": "{count} 个负责人"
+    },
+    "agingQueue": {
+      "title": "滞留队列",
+      "loading": "正在加载滞留队列。",
+      "empty": "没有过期的活跃 issue。",
+      "stale": "滞留 {hours} 小时",
+      "updated": "更新于 {time}"
+    },
+    "phaseDistribution": {
+      "title": "阶段分布",
+      "loading": "正在加载阶段。",
+      "empty": "暂无阶段数据。"
+    },
+    "notifications": {
+      "title": "近期通知",
+      "loading": "正在加载通知。",
+      "empty": "暂无通知。"
+    },
+    "events": {
+      "title": "近期事件",
+      "entries": "{count} 条记录",
+      "loading": "正在加载事件。",
+      "empty": "暂无事件。",
+      "global": "全局"
+    },
+    "table": {
+      "issue": "Issue",
+      "status": "状态",
+      "phase": "阶段",
+      "priority": "优先级",
+      "loading": "正在加载 issue。",
+      "empty": "暂无 Loops issue。",
+      "costGuard": "成本保护"
+    },
+    "phaseLabels": {
+      "PHASE_0_INTAKE": "录入",
+      "PHASE_1_SPEC": "规格",
+      "PHASE_2_REVIEW": "审阅",
+      "PHASE_3_DECOMPOSE": "拆解",
+      "PHASE_4_IMPLEMENT": "实现",
+      "PHASE_5_REVIEW": "Shard 审阅",
+      "PHASE_6_CONVERGE": "收敛",
+      "PHASE_7_GLOBAL_REVIEW": "全局审阅",
+      "PHASE_8_ANNOTATE": "标注",
+      "CLOSED": "已关闭",
+      "PAUSED": "已暂停"
+    },
+    "riskReasons": {
+      "Paused": "已暂停",
+      "Cost guard tripped": "触发成本保护"
+    }
+  },
+  "newIssue": {
+    "eyebrow": "Web Issue 录入",
+    "title": "新建 Loops Issue",
+    "back": "返回",
+    "redirecting": "正在跳转到登录...",
+    "template": "Loop 模板",
+    "titleLabel": "标题",
+    "targetRepo": "目标仓库",
+    "priority": "优先级",
+    "body": "需求正文",
+    "acceptanceCriteria": "验收标准",
+    "criteriaPlaceholder": "每行一个验收项",
+    "error": "创建 issue 失败，请重试。",
+    "cancel": "取消",
+    "creating": "创建中...",
+    "create": "创建 Issue",
+    "templates": {
+      "feature": {
+        "label": "功能 Loop",
+        "description": "规划并交付面向用户的能力，覆盖 UX、API 与测试证据。",
+        "bestFor": "新的产品流程或明确的用户价值",
+        "body": "背景：\n-\n\n用户目标：\n-\n\n范围：\n-\n\n不在范围内：\n-",
+        "criteria": [
+          "核心正向路径已端到端实现",
+          "面向用户的加载、空态、成功和错误状态均已覆盖",
+          "涉及数据变更时，后端/API 合约已通过测试验证",
+          "回归测试通过，并记录实现证据"
+        ]
+      },
+      "bugfix": {
+        "label": "修复 Loop",
+        "description": "记录复现路径、定位根因，并要求回归覆盖。",
+        "bestFor": "生产缺陷或行为回归",
+        "body": "观察到的行为：\n-\n\n预期行为：\n-\n\n复现步骤：\n1.\n2.\n3.\n\n影响：\n-",
+        "criteria": [
+          "根因已识别，并在实现证据中说明",
+          "复现路径现在可以通过",
+          "回归测试覆盖已修复的行为",
+          "未改变无关行为"
+        ]
+      },
+      "refactor": {
+        "label": "重构 Loop",
+        "description": "在保护公开行为和合约的前提下调整内部实现。",
+        "bestFor": "不改变产品行为的复杂度治理",
+        "body": "当前痛点：\n-\n\n重构目标：\n-\n\n必须保持不变的行为：\n-\n\n风险区域：\n-",
+        "criteria": [
+          "外部行为和公开合约保持兼容",
+          "目标区域的重复或复杂度有所降低",
+          "现有测试通过，并为触达的共享行为增加聚焦覆盖",
+          "没有引入无关格式化或元数据变更"
+        ]
+      },
+      "docs": {
+        "label": "文档 Loop",
+        "description": "更新产品、架构或实现文档，并使用明确状态标签。",
+        "bestFor": "规格、运行手册和发布说明工作",
+        "body": "读者：\n-\n\n文档目标：\n-\n\n事实来源：\n-\n\n需要更新的页面或文件：\n-",
+        "criteria": [
+          "文档与当前实现一致",
+          "状态标签清晰区分已完成、已接受、计划中和阻塞工作",
+          "命令或示例准确，并在适用时可运行",
+          "任何延期工作都包含原因和所需的下一步输入"
+        ]
+      },
+      "integration": {
+        "label": "集成 Loop",
+        "description": "定义外部系统边界、凭据、失败处理和证据。",
+        "bestFor": "Git provider、飞书、worker 或第三方 API 工作",
+        "body": "外部系统：\n-\n\n触发器或数据流：\n-\n\n所需凭据或环境：\n-\n\n失败处理：\n-",
+        "criteria": [
+          "集成客户端边界与服务逻辑隔离",
+          "缺失凭据或外部失败时能够安全降级",
+          "成功与失败路径由测试或文档化 smoke check 覆盖",
+          "运行日志避免输出原始敏感值"
+        ]
+      },
+      "flow": {
+        "label": "流程 Loop",
+        "description": "建模有状态 agent 工作流，包含触发器、人工关卡、恢复和追踪。",
+        "bestFor": "CrewAI 风格 Flow、审批或恢复工作流",
+        "body": "触发器：\n-\n\n状态转换：\n-\n\n人工介入关卡：\n-\n\n恢复点：\n-\n\n可观测性：\n-",
+        "criteria": [
+          "触发条件和输入载荷已明确定义",
+          "状态转换包含成功、失败、暂停和恢复路径",
+          "不可逆工作前的人类审批或接管关卡可见",
+          "恢复点和恢复行为已用证据记录",
+          "流程的追踪、通知和回归证据已记录"
+        ]
+      }
+    }
+  },
+  "detail": {
+    "loading": "正在加载 issue...",
+    "notFound": "未找到 issue。",
+    "back": "返回队列",
+    "actions": {
+      "generateSpec": "生成规格",
+      "runStep": "执行一步",
+      "globalReview": "全局审阅",
+      "finalize": "完成",
+      "pause": "暂停",
+      "resume": "恢复"
+    },
+    "stats": {
+      "round": "轮次",
+      "spec": "规格",
+      "shards": "Shards",
+      "calls": "调用",
+      "tokens": "Tokens",
+      "paused": "已暂停",
+      "yes": "是",
+      "no": "否"
+    },
+    "nextAction": {
+      "title": "下一步动作",
+      "resume": {
+        "label": "恢复 loop",
+        "body": "此 issue 已暂停。继续运行 agent 步骤前请先恢复。"
+      },
+      "generateSpec": {
+        "label": "生成规格",
+        "body": "在拆解前创建或刷新产品规格。"
+      },
+      "reviewSpec": {
+        "label": "审阅规格",
+        "body": "批准、请求修改或拒绝草稿规格。"
+      },
+      "decompose": {
+        "label": "拆解",
+        "body": "将已批准规格拆成自包含的实现 shards。"
+      },
+      "globalReview": {
+        "label": "全局审阅",
+        "body": "在最终标注和交付前执行跨 shard 审阅。"
+      },
+      "reloop": {
+        "label": "启动 re-loop",
+        "body": "全局审阅发现剩余工作。创建下一版规格。"
+      },
+      "finalize": {
+        "label": "完成",
+        "body": "关闭 issue 并生成收敛记录。"
+      },
+      "closed": {
+        "label": "已关闭",
+        "body": "交付已完成。请查看下方记录作为审计证据。"
+      },
+      "runStep": {
+        "label": "执行一步",
+        "body": "推进下一个可运行 shard，完成实现、测试与审阅。"
+      }
+    },
+    "evidence": {
+      "title": "证据覆盖",
+      "summary": "{shards} 个 shards · {annotations} 条标注",
+      "implemented": "已实现",
+      "tested": "已测试",
+      "reviewed": "已审阅",
+      "annotated": "已标注"
+    },
+    "reloop": {
+      "title": "Re-loop",
+      "body": "全局结论为 {verdict}。创建下一版规格并送回人工审阅。",
+      "placeholder": "修订说明",
+      "start": "启动 Re-loop"
+    },
+    "intake": {
+      "title": "Issue 录入",
+      "submitter": "提交人",
+      "targetRepo": "目标仓库",
+      "rawPayload": "原始载荷",
+      "source": "来源"
+    },
+    "requirements": {
+      "title": "初始需求覆盖",
+      "summary": "{accepted}/{total} 已接受 · {percent}%",
+      "covered": "已覆盖",
+      "needsWork": "需处理",
+      "meta": "规格 {spec} · shards {shards} · 测试 {tests} · 审阅 {reviews}"
+    },
+    "specReview": {
+      "title": "规格审阅",
+      "approve": "批准",
+      "revisionPlaceholder": "修订备注",
+      "requestRevision": "请求修订",
+      "decompose": "拆解",
+      "empty": "暂无规格。"
+    },
+    "shards": {
+      "title": "Shards",
+      "empty": "暂无 shards。",
+      "meta": "预估上下文 {context} · 依赖 {depends}",
+      "takeoverNote": "接管备注",
+      "takeOver": "接管",
+      "implementationSummary": "实现摘要",
+      "changedFiles": "变更文件，每行一个",
+      "notes": "备注",
+      "recordImplementation": "记录实现",
+      "runTests": "运行测试",
+      "reviewSummary": "审阅摘要",
+      "issueDescription": "问题描述",
+      "fixInstructions": "修复指令，每行一个",
+      "recordReview": "记录审阅"
+    },
+    "records": {
+      "implementation": "实现记录",
+      "noImplementation": "暂无实现记录。",
+      "filesRound": "{files} 个文件 · 第 {round} 轮",
+      "artifacts": "证据工件工作区",
+      "present": "{present}/{total} 已存在",
+      "globalReview": "全局审阅",
+      "none": "无",
+      "roundCreated": "第 {round} 轮 · {created}",
+      "noGlobalReview": "暂无全局审阅。",
+      "convergencePr": "收敛 PR",
+      "commitsBase": "{commits} 个提交 · base {base}",
+      "openPr": "打开 {provider} PR",
+      "remote": "远端",
+      "noConvergencePr": "暂无收敛 PR。",
+      "testMatrix": "测试矩阵",
+      "requiredRegression": "{required} 个必需测试 · {files} 个回归文件",
+      "noTestMatrix": "暂无测试矩阵。",
+      "review": "审阅记录",
+      "noReview": "暂无审阅记录。",
+      "issuesRound": "{issues} 个问题 · 第 {round} 轮",
+      "test": "测试记录",
+      "noTest": "暂无测试记录。",
+      "commandsRound": "{commands} 条命令 · 第 {round} 轮",
+      "coverage": "覆盖率行 {lines}% · 分支 {branches}%",
+      "annotations": "标注",
+      "noAnnotations": "暂无标注。"
+    },
+    "resumeCheckpoints": {
+      "title": "恢复检查点",
+      "count": "{count} 个检查点",
+      "diff": "检查点差异",
+      "to": "{before} 到 {after}",
+      "issuePhase": "Issue 阶段",
+      "resumeOrTakeOver": "恢复或接管",
+      "noAction": "无需动作",
+      "meta": "第 {round} 轮 · {version}",
+      "shardMeta": "{effort} 工作量 · {checks} 个验收检查",
+      "lastEvent": "最近事件 {time}",
+      "labels": {
+        "specRevision": "规格修订",
+        "requirements": "需求",
+        "shards": "Shards",
+        "tests": "测试"
+      },
+      "values": {
+        "round": "第 {round} 轮",
+        "intake": "录入",
+        "missing": "{count} 个缺失",
+        "covered": "{percent}% 已覆盖",
+        "blocked": "{count} 个阻塞",
+        "done": "{done}/{total} 已完成",
+        "failing": "{count} 个失败",
+        "passing": "{count} 个通过"
+      }
+    },
+    "trace": {
+      "timeline": "追踪时间线",
+      "events": "{shown}/{total} 个事件",
+      "scopeSummary": "作用域摘要",
+      "noScopes": "暂无追踪作用域。",
+      "scopeEvents": "{count} 个事件",
+      "last": "最近 {time}",
+      "noEvents": "暂无追踪事件。"
+    },
+    "eventLog": {
+      "title": "事件日志",
+      "empty": "暂无事件。"
+    },
+    "notifications": {
+      "title": "通知",
+      "empty": "暂无通知。"
+    },
+    "artifacts": {
+      "groups": {
+        "request": "请求",
+        "planning": "规划",
+        "implementation": "实现",
+        "test": "测试",
+        "review": "审阅",
+        "delivery": "交付"
+      },
+      "fallback": {
+        "rawPayload": "原始载荷",
+        "issueRecord": "Issue 记录",
+        "intakeRecord": "录入记录",
+        "rawSummary": "已捕获原始请求载荷用于审计。",
+        "issueSummary": "{priority} {status} issue，包含 {count} 个验收标准。",
+        "intakeSummary": "{status} 录入已从 {channel} 规范化。"
+      },
+      "hints": {
+        "ready": "可用于审计",
+        "spec": "生成或批准规格",
+        "shards": "拆解已批准规格",
+        "testMatrix": "拆解 shards 以创建矩阵",
+        "implementationRecord": "记录实现证据",
+        "testRecord": "运行 shard 或回归测试",
+        "reviewRecord": "记录 shard 审阅证据",
+        "globalReview": "运行全局审阅",
+        "convergencePr": "完成 loop",
+        "fallback": "补充缺失工件"
+      }
+    }
+  }
+}

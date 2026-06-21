@@ -53,6 +53,18 @@ export class CliLoopsGitAdapter implements LoopsGitAdapter {
 
     const files = input.changedFiles.length > 0 ? input.changedFiles : ['.'];
     await this.git(cwd, ['add', ...files]);
+    // Idempotency: if nothing is staged after `git add`, skip the commit.
+    // This makes the PASS-time commit (reviewShard) and the finalize-time
+    // per-shard commit safe no-ops with respect to each other, and avoids
+    // creating empty/erroring commits when a shard has already been committed.
+    if (!(await this.hasStagedChanges(cwd))) {
+      return {
+        shardId: input.shard.id,
+        committed: false,
+        message: 'nothing to commit',
+        branch,
+      };
+    }
     const message = `loops(${input.issue.id}): ${input.shard.id} — ${input.shard.title}`;
     const committed = await this.git(cwd, ['commit', '-m', message]);
     return {
@@ -114,6 +126,22 @@ export class CliLoopsGitAdapter implements LoopsGitAdapter {
   private async git(cwd: string, args: string[]): Promise<boolean> {
     const result = await runProcess({ command: 'git', args, cwd, timeoutMs: 60_000 });
     return result.exitCode === 0;
+  }
+
+  /**
+   * `git diff --cached --quiet` exits 0 when there are no staged changes and
+   * 1 when staged changes exist (and non-zero on error). We treat anything
+   * non-zero as "has staged changes" so an unexpected git error does not
+   * silently suppress a commit.
+   */
+  private async hasStagedChanges(cwd: string): Promise<boolean> {
+    const result = await runProcess({
+      command: 'git',
+      args: ['diff', '--cached', '--quiet'],
+      cwd,
+      timeoutMs: 30_000,
+    });
+    return result.exitCode !== 0;
   }
 
   private renderAnnotationsSummary(input: LoopsConvergencePrInput): string {

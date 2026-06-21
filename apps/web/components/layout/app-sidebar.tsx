@@ -87,7 +87,7 @@ const NavItemComponent = memo(function NavItemComponent({
 });
 
 export function AppSidebar() {
-  const t = useTranslations('navigation.menu');
+  const t = useTranslations('navigation');
   const pathname = usePathname();
   const { brandName, brandLogo } = useApp();
   const isAdmin = useIsAdmin();
@@ -106,7 +106,7 @@ export function AppSidebar() {
 
   // Memoize title getter
   const getItemTitle = useCallback(
-    (item: NavItem) => item.title || (item.titleKey ? t(item.titleKey) : ''),
+    (item: NavItem) => item.title || (item.titleKey ? t(`menu.${item.titleKey}`) : ''),
     [t],
   );
 
@@ -121,11 +121,7 @@ export function AppSidebar() {
     (group: NavGroup & { items: NavItem[] }) => (
       <SidebarGroup key={group.groupKey}>
         <SidebarGroupLabel className="uppercase tracking-widest text-[10px] font-medium px-3 mb-1">
-          {t(
-            `group${group.groupKey.charAt(0).toUpperCase()}${group.groupKey.slice(1)}` as Parameters<
-              typeof t
-            >[0],
-          )}
+          {t(`group${group.groupKey.charAt(0).toUpperCase()}${group.groupKey.slice(1)}`)}
         </SidebarGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu className="gap-1 px-2">

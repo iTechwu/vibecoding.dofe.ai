@@ -1,4 +1,7 @@
+import { of } from 'rxjs';
 import { LoopsPrProviderClient, readPrProviderConfig } from './loops-pr-provider.client';
+
+type HttpServiceLike = { post: jest.Mock };
 
 describe('LoopsPrProviderClient', () => {
   const originalFetch = global.fetch;
@@ -109,6 +112,77 @@ describe('LoopsPrProviderClient', () => {
       repository: 'dofe/repo',
       token: 'token',
       allowlist: ['dofe/repo', 'other/repo'],
+    });
+  });
+
+  describe('HttpService path (production / Rule 3)', () => {
+    it('opens a PR via HttpService on a 2xx response', async () => {
+      const httpService: HttpServiceLike = {
+        post: jest.fn().mockReturnValue(
+          of({
+            status: 201,
+            data: { html_url: 'https://github.com/dofe/repo/pull/7', number: 7 },
+          }),
+        ),
+      };
+      const client = new LoopsPrProviderClient(
+        {
+          provider: 'github',
+          apiBaseUrl: 'https://api.github.com',
+          repository: 'dofe/repo',
+          token: 'token',
+          allowlist: ['dofe/repo'],
+        },
+        httpService as never,
+      );
+
+      const result = await client.openPullRequest({
+        branch: 'loops/issue-1',
+        baseBranch: 'main',
+        title: 'Loops issue-1',
+        body: 'PR body',
+      });
+
+      expect(result).toEqual({
+        opened: true,
+        provider: 'github',
+        url: 'https://github.com/dofe/repo/pull/7',
+        id: '7',
+      });
+      expect(httpService.post).toHaveBeenCalledWith(
+        'https://api.github.com/repos/dofe/repo/pulls',
+        expect.objectContaining({ head: 'loops/issue-1' }),
+        expect.objectContaining({ validateStatus: expect.any(Function) }),
+      );
+    });
+
+    it('maps a non-2xx HttpService response to opened:false without throwing', async () => {
+      const httpService: HttpServiceLike = {
+        post: jest.fn().mockReturnValue(of({ status: 422, data: {} })),
+      };
+      const client = new LoopsPrProviderClient(
+        {
+          provider: 'github',
+          apiBaseUrl: 'https://api.github.com',
+          repository: 'dofe/repo',
+          token: 'token',
+          allowlist: ['dofe/repo'],
+        },
+        httpService as never,
+      );
+
+      const result = await client.openPullRequest({
+        branch: 'loops/issue-1',
+        baseBranch: 'main',
+        title: 'Loops issue-1',
+        body: 'PR body',
+      });
+
+      expect(result).toEqual({
+        opened: false,
+        reason: 'provider api returned 422',
+        provider: 'github',
+      });
     });
   });
 });

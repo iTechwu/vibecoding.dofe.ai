@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { getTranslations } from 'next-intl/server';
 import { Link } from '@/i18n/navigation';
 import NewLoopIssueForm from './new-loop-issue-form';
 
@@ -8,17 +9,19 @@ import NewLoopIssueForm from './new-loop-issue-form';
 const defaultTargetRepo =
   process.env.NEXT_PUBLIC_LOOPS_DEFAULT_REPO ?? path.resolve(process.cwd(), '../..');
 
-export default function NewLoopIssuePage() {
+export default async function NewLoopIssuePage() {
+  const t = await getTranslations('loops.newIssue');
+
   return (
     <main className="min-h-screen bg-background px-6 py-8">
       <div className="mx-auto max-w-3xl">
         <div className="mb-6 flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-sm font-medium text-muted-foreground">Web Issue Intake</p>
-            <h1 className="text-3xl font-semibold tracking-normal text-balance">New Loops Issue</h1>
+            <p className="text-sm font-medium text-muted-foreground">{t('eyebrow')}</p>
+            <h1 className="text-3xl font-semibold tracking-normal text-balance">{t('title')}</h1>
           </div>
           <Link className="text-sm text-muted-foreground hover:text-foreground" href="/loops">
-            Back
+            {t('back')}
           </Link>
         </div>
 
