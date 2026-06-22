@@ -2,27 +2,45 @@
 
 import type { FormEvent } from 'react';
 import {
+  useAdvanceLoop,
   useDecomposeLoop,
   useFinalizeLoop,
   useGenerateLoopSpec,
   useInterveneLoop,
-  useRecordLoopShardImplementation,
   useReloopIssue,
+  useResumeLoops,
   useReviewLoopGlobal,
-  useReviewLoopShard,
   useReviewLoopSpec,
   useRunLoop,
-  useRunLoopShardTests,
 } from '@/lib/api/contracts/hooks';
 
-type Verdict = 'PASS' | 'NEEDS-WORK' | 'FAIL';
-type Severity = 'minor' | 'major' | 'critical';
+interface OperationState {
+  isPending?: boolean;
+  isError?: boolean;
+  error?: unknown;
+}
 
-function lines(value: string): string[] {
-  return value
-    .split('\n')
-    .map((item) => item.trim())
-    .filter(Boolean);
+function errorMessage(error: unknown): string | undefined {
+  if (!error) return undefined;
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  if (typeof error === 'object') {
+    const maybeError = error as {
+      body?: { msg?: unknown; message?: unknown };
+      message?: unknown;
+    };
+    const message = maybeError.body?.msg ?? maybeError.body?.message ?? maybeError.message;
+    if (typeof message === 'string') return message;
+  }
+  return undefined;
+}
+
+function collectOperationState(states: OperationState[]) {
+  const failed = states.find((state) => state.isError);
+  return {
+    isPending: states.some((state) => state.isPending),
+    errorMessage: failed ? errorMessage(failed.error) : undefined,
+  };
 }
 
 /**
@@ -35,6 +53,7 @@ function lines(value: string): string[] {
  */
 export function useFormState(issueId: string) {
   const generateSpec = useGenerateLoopSpec(issueId);
+  const advance = useAdvanceLoop(issueId);
   const reviewSpec = useReviewLoopSpec(issueId);
   const decompose = useDecomposeLoop(issueId);
   const runLoop = useRunLoop(issueId);
@@ -42,11 +61,23 @@ export function useFormState(issueId: string) {
   const reloopMutation = useReloopIssue(issueId);
   const finalize = useFinalizeLoop(issueId);
   const intervene = useInterveneLoop(issueId);
-  const runShardTests = useRunLoopShardTests(issueId);
-  const recordImplementation = useRecordLoopShardImplementation(issueId);
-  const reviewShard = useReviewLoopShard(issueId);
+  const resumeInterrupted = useResumeLoops();
+  const operations = collectOperationState([
+    generateSpec,
+    advance,
+    reviewSpec,
+    decompose,
+    runLoop,
+    reviewGlobal,
+    reloopMutation,
+    finalize,
+    intervene,
+    resumeInterrupted,
+  ]);
 
   return {
+    operations,
+    advanceLoop: () => advance.mutate({ params: { issueId }, body: {} }),
     generateSpec: () => generateSpec.mutate({ params: { issueId }, body: {} }),
     approveSpec: () =>
       reviewSpec.mutate({
@@ -55,6 +86,7 @@ export function useFormState(issueId: string) {
       }),
     decompose: () => decompose.mutate({ params: { issueId }, body: {} }),
     runLoop: () => runLoop.mutate({ params: { issueId }, body: {} }),
+    resumeInterrupted: () => resumeInterrupted.mutate({ body: {} }),
     globalReview: () => reviewGlobal.mutate({ params: { issueId }, body: {} }),
     finalizeLoop: () => finalize.mutate({ params: { issueId }, body: {} }),
     pauseLoop: () =>
@@ -79,66 +111,6 @@ export function useFormState(issueId: string) {
       event.preventDefault();
       const notes = String(new FormData(event.currentTarget).get('notes') ?? '') || undefined;
       reloopMutation.mutate({ params: { issueId }, body: { reviewer: 'human', notes } });
-    },
-    takeShard: (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      const data = new FormData(event.currentTarget);
-      intervene.mutate({
-        params: { issueId },
-        body: {
-          action: 'take',
-          actor: 'human',
-          shardId: String(data.get('shardId') ?? ''),
-          notes: String(data.get('notes') ?? '') || undefined,
-        },
-      });
-    },
-    runShardTests: (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      const data = new FormData(event.currentTarget);
-      const shardId = String(data.get('shardId') ?? '');
-      const commands = lines(String(data.get('commands') ?? ''));
-      runShardTests.mutate({
-        params: { issueId, shardId },
-        body: { commands: commands.length ? commands : undefined, runner: 'loops-runner' },
-      });
-    },
-    recordImplementation: (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      const data = new FormData(event.currentTarget);
-      const shardId = String(data.get('shardId') ?? '');
-      recordImplementation.mutate({
-        params: { issueId, shardId },
-        body: {
-          implementer: String(data.get('implementer') ?? 'human') || 'human',
-          summary: String(data.get('summary') ?? ''),
-          changedFiles: lines(String(data.get('changedFiles') ?? '')),
-          notes: String(data.get('notes') ?? '') || undefined,
-        },
-      });
-    },
-    reviewShard: (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      const data = new FormData(event.currentTarget);
-      const shardId = String(data.get('shardId') ?? '');
-      const issueText = String(data.get('issues') ?? '').trim();
-      reviewShard.mutate({
-        params: { issueId, shardId },
-        body: {
-          reviewer: 'codex',
-          verdict: (String(data.get('verdict') ?? 'NEEDS-WORK') as Verdict) || 'NEEDS-WORK',
-          summary: String(data.get('summary') ?? ''),
-          issues: issueText
-            ? [
-                {
-                  severity: (String(data.get('severity') ?? 'major') as Severity) || 'major',
-                  desc: issueText,
-                },
-              ]
-            : [],
-          fixInstructions: lines(String(data.get('fixInstructions') ?? '')),
-        },
-      });
     },
   };
 }

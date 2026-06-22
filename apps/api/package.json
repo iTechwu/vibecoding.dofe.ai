@@ -180,6 +180,7 @@
     "rxjs": "7.8.2",
     "socket.io": "^4.8.3",
     "tencentcloud-sdk-nodejs-sms": "^4.1.240",
+    "undici": "^7.28.0",
     "unleash-client": "^6.11.0",
     "uuid": "^14.0.0",
     "winston": "^3.19.0",

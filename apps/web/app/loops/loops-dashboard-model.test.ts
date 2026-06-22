@@ -131,7 +131,7 @@ describe('loops-dashboard-model', () => {
       'P0 priority',
       'Paused',
       'Cost guard tripped',
-      'Global FAIL',
+      'Global review needs work',
     ]);
   });
 

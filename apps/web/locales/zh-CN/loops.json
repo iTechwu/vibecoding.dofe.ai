@@ -300,6 +300,7 @@
     "notFound": "未找到 issue。",
     "back": "返回队列",
     "actions": {
+      "advance": "继续推进 Loop",
       "generateSpec": "生成规格",
       "runStep": "执行一步",
       "globalReview": "全局审阅",
@@ -316,6 +317,22 @@
       "paused": "已暂停",
       "yes": "是",
       "no": "否"
+    },
+    "execution": {
+      "title": "流程状态",
+      "runtimeMatched": "实时运行态",
+      "runtimeInferred": "按阶段推断",
+      "currentPhase": "当前流程",
+      "currentAgent": "当前执行者",
+      "runtimeMode": "运行方式",
+      "activeShard": "当前 Shard",
+      "latestEvent": "最近事件",
+      "liveRuntime": "已匹配到此 issue",
+      "inferredRuntime": "未匹配运行态，按阶段推断",
+      "noWorkspace": "未上报 workspace",
+      "notReported": "未上报",
+      "noShard": "尚未拆分 Shard",
+      "noEvents": "暂无事件"
     },
     "nextAction": {
       "title": "下一步动作",
@@ -356,6 +373,19 @@
         "body": "推进下一个可运行 shard，完成实现、测试与审阅。"
       }
     },
+    "runDiagnostics": {
+      "ready": "可以运行 {shard}。",
+      "paused": "Loop 当前已暂停。请先恢复，再执行调度步骤。",
+      "closed": "此 issue 已关闭。",
+      "spec": "调度器运行前需要先批准规格。",
+      "shards": "当前还没有 shards。请先拆解已批准规格。",
+      "complete": "所有 shards 已完成。请进入全局审阅或完成流程。",
+      "recovering": "{shard} 已中断或处于进行中。执行一步会自动恢复它并继续调度。",
+      "reviewSpec": "唯一必要的人工关卡是规格审阅。请在规格区域批准或要求修改。",
+      "reloop": "全局审阅发现剩余工作。请使用 re-loop 面板创建下一版规格。",
+      "dependencies": "下一个 TODO shard 正在等待依赖完成。",
+      "none": "当前状态下没有可运行的 shard。"
+    },
     "evidence": {
       "title": "证据覆盖",
       "summary": "{shards} 个 shards · {annotations} 条标注",
@@ -389,24 +419,46 @@
       "approve": "批准",
       "revisionPlaceholder": "修订备注",
       "requestRevision": "请求修订",
-      "decompose": "拆解",
       "empty": "暂无规格。"
     },
     "shards": {
       "title": "Shards",
       "empty": "暂无 shards。",
       "meta": "预估上下文 {context} · 依赖 {depends}",
-      "takeoverNote": "接管备注",
-      "takeOver": "接管",
-      "implementationSummary": "实现摘要",
-      "changedFiles": "变更文件，每行一个",
-      "notes": "备注",
-      "recordImplementation": "记录实现",
-      "runTests": "运行测试",
-      "reviewSummary": "审阅摘要",
-      "issueDescription": "问题描述",
-      "fixInstructions": "修复指令，每行一个",
-      "recordReview": "记录审阅"
+      "latestTest": "最近测试：{status} · 第 {round} 轮",
+      "latestReview": "最近审阅：{verdict} · 第 {round} 轮",
+      "evidence": {
+        "implementation": "实现",
+        "tests": "测试",
+        "reviews": "审阅"
+      },
+      "automation": {
+        "queued": {
+          "title": "等待自动调度",
+          "owner": "调度器",
+          "body": "依赖满足后，Loop 引擎会自动选择这个 shard。"
+        },
+        "implement": {
+          "title": "可自动实现",
+          "owner": "Claude Code",
+          "body": "实现、测试执行和 shard 审阅都由自动化 loop 完成。"
+        },
+        "testing": {
+          "title": "自动化进行中",
+          "owner": "Loop 引擎",
+          "body": "引擎正在为此 shard 收集实现、测试和审阅证据。"
+        },
+        "done": {
+          "title": "Shard 已完成",
+          "owner": "Codex",
+          "body": "所需的实现、测试和审阅证据已记录。"
+        },
+        "attention": {
+          "title": "需要自动恢复",
+          "owner": "调度器",
+          "body": "执行一步会尽可能恢复中断工作，或重新进入 shard loop。"
+        }
+      }
     },
     "records": {
       "implementation": "实现记录",

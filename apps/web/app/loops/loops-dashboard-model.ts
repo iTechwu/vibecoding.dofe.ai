@@ -4,6 +4,7 @@ import type {
   LoopMetricsActionItem,
   LoopNotification,
 } from '@repo/contracts';
+import { formatLoopStatus, formatLoopLabel } from './loops-display';
 
 export type LoopListItem = LoopListResponse['list'][number];
 export type RiskLevel = 'critical' | 'warning' | 'info';
@@ -152,7 +153,7 @@ export function buildRiskQueue(items: LoopListItem[], cost?: LoopCostResponse): 
           title: item.issue.title,
           href,
           level: 'warning',
-          reason: `Global ${item.state.globalVerdict}`,
+          reason: 'Global review needs work',
           meta: `round ${item.state.round}`,
         });
       }
@@ -204,6 +205,7 @@ export function buildAgingQueue(items: LoopListItem[], now = new Date()): AgingI
 export function buildReviewInbox(
   actions: LoopMetricsActionItem[],
   notifications: LoopNotification[] = [],
+  locale?: string,
 ): ReviewInboxItem[] {
   const actionItems = actions
     .filter((item) => HUMAN_ACTIONS.has(item.action))
@@ -239,8 +241,8 @@ export function buildReviewInbox(
           item.kind === 'CONTEXT_BUDGET_EXCEEDED'
             ? 'critical'
             : 'warning',
-        label: item.kind.replaceAll('_', ' '),
-        meta: `${item.status} · ${item.created}`,
+        label: formatLoopLabel(item.kind, locale),
+        meta: `${formatLoopStatus(item.status, locale)} · ${item.created}`,
       }),
     );
 

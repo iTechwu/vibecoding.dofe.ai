@@ -57,6 +57,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import { RedisService } from '@dofe/infra-redis';
 import { DEFAULT_CORS_ALLOWED_HEADERS, isCorsOriginAllowed } from './bootstrap/cors.bootstrap';
+import { configureInsecureSsoTls } from './common/sso-tls.util';
 
 // 添加全局错误处理
 process.on('unhandledRejection', (reason, promise) => {
@@ -141,6 +142,8 @@ async function bootstrap() {
   }
 
   const config = getConfig()!;
+
+  configureInsecureSsoTls();
 
   const adapter = new FastifyAdapter();
   // 安全防护

@@ -177,6 +177,19 @@ export const loopsContract = c.router(
       },
       summary: 'Advance a Loops loop one scheduler step (auto-implement/test/review a ready shard)',
     },
+    advance: {
+      method: 'POST',
+      path: '/issues/:issueId/advance',
+      pathParams: z.object({
+        issueId: z.string(),
+      }),
+      body: z.object({}).optional(),
+      responses: {
+        200: ApiResponseSchema(LoopDetailSchema),
+      },
+      summary:
+        'Advance a Loops issue to the next product-level checkpoint, stopping only for human approval gates',
+    },
     reviewGlobal: {
       method: 'POST',
       path: '/issues/:issueId/global-review',

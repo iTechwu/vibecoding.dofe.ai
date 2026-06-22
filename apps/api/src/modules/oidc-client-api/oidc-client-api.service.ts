@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { Logger } from 'winston';
 import { randomBytes } from 'crypto';
+import { Agent, fetch as undiciFetch } from 'undici';
 import {
   discovery,
   buildAuthorizationUrl,
@@ -13,11 +14,13 @@ import {
   calculatePKCECodeChallenge,
   ClientSecretBasic,
   allowInsecureRequests,
+  customFetch,
 } from 'openid-client';
 import { UserInfoService } from '@app/db';
 import { AuditLogService } from '@app/audit-log';
 import { RedisService } from '@dofe/infra-redis';
 import { apiError } from '@dofe/infra-common';
+import { allowInsecureSsoTls } from '../../common/sso-tls.util';
 import { CommonErrorCode, UserErrorCode } from '@repo/contracts/errors';
 import {
   OIDC_PARAMS_KEY_PREFIX,
@@ -29,7 +32,8 @@ import {
   TOKEN_BLACKLIST_PREFIX,
   isSsoRefreshTokenExpired,
 } from '@repo/constants';
-import type { Configuration } from 'openid-client';
+import type { Configuration, CustomFetch } from 'openid-client';
+import type { Dispatcher } from 'undici';
 import { resolveOidcApiBaseUrl, resolveOidcFrontendBaseUrl } from './url-resolver';
 
 const OIDC_CALLBACK_RESULT_PREFIX = 'dofe:oidc:callback-result:';
@@ -42,6 +46,11 @@ export class OidcClientApiService implements OnModuleInit {
   private config: Configuration | null = null;
   private configReady = false;
   private initPromise: Promise<void> | null = null;
+  private readonly insecureSsoDispatcher = new Agent({
+    connect: {
+      rejectUnauthorized: false,
+    },
+  });
 
   constructor(
     private readonly configService: ConfigService,
@@ -60,6 +69,14 @@ export class OidcClientApiService implements OnModuleInit {
     return this.configService.get<string>('SSO_ISSUER', '');
   }
 
+  private get internalIssuer(): string {
+    return (
+      this.configService.get<string>('SSO_INTERNAL_API_URL') ||
+      this.configService.get<string>('SSO_API_URL') ||
+      ''
+    ).replace(/\/+$/, '');
+  }
+
   private get clientId(): string {
     return this.configService.get<string>('SSO_CLIENT_ID', 'vibecoding-dofe-ai');
   }
@@ -67,6 +84,59 @@ export class OidcClientApiService implements OnModuleInit {
   private get clientSecret(): string {
     return this.configService.get<string>('SSO_CLIENT_SECRET', '');
   }
+
+  private getErrorDetails(err: unknown): Record<string, unknown> {
+    const cause = err instanceof Error ? err.cause : undefined;
+    const causeRecord =
+      typeof cause === 'object' && cause !== null ? (cause as Record<string, unknown>) : null;
+
+    return {
+      error: err instanceof Error ? err.message : String(err),
+      errorName: err instanceof Error ? err.name : undefined,
+      causeCode: causeRecord?.code,
+      causeMessage: cause instanceof Error ? cause.message : undefined,
+    };
+  }
+
+  private rewriteSsoRequestUrl(url: string | URL): URL {
+    const originalUrl = url instanceof URL ? url : new URL(url);
+    if (!this.internalIssuer) return originalUrl;
+
+    const issuerUrl = new URL(this.issuer);
+    if (originalUrl.origin !== issuerUrl.origin) return originalUrl;
+
+    const internalUrl = new URL(this.internalIssuer);
+    internalUrl.pathname = originalUrl.pathname;
+    internalUrl.search = originalUrl.search;
+    internalUrl.hash = originalUrl.hash;
+    return internalUrl;
+  }
+
+  private readonly ssoInternalFetch: CustomFetch = async (url, options) => {
+    const requestUrl = this.rewriteSsoRequestUrl(url);
+    const originalUrl = new URL(url);
+
+    if (requestUrl.href !== originalUrl.href) {
+      this.logger.debug('Rewriting SSO OIDC server request to internal endpoint', {
+        from: originalUrl.origin,
+        to: requestUrl.origin,
+        path: originalUrl.pathname,
+      });
+    }
+
+    if (allowInsecureSsoTls() && requestUrl.protocol === 'https:') {
+      this.logger.warn('Using insecure TLS for local/test SSO request', {
+        host: requestUrl.hostname,
+        nodeEnv: this.configService.get<string>('NODE_ENV', 'dev'),
+      });
+      return undiciFetch(requestUrl, {
+        ...options,
+        dispatcher: this.insecureSsoDispatcher as Dispatcher,
+      }) as unknown as Promise<Response>;
+    }
+
+    return fetch(requestUrl, options as unknown as RequestInit);
+  };
 
   private resolveApiBaseUrl(): string {
     return resolveOidcApiBaseUrl(this.configService);
@@ -111,18 +181,22 @@ export class OidcClientApiService implements OnModuleInit {
           redirect_uris: [this.redirectUri],
         },
         ClientSecretBasic(this.clientSecret),
-        discoveryOptions,
+        {
+          ...discoveryOptions,
+          [customFetch]: this.ssoInternalFetch,
+        },
       );
       this.configReady = true;
       this.logger.info('OIDC client initialized successfully', {
         issuer: this.issuer,
+        internalIssuer: this.internalIssuer || undefined,
         clientId: this.clientId,
       });
     } catch (err) {
       this.configReady = false;
       this.logger.error('OIDC client initialization failed, will retry on next request', {
         issuer: this.issuer,
-        error: err instanceof Error ? err.message : String(err),
+        ...this.getErrorDetails(err),
       });
     }
   }
@@ -398,10 +472,11 @@ export class OidcClientApiService implements OnModuleInit {
       client_secret: this.clientSecret,
     });
 
-    const res = await fetch(tokenEndpoint, {
+    const res = await this.ssoInternalFetch(tokenEndpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: body.toString(),
+      redirect: 'manual',
     });
 
     if (!res.ok) {

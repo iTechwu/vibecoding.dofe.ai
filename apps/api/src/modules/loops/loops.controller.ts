@@ -184,6 +184,23 @@ export class LoopsController {
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.advance)
+  async advance(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.advance, async ({ params }) => {
+      const result = await this.loopsService.advance(params.issueId);
+      await this.auditLoopUpdate(req, params.issueId, 'advance', {
+        phase: result.state.phase,
+        specStatus: result.spec?.status,
+        shardsDone: result.state.shardsDone,
+        shardsInProgress: result.state.shardsInProgress,
+        globalVerdict: result.state.globalVerdict,
+        finalized: result.state.finalized,
+      });
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.reviewGlobal)
   async reviewGlobal(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.reviewGlobal, async ({ params }) => {

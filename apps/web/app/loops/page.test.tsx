@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import { renderToString } from 'react-dom/server';
 import { hydrateRoot } from 'react-dom/client';
 import { NextIntlClientProvider } from 'next-intl';
@@ -453,6 +453,9 @@ describe('LoopsPage', () => {
 
   it('renders the control plane dashboard from loop metrics', () => {
     renderWithIntl(<LoopsPage />);
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
 
     expect(screen.getByText('Agent Delivery Console')).toBeInTheDocument();
     expect(screen.getByText('Needs Attention')).toBeInTheDocument();
@@ -485,7 +488,7 @@ describe('LoopsPage', () => {
     expect(screen.getAllByText('Cost guard tripped').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Resume loop').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Review needed').length).toBeGreaterThan(0);
-    expect(screen.getByText('HUMAN INTERVENTION')).toBeInTheDocument();
+    expect(screen.getAllByText('Needs human input').length).toBeGreaterThan(0);
   });
 
   it('hydrates without time-dependent markup mismatches', async () => {

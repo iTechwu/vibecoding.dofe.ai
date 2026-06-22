@@ -431,11 +431,20 @@ export class LoopsService {
       to: spec.status,
       reviewer: request.reviewer,
     });
+    if (request.action === 'approve') {
+      return this.advance(issueId);
+    }
     return this.syncAndRead(issueId);
   }
 
   async decompose(issueId: string) {
     const detail = await this.getIssue(issueId);
+    if (this.isTerminal(detail)) {
+      return detail;
+    }
+    if (detail.shards.length > 0) {
+      return detail;
+    }
     if (!detail.spec || detail.spec.status !== 'APPROVED') {
       throw new BadRequestException('Approved spec is required before decompose');
     }
@@ -466,10 +475,86 @@ export class LoopsService {
 
   async runLoop(issueId: string) {
     const detail = await this.getIssue(issueId);
+    if (this.isTerminal(detail)) {
+      return detail;
+    }
     return this.workLock.withIssueAndRepoLock(
       { issueId, targetRepo: detail.issue.targetRepo },
       () => this.runLoopUnlocked(issueId, detail),
     );
+  }
+
+  async advance(issueId: string) {
+    let detail = await this.getIssue(issueId);
+    const maxSteps = Math.max(detail.shards.length + 8, 12);
+
+    for (let step = 0; step < maxSteps; step += 1) {
+      if (detail.state.paused) {
+        detail = await this.resumeAndRead(issueId, detail);
+        continue;
+      }
+      if (detail.issue.status === 'CLOSED' || detail.state.phase === 'CLOSED') {
+        return detail;
+      }
+      if (!detail.spec || detail.spec.status === 'REVISION_REQUESTED') {
+        return this.generateSpec(issueId);
+      }
+      if (detail.spec.status === 'DRAFT') {
+        return detail;
+      }
+      if (detail.spec.status !== 'APPROVED') {
+        throw new BadRequestException('Approved spec is required before advancing loop automation');
+      }
+      if (detail.shards.length === 0 || detail.state.phase === 'PHASE_3_DECOMPOSE') {
+        detail = await this.decompose(issueId);
+        continue;
+      }
+      if (detail.state.globalVerdict === 'PASS' && !detail.state.finalized) {
+        detail = await this.finalize(issueId);
+        continue;
+      }
+      if (detail.state.phase === 'PHASE_6_CONVERGE') {
+        detail = await this.reviewGlobal(issueId);
+        continue;
+      }
+      if (detail.state.globalVerdict && detail.state.globalVerdict !== 'PASS') {
+        return detail;
+      }
+      detail = await this.runLoop(issueId);
+    }
+
+    await this.store.appendLog({
+      type: 'LOOP_ADVANCE_LIMIT',
+      issue: issueId,
+      status: detail.state.phase,
+      payload: {
+        maxSteps,
+      },
+    });
+    return detail;
+  }
+
+  private isTerminal(detail: LoopIssueDetail) {
+    return (
+      detail.issue.status === 'CLOSED' || detail.state.phase === 'CLOSED' || detail.state.finalized
+    );
+  }
+
+  private async resumeAndRead(issueId: string, detail: LoopIssueDetail) {
+    const now = new Date().toISOString();
+    await this.store.upsertState({
+      ...detail.state,
+      paused: false,
+      phase: detail.state.phase === 'PAUSED' ? 'PHASE_4_IMPLEMENT' : detail.state.phase,
+      updated: now,
+    });
+    await this.store.appendLog({
+      type: 'LOOP_INTERVENTION',
+      issue: issueId,
+      action: 'resume',
+      actor: 'loops-engine',
+    });
+    return this.syncAndRead(issueId);
   }
 
   private async runLoopUnlocked(issueId: string, detail: LoopIssueDetail) {
@@ -484,9 +569,18 @@ export class LoopsService {
     let currentDetail = detail;
     let advanced = 0;
     let blocked = 0;
+    let recovered = 0;
 
     while (advanced < maxParallel) {
-      const shard = this.findRunnableShard(currentDetail.shards);
+      let shard = this.findRunnableShard(currentDetail.shards);
+      if (!shard) {
+        const recoveredDetail = await this.recoverInterruptedShards(issueId, currentDetail);
+        if (recoveredDetail) {
+          recovered += 1;
+          currentDetail = recoveredDetail;
+          shard = this.findRunnableShard(currentDetail.shards);
+        }
+      }
       if (!shard) {
         break;
       }
@@ -512,11 +606,12 @@ export class LoopsService {
         context_budget: contextBudget,
         advanced,
         blocked,
+        recovered,
       });
       return this.syncAndRead(issueId);
     }
 
-    if (blocked > 0) {
+    if (blocked > 0 || recovered > 0) {
       await this.store.appendLog({
         type: 'SCHEDULER_BATCH',
         loop: issueId,
@@ -524,6 +619,7 @@ export class LoopsService {
         context_budget: contextBudget,
         advanced,
         blocked,
+        recovered,
       });
       return this.syncAndRead(issueId);
     }
@@ -550,8 +646,49 @@ export class LoopsService {
     throw new BadRequestException('No runnable shard is available');
   }
 
+  private async recoverInterruptedShards(
+    issueId: string,
+    detail: LoopIssueDetail,
+  ): Promise<LoopIssueDetail | undefined> {
+    const interrupted = detail.shards.filter((shard) =>
+      ['IN_PROGRESS', 'TIMEOUT'].includes(shard.status),
+    );
+    if (interrupted.length === 0) return undefined;
+
+    const now = new Date().toISOString();
+    const nextShards = detail.shards.map((shard) =>
+      interrupted.some((item) => item.id === shard.id)
+        ? { ...shard, status: 'TODO' as const }
+        : shard,
+    );
+    await this.store.writeShardProgress({
+      issueId,
+      shardId: interrupted.map((shard) => shard.id).join(','),
+      from: 'INTERRUPTED',
+      to: 'TODO',
+      actor: 'loops-scheduler',
+      shards: nextShards,
+      state: {
+        ...detail.state,
+        phase: 'PHASE_4_IMPLEMENT',
+        shardsInProgress: 0,
+        paused: false,
+        updated: now,
+      },
+    });
+    await this.store.appendLog({
+      type: 'SCHEDULER_RECOVERED_INTERRUPTED_SHARDS',
+      loop: issueId,
+      shards: interrupted.map((shard) => shard.id),
+    });
+    return this.syncAndRead(issueId);
+  }
+
   async reviewGlobal(issueId: string) {
     const detail = await this.getIssue(issueId);
+    if (this.isTerminal(detail)) {
+      return detail;
+    }
     const evidenceIssues = this.collectGlobalEvidenceIssues(detail);
     if (evidenceIssues.length > 0) {
       const now = new Date().toISOString();
@@ -836,6 +973,9 @@ export class LoopsService {
 
   async finalize(issueId: string) {
     const detail = await this.getIssue(issueId);
+    if (this.isTerminal(detail)) {
+      return detail;
+    }
     if (detail.state.globalVerdict !== 'PASS') {
       throw new BadRequestException('Global review PASS is required before finalize');
     }

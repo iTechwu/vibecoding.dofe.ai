@@ -300,6 +300,7 @@
     "notFound": "Issue not found.",
     "back": "Back to queue",
     "actions": {
+      "advance": "Continue Loop",
       "generateSpec": "Generate Spec",
       "runStep": "Run Step",
       "globalReview": "Global Review",
@@ -316,6 +317,22 @@
       "paused": "Paused",
       "yes": "yes",
       "no": "no"
+    },
+    "execution": {
+      "title": "Flow Status",
+      "runtimeMatched": "live runtime",
+      "runtimeInferred": "inferred from phase",
+      "currentPhase": "Current phase",
+      "currentAgent": "Current agent",
+      "runtimeMode": "Runtime mode",
+      "activeShard": "Active shard",
+      "latestEvent": "Latest event",
+      "liveRuntime": "matched to this issue",
+      "inferredRuntime": "not matched, inferred by phase",
+      "noWorkspace": "no workspace reported",
+      "notReported": "not reported",
+      "noShard": "No shard yet",
+      "noEvents": "No events yet"
     },
     "nextAction": {
       "title": "Next Action",
@@ -356,6 +373,19 @@
         "body": "Advance the next runnable shard through implementation, tests, and review."
       }
     },
+    "runDiagnostics": {
+      "ready": "Ready to run {shard}.",
+      "paused": "The loop is paused. Resume it before running another scheduler step.",
+      "closed": "This issue is already closed.",
+      "spec": "An approved spec is required before the scheduler can run.",
+      "shards": "No shards exist yet. Decompose the approved spec first.",
+      "complete": "All shards are complete. Move to global review or finalization.",
+      "recovering": "{shard} is interrupted or already in progress. Run Step will recover it and continue automatically.",
+      "reviewSpec": "The only required human gate is the spec review. Approve it or request changes in the spec section.",
+      "reloop": "Global review found remaining work. Use the re-loop panel to create the next spec revision.",
+      "dependencies": "The next TODO shard is waiting for its dependency to finish.",
+      "none": "No runnable shard is available in the current state."
+    },
     "evidence": {
       "title": "Evidence Coverage",
       "summary": "{shards} shards · {annotations} annotations",
@@ -389,24 +419,46 @@
       "approve": "Approve",
       "revisionPlaceholder": "Revision note",
       "requestRevision": "Request Revision",
-      "decompose": "Decompose",
       "empty": "No spec yet."
     },
     "shards": {
       "title": "Shards",
       "empty": "No shards yet.",
       "meta": "est_context {context} · depends {depends}",
-      "takeoverNote": "Takeover note",
-      "takeOver": "Take Over",
-      "implementationSummary": "Implementation summary",
-      "changedFiles": "Changed files, one per line",
-      "notes": "Notes",
-      "recordImplementation": "Record Implementation",
-      "runTests": "Run Tests",
-      "reviewSummary": "Review summary",
-      "issueDescription": "Issue description",
-      "fixInstructions": "Fix instructions, one per line",
-      "recordReview": "Record Review"
+      "latestTest": "Latest test: {status} · round {round}",
+      "latestReview": "Latest review: {verdict} · round {round}",
+      "evidence": {
+        "implementation": "Impl",
+        "tests": "Tests",
+        "reviews": "Reviews"
+      },
+      "automation": {
+        "queued": {
+          "title": "Queued for automation",
+          "owner": "Scheduler",
+          "body": "The loop engine will pick this shard when its dependencies are ready."
+        },
+        "implement": {
+          "title": "Ready for implementation",
+          "owner": "Claude Code",
+          "body": "Implementation, test execution, and shard review are handled by the automated loop."
+        },
+        "testing": {
+          "title": "Automation in progress",
+          "owner": "Loop engine",
+          "body": "The engine is collecting implementation, test, and review evidence for this shard."
+        },
+        "done": {
+          "title": "Shard complete",
+          "owner": "Codex",
+          "body": "Required implementation, test, and review evidence has been recorded."
+        },
+        "attention": {
+          "title": "Needs automated recovery",
+          "owner": "Scheduler",
+          "body": "Run Step will recover interrupted work or re-enter the shard loop where possible."
+        }
+      }
     },
     "records": {
       "implementation": "Implementation Records",

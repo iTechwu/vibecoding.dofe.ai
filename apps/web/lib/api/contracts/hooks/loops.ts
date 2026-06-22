@@ -212,6 +212,12 @@ export function useRunLoop(issueId: string) {
   return tsRestClient.loops.runLoop.useMutation({ onSuccess: invalidate });
 }
 
+/** Advance the issue to the next product-level checkpoint. */
+export function useAdvanceLoop(issueId: string) {
+  const invalidate = useInvalidateIssue(issueId);
+  return tsRestClient.loops.advance.useMutation({ onSuccess: invalidate });
+}
+
 /** Phase 7 global review. */
 export function useReviewLoopGlobal(issueId: string) {
   const invalidate = useInvalidateIssue(issueId);

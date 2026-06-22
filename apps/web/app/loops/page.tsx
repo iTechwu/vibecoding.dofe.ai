@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import {
   Activity,
@@ -49,6 +49,7 @@ import {
   formatPhase,
   type RiskLevel,
 } from './loops-dashboard-model';
+import { formatLoopEvent, formatLoopLabel, formatLoopStatus } from './loops-display';
 
 function riskClass(level: RiskLevel) {
   if (level === 'critical') {
@@ -108,6 +109,7 @@ function MetricCard({
 }
 
 export default function LoopsPage() {
+  const locale = useLocale();
   const t = useTranslations('loops.dashboard');
   const formatDashboardPhase = (phase: string) => {
     if (
@@ -127,7 +129,7 @@ export default function LoopsPage() {
     ) {
       return t(`phaseLabels.${phase}`);
     }
-    return formatPhase(phase);
+    return formatLoopLabel(formatPhase(phase), locale);
   };
   const formatRiskReason = (reason: string) => {
     if (reason === 'Paused' || reason === 'Cost guard tripped') {
@@ -190,13 +192,14 @@ export default function LoopsPage() {
     (capability) => capability.id === 'a2a-tool-registry',
   )?.agentToolRegistry;
   const actionQueue = metrics?.actionQueue ?? [];
-  const reviewInbox = buildReviewInbox(actionQueue, notifications?.notifications);
+  const reviewInbox = buildReviewInbox(actionQueue, notifications?.notifications, locale);
   // Distinct error state: previously a failed list/doctor query rendered as
   // perpetual "loading". Surface it as an explicit banner instead.
   const dataLoadFailed = listQuery.isError || doctorQuery.isError;
 
   useEffect(() => {
-    setAgingNow(new Date());
+    const timer = window.setTimeout(() => setAgingNow(new Date()), 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   return (
@@ -672,9 +675,7 @@ export default function LoopsPage() {
                       <span className="truncate font-medium">{item.title}</span>
                       <span className="shrink-0 text-xs">{item.label}</span>
                     </div>
-                    <p className="mt-1 truncate text-xs opacity-80">
-                      {item.source} · {item.meta}
-                    </p>
+                    <p className="mt-1 truncate text-xs opacity-80">{item.meta}</p>
                   </Link>
                 ))
               )}
@@ -700,7 +701,7 @@ export default function LoopsPage() {
               {traceSummary?.eventTypes.length ? (
                 traceSummary.eventTypes.slice(0, 5).map((item) => (
                   <span className="rounded-md border px-2 py-1 text-xs" key={item.type}>
-                    {item.type} · {item.count}
+                    {formatLoopEvent(item.type, locale)} · {item.count}
                   </span>
                 ))
               ) : (
@@ -771,7 +772,7 @@ export default function LoopsPage() {
                   <div className="flex items-start justify-between gap-3">
                     <span className="font-medium">{capability.label}</span>
                     <span className="shrink-0 rounded-md bg-muted px-2 py-1 text-xs">
-                      {capability.status}
+                      {formatLoopStatus(capability.status, locale)}
                     </span>
                   </div>
                   <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
@@ -819,7 +820,7 @@ export default function LoopsPage() {
                         <span>{tool.lifecycle}</span>
                       </div>
                       <p className="mt-1 truncate text-muted-foreground">
-                        {tool.kind} ·{' '}
+                        {formatLoopLabel(tool.kind, locale)} ·{' '}
                         {t('capabilities.owners', { count: tool.ownerAgentIds.length })}
                       </p>
                     </div>
@@ -835,7 +836,7 @@ export default function LoopsPage() {
                     <div className="rounded-md bg-muted/40 p-3 text-xs" key={check.id}>
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-medium">{check.id}</span>
-                        <span>{check.status}</span>
+                        <span>{formatLoopStatus(check.status, locale)}</span>
                       </div>
                       <p className="mt-1 line-clamp-2 text-muted-foreground">{check.summary}</p>
                     </div>
@@ -929,9 +930,13 @@ export default function LoopsPage() {
                     className="grid grid-cols-[minmax(0,1fr)_88px] gap-3 py-3 text-xs sm:grid-cols-[160px_minmax(0,1fr)_88px]"
                     key={notification.id}
                   >
-                    <span className="hidden font-medium sm:block">{notification.kind}</span>
+                    <span className="hidden font-medium sm:block">
+                      {formatLoopLabel(notification.kind, locale)}
+                    </span>
                     <span className="truncate text-muted-foreground">{notification.title}</span>
-                    <span className="text-right text-muted-foreground">{notification.status}</span>
+                    <span className="text-right text-muted-foreground">
+                      {formatLoopStatus(notification.status, locale)}
+                    </span>
                   </div>
                 ))
               )}
@@ -953,13 +958,15 @@ export default function LoopsPage() {
               ) : logs.entries.length === 0 ? (
                 <EmptyLine>{t('events.empty')}</EmptyLine>
               ) : (
-                logs.entries.map((entry) => (
+                logs.entries.map((entry, index) => (
                   <div
                     className="grid grid-cols-[92px_minmax(0,1fr)] gap-3 py-3 text-xs sm:grid-cols-[156px_120px_minmax(0,1fr)]"
-                    key={`${entry.ts}-${entry.type}-${entry.shard ?? entry.issue ?? entry.loop ?? ''}`}
+                    key={`${entry.ts}-${entry.type}-${entry.shard ?? entry.issue ?? entry.loop ?? ''}-${entry.status ?? entry.verdict ?? entry.action ?? index}`}
                   >
                     <span className="truncate text-muted-foreground">{entry.ts}</span>
-                    <span className="hidden font-medium sm:block">{entry.type}</span>
+                    <span className="hidden font-medium sm:block">
+                      {formatLoopEvent(entry.type, locale)}
+                    </span>
                     <span className="truncate text-muted-foreground">
                       {entry.issue ?? entry.loop ?? t('events.global')}{' '}
                       {entry.shard ? `· ${entry.shard}` : ''}
@@ -997,7 +1004,7 @@ export default function LoopsPage() {
                         {costItem?.tripped ? ` · ${t('table.costGuard')}` : ''}
                       </span>
                     </span>
-                    <span>{issue.status}</span>
+                    <span>{formatLoopStatus(issue.status, locale)}</span>
                     <span className="truncate">
                       {formatDashboardPhase(state?.phase ?? 'PHASE_0_INTAKE')}
                     </span>

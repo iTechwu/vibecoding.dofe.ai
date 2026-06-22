@@ -49,6 +49,7 @@ export {
   useRecordLoopShardImplementation,
   useReviewLoopShard,
   useRunLoop,
+  useAdvanceLoop,
   useReviewLoopGlobal,
   useReloopIssue,
   useFinalizeLoop,

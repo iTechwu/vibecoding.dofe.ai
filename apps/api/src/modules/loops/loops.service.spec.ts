@@ -334,37 +334,13 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(detail.spec?.body).not.toContain('mock user');
     expect(detail.spec?.body).toContain('真实浏览器 SSO E2E 仍需外部联调环境验证');
 
-    // approve -> APPROVED spec, allowed to decompose.
+    // approve -> APPROVED spec and wakes the engine through automated phases.
     detail = await service.reviewSpec(created.issue.id, { action: 'approve', reviewer: 'tester' });
     expect(detail.spec?.status).toBe('APPROVED');
-
-    // decompose -> MVP shards (deterministic: 2 serial shards).
-    detail = await service.decompose(created.issue.id);
     expect(detail.shards.length).toBeGreaterThan(0);
-    const hasAccurateSsoBoundaryAnnotation = detail.annotations.some((annotation) =>
-      annotation.notes.includes('dofe-sso submitter'),
-    );
-    expect(hasAccurateSsoBoundaryAnnotation).toBe(true);
-    const shardCount = detail.shards.length;
-
-    // runLoop advances one ready shard per call (max_parallel default = 1).
-    // N calls implement+test+review shards to DONE, then one more flips to CONVERGE.
-    for (let i = 0; i < shardCount + 1; i += 1) {
-      try {
-        detail = await service.runLoop(created.issue.id);
-      } catch {
-        // The final call may throw "No runnable shard" once converged; tolerate it.
-      }
-    }
-    detail = await service.getIssue(created.issue.id);
+    expect(detail.spec?.body).toContain('dofe-sso submitter');
     expect(detail.shards.every((shard) => shard.status === 'DONE')).toBe(true);
-
-    // reviewGlobal -> PASS (evidence complete, deterministic adapter returns PASS).
-    detail = await service.reviewGlobal(created.issue.id);
     expect(detail.state.globalVerdict).toBe('PASS');
-
-    // finalize -> CLOSED terminal state.
-    detail = await service.finalize(created.issue.id);
     expect(detail.issue.status).toBe('CLOSED');
     expect(detail.state.phase).toBe('CLOSED');
     expect(detail.state.finalized).toBe(true);
@@ -442,5 +418,130 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(runtime.workspaceId).toBe('default');
     expect(runtime.runtimes).toHaveLength(1);
     expect(runtime.runtimes?.[0].agent).toBe('codex');
+  });
+
+  it('recovers interrupted shards automatically when running the loop', async () => {
+    const created = await service.createIssue({
+      title: 'Recover interrupted shard',
+      targetRepo: workspace,
+      body: 'The loop engine should recover interrupted shard work without asking humans to fill shard forms.',
+      priority: 'P2',
+      acceptanceCriteria: ['- interrupted shard is automatically returned to scheduler control'],
+    });
+    const planned = await service.generateSpec(created.issue.id);
+    if (!planned.spec) {
+      throw new Error('expected generated spec');
+    }
+    await store.writeSpec(
+      planned.issue,
+      { ...planned.spec, status: 'APPROVED', approvedBy: 'tester' },
+      {
+        ...planned.state,
+        phase: 'PHASE_3_DECOMPOSE',
+        updated: new Date().toISOString(),
+      },
+    );
+    const decomposed = await service.decompose(created.issue.id);
+    const interruptedShard = decomposed.shards[0];
+
+    await store.writeShardProgress({
+      issueId: created.issue.id,
+      shardId: interruptedShard.id,
+      from: interruptedShard.status,
+      to: 'IN_PROGRESS',
+      actor: 'test',
+      shards: decomposed.shards.map((shard) =>
+        shard.id === interruptedShard.id ? { ...shard, status: 'IN_PROGRESS' as const } : shard,
+      ),
+      state: {
+        ...decomposed.state,
+        phase: 'PHASE_4_IMPLEMENT',
+        shardsInProgress: 1,
+        updated: new Date().toISOString(),
+      },
+    });
+
+    const detail = await service.runLoop(created.issue.id);
+
+    expect(detail.shards.find((shard) => shard.id === interruptedShard.id)?.status).toBe('DONE');
+    expect(detail.state.shardsInProgress).toBe(0);
+    expect(
+      detail.logs.some((entry) => entry.type === 'SCHEDULER_RECOVERED_INTERRUPTED_SHARDS'),
+    ).toBe(true);
+  });
+
+  it('advances the loop to the next human gate or terminal state', async () => {
+    const created = await service.createIssue({
+      title: 'Advance Loop Engineering issue',
+      targetRepo: workspace,
+      body: 'The product-level advance action should automate everything except spec approval.',
+      priority: 'P2',
+      acceptanceCriteria: ['- users only approve the spec manually'],
+    });
+
+    let detail = await service.advance(created.issue.id);
+    expect(detail.spec?.status).toBe('DRAFT');
+    expect(detail.state.phase).toBe('PHASE_2_REVIEW');
+
+    detail = await service.advance(created.issue.id);
+    expect(detail.spec?.status).toBe('DRAFT');
+    expect(detail.state.phase).toBe('PHASE_2_REVIEW');
+    expect(detail.shards).toHaveLength(0);
+
+    await service.reviewSpec(created.issue.id, { action: 'approve', reviewer: 'tester' });
+
+    detail = await service.advance(created.issue.id);
+    expect(detail.shards.every((shard) => shard.status === 'DONE')).toBe(true);
+    expect(detail.issue.status).toBe('CLOSED');
+    expect(detail.state.finalized).toBe(true);
+  });
+
+  it('continues automatically after spec approval without requiring another user click', async () => {
+    const created = await service.createIssue({
+      title: 'Approve once and let the engine run',
+      targetRepo: workspace,
+      body: 'After human approval the engine should continue through automated phases.',
+      priority: 'P2',
+      acceptanceCriteria: ['- approval wakes the engine'],
+    });
+    await service.advance(created.issue.id);
+
+    const detail = await service.reviewSpec(created.issue.id, {
+      action: 'approve',
+      reviewer: 'tester',
+    });
+
+    expect(detail.spec?.status).toBe('APPROVED');
+    expect(detail.shards.every((shard) => shard.status === 'DONE')).toBe(true);
+    expect(detail.issue.status).toBe('CLOSED');
+    expect(detail.state.finalized).toBe(true);
+  });
+
+  it('keeps granular compatibility endpoints idempotent after automatic finalization', async () => {
+    const created = await service.createIssue({
+      title: 'Legacy granular endpoints after auto advance',
+      targetRepo: workspace,
+      body: 'Older clients may still call phase-specific endpoints after approval auto-runs.',
+      priority: 'P2',
+      acceptanceCriteria: ['- terminal loops stay closed'],
+    });
+    await service.advance(created.issue.id);
+    const finalized = await service.reviewSpec(created.issue.id, {
+      action: 'approve',
+      reviewer: 'tester',
+    });
+    expect(finalized.issue.status).toBe('CLOSED');
+
+    const afterDecompose = await service.decompose(created.issue.id);
+    const afterRun = await service.runLoop(created.issue.id);
+    const afterGlobalReview = await service.reviewGlobal(created.issue.id);
+    const afterFinalize = await service.finalize(created.issue.id);
+
+    for (const detail of [afterDecompose, afterRun, afterGlobalReview, afterFinalize]) {
+      expect(detail.issue.status).toBe('CLOSED');
+      expect(detail.state.phase).toBe('CLOSED');
+      expect(detail.state.finalized).toBe(true);
+      expect(detail.shards.every((shard) => shard.status === 'DONE')).toBe(true);
+    }
   });
 });
