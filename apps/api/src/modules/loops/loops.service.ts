@@ -1045,9 +1045,13 @@ export class LoopsService {
     };
   }
 
-  private async detectCurrentRuntimeSafe():
-    | Promise<{ workspaceId: string; runtimes: LoopRuntimeDetection[] } | undefined>
-    | undefined {
+  private async detectCurrentRuntimeSafe(): Promise<
+    | {
+        workspaceId: string;
+        runtimes: LoopRuntimeDetection[];
+      }
+    | undefined
+  > {
     if (!this.runtimeDetection || !this.workspaceProfile) return undefined;
     try {
       const workspace = await this.workspaceProfile.resolve();

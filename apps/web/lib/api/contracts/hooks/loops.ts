@@ -18,6 +18,7 @@ export const loopsKeys = {
   metrics: () => [...loopsKeys.all, 'metrics'] as const,
   agentRuntime: () => [...loopsKeys.all, 'agent-runtime'] as const,
   capabilities: () => [...loopsKeys.all, 'capabilities'] as const,
+  workspaces: () => [...loopsKeys.all, 'workspaces'] as const,
   logs: (query: Record<string, unknown>) => [...loopsKeys.all, 'logs', query] as const,
   notifications: (query: Record<string, unknown>) =>
     [...loopsKeys.all, 'notifications', query] as const,
@@ -233,4 +234,62 @@ export function useFinalizeLoop(issueId: string) {
 export function useInterveneLoop(issueId: string) {
   const invalidate = useInvalidateIssue(issueId);
   return tsRestClient.loops.intervene.useMutation({ onSuccess: invalidate });
+}
+
+// ============================================================================
+// Loops Workspace + Runtime (0622 · B2/B6)
+// ============================================================================
+
+/** List configured Loops workspaces + the active workspace id. */
+export function useLoopsWorkspaces() {
+  const queryKey = loopsKeys.workspaces();
+  return tsRestClient.loops.listWorkspaces.useQuery(queryKey, {}, { queryKey, staleTime: 0 });
+}
+
+/**
+ * Create / update a workspace, detect runtime, or pull an image. All invalidate
+ * the workspaces + agent-runtime queries so the console reflects the new state.
+ */
+function useInvalidateWorkspaceRuntime() {
+  const queryClient = useQueryClient();
+  return () => {
+    queryClient.invalidateQueries({ queryKey: loopsKeys.workspaces() });
+    queryClient.invalidateQueries({ queryKey: loopsKeys.agentRuntime() });
+  };
+}
+
+/** Upsert a workspace (root, agent modes, makeDefault). */
+export function useUpsertLoopsWorkspace() {
+  const invalidate = useInvalidateWorkspaceRuntime();
+  return tsRestClient.loops.upsertWorkspace.useMutation({ onSuccess: invalidate });
+}
+
+/** Probe local CLI + Docker runtimes for a workspace (Retry detection). */
+export function useDetectLoopsRuntime() {
+  const invalidate = useInvalidateWorkspaceRuntime();
+  return tsRestClient.loops.detectWorkspaceRuntime.useMutation({ onSuccess: invalidate });
+}
+
+/** Pull the Docker fallback image for an agent in a workspace. */
+export function usePullLoopsImage() {
+  const invalidate = useInvalidateWorkspaceRuntime();
+  return tsRestClient.loops.pullWorkspaceImage.useMutation({ onSuccess: invalidate });
+}
+
+/** Retry agent-runtime detection (refetch). */
+export function useRetryLoopsAgentRuntime() {
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: loopsKeys.agentRuntime() });
+}
+
+// ============================================================================
+// Simple issue intake (0622 · B4/B5)
+// ============================================================================
+
+/**
+ * Create an issue from a single natural-language request. Submitter is derived
+ * server-side; the hook returns the created issue so the caller can navigate.
+ */
+export function useCreateSimpleLoopIssue() {
+  return tsRestClient.loops.createSimpleIssue.useMutation();
 }

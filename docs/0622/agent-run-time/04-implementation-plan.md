@@ -134,3 +134,28 @@
 3. `/loops/new` 简单模式可以只用一句需求创建 issue。
 4. 所有新增路径有 API service spec 和 web component spec。
 5. `pnpm quality:gate` 通过。
+
+## 实施状态（2026-06-22）
+
+| 批次                          | 状态 | 关键产物                                                                                                                                      |
+| ----------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| B1 Runtime Detection Contract | ✅   | `loops.schema.ts`（runtime schemas）· `AgentRuntimeDetectionService` · `agentRuntime()` 扩展 `runtimes`+`workspaceId`                         |
+| B2 Workspace Profile          | ✅   | `LoopsWorkspaceProfileService` · `.loops/runtime/profile.json` · `GET/POST /loops/workspaces` · `detect-runtime`                              |
+| B3 Docker Fallback Runner     | ✅   | `planAgentInvocation` / `buildDockerAgentCommand` · `CliLoopsAgentAdapter` / `CliLoopsClaudeAdapter` 按工作区 mode 选 local/docker · 固定镜像 |
+| B4 简化 Issue API             | ✅   | `POST /loops/issues/simple` · `createSimpleIssue()` · 共享归一化 `loops-simple-issue.ts`                                                      |
+| B5 前端提交体验重做           | ✅   | `SimpleLoopIssueForm`（request + workspace + template + 预览 + 高级折叠）                                                                     |
+| B6 Runtime UI 操作闭环        | ✅   | workspace switcher · Retry detection / Pull image / Use Docker / Select workspace / View setup guide · 操作后自动刷新                         |
+
+### 退出条件核对
+
+1. ✅ `agent-runtime` 反映 local/docker/workspace 三类事实（`LoopRuntimeDetection`）。
+2. ⚠ Docker fallback smoke：command builder 单测验证 argv 正确（`loops-runtime-command-builder.spec.ts`）；真实 `docker run` 依赖运行环境，未在 CI 实跑（环境相关，留作本地 smoke）。
+3. ✅ `/loops/new` 简单模式一句需求即可创建（`loops.service.spec.ts` createSimpleIssue + web 表单）。
+4. ✅ 新增路径均有 spec：`agent-runtime-detection.service.spec.ts`、`loops-workspace-profile.service.spec.ts`、`loops-runtime-command-builder.spec.ts`、`loops-simple-issue.spec.ts`，并在 `loops.service.spec.ts` 扩展 createSimpleIssue/listWorkspaces/agentRuntime-runtimes。
+5. ✅ type-check（api + web）通过；loops 测试全绿（api 59 passed / 3 pre-existing skipped；web 13 passed）。
+
+### 留待后续（非阻塞）
+
+- `AUTH_REQUIRED` 探测（需 token 托管方案）。
+- Docker 镜像 pin digest（生产前）。
+- 以 `@dofe/infra-docker`（Docker Engine HTTP API）替换 `LoopsDockerClient`——当前为单一替换点，contract 不受影响。

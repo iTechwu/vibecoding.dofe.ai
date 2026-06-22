@@ -9,8 +9,9 @@ import type {
 } from '@repo/contracts';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
-import { runProcess } from './loops-process.util';
+import { runProcess } from './adapters/loops-process.util';
 import { LOOPS_RUNTIME_LOCAL_COMMAND } from './loops-runtime-images';
+import { LoopsDockerClient } from './loops-docker.client';
 
 const AGENTS: LoopAgentKind[] = ['codex', 'claude-code'];
 const DEFAULT_DETECT_TIMEOUT_MS = 8000;
@@ -34,6 +35,8 @@ export class AgentRuntimeDetectionService {
     @Optional()
     @Inject(WINSTON_MODULE_PROVIDER)
     private readonly logger?: Logger,
+    @Optional()
+    private readonly docker: LoopsDockerClient = new LoopsDockerClient(),
   ) {}
 
   async detectAll(workspace: LoopWorkspaceProfile): Promise<LoopRuntimeDetection[]> {
@@ -97,11 +100,8 @@ export class AgentRuntimeDetectionService {
   // --------------------------------------------------------------------------
 
   private async detectDocker(agent: LoopAgentKind, image: string): Promise<LoopRuntimeCandidate> {
-    const daemon = await this.run({
-      command: 'docker',
-      args: ['version', '--format', '{{.Server.Version}}'],
-    });
-    if (daemon.exitCode !== 0) {
+    const daemon = await this.docker.probeDaemon();
+    if (!daemon.ok) {
       return {
         mode: 'docker',
         status: 'error',
@@ -110,16 +110,13 @@ export class AgentRuntimeDetectionService {
       };
     }
 
-    const inspect = await this.run({
-      command: 'docker',
-      args: ['image', 'inspect', image],
-    });
-    const status: LoopRuntimeStatus = inspect.exitCode === 0 ? 'ready' : 'missing';
+    const present = await this.docker.imagePresent(image);
+    const status: LoopRuntimeStatus = present ? 'ready' : 'missing';
     return {
       mode: 'docker',
       status,
       image,
-      version: status === 'ready' ? this.parseVersion(daemon.stdout) : undefined,
+      version: status === 'ready' ? daemon.version : undefined,
       workspaceRequired: true,
     };
   }

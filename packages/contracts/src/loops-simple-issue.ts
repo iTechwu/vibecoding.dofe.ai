@@ -107,6 +107,8 @@ export function buildLoopIssueTitle(request: string, template: ResolvedLoopIssue
   const sentenceMatch = firstLine.match(/^(.*?[。.!?！？])/);
   let base = (sentenceMatch?.[1] ?? firstLine).trim();
   base = base.replace(TITLE_PREFIX_PATTERN, '').trim();
+  // Strip trailing sentence terminators / whitespace so titles stay clean.
+  base = base.replace(/[。.!?！？\s]+$/, '').trim();
 
   const verbByTemplate: Record<ResolvedLoopIssueTemplate, string> = {
     bugfix: 'Fix',

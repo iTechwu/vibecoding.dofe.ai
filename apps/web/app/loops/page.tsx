@@ -34,6 +34,10 @@ import {
   useLoopsLogs,
   useLoopsMetrics,
   useLoopsNotifications,
+  useLoopsWorkspaces,
+  usePullLoopsImage,
+  useRetryLoopsAgentRuntime,
+  useUpsertLoopsWorkspace,
   useResumeLoops,
 } from '@/lib/api/contracts/hooks';
 import {
@@ -141,11 +145,19 @@ export default function LoopsPage() {
   const logsQuery = useLoopsLogs({ limit: 10 });
   const notificationsQuery = useLoopsNotifications({ limit: 8 });
   const resume = useResumeLoops();
+  const workspacesQuery = useLoopsWorkspaces();
+  const upsertWorkspace = useUpsertLoopsWorkspace();
+  const pullImage = usePullLoopsImage();
+  const retryDetection = useRetryLoopsAgentRuntime();
+
+  const workspaces = workspacesQuery.data?.body?.data?.workspaces ?? [];
+  const currentWorkspaceId = workspacesQuery.data?.body?.data?.current ?? '';
 
   const data = listQuery.data?.body.data;
   const doctor = doctorQuery.data?.body.data;
   const cost = costQuery.data?.body.data;
   const agentRuntime = agentRuntimeQuery.data?.body.data as LoopAgentRuntimeResponse | undefined;
+  const runtimeDetection = agentRuntime?.runtimes ?? [];
   const capabilities = capabilitiesQuery.data?.body.data as LoopCapabilitiesResponse | undefined;
   const metrics = metricsQuery.data?.body.data as LoopMetricsResponse | undefined;
   const logs = logsQuery.data?.body.data as LoopLogsResponse | undefined;
@@ -214,6 +226,50 @@ export default function LoopsPage() {
             </Link>
           </div>
         </header>
+
+        <section className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-1 text-sm">
+            <span className="text-xs font-semibold text-muted-foreground">
+              {t('workspace.title')}
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className="h-9 rounded-md border bg-background px-3 text-sm disabled:opacity-60"
+                disabled={workspacesQuery.isLoading || upsertWorkspace.isPending}
+                onChange={(event) => {
+                  const next = workspaces.find((ws) => ws.workspaceId === event.target.value);
+                  if (next) {
+                    upsertWorkspace.mutateAsync({
+                      body: { workspaceId: next.workspaceId, root: next.root, makeDefault: true },
+                    });
+                  }
+                }}
+                value={currentWorkspaceId}
+              >
+                {workspacesQuery.isLoading ? (
+                  <option value="">{t('workspace.loading')}</option>
+                ) : (
+                  workspaces.map((ws) => (
+                    <option key={ws.workspaceId} value={ws.workspaceId}>
+                      {ws.workspaceId === currentWorkspaceId
+                        ? t('workspace.current', { id: ws.workspaceId })
+                        : ws.workspaceId}
+                    </option>
+                  ))
+                )}
+              </select>
+              <span className="text-xs text-muted-foreground">
+                {t('workspace.runtimeSummary', {
+                  codex:
+                    runtimeDetection.find((r) => r.agent === 'codex')?.preferredMode ?? 'local-cli',
+                  claude:
+                    runtimeDetection.find((r) => r.agent === 'claude-code')?.preferredMode ??
+                    'local-cli',
+                })}
+              </span>
+            </div>
+          </div>
+        </section>
 
         {dataLoadFailed ? (
           <div
@@ -430,6 +486,120 @@ export default function LoopsPage() {
                     </div>
                   </Link>
                 ))
+              )}
+            </div>
+          </div>
+
+          {/* 0622 · B6: environment-derived runtime detection (local CLI + Docker)
+              with per-check action buttons. */}
+          <div className="mt-4 border-t pt-4">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-xs font-semibold text-muted-foreground">
+                {t('agentRuntime.detection.title')}
+              </h3>
+              <button
+                className="inline-flex h-8 items-center gap-1 rounded-md border px-3 text-xs font-medium hover:bg-muted/30 disabled:opacity-60"
+                disabled={!agentRuntime}
+                onClick={() => retryDetection()}
+                type="button"
+              >
+                <RefreshCw className="size-3" />
+                {t('agentRuntime.detection.retry')}
+              </button>
+            </div>
+            <div className="mt-2 flex flex-col gap-3">
+              {!agentRuntime ? (
+                <EmptyLine>{t('agentRuntime.detection.loading')}</EmptyLine>
+              ) : runtimeDetection.length === 0 ? (
+                <EmptyLine>{t('agentRuntime.detection.empty')}</EmptyLine>
+              ) : (
+                runtimeDetection.map((runtime) => {
+                  const modeLabel = t(
+                    `agentRuntime.detection.mode.${runtime.selected?.mode ?? runtime.preferredMode}`,
+                  );
+                  return (
+                    <div className="rounded-md border p-3 text-sm" key={runtime.agent}>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-medium">
+                          {t(`agentRuntime.detection.agent.${runtime.agent}`)}
+                        </span>
+                        <span className="shrink-0 rounded-md bg-muted/40 px-2 py-1 text-xs">
+                          {modeLabel}
+                        </span>
+                      </div>
+                      {runtime.checks.length > 0 ? (
+                        <ul className="mt-2 flex flex-col gap-2">
+                          {runtime.checks.map((check) => (
+                            <li
+                              className={`rounded-md border p-2 text-xs ${riskClass(check.level)}`}
+                              key={check.code}
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span>{check.message}</span>
+                                {check.action === 'pull-image' ? (
+                                  <button
+                                    className="rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-muted/30 disabled:opacity-60"
+                                    disabled={pullImage.isPending}
+                                    onClick={() =>
+                                      pullImage.mutateAsync({
+                                        params: { workspaceId: currentWorkspaceId },
+                                        body: { agent: runtime.agent },
+                                      })
+                                    }
+                                    type="button"
+                                  >
+                                    {t('agentRuntime.detection.actions.pull-image')}
+                                  </button>
+                                ) : check.action === 'use-docker' ? (
+                                  <button
+                                    className="rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-muted/30 disabled:opacity-60"
+                                    disabled={upsertWorkspace.isPending}
+                                    onClick={() => {
+                                      const ws = workspaces.find(
+                                        (item) => item.workspaceId === currentWorkspaceId,
+                                      );
+                                      if (!ws) return;
+                                      upsertWorkspace.mutateAsync({
+                                        body: {
+                                          workspaceId: ws.workspaceId,
+                                          root: ws.root,
+                                          makeDefault: true,
+                                          agents: { [runtime.agent]: { mode: 'docker' } },
+                                        },
+                                      });
+                                    }}
+                                    type="button"
+                                  >
+                                    {t('agentRuntime.detection.actions.use-docker')}
+                                  </button>
+                                ) : check.action === 'view-setup-guide' ? (
+                                  <a
+                                    className="shrink-0 rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-muted/30"
+                                    href="https://developers.openai.com/codex/"
+                                    rel="noreferrer"
+                                    target="_blank"
+                                  >
+                                    {t('agentRuntime.detection.actions.view-setup-guide')}
+                                  </a>
+                                ) : (
+                                  <span className="shrink-0 text-xs opacity-80">
+                                    {t(`agentRuntime.detection.actions.${check.action}`, {
+                                      defaultValue: check.action,
+                                    })}
+                                  </span>
+                                )}
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {t('agentRuntime.detection.ready', { agent: runtime.agent })}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>

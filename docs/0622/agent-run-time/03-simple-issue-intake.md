@@ -180,3 +180,14 @@ POST /loops/issues/simple
 - 高级设置展开后可覆盖自动生成字段。
 - 现有完整 issue API 不破坏。
 - SSO submitter 仍由后端从登录用户派生，不能由前端伪造。
+
+## 实施状态（2026-06-22）
+
+- ✅ 简单模式默认视图：`/loops/new` 改为 `SimpleLoopIssueForm`，默认仅展示 `request` + workspace + template(Auto)，高级设置折叠（`apps/web/app/loops/new/simple-loop-issue-form.tsx`）。
+- ✅ 后端归一化：`POST /loops/issues/simple` + `LoopsService.createSimpleIssue()` → 复用 `createIssue()`（权限/审计/落盘一致）。schema `CreateLoopIssueSimpleRequestSchema`。
+- ✅ 标题生成规则：确定性规则在 `packages/contracts/src/loops-simple-issue.ts`（`buildLoopIssueTitle`：首句、去口语前缀、去尾标点、≤80 字、按 template 补动词）。
+- ✅ 验收标准生成规则：`DEFAULT_SIMPLE_ACCEPTANCE_CRITERIA`（bugfix/feature/integration/flow 全部覆盖，并补 docs/refactor）。
+- ✅ Template auto 推断：`inferLoopIssueTemplate`（关键词表与文档一致）。
+- ✅ 前端校验：request < 10 字 + 无 workspace 时提交 disabled 并提示；预览面板用同一份共享归一化函数实时计算，前后端零漂移。
+- ✅ SSO submitter 后端派生：`createSimpleIssue` 接收 `authUser`，与 `createIssue` 同路径（`loops.service.spec.ts` 已断言 `submitterId === sso-user-7`）。
+- ✅ 现有完整 API 不破坏：`POST /loops/issues` 与 `NewLoopIssueForm`（完整表单）保留，测试全绿。

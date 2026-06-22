@@ -51,7 +51,35 @@
         "running": "Running",
         "attention": "Attention",
         "idle": "Idle"
+      },
+      "detection": {
+        "title": "Runtime Detection",
+        "retry": "Retry detection",
+        "loading": "Loading runtime detection.",
+        "empty": "No runtime detection available. Click retry.",
+        "ready": "{agent} runtime is ready.",
+        "mode": {
+          "local-cli": "Local CLI",
+          "docker": "Docker"
+        },
+        "agent": {
+          "codex": "Codex",
+          "claude-code": "Claude Code"
+        },
+        "actions": {
+          "pull-image": "Pull image",
+          "use-docker": "Use Docker",
+          "select-workspace": "Select workspace",
+          "open-docker": "Start Docker, then retry",
+          "view-setup-guide": "View setup guide"
+        }
       }
+    },
+    "workspace": {
+      "title": "Workspace",
+      "loading": "Loading workspaces.",
+      "current": "{id} (active)",
+      "runtimeSummary": "Runtime: Codex {codex} · Claude {claude}"
     },
     "actionQueue": {
       "title": "Action Queue",
@@ -163,6 +191,34 @@
     "cancel": "Cancel",
     "creating": "Creating...",
     "create": "Create Issue",
+    "simple": {
+      "intro": "Describe what you want the agents to do. Title, priority and acceptance criteria are generated for you.",
+      "requestLabel": "What do you want the agents to do?",
+      "requestPlaceholder": "e.g. Add a Docker fallback for the Codex runtime and show diagnostics in the console",
+      "requestHint": "At least 10 characters. Keep it to one sentence; expand details in the issue after creation.",
+      "requestError": "Please describe the request in at least 10 characters.",
+      "workspaceLabel": "Workspace",
+      "workspaceLoading": "Loading workspaces...",
+      "workspaceEmpty": "No workspace available",
+      "workspaceCurrent": "{id} (active)",
+      "workspaceRequired": "Select or configure a workspace before submitting.",
+      "templateLabel": "Template",
+      "templateAuto": "Auto (infer from request)",
+      "previewTitle": "Preview",
+      "previewEmpty": "Start typing to preview the generated issue.",
+      "previewTitleLabel": "Title",
+      "previewPriorityLabel": "Priority",
+      "previewCriteriaLabel": "Acceptance criteria",
+      "previewTargetRepoLabel": "Target repo",
+      "advancedSummary": "Advanced settings",
+      "advancedTitle": "Title override",
+      "advancedPriority": "Priority",
+      "priorityAuto": "Auto",
+      "advancedTargetRepo": "Target repo override",
+      "advancedCriteria": "Acceptance criteria override",
+      "advancedCriteriaPlaceholder": "One criterion per line (overrides the generated draft)",
+      "redirecting": "Redirecting to login..."
+    },
     "templates": {
       "feature": {
         "label": "Feature Loop",

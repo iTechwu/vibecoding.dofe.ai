@@ -53,4 +53,10 @@ export {
   useReloopIssue,
   useFinalizeLoop,
   useInterveneLoop,
+  useLoopsWorkspaces,
+  useUpsertLoopsWorkspace,
+  useDetectLoopsRuntime,
+  usePullLoopsImage,
+  useRetryLoopsAgentRuntime,
+  useCreateSimpleLoopIssue,
 } from './loops';

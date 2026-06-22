@@ -14,11 +14,10 @@ import type {
 } from '@repo/contracts';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
-import { runProcess } from './loops-process.util';
+import { LoopsDockerClient } from './loops-docker.client';
 import { LOOPS_RUNTIME_IMAGES, LOOPS_RUNTIME_LOCAL_COMMAND } from './loops-runtime-images';
 import {
   resolveLoopsRuntimeProfilePath,
-  resolveLoopsRuntimeDir,
   findLoopsWorkspaceRoot,
 } from './loops-workspace-root.util';
 
@@ -62,6 +61,8 @@ export class LoopsWorkspaceProfileService {
     @Optional()
     @Inject(WINSTON_MODULE_PROVIDER)
     private readonly logger?: Logger,
+    @Optional()
+    private readonly docker: LoopsDockerClient = new LoopsDockerClient(),
   ) {}
 
   async list(): Promise<LoopWorkspacesResponse> {
@@ -163,28 +164,12 @@ export class LoopsWorkspaceProfileService {
       throw new Error(`Workspace not found: ${workspaceId}`);
     }
     const image = workspace.agents[agent].dockerImage;
-    const result = await runProcess({
-      command: 'docker',
-      args: ['pull', image],
-      timeoutMs: 300000,
-      retries: 0,
-    });
-    if (result.exitCode === 0) {
-      return {
-        agent,
-        image,
-        status: 'pulled',
-        message: `Image ${image} pulled successfully.`,
-      };
-    }
-    const failedBecauseMissing = /not found|no such|not installed|enoent/i.test(result.stderr);
+    const outcome = await this.docker.pull(image);
     return {
       agent,
       image,
-      status: 'failed',
-      message: failedBecauseMissing
-        ? 'Docker is not available. Start Docker and try again.'
-        : `docker pull failed (exit ${result.exitCode}).`,
+      status: outcome.ok ? 'pulled' : 'failed',
+      message: outcome.message,
     };
   }
 
@@ -193,10 +178,11 @@ export class LoopsWorkspaceProfileService {
   // --------------------------------------------------------------------------
 
   private resolveCurrent(profile: PersistedProfile): string {
-    if (profile.current && profile.workspaces.some((ws) => ws.workspaceId === profile.current)) {
+    const workspaces = profile.workspaces ?? [];
+    if (profile.current && workspaces.some((ws) => ws.workspaceId === profile.current)) {
       return profile.current;
     }
-    return profile.workspaces[0]?.workspaceId ?? DEFAULT_WORKSPACE_ID;
+    return workspaces[0]?.workspaceId ?? DEFAULT_WORKSPACE_ID;
   }
 
   private async readWithDefault(): Promise<

@@ -905,6 +905,7 @@ export const LoopSimpleIssuePreviewSchema = z.object({
 });
 
 export type CreateLoopIssueRequest = z.infer<typeof CreateLoopIssueRequestSchema>;
+export type LoopPriority = z.infer<typeof LoopPrioritySchema>;
 export type LoopSubmitterProvider = z.infer<typeof LoopSubmitterProviderSchema>;
 export type LoopSubmitter = z.infer<typeof LoopSubmitterSchema>;
 export type LoopPhase = z.infer<typeof LoopPhaseSchema>;

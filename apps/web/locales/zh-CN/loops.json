@@ -51,7 +51,35 @@
         "running": "运行中",
         "attention": "需关注",
         "idle": "空闲"
+      },
+      "detection": {
+        "title": "运行时探测",
+        "retry": "重新探测",
+        "loading": "正在加载运行时探测。",
+        "empty": "暂无运行时探测结果，点击重新探测。",
+        "ready": "{agent} 运行时已就绪。",
+        "mode": {
+          "local-cli": "本机 CLI",
+          "docker": "Docker"
+        },
+        "agent": {
+          "codex": "Codex",
+          "claude-code": "Claude Code"
+        },
+        "actions": {
+          "pull-image": "拉取镜像",
+          "use-docker": "使用 Docker",
+          "select-workspace": "选择 workspace",
+          "open-docker": "启动 Docker 后重试",
+          "view-setup-guide": "查看安装指引"
+        }
       }
+    },
+    "workspace": {
+      "title": "Workspace",
+      "loading": "正在加载 workspace。",
+      "current": "{id}（当前）",
+      "runtimeSummary": "运行时：Codex {codex} · Claude {claude}"
     },
     "actionQueue": {
       "title": "动作队列",
@@ -163,6 +191,34 @@
     "cancel": "取消",
     "creating": "创建中...",
     "create": "创建 Issue",
+    "simple": {
+      "intro": "用一句话描述你想让 agent 做的事。标题、优先级和验收标准会自动生成。",
+      "requestLabel": "你想让 agent 做什么？",
+      "requestPlaceholder": "例如：为 Codex 运行时增加 Docker 兜底，并在控制台显示诊断",
+      "requestHint": "至少 10 个字。先写一句需求，创建后可在详情页补充细节。",
+      "requestError": "请至少用 10 个字描述需求。",
+      "workspaceLabel": "Workspace",
+      "workspaceLoading": "正在加载 workspace...",
+      "workspaceEmpty": "暂无可用 workspace",
+      "workspaceCurrent": "{id}（当前）",
+      "workspaceRequired": "提交前请先选择或配置 workspace。",
+      "templateLabel": "模板",
+      "templateAuto": "自动（按需求推断）",
+      "previewTitle": "预览",
+      "previewEmpty": "开始输入即可预览将生成的 issue。",
+      "previewTitleLabel": "标题",
+      "previewPriorityLabel": "优先级",
+      "previewCriteriaLabel": "验收标准",
+      "previewTargetRepoLabel": "目标仓库",
+      "advancedSummary": "高级设置",
+      "advancedTitle": "覆盖标题",
+      "advancedPriority": "优先级",
+      "priorityAuto": "自动",
+      "advancedTargetRepo": "覆盖目标仓库",
+      "advancedCriteria": "覆盖验收标准",
+      "advancedCriteriaPlaceholder": "每行一条（覆盖自动生成的草案）",
+      "redirecting": "正在跳转到登录..."
+    },
     "templates": {
       "feature": {
         "label": "功能 Loop",

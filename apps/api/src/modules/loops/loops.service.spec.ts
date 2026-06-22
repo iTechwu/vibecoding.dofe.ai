@@ -17,17 +17,19 @@
 import { mkdtempSync, writeFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { LoopConvergencePr, LoopTestRecord } from '@repo/contracts';
+import type { LoopConvergencePr, LoopRuntimeDetection, LoopTestRecord } from '@repo/contracts';
 import { DeterministicLoopsAgentAdapter } from './adapters/deterministic-loops-agent.adapter';
 import { DeterministicLoopsClaudeAdapter } from './adapters/deterministic-loops-claude.adapter';
 import type {
   LoopsCommitShardResult,
   LoopsGitAdapter,
 } from './adapters/loops-git-adapter.interface';
+import { AgentRuntimeDetectionService } from './agent-runtime-detection.service';
 import { LoopsFileStoreService } from './loops-file-store.service';
 import { LoopsRunnerService } from './loops-runner.service';
 import { LoopsService } from './loops.service';
 import { LoopsWorkLockService } from './loops-work-lock.service';
+import { LoopsWorkspaceProfileService } from './loops-workspace-profile.service';
 
 function makePassTestRecord(issueId: string, shardId: string, round: number): LoopTestRecord {
   return {
@@ -381,5 +383,64 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     const doctor = await service.doctor();
     expect(doctor.ok).toBe(true);
     expect(doctor.problems).toEqual([]);
+  });
+
+  // ---- 0622 · B1/B2/B4: runtime profile, detection facts, simple intake ----
+
+  /** A LoopsService wired with a real workspace profile + a stub detection service. */
+  function buildRuntimeService(stubRuntimes: LoopRuntimeDetection[]) {
+    const profile = new LoopsWorkspaceProfileService();
+    const detection = {
+      detectAll: async () => stubRuntimes,
+    } as unknown as AgentRuntimeDetectionService;
+    return new LoopsService(
+      store,
+      createFakeRunner(),
+      new LoopsWorkLockService(),
+      new DeterministicLoopsAgentAdapter(),
+      new DeterministicLoopsClaudeAdapter(),
+      createFakeGitAdapter(),
+      // persistence omitted (file-only), capabilityRegistry + logger left to defaults.
+      undefined,
+      undefined,
+      undefined,
+      detection,
+      profile,
+    );
+  }
+
+  it('createSimpleIssue normalises a one-sentence request and derives the SSO submitter', async () => {
+    const runtimeService = buildRuntimeService([]);
+    const created = await runtimeService.createSimpleIssue(
+      { request: '修复登录后跳转异常。需要回归测试。', template: 'auto' },
+      { id: 'sso-user-7', nickname: 'Grace', code: 'grace', isAdmin: false, isAnonymity: false },
+    );
+    expect(created.issue.title).toBe('修复登录后跳转异常');
+    expect(created.issue.priority).toBe('P0'); // bugfix inferred
+    expect(created.issue.body).toBe('修复登录后跳转异常。需要回归测试。');
+    expect(created.issue.targetRepo).toBe(workspace); // resolved from default workspace
+    expect(created.issue.submitterId).toBe('sso-user-7');
+    expect(created.issue.acceptanceCriteria.length).toBeGreaterThan(0);
+  });
+
+  it('listWorkspaces returns the default workspace and agentRuntime surfaces detection facts', async () => {
+    const stubRuntimes: LoopRuntimeDetection[] = [
+      {
+        agent: 'codex',
+        preferredMode: 'local-cli',
+        local: { mode: 'local-cli', status: 'ready', workspaceRequired: false },
+        checks: [],
+      },
+    ];
+    const runtimeService = buildRuntimeService(stubRuntimes);
+
+    const workspaces = await runtimeService.listWorkspaces();
+    expect(workspaces.current).toBe('default');
+    expect(workspaces.workspaces[0].root).toBe(workspace);
+
+    const runtime = await runtimeService.agentRuntime();
+    expect(runtime.workspaceId).toBe('default');
+    expect(runtime.runtimes).toHaveLength(1);
+    expect(runtime.runtimes?.[0].agent).toBe('codex');
   });
 });

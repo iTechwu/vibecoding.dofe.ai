@@ -165,3 +165,14 @@ POST /loops/workspaces/:workspaceId/detect-runtime
 - workspace 不存在或不可写时，返回可操作诊断。
 - 多 workspace 之间 runtime profile、缓存和配置互不污染。
 - Docker 命令只挂载被选中的 workspace root。
+
+## 实施状态（2026-06-22）
+
+- ✅ 单 workspace 默认路径：`LoopsWorkspaceProfileService` 默认 workspace = `LOOPS_WORKSPACE_ROOT`（containerWorkdir `/workspace`）。
+- ✅ 多 workspace 独立 profile：`POST /loops/workspaces`（upsert）+ `GET /loops/workspaces`（list）；每条 workspace 独立保存 mode / image / containerWorkdir / 状态。
+- ✅ 挂载规则：`buildDockerAgentCommand` 只挂载 `workspaceRoot:/workspace` + 受控 config 目录，禁止 home/`/`/动态路径（见 `loops-runtime-command-builder.util.ts`）。
+- ✅ 配置目录：`.loops/runtime/{codex,claude-code}/` 由 `LOOPS_RUNTIME_CONFIG_DIR` 决定；`.loops/runtime/` 已被 `.gitignore` 覆盖（仓库 `.gitignore:111`）。
+- ✅ Workspace 状态机：`validate()`（存在 + 可写 → `VALIDATED`，否则 `ERROR`）；`UNCONFIGURED`/`SELECTED`/`READY` 由 detection + 前端组合呈现。
+- ✅ 前端体验：dashboard 顶部 workspace switcher + Runtime 摘要（`apps/web/app/loops/page.tsx`）；issue 创建页 workspace 选择（`simple-loop-issue-form.tsx`）。
+- ✅ 后端接口：`GET/POST /loops/workspaces`、`POST /loops/workspaces/:id/detect-runtime`、`POST /loops/workspaces/:id/pull-image` 已落地（超越「最小实现」）。
+- ⏸ CLI token 落盘敏感标记 / doctor 不输出原值：当前不托管 token（见 01 Open Questions），留待 token 方案确定后补 doctor redaction。

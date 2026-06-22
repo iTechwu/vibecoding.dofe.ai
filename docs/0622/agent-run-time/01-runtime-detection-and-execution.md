@@ -170,3 +170,14 @@ docker run --rm \
 - 本机 CLI 登录态是否统一由用户自己维护，还是允许 Loops runtime profile 持有 token。
 - Docker 镜像是否需要 pin digest，避免 `latest` 在生产中不可复现。
 - Docker 容器是否允许网络访问；不同任务可能需要不同 network policy。
+
+## 实施状态（2026-06-22）
+
+- ✅ Runtime Provider 模型：`LoopRuntimeDetection` / `LoopRuntimeCandidate` / `LoopRuntimeCheck` schema（`packages/contracts/src/schemas/loops.schema.ts`），后端 `AgentRuntimeDetectionService.detect()` 实现 `detect` 语义（`run` 由 adapter 内 `planAgentInvocation` 承担）。
+- ✅ 探测顺序（Codex / Claude Code）：本机 `codex` / `claude --version` → Docker daemon → `docker image inspect`，全部在 `AgentRuntimeDetectionService` + `LoopsDockerClient` 内。
+- ✅ 镜像兜底：固定镜像在 `loops-runtime-images.ts`（后端专用），示意命令由 `buildDockerAgentCommand` 生成并通过 `-e CODEX_HOME=/workspace/.loops/runtime/codex`、`-e CLAUDE_CONFIG_DIR=...` 落实。
+- ✅ Runtime Profile：`.loops/runtime/profile.json` 由 `LoopsWorkspaceProfileService` 读写；`LOOPS_WORKSPACE_ROOT` 决定 `.loops` 根。
+- ✅ 诊断输出：`GET /loops/agent-runtime` 返回 `runtimes[]` + `workspaceId`；诊断码 `LOCAL_CLI_MISSING` / `DOCKER_DAEMON_DOWN` / `DOCKER_IMAGE_MISSING` / `WORKSPACE_REQUIRED` / `WORKSPACE_NOT_MOUNTABLE` 全部产出，并带稳定 `action` 键供前端按钮使用。
+- ✅ 前端诊断按钮：Retry detection / Select workspace / Use Docker / Pull image / Open issue / View setup guide（`apps/web/app/loops/page.tsx`）。
+- ⏸ `AUTH_REQUIRED` 诊断码：schema 已预留，但 v1 不触发（无法可靠探测 CLI 登录态）——见 Open Questions 第 1 条，留待 token 托管方案确定后再接。
+- ⏸ Docker pin digest / network policy：见 Open Questions，生产前处理。

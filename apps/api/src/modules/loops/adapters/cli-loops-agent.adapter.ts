@@ -1,9 +1,10 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import type {
   LoopAnnotation,
   LoopConvergencePr,
   LoopGlobalReviewRecord,
   LoopIssue,
+  LoopRuntimeMode,
   LoopShard,
   LoopSpec,
   LoopTestMatrix,
@@ -24,6 +25,8 @@ import type {
 import { DeterministicLoopsAgentAdapter } from './deterministic-loops-agent.adapter';
 import { extractJson, runProcess } from './loops-process.util';
 import { readLoopsRuntimeConfig } from '../loops-runtime-config.util';
+import { LoopsWorkspaceProfileService } from '../loops-workspace-profile.service';
+import { planAgentInvocation } from '../loops-runtime-command-builder.util';
 
 const CodexReviewOutputSchema = z.object({
   verdict: z.enum(['PASS', 'NEEDS-WORK', 'FAIL']),
@@ -53,7 +56,11 @@ const CodexReviewOutputSchema = z.object({
 export class CliLoopsAgentAdapter implements LoopsAgentAdapter {
   private readonly fallback = new DeterministicLoopsAgentAdapter();
 
-  constructor(@Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger) {}
+  constructor(
+    @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
+    @Optional()
+    private readonly workspaceProfile?: LoopsWorkspaceProfileService,
+  ) {}
 
   async plan(issue: LoopIssue, createdAt: string): Promise<LoopSpec> {
     const prompt = this.buildPrompt('plan', { issue });
@@ -153,9 +160,21 @@ export class CliLoopsAgentAdapter implements LoopsAgentAdapter {
   }
 
   private async callCodex(prompt: string, kind: string): Promise<unknown | undefined> {
+    // Local-CLI first, Docker fallback (0622 · B3). Codex `exec` doesn't take a
+    // cwd flag, so local mode relies on the process cwd (the workspace root)
+    // while Docker mode mounts it via the planner.
+    const runtime = await this.resolveRuntime('codex');
+    const invocation = planAgentInvocation({
+      mode: runtime.mode,
+      agent: 'codex',
+      hostWorkspaceRoot: runtime.hostWorkspaceRoot,
+      containerWorkdir: runtime.containerWorkdir,
+      buildAgentArgs: () => ['exec', '--json', prompt],
+    });
     const result = await runProcess({
-      command: 'codex',
-      args: ['exec', '--json', prompt],
+      command: invocation.command,
+      args: invocation.args,
+      cwd: invocation.cwd,
       timeoutMs: await this.codexTimeoutMs(),
     });
     if (result.exitCode !== 0) {
@@ -166,6 +185,39 @@ export class CliLoopsAgentAdapter implements LoopsAgentAdapter {
       return undefined;
     }
     return extractJson(result.stdout);
+  }
+
+  /**
+   * Resolve runtime mode + workspace root for Codex (0622 · B3). Codex is a
+   * "brain" call without a per-call cwd, so the workspace root comes from the
+   * current workspace profile (defaulting to the discovered repo root).
+   */
+  private async resolveRuntime(agent: 'codex' | 'claude-code'): Promise<{
+    mode: LoopRuntimeMode;
+    hostWorkspaceRoot: string;
+    containerWorkdir: string;
+  }> {
+    if (!this.workspaceProfile) {
+      return {
+        mode: 'local-cli',
+        hostWorkspaceRoot: process.cwd(),
+        containerWorkdir: '/workspace',
+      };
+    }
+    try {
+      const workspace = await this.workspaceProfile.resolve();
+      return {
+        mode: workspace.agents[agent].mode,
+        hostWorkspaceRoot: workspace.root,
+        containerWorkdir: workspace.containerWorkdir ?? '/workspace',
+      };
+    } catch {
+      return {
+        mode: 'local-cli',
+        hostWorkspaceRoot: process.cwd(),
+        containerWorkdir: '/workspace',
+      };
+    }
   }
 
   private async maxRetry() {

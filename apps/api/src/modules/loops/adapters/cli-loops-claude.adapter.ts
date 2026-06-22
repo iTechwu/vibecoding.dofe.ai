@@ -142,7 +142,35 @@ export class CliLoopsClaudeAdapter implements LoopsClaudeAdapter {
 
   private envNonNegativeInteger(name: string) {
     const parsed = Number(process.env[name]);
+    return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+  }
+
+  private envPositiveNumber(name: string) {
+    const parsed = Number(process.env[name]);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  }
+
+  /**
+   * Resolve the runtime mode + container workdir for this agent from the
+   * workspace profile (0622 · B3). Defaults to local-CLI when no profile is
+   * wired in (standalone consumers) so existing behaviour is preserved.
+   */
+  private async resolveRuntime(agent: 'codex' | 'claude-code'): Promise<{
+    mode: LoopRuntimeMode;
+    containerWorkdir: string;
+  }> {
+    if (!this.workspaceProfile) {
+      return { mode: 'local-cli', containerWorkdir: '/workspace' };
+    }
+    try {
+      const workspace = await this.workspaceProfile.resolve();
+      return {
+        mode: workspace.agents[agent].mode,
+        containerWorkdir: workspace.containerWorkdir ?? '/workspace',
+      };
+    } catch {
+      return { mode: 'local-cli', containerWorkdir: '/workspace' };
+    }
   }
 
   private renderPrompt(input: LoopsClaudeRunInput) {

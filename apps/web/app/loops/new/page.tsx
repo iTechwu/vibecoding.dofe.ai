@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { getTranslations } from 'next-intl/server';
 import { Link } from '@/i18n/navigation';
-import NewLoopIssueForm from './new-loop-issue-form';
+import SimpleLoopIssueForm from './simple-loop-issue-form';
 
 // Resolve the workspace root server-side so the default `targetRepo` is portable
 // across machines (the web app runs from `apps/web`, so the repo root is `../..`).
@@ -25,7 +25,7 @@ export default async function NewLoopIssuePage() {
           </Link>
         </div>
 
-        <NewLoopIssueForm defaultTargetRepo={defaultTargetRepo} />
+        <SimpleLoopIssueForm defaultTargetRepo={defaultTargetRepo} />
       </div>
     </main>
   );

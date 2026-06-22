@@ -12,6 +12,7 @@ import { LOOPS_CLAUDE_ADAPTER } from './adapters/loops-claude-adapter.interface'
 import { LOOPS_GIT_ADAPTER } from './adapters/loops-git-adapter.interface';
 import { LoopsPrProviderClient } from './adapters/loops-pr-provider.client';
 import { AgentRuntimeDetectionService } from './agent-runtime-detection.service';
+import { LoopsDockerClient } from './loops-docker.client';
 import { LoopsController } from './loops.controller';
 import { LoopsCapabilityRegistry } from './loops-capability-registry';
 import { LoopsFileStoreService } from './loops-file-store.service';
@@ -40,6 +41,9 @@ import { LoopsWorkLockService } from './loops-work-lock.service';
     // detection (local CLI + Docker). Consumed by LoopsService via optional DI.
     LoopsWorkspaceProfileService,
     AgentRuntimeDetectionService,
+    // Single Docker control point (local `docker` CLI via runProcess today;
+    // swap target if a future @dofe/infra-docker ships from infra.dofe.ai).
+    LoopsDockerClient,
     LoopsPersistenceService,
     // Alias the concrete persistence service to the injection token used by
     // `LoopsService`, so the DB-backed implementation is only pulled into the

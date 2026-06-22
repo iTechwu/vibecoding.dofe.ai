@@ -405,6 +405,28 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
     },
   }),
   useResumeLoops: () => ({ isPending: false, mutate }),
+  useLoopsWorkspaces: () => ({
+    data: {
+      body: {
+        data: {
+          current: 'default',
+          workspaces: [
+            {
+              workspaceId: 'default',
+              root: '/repo/app',
+              status: 'VALIDATED',
+              isDefault: true,
+              selected: { codex: 'local-cli', 'claude-code': 'local-cli' },
+            },
+          ],
+        },
+      },
+    },
+  }),
+  useUpsertLoopsWorkspace: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useDetectLoopsRuntime: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  usePullLoopsImage: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useRetryLoopsAgentRuntime: () => vi.fn(),
 }));
 
 function IntlWrapper({ children }: { children: React.ReactNode }) {
