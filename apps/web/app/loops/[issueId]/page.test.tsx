@@ -213,15 +213,10 @@ vi.mock('./use-loop-operations', () => ({
     },
     approveSpec: vi.fn(),
     advanceLoop: vi.fn(),
-    decompose: vi.fn(),
-    finalizeLoop: vi.fn(),
-    generateSpec: vi.fn(),
-    globalReview: vi.fn(),
     pauseLoop: vi.fn(),
     reloop: vi.fn(),
     requestRevision: vi.fn(),
     resumeLoop: vi.fn(),
-    runLoop: vi.fn(),
   }),
 }));
 
@@ -256,10 +251,10 @@ describe('LoopIssueDetailPage', () => {
     expect(screen.getByText('Resume Checkpoints')).toBeInTheDocument();
     expect(screen.getByText('1 checkpoints')).toBeInTheDocument();
     expect(screen.getAllByText('Render timeline evidence').length).toBeGreaterThan(0);
-    expect(screen.getByText(/Resume or take over/)).toBeInTheDocument();
+    expect(screen.getByText(/Auto-resume/)).toBeInTheDocument();
     expect(
       screen.getByText(
-        'Resume or take over · Review recorded · Passed · last event 2026-06-20T00:10:00.000Z',
+        'Auto-resume · Review recorded · Passed · last event 2026-06-20T00:10:00.000Z',
       ),
     ).toBeInTheDocument();
     expect(screen.getByText('Checkpoint Diff')).toBeInTheDocument();
@@ -269,7 +264,7 @@ describe('LoopIssueDetailPage', () => {
     expect(screen.getAllByText('Review').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Test').length).toBeGreaterThan(0);
     expect(screen.getByText('Ready for audit')).toBeInTheDocument();
-    expect(screen.getByText('Run shard or regression tests')).toBeInTheDocument();
+    expect(screen.getByText('View test evidence')).toBeInTheDocument();
     expect(
       screen.getByText('2 reviewer annotations captured for requirement coverage.'),
     ).toBeInTheDocument();
@@ -332,6 +327,102 @@ describe('LoopIssueDetailPage', () => {
       expect(screen.queryByRole('button', { name: 'Run Step' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Global Review' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Finalize' })).not.toBeInTheDocument();
+    } finally {
+      detail.spec = originalSpec;
+    }
+  });
+
+  it('keeps resume as a secondary safety control when the loop is paused', () => {
+    renderWithIntl(<LoopIssueDetailPage />);
+
+    const continueButton = screen.getByRole('button', { name: 'Continue Loop' });
+    const resumeButton = screen.getByRole('button', { name: 'Resume' });
+
+    expect(continueButton).toHaveClass('bg-foreground');
+    expect(resumeButton).not.toHaveClass('bg-foreground');
+  });
+
+  it('explains that Continue Loop generates the draft when no spec exists yet', () => {
+    const originalSpec = detail.spec;
+    detail.spec = undefined;
+    try {
+      renderWithIntl(<LoopIssueDetailPage />);
+      expect(
+        screen.getByText('No spec yet. Use Continue Loop to generate the draft for review.'),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Continue Loop' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Generate Spec' })).not.toBeInTheDocument();
+    } finally {
+      detail.spec = originalSpec;
+    }
+  });
+
+  it('shows approve + request-revision controls for a DRAFT spec', () => {
+    const originalSpec = detail.spec;
+    detail.spec = {
+      id: 'spec-1',
+      issueId: 'issue-1',
+      version: 'v1',
+      status: 'DRAFT',
+      created: '2026-06-20T00:00:00.000Z',
+      contextBudget: 24000,
+      body: 'Draft spec body',
+    };
+    try {
+      renderWithIntl(<LoopIssueDetailPage />);
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Request Revision' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Regenerate Spec' })).not.toBeInTheDocument();
+    } finally {
+      detail.spec = originalSpec;
+    }
+  });
+
+  it('explains that Continue Loop regenerates a REVISION_REQUESTED spec', () => {
+    const originalSpec = detail.spec;
+    detail.spec = {
+      id: 'spec-1',
+      issueId: 'issue-1',
+      version: 'v1',
+      status: 'REVISION_REQUESTED',
+      created: '2026-06-20T00:00:00.000Z',
+      contextBudget: 24000,
+      body: 'Spec awaiting revision',
+    };
+    try {
+      renderWithIntl(<LoopIssueDetailPage />);
+      expect(
+        screen.getByText(
+          'Revision requested. Use Continue Loop to produce the next draft for review.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Continue Loop' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Regenerate Spec' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
+    } finally {
+      detail.spec = originalSpec;
+    }
+  });
+
+  it('renders an APPROVED spec as read-only with no action buttons', () => {
+    const originalSpec = detail.spec;
+    detail.spec = {
+      id: 'spec-1',
+      issueId: 'issue-1',
+      version: 'v1',
+      status: 'APPROVED',
+      created: '2026-06-20T00:00:00.000Z',
+      contextBudget: 24000,
+      body: 'Approved spec body',
+      approvedBy: 'tester',
+    };
+    try {
+      renderWithIntl(<LoopIssueDetailPage />);
+      expect(
+        screen.getByText(/Spec approved\. The engine is continuing automatically/),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Request Revision' })).not.toBeInTheDocument();
     } finally {
       detail.spec = originalSpec;
     }

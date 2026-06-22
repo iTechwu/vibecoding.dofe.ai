@@ -96,6 +96,8 @@ describe('SimpleLoopIssueForm (0622 · B5 simple-mode intake)', () => {
     const request = screen.getByPlaceholderText(/Add a Docker fallback/i);
     const submit = screen.getByRole('button', { name: 'Create Issue' });
 
+    expect(screen.getByText('Add 10 more characters to create an issue.')).toBeInTheDocument();
+
     await user.type(request, 'short');
     expect(submit).toBeDisabled();
     expect(
@@ -103,9 +105,15 @@ describe('SimpleLoopIssueForm (0622 · B5 simple-mode intake)', () => {
         'At least 10 characters. Keep it to one sentence; expand details in the issue after creation.',
       ),
     ).toBeInTheDocument();
+    expect(screen.getByText('Add 5 more characters to create an issue.')).toBeInTheDocument();
 
     await user.type(request, ' a slightly longer one');
     expect(submit).toBeEnabled();
+    expect(
+      screen.getByText(
+        'Ready to create. The generated issue can be reviewed before the loop continues.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('blocks submit and surfaces guidance when no workspace is available', () => {
@@ -118,6 +126,9 @@ describe('SimpleLoopIssueForm (0622 · B5 simple-mode intake)', () => {
     expect(screen.getByText('No workspace available')).toBeInTheDocument();
     expect(
       screen.getByText('Select or configure a workspace before submitting.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('A workspace is required before this issue can be created.'),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create Issue' })).toBeDisabled();
   });

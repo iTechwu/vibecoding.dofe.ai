@@ -126,7 +126,7 @@ export function useLoopIssue(issueId: string) {
       enabled: Boolean(issueId),
       // Poll for live progress while the loop is running; auto-stops at
       // terminal / paused states. Previously the detail view never polled, so
-      // a "Run Step" left the UI stale until the HTTP round-trip returned.
+      // a Continue Loop action left the UI stale until the HTTP round-trip returned.
       refetchInterval: liveLoopRefetchInterval,
     },
   );
@@ -206,7 +206,7 @@ export function useReviewLoopShard(issueId: string) {
   return tsRestClient.loops.reviewShard.useMutation({ onSuccess: invalidate });
 }
 
-/** Advance a loop one scheduler step. */
+/** Advance a loop through the compatibility scheduler endpoint. */
 export function useRunLoop(issueId: string) {
   const invalidate = useInvalidateIssue(issueId);
   return tsRestClient.loops.runLoop.useMutation({ onSuccess: invalidate });

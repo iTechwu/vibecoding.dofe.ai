@@ -2018,30 +2018,30 @@ export class LoopsService {
   private resolveNextAction(item: LoopListItem): Pick<LoopMetricsActionItem, 'action' | 'label'> {
     const { issue, state } = item;
     if (state?.paused) {
-      return { action: 'resume', label: 'Resume loop' };
+      return { action: 'run-step', label: 'Continue loop' };
     }
     if (!state || state.specVersion === 'v0') {
-      return { action: 'generate-spec', label: 'Generate spec' };
+      return { action: 'generate-spec', label: 'Continue loop' };
     }
     if (state.phase === 'PHASE_2_REVIEW') {
       return { action: 'review-spec', label: 'Review spec' };
     }
     if (state.phase === 'PHASE_3_DECOMPOSE') {
-      return { action: 'decompose', label: 'Decompose' };
+      return { action: 'decompose', label: 'Continue loop' };
     }
     if (state.phase === 'PHASE_6_CONVERGE') {
-      return { action: 'global-review', label: 'Global review' };
+      return { action: 'global-review', label: 'Continue loop' };
     }
     if (state.globalVerdict && state.globalVerdict !== 'PASS') {
       return { action: 'reloop', label: 'Start re-loop' };
     }
     if (state.globalVerdict === 'PASS' && !state.finalized) {
-      return { action: 'finalize', label: 'Finalize' };
+      return { action: 'finalize', label: 'Continue loop' };
     }
     if (issue.status === 'CLOSED' || state.phase === 'CLOSED' || state.finalized) {
       return { action: 'closed', label: 'Closed' };
     }
-    return { action: 'run-step', label: 'Run step' };
+    return { action: 'run-step', label: 'Continue loop' };
   }
 
   private formatPhase(phase: string) {

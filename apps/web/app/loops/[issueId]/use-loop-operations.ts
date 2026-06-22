@@ -3,15 +3,9 @@
 import type { FormEvent } from 'react';
 import {
   useAdvanceLoop,
-  useDecomposeLoop,
-  useFinalizeLoop,
-  useGenerateLoopSpec,
   useInterveneLoop,
   useReloopIssue,
-  useResumeLoops,
-  useReviewLoopGlobal,
   useReviewLoopSpec,
-  useRunLoop,
 } from '@/lib/api/contracts/hooks';
 
 interface OperationState {
@@ -52,43 +46,20 @@ function collectOperationState(states: OperationState[]) {
  * Successful mutations invalidate the issue detail + list (see the hook layer).
  */
 export function useFormState(issueId: string) {
-  const generateSpec = useGenerateLoopSpec(issueId);
   const advance = useAdvanceLoop(issueId);
   const reviewSpec = useReviewLoopSpec(issueId);
-  const decompose = useDecomposeLoop(issueId);
-  const runLoop = useRunLoop(issueId);
-  const reviewGlobal = useReviewLoopGlobal(issueId);
   const reloopMutation = useReloopIssue(issueId);
-  const finalize = useFinalizeLoop(issueId);
   const intervene = useInterveneLoop(issueId);
-  const resumeInterrupted = useResumeLoops();
-  const operations = collectOperationState([
-    generateSpec,
-    advance,
-    reviewSpec,
-    decompose,
-    runLoop,
-    reviewGlobal,
-    reloopMutation,
-    finalize,
-    intervene,
-    resumeInterrupted,
-  ]);
+  const operations = collectOperationState([advance, reviewSpec, reloopMutation, intervene]);
 
   return {
     operations,
     advanceLoop: () => advance.mutate({ params: { issueId }, body: {} }),
-    generateSpec: () => generateSpec.mutate({ params: { issueId }, body: {} }),
     approveSpec: () =>
       reviewSpec.mutate({
         params: { issueId },
         body: { action: 'approve', reviewer: 'human' },
       }),
-    decompose: () => decompose.mutate({ params: { issueId }, body: {} }),
-    runLoop: () => runLoop.mutate({ params: { issueId }, body: {} }),
-    resumeInterrupted: () => resumeInterrupted.mutate({ body: {} }),
-    globalReview: () => reviewGlobal.mutate({ params: { issueId }, body: {} }),
-    finalizeLoop: () => finalize.mutate({ params: { issueId }, body: {} }),
     pauseLoop: () =>
       intervene.mutate({
         params: { issueId },

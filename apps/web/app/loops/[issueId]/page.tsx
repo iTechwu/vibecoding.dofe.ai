@@ -889,32 +889,41 @@ export default function LoopIssueDetailPage() {
                   <pre className="mt-4 max-h-[520px] overflow-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-4 text-sm leading-6">
                     {detail.spec.body}
                   </pre>
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <button
-                      className="h-10 rounded-md bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50"
-                      disabled={detail.spec.status === 'APPROVED'}
-                      onClick={ops.approveSpec}
-                      type="button"
-                    >
-                      {t('specReview.approve')}
-                    </button>
-                    <form
-                      className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row"
-                      onSubmit={ops.requestRevision}
-                    >
-                      <input
-                        className="h-10 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm"
-                        name="notes"
-                        placeholder={t('specReview.revisionPlaceholder')}
-                      />
+                  {detail.spec.status === 'DRAFT' ? (
+                    <div className="mt-4 flex flex-wrap gap-3">
                       <button
-                        className="h-10 rounded-md border px-4 text-sm font-medium hover:bg-muted/40"
-                        type="submit"
+                        className="h-10 rounded-md bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50"
+                        onClick={ops.approveSpec}
+                        type="button"
                       >
-                        {t('specReview.requestRevision')}
+                        {t('specReview.approve')}
                       </button>
-                    </form>
-                  </div>
+                      <form
+                        className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row"
+                        onSubmit={ops.requestRevision}
+                      >
+                        <input
+                          className="h-10 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm"
+                          name="notes"
+                          placeholder={t('specReview.revisionPlaceholder')}
+                        />
+                        <button
+                          className="h-10 rounded-md border px-4 text-sm font-medium hover:bg-muted/40"
+                          type="submit"
+                        >
+                          {t('specReview.requestRevision')}
+                        </button>
+                      </form>
+                    </div>
+                  ) : detail.spec.status === 'REVISION_REQUESTED' ? (
+                    <p className="mt-4 text-sm text-muted-foreground">
+                      {t('specReview.revisionNote')}
+                    </p>
+                  ) : detail.spec.status === 'APPROVED' ? (
+                    <p className="mt-4 text-sm text-muted-foreground">
+                      {t('specReview.approvedNote')}
+                    </p>
+                  ) : null}
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">{t('specReview.empty')}</p>
@@ -1254,7 +1263,6 @@ export default function LoopIssueDetailPage() {
                     disabled={!detail.state.paused}
                     icon={RotateCcw}
                     onClick={ops.resumeLoop}
-                    primary={detail.state.paused}
                   >
                     {t('actions.resume')}
                   </ActionButton>

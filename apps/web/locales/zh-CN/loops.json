@@ -36,6 +36,28 @@
       "loading": "正在加载风险队列。",
       "empty": "未发现高优先级风险。"
     },
+    "loopBoard": {
+      "title": "Loop 看板",
+      "summary": "{count} 个 issue 按交付阶段、人工关卡、分支和证据分组",
+      "loading": "正在加载 Loop 看板。",
+      "empty": "此阶段暂无 Loop。",
+      "columns": {
+        "backlog": "待规划",
+        "specReview": "规格审阅",
+        "running": "执行中",
+        "blocked": "阻塞",
+        "delivered": "已交付"
+      }
+    },
+    "exceptionCenter": {
+      "title": "异常决策中心",
+      "summary": "{running} 个运行中 · {queued} 个排队中 · {failed} 个失败 · 容量 {capacity}",
+      "loading": "正在加载异常决策中心。",
+      "empty": "暂无需要决策的异常。",
+      "owner": "负责人",
+      "action": "动作",
+      "evidence": "证据"
+    },
     "agentRuntime": {
       "title": "Agent 运行态",
       "summary": "{running} 个运行中 · {attention} 个需关注 · {total} 个已注册",
@@ -83,15 +105,15 @@
     },
     "actionQueue": {
       "title": "动作队列",
-      "summary": "{count} 个下一步动作已按调度器排序",
-      "emptySummary": "当前没有等待调度的动作。",
+      "summary": "{count} 个 Loop 可继续推进或需要决策",
+      "emptySummary": "当前没有等待推进的 Loop。",
       "loading": "正在加载动作队列。",
       "empty": "没有待处理动作。",
       "noPhase": "无阶段"
     },
     "reviewInbox": {
       "title": "审阅收件箱",
-      "summary": "{count} 个人工审阅与接管项",
+      "summary": "{count} 个人工决策项",
       "emptySummary": "当前没有等待人工审阅的事项。",
       "loading": "正在加载审阅收件箱。",
       "empty": "没有审阅项。"
@@ -202,6 +224,9 @@
       "workspaceEmpty": "暂无可用 workspace",
       "workspaceCurrent": "{id}（当前）",
       "workspaceRequired": "提交前请先选择或配置 workspace。",
+      "submitRequestBlocked": "还需要输入 {count} 个字才能创建 issue。",
+      "submitWorkspaceBlocked": "需要先选择 workspace，才能创建此 issue。",
+      "submitReady": "已可创建。生成的 issue 会先进入可审阅状态，再继续推进 Loop。",
       "templateLabel": "模板",
       "templateAuto": "自动（按需求推断）",
       "previewTitle": "预览",
@@ -302,9 +327,9 @@
     "actions": {
       "advance": "继续推进 Loop",
       "generateSpec": "生成规格",
-      "runStep": "执行一步",
-      "globalReview": "全局审阅",
-      "finalize": "完成",
+      "runStep": "继续推进",
+      "globalReview": "最终审阅",
+      "finalize": "完成交付",
       "pause": "暂停",
       "resume": "恢复"
     },
@@ -349,11 +374,11 @@
         "body": "批准、请求修改或拒绝草稿规格。"
       },
       "decompose": {
-        "label": "拆解",
+        "label": "规划工作",
         "body": "将已批准规格拆成自包含的实现 shards。"
       },
       "globalReview": {
-        "label": "全局审阅",
+        "label": "最终审阅",
         "body": "在最终标注和交付前执行跨 shard 审阅。"
       },
       "reloop": {
@@ -361,30 +386,30 @@
         "body": "全局审阅发现剩余工作。创建下一版规格。"
       },
       "finalize": {
-        "label": "完成",
-        "body": "关闭 issue 并生成收敛记录。"
+        "label": "完成交付",
+        "body": "关闭 issue，并展示可审计的交付证据。"
       },
       "closed": {
         "label": "已关闭",
         "body": "交付已完成。请查看下方记录作为审计证据。"
       },
       "runStep": {
-        "label": "执行一步",
+        "label": "继续推进",
         "body": "推进下一个可运行 shard，完成实现、测试与审阅。"
       }
     },
     "runDiagnostics": {
-      "ready": "可以运行 {shard}。",
-      "paused": "Loop 当前已暂停。请先恢复，再执行调度步骤。",
+      "ready": "准备继续推进 {shard}。",
+      "paused": "Loop 当前已暂停。请先恢复，再继续推进。",
       "closed": "此 issue 已关闭。",
       "spec": "调度器运行前需要先批准规格。",
-      "shards": "当前还没有 shards。请先拆解已批准规格。",
-      "complete": "所有 shards 已完成。请进入全局审阅或完成流程。",
-      "recovering": "{shard} 已中断或处于进行中。执行一步会自动恢复它并继续调度。",
+      "shards": "已批准规格正在等待规划。继续推进会创建工作计划。",
+      "complete": "所有执行单元已完成。继续推进会执行最终审阅或完成交付。",
+      "recovering": "{shard} 已中断或处于进行中。继续推进会自动恢复它并继续调度。",
       "reviewSpec": "唯一必要的人工关卡是规格审阅。请在规格区域批准或要求修改。",
       "reloop": "全局审阅发现剩余工作。请使用 re-loop 面板创建下一版规格。",
       "dependencies": "下一个 TODO shard 正在等待依赖完成。",
-      "none": "当前状态下没有可运行的 shard。"
+      "none": "当前没有可自动推进的工作，通常是依赖尚未完成。"
     },
     "evidence": {
       "title": "证据覆盖",
@@ -419,7 +444,11 @@
       "approve": "批准",
       "revisionPlaceholder": "修订备注",
       "requestRevision": "请求修订",
-      "empty": "暂无规格。"
+      "empty": "暂无规格。使用继续推进生成待审阅草稿。",
+      "generate": "生成规格",
+      "regenerate": "重新生成规格",
+      "revisionNote": "已要求修改。使用继续推进产出下一版草稿供审阅。",
+      "approvedNote": "规格已批准。引擎正在自动推进——此处无需其他操作。"
     },
     "shards": {
       "title": "Shards",
@@ -456,7 +485,7 @@
         "attention": {
           "title": "需要自动恢复",
           "owner": "调度器",
-          "body": "执行一步会尽可能恢复中断工作，或重新进入 shard loop。"
+          "body": "继续推进会尽可能恢复中断工作，或重新进入 shard loop。"
         }
       }
     },
@@ -494,7 +523,7 @@
       "diff": "检查点差异",
       "to": "{before} 到 {after}",
       "issuePhase": "Issue 阶段",
-      "resumeOrTakeOver": "恢复或接管",
+      "resumeOrTakeOver": "自动恢复",
       "noAction": "无需动作",
       "meta": "第 {round} 轮 · {version}",
       "shardMeta": "{effort} 工作量 · {checks} 个验收检查",
@@ -553,13 +582,13 @@
       "hints": {
         "ready": "可用于审计",
         "spec": "生成或批准规格",
-        "shards": "拆解已批准规格",
-        "testMatrix": "拆解 shards 以创建矩阵",
-        "implementationRecord": "记录实现证据",
-        "testRecord": "运行 shard 或回归测试",
-        "reviewRecord": "记录 shard 审阅证据",
-        "globalReview": "运行全局审阅",
-        "convergencePr": "完成 loop",
+        "shards": "继续推进以创建工作计划",
+        "testMatrix": "继续推进以准备测试覆盖",
+        "implementationRecord": "查看实现证据",
+        "testRecord": "查看测试证据",
+        "reviewRecord": "查看审阅证据",
+        "globalReview": "继续推进以执行最终审阅",
+        "convergencePr": "继续推进以完成交付",
         "fallback": "补充缺失工件"
       }
     }

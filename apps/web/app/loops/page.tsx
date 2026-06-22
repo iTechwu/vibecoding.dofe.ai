@@ -13,6 +13,7 @@ import {
   Cpu,
   Inbox,
   GitBranch,
+  KanbanSquare,
   ListChecks,
   Play,
   Plus,
@@ -44,6 +45,8 @@ import {
   AGING_QUEUE_SLA_POLICY,
   aggregateLoops,
   buildAgingQueue,
+  buildExceptionCenter,
+  buildLoopBoard,
   buildReviewInbox,
   buildRiskQueue,
   formatPhase,
@@ -193,6 +196,19 @@ export default function LoopsPage() {
   )?.agentToolRegistry;
   const actionQueue = metrics?.actionQueue ?? [];
   const reviewInbox = buildReviewInbox(actionQueue, notifications?.notifications, locale);
+  const loopBoard = buildLoopBoard(fallbackSummary.items, cost);
+  const exceptionCenter = buildExceptionCenter(fallbackSummary.items, {
+    cost,
+    runtime: agentRuntime,
+    health: health
+      ? {
+          fileProblems: [],
+          dbProblems: [],
+          consistencyProblems: health.problems,
+          ...health,
+        }
+      : undefined,
+  });
   // Distinct error state: previously a failed list/doctor query rendered as
   // perpetual "loading". Surface it as an explicit banner instead.
   const dataLoadFailed = listQuery.isError || doctorQuery.isError;
@@ -395,6 +411,126 @@ export default function LoopsPage() {
               )}
             </div>
           </div>
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">{t('loopBoard.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('loopBoard.summary', { count: fallbackSummary.items.length })}
+              </p>
+            </div>
+            <KanbanSquare className="size-4 text-muted-foreground" />
+          </div>
+          {!data ? (
+            <EmptyLine>{t('loopBoard.loading')}</EmptyLine>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-5">
+              {loopBoard.map((column) => (
+                <div className="min-w-0 rounded-md border bg-muted/20 p-3" key={column.id}>
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="truncate text-xs font-semibold">
+                      {t(`loopBoard.columns.${column.id}`)}
+                    </h3>
+                    <span className="rounded-md border bg-background px-2 py-0.5 text-xs">
+                      {column.items.length}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-col gap-2">
+                    {column.items.length === 0 ? (
+                      <p className="py-3 text-xs text-muted-foreground">{t('loopBoard.empty')}</p>
+                    ) : (
+                      column.items.slice(0, 4).map((item) => (
+                        <Link
+                          className="rounded-md border bg-background p-3 text-xs transition hover:bg-muted/30"
+                          href={item.href}
+                          key={item.id}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="line-clamp-2 font-medium">{item.title}</span>
+                            <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5">
+                              {item.priority}
+                            </span>
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
+                            <span className="rounded-md bg-muted px-1.5 py-0.5">{item.mode}</span>
+                            <span className="rounded-md bg-muted px-1.5 py-0.5">
+                              {item.humanGate}
+                            </span>
+                          </div>
+                          <p className="mt-2 truncate text-muted-foreground">{item.evidence}</p>
+                          <p className="mt-1 truncate text-muted-foreground">{item.gitRef}</p>
+                          <p className="mt-1 truncate text-muted-foreground">{item.prState}</p>
+                          {item.blocker ? (
+                            <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100">
+                              {item.blocker}
+                            </p>
+                          ) : null}
+                        </Link>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">{t('exceptionCenter.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('exceptionCenter.summary', {
+                  running: exceptionCenter.capacity.running,
+                  queued: exceptionCenter.capacity.queued,
+                  failed: exceptionCenter.capacity.failed,
+                  capacity: exceptionCenter.capacity.capacity,
+                })}
+              </p>
+            </div>
+            <AlertTriangle className="size-4 text-muted-foreground" />
+          </div>
+          {!data ? (
+            <EmptyLine>{t('exceptionCenter.loading')}</EmptyLine>
+          ) : exceptionCenter.items.length === 0 ? (
+            <EmptyLine>{t('exceptionCenter.empty')}</EmptyLine>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+              {exceptionCenter.items.map((item) => (
+                <Link
+                  className={`rounded-md border p-3 text-sm transition hover:opacity-80 ${riskClass(item.level)}`}
+                  href={item.href}
+                  key={item.id}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{item.title}</p>
+                      <p className="mt-1 truncate text-xs opacity-80">{item.reason}</p>
+                    </div>
+                    <span className="shrink-0 rounded-md bg-background/70 px-2 py-1 text-xs">
+                      {item.source}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+                    <div className="min-w-0 rounded-md bg-background/60 px-2 py-1.5">
+                      <p className="opacity-70">{t('exceptionCenter.owner')}</p>
+                      <p className="truncate font-medium">{item.owner}</p>
+                    </div>
+                    <div className="min-w-0 rounded-md bg-background/60 px-2 py-1.5">
+                      <p className="opacity-70">{t('exceptionCenter.action')}</p>
+                      <p className="truncate font-medium">{item.action}</p>
+                    </div>
+                    <div className="min-w-0 rounded-md bg-background/60 px-2 py-1.5">
+                      <p className="opacity-70">{t('exceptionCenter.evidence')}</p>
+                      <p className="truncate font-medium">{item.evidence}</p>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="rounded-lg border p-4">

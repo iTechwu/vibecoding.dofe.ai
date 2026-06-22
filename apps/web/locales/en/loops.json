@@ -36,6 +36,28 @@
       "loading": "Loading risk queue.",
       "empty": "No priority risks detected."
     },
+    "loopBoard": {
+      "title": "Loop Board",
+      "summary": "{count} issues grouped by delivery stage, human gate, branch, and evidence",
+      "loading": "Loading loop board.",
+      "empty": "No loops in this stage.",
+      "columns": {
+        "backlog": "Backlog",
+        "specReview": "Spec Review",
+        "running": "Running",
+        "blocked": "Blocked",
+        "delivered": "Delivered"
+      }
+    },
+    "exceptionCenter": {
+      "title": "Exception Center",
+      "summary": "{running} running · {queued} queued · {failed} failed · capacity {capacity}",
+      "loading": "Loading exception center.",
+      "empty": "No exceptions need a decision.",
+      "owner": "Owner",
+      "action": "Action",
+      "evidence": "Evidence"
+    },
     "agentRuntime": {
       "title": "Agent Runtime",
       "summary": "{running} running · {attention} need attention · {total} registered",
@@ -83,15 +105,15 @@
     },
     "actionQueue": {
       "title": "Action Queue",
-      "summary": "{count} next actions sorted by the loop scheduler",
-      "emptySummary": "No scheduler actions are waiting.",
+      "summary": "{count} loops can be advanced or need a decision",
+      "emptySummary": "No loops are waiting to advance.",
       "loading": "Loading action queue.",
       "empty": "No pending actions.",
       "noPhase": "No phase"
     },
     "reviewInbox": {
       "title": "Review Inbox",
-      "summary": "{count} human review and takeover items",
+      "summary": "{count} human decision items",
       "emptySummary": "No human review items are waiting.",
       "loading": "Loading review inbox.",
       "empty": "No review items."
@@ -202,6 +224,9 @@
       "workspaceEmpty": "No workspace available",
       "workspaceCurrent": "{id} (active)",
       "workspaceRequired": "Select or configure a workspace before submitting.",
+      "submitRequestBlocked": "Add {count} more characters to create an issue.",
+      "submitWorkspaceBlocked": "A workspace is required before this issue can be created.",
+      "submitReady": "Ready to create. The generated issue can be reviewed before the loop continues.",
       "templateLabel": "Template",
       "templateAuto": "Auto (infer from request)",
       "previewTitle": "Preview",
@@ -302,9 +327,9 @@
     "actions": {
       "advance": "Continue Loop",
       "generateSpec": "Generate Spec",
-      "runStep": "Run Step",
-      "globalReview": "Global Review",
-      "finalize": "Finalize",
+      "runStep": "Continue Loop",
+      "globalReview": "Final Review",
+      "finalize": "Finish Delivery",
       "pause": "Pause",
       "resume": "Resume"
     },
@@ -349,11 +374,11 @@
         "body": "Approve, request changes, or reject the draft spec."
       },
       "decompose": {
-        "label": "Decompose",
+        "label": "Plan the work",
         "body": "Split the approved spec into self-contained implementation shards."
       },
       "globalReview": {
-        "label": "Global review",
+        "label": "Final review",
         "body": "Run the cross-shard review before final annotation and delivery."
       },
       "reloop": {
@@ -361,30 +386,30 @@
         "body": "Global review found remaining work. Create the next spec revision."
       },
       "finalize": {
-        "label": "Finalize",
-        "body": "Close the issue and emit the convergence record."
+        "label": "Finish delivery",
+        "body": "Close the issue and make the delivery evidence available for audit."
       },
       "closed": {
         "label": "Closed",
         "body": "Delivery is finalized. Review the records below for audit evidence."
       },
       "runStep": {
-        "label": "Run step",
+        "label": "Continue loop",
         "body": "Advance the next runnable shard through implementation, tests, and review."
       }
     },
     "runDiagnostics": {
-      "ready": "Ready to run {shard}.",
-      "paused": "The loop is paused. Resume it before running another scheduler step.",
+      "ready": "Ready to continue with {shard}.",
+      "paused": "The loop is paused. Resume it before continuing.",
       "closed": "This issue is already closed.",
       "spec": "An approved spec is required before the scheduler can run.",
-      "shards": "No shards exist yet. Decompose the approved spec first.",
-      "complete": "All shards are complete. Move to global review or finalization.",
-      "recovering": "{shard} is interrupted or already in progress. Run Step will recover it and continue automatically.",
+      "shards": "The approved spec is ready to be planned. Continue Loop will create the work plan.",
+      "complete": "All work units are complete. Continue Loop will run the final review or finish delivery.",
+      "recovering": "{shard} is interrupted or already in progress. Continue Loop will recover it and continue automatically.",
       "reviewSpec": "The only required human gate is the spec review. Approve it or request changes in the spec section.",
       "reloop": "Global review found remaining work. Use the re-loop panel to create the next spec revision.",
       "dependencies": "The next TODO shard is waiting for its dependency to finish.",
-      "none": "No runnable shard is available in the current state."
+      "none": "There is no work the engine can advance right now — a dependency is likely still in progress."
     },
     "evidence": {
       "title": "Evidence Coverage",
@@ -419,7 +444,11 @@
       "approve": "Approve",
       "revisionPlaceholder": "Revision note",
       "requestRevision": "Request Revision",
-      "empty": "No spec yet."
+      "empty": "No spec yet. Use Continue Loop to generate the draft for review.",
+      "generate": "Generate Spec",
+      "regenerate": "Regenerate Spec",
+      "revisionNote": "Revision requested. Use Continue Loop to produce the next draft for review.",
+      "approvedNote": "Spec approved. The engine is continuing automatically — no further action is needed here."
     },
     "shards": {
       "title": "Shards",
@@ -456,7 +485,7 @@
         "attention": {
           "title": "Needs automated recovery",
           "owner": "Scheduler",
-          "body": "Run Step will recover interrupted work or re-enter the shard loop where possible."
+          "body": "Continue Loop will recover interrupted work or re-enter the shard loop where possible."
         }
       }
     },
@@ -494,7 +523,7 @@
       "diff": "Checkpoint Diff",
       "to": "{before} to {after}",
       "issuePhase": "Issue phase",
-      "resumeOrTakeOver": "Resume or take over",
+      "resumeOrTakeOver": "Auto-resume",
       "noAction": "No action",
       "meta": "round {round} · {version}",
       "shardMeta": "{effort} effort · {checks} acceptance checks",
@@ -553,13 +582,13 @@
       "hints": {
         "ready": "Ready for audit",
         "spec": "Generate or approve the spec",
-        "shards": "Decompose the approved spec",
-        "testMatrix": "Decompose shards to create the matrix",
-        "implementationRecord": "Record implementation evidence",
-        "testRecord": "Run shard or regression tests",
-        "reviewRecord": "Record shard review evidence",
-        "globalReview": "Run global review",
-        "convergencePr": "Finalize the loop",
+        "shards": "Continue Loop to create the work plan",
+        "testMatrix": "Continue Loop to prepare test coverage",
+        "implementationRecord": "View implementation evidence",
+        "testRecord": "View test evidence",
+        "reviewRecord": "View review evidence",
+        "globalReview": "Continue Loop to run the final review",
+        "convergencePr": "Continue Loop to finish delivery",
         "fallback": "Capture the missing artifact"
       }
     }

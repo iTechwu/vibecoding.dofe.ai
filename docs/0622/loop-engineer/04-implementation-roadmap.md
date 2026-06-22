@@ -253,12 +253,15 @@
 每次继续重构 Loop Engineering，都应至少跑：
 
 ```bash
-pnpm --filter @repo/web exec eslint 'app/loops/[issueId]/page.tsx' 'app/loops/[issueId]/use-loop-operations.ts' 'app/loops/[issueId]/page.test.tsx'
-pnpm --filter @repo/web exec vitest run 'app/loops/[issueId]/page.test.tsx'
+pnpm --filter @repo/web exec eslint 'app/loops/[issueId]/page.tsx' 'app/loops/[issueId]/use-loop-operations.ts' 'app/loops/[issueId]/page.test.tsx' app/loops/loops-dashboard-model.test.ts
+pnpm --filter @repo/web exec vitest run 'app/loops/[issueId]/page.test.tsx' app/loops/loops-dashboard-model.test.ts
 pnpm --filter @repo/web exec tsc --noEmit
 pnpm --filter @repo/api exec jest src/modules/loops/loops.service.spec.ts --runInBand
+pnpm --filter @repo/api exec eslint src/modules/loops/loops.service.ts src/modules/loops/loops.service.spec.ts
 pnpm --filter @repo/api exec tsc -p tsconfig.type-check.json --noEmit
 ```
+
+本轮（2026-06-22）已在该门禁内补齐 `advance` 决策表的回归覆盖：CLOSED 幂等、REVISION_REQUESTED 重生成、paused 自动恢复、非 APPROVED 拒绝、PHASE_6_CONVERGE 全局审阅+finalize、非 PASS 停留，以及 `LOOP_ADVANCE_LIMIT` 最大步数保护；同时补齐 dashboard action queue 用户语义标签测试。前端补齐 Spec 四态渲染、暂停态 secondary safety control 与 dashboard model 标签回归测试。`turbo.json` 已声明 Loops 测试使用的 `LOOPS_WORKSPACE_ROOT` / `LOOPS_ALLOWED_REPO_ROOTS` 环境变量，API eslint 不再产生 Turbo 依赖告警。当前聚焦回归结果：`loops.service.spec.ts` 20 tests，`page.test.tsx` + `loops-dashboard-model.test.ts` 共 14 tests。
 
 新增后台 worker 后，还需要增加：
 
@@ -293,3 +296,13 @@ pnpm --filter @repo/api exec tsc -p tsconfig.type-check.json --noEmit
 | P1 Round-aware evidence view | 后续 Epic，不阻断当前闭环                                        |
 | P1 Spec diff review          | 后续 Epic，不阻断当前闭环                                        |
 | P2 Natural-language control  | 后续 Epic，不阻断当前闭环                                        |
+
+本轮（2026-06-22）额外关闭的阻断项：
+
+- **P0 文案原则对齐**：已实施。「接管 / 记录实现 / 运行测试 / 记录审阅 / Run Step / No runnable shard」等默认体验措辞，全部改为「自动恢复 / 查看实现证据 / 查看测试证据 / 查看审阅证据 / 继续推进 / 解释为何暂停」等用户语义；Next-Action 与 dashboard action queue 标题不再暴露 decompose/globalReview/runStep/finalize 等内部 phase 词汇。
+- **P0 页面主操作收敛**：已实施。暂停状态下 `Resume` 仍保持 secondary safety control，不升级为 primary action；页面始终只有 `Continue Loop` 一个主推进按钮，并有前端渲染测试覆盖。
+- **P0 Spec 审阅四态**：已实施。无 Spec→说明使用 Continue Loop 生成、Draft→批准/请求修改、Revision requested→说明使用 Continue Loop 重新生成、Approved→只读提示自动推进，全部按 02-user-journey.md 落地，并有前端渲染测试。
+- **P0 Detail 页操作层收敛**：已实施。`use-loop-operations.ts` 不再为默认页面绑定 `generateSpec` / `decompose` / `runLoop` / `reviewGlobal` / `finalize` 细粒度 mutations；普通用户推进路径只保留 `advanceLoop`，细粒度 hooks 继续作为兼容/管理员入口保留在 hook 层。
+- **P0 advance 决策表回归**：已实施。覆盖 CLOSED 幂等、REVISION_REQUESTED 重生成、paused 自动恢复、非 APPROVED 拒绝、PHASE_6_CONVERGE 全局审阅+finalize、非 PASS 停留、`LOOP_ADVANCE_LIMIT` 最大步数保护，以及 dashboard action queue 用户语义标签。
+- **已知保留偏差（不阻断闭环）**：前端保留 `getRunnableShard` / `getRecoverableShard` 等纯展示用调度谓词（仅用于提示文案与 Resume Checkpoint 高亮，不驱动推进）。彻底消除需在 `LoopDetail` 上由后端 `resolveNextAction` 暴露 `nextAction` / `activeShardId`，属 contract 变更，归入「自然语言控制」Epic。
+- **已知保留偏差（不阻断闭环）**：细粒度兼容端点的 contract summary、hook 名称/注释和后端内部异常仍保留 implementation evidence / scheduler endpoint / No runnable shard 等内部工程语义；这些入口面向 CLI、管理员、兼容调用方或错误诊断，不属于普通用户默认路径。

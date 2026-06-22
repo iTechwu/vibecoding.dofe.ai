@@ -63,6 +63,8 @@ flowchart LR
 | Revision requested | 主按钮可重新生成 Draft Spec           |
 | Approved           | 展示已批准状态，不再要求用户操作      |
 
+> 落地状态（2026-06-22）：四态已全部实现于 `apps/web/app/loops/[issueId]/page.tsx` 的 Spec Review 区。无 Spec 与 Revision requested 仅解释「使用 Continue Loop 生成/重新生成草稿」，推进统一由右侧主按钮调用 `advance`；Draft 渲染批准+请求修改；Approved 转只读并提示引擎自动推进。前端 Spec 四态有渲染测试覆盖（`page.test.tsx`）。
+
 ### Shards
 
 目的：展示引擎进度和证据，不提供手动填写。
@@ -211,3 +213,15 @@ flowchart LR
 | Record implementation | 查看实现证据                                 |
 | Run shard tests       | 查看测试证据                                 |
 | Review shard          | 查看审阅证据                                 |
+
+> 落地状态（2026-06-22）：文案原则已在前端 i18n（`apps/web/locales/{en,zh-CN}/loops.json`）与 Detail 页落地：
+>
+> - 主推进按钮为「Continue Loop / 继续推进」，无独立 Run Step 按钮；
+> - `Pause` / `Resume` 保持 secondary safety controls；即使 loop 已暂停，`Resume` 也不会升级为 primary action，页面仍只有一个主推进按钮；
+> - `runDiagnostics.none` 改为「当前没有可自动推进的工作，通常是依赖尚未完成」；
+> - `resumeCheckpoints.resumeOrTakeOver` 由「Resume or take over / 恢复或接管」改为「Auto-resume / 自动恢复」；
+> - 证据工件提示 `artifacts.hints.{implementationRecord,testRecord,reviewRecord}` 由「记录/运行」改为「查看实现/测试/审阅证据」；
+> - `runDiagnostics.recovering`、`runDiagnostics.ready`、`runDiagnostics.{shards,complete}` 与 `shards.automation.attention.body` 中的「Run Step / 执行一步 / Decompose / Finalize」改为「Continue Loop / 继续推进 / 完成交付」；
+> - Next-Action 与 dashboard action queue 标题的内部 phase 词汇（decompose/globalReview/runStep/finalize）已改为用户语义（规划工作/最终审阅/继续推进/完成交付），并由 API service 与前端 dashboard model 测试覆盖；
+> - Detail 页操作 hook（`use-loop-operations.ts`）不再绑定 `generateSpec` / `decompose` / `runLoop` / `reviewGlobal` / `finalize` 等细粒度 mutations；默认推进只保留 `advanceLoop`，Spec 审阅只保留 approve/request-revision；
+> - 保留的细粒度 contract summary、hook 名称/注释和后端内部异常仍可使用 implementation evidence / scheduler endpoint / No runnable shard 等工程语义，因为这些入口服务 CLI、管理员、兼容调用方或错误诊断，不属于普通用户默认路径。

@@ -42,6 +42,8 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
               state: {
                 phase: 'PHASE_4_IMPLEMENT',
                 round: 2,
+                shardsDone: 1,
+                shardsTotal: 3,
                 paused: false,
                 globalVerdict: undefined,
                 updated: '2026-06-20T00:00:00.000Z',
@@ -59,6 +61,8 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
               state: {
                 phase: 'PHASE_2_REVIEW',
                 round: 1,
+                shardsDone: 0,
+                shardsTotal: 0,
                 paused: true,
                 globalVerdict: 'NEEDS-WORK',
                 updated: '2026-06-20T00:00:00.000Z',
@@ -336,8 +340,8 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
             {
               issueId: 'issue-2',
               title: 'Update docs',
-              action: 'resume',
-              label: 'Resume loop',
+              action: 'run-step',
+              label: 'Continue loop',
               priority: 'P2',
               phase: 'PHASE_2_REVIEW',
               href: '/loops/issue-2',
@@ -467,9 +471,28 @@ describe('LoopsPage', () => {
     expect(screen.getByText('Spec Review Agent')).toBeInTheDocument();
     expect(screen.getByText('Runtime Diagnostics')).toBeInTheDocument();
     expect(screen.getAllByText('Spec draft is waiting for human review').length).toBeGreaterThan(0);
+    expect(screen.getByText('Loop Board')).toBeInTheDocument();
+    expect(
+      screen.getByText('2 issues grouped by delivery stage, human gate, branch, and evidence'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Backlog')).toBeInTheDocument();
+    expect(screen.getByText('Spec Review')).toBeInTheDocument();
+    expect(screen.getAllByText('Running').length).toBeGreaterThan(0);
+    expect(screen.getByText('Blocked')).toBeInTheDocument();
+    expect(screen.getByText('Delivered')).toBeInTheDocument();
+    expect(screen.getAllByText('Code').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('None').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('loops/issue-1').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Pending PR').length).toBeGreaterThan(0);
+    expect(screen.getByText('1/3 shards')).toBeInTheDocument();
+    expect(screen.getByText('Exception Center')).toBeInTheDocument();
+    expect(screen.getByText('1 running · 0 queued · 1 failed · capacity 4')).toBeInTheDocument();
+    expect(screen.getByText('Adjust budget or reduce scope')).toBeInTheDocument();
+    expect(screen.getByText('Product owner')).toBeInTheDocument();
+    expect(screen.getByText('0 calls · 0 tokens remaining')).toBeInTheDocument();
     expect(screen.getByText('Action Queue')).toBeInTheDocument();
     expect(screen.getByText('Review Inbox')).toBeInTheDocument();
-    expect(screen.getByText('2 human review and takeover items')).toBeInTheDocument();
+    expect(screen.getByText('1 human decision items')).toBeInTheDocument();
     expect(screen.getByText('Trace Summary')).toBeInTheDocument();
     expect(screen.getByText('Resume Summary')).toBeInTheDocument();
     expect(screen.getByText('Capability Registry')).toBeInTheDocument();
@@ -486,7 +509,7 @@ describe('LoopsPage', () => {
     expect(screen.getAllByText(/73h stale/).length).toBeGreaterThan(0);
     expect(screen.getAllByText('Fix checkout flow').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Cost guard tripped').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Resume loop').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Continue loop').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Review needed').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Needs human input').length).toBeGreaterThan(0);
   });
@@ -506,14 +529,20 @@ describe('LoopsPage', () => {
     const consoleError = vi.fn();
     console.error = consoleError;
 
+    let root: ReturnType<typeof hydrateRoot> | undefined;
     try {
       vi.setSystemTime(new Date('2026-06-23T01:00:00.000Z'));
-      hydrateRoot(
-        container,
-        <IntlWrapper>
-          <LoopsPage />
-        </IntlWrapper>,
-      );
+      await act(async () => {
+        root = hydrateRoot(
+          container,
+          <IntlWrapper>
+            <LoopsPage />
+          </IntlWrapper>,
+        );
+        await Promise.resolve();
+        vi.runOnlyPendingTimers();
+        await Promise.resolve();
+      });
       await vi.waitFor(() => {
         expect(consoleError).not.toHaveBeenCalledWith(
           expect.stringContaining(
@@ -523,6 +552,12 @@ describe('LoopsPage', () => {
         );
       });
     } finally {
+      if (root) {
+        act(() => {
+          root?.unmount();
+        });
+      }
+      container.remove();
       console.error = originalError;
     }
   });

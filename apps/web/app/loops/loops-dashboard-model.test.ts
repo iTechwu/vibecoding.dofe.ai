@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { LoopCostResponse, LoopListResponse } from '@repo/contracts';
+import type { LoopAgentRuntimeResponse, LoopCostResponse, LoopListResponse } from '@repo/contracts';
 import {
   AGING_QUEUE_SLA_POLICY,
   aggregateLoops,
   buildAgingQueue,
+  buildExceptionCenter,
+  buildLoopBoard,
   buildReviewInbox,
   buildRiskQueue,
   formatPhase,
@@ -109,6 +111,29 @@ const cost: LoopCostResponse = {
   ],
 };
 
+const runtime: LoopAgentRuntimeResponse = {
+  summary: {
+    running: 1,
+    attention: 1,
+    idle: 2,
+    total: 4,
+  },
+  agents: [],
+  diagnostics: [
+    {
+      id: 'runtime-issue-2',
+      agentId: 'spec-review-agent',
+      issueId: 'issue-2',
+      title: 'Docs reloop',
+      href: '/loops/issue-2',
+      level: 'warning',
+      reason: 'Spec draft is waiting for human review',
+      meta: 'Review · round 3',
+      updated: '2026-06-20T00:00:00.000Z',
+    },
+  ],
+};
+
 describe('loops-dashboard-model', () => {
   it('aggregates control-plane health metrics', () => {
     const summary = aggregateLoops(list, cost);
@@ -174,10 +199,28 @@ describe('loops-dashboard-model', () => {
           issueId: 'issue-2',
           title: 'Docs reloop',
           action: 'run-step',
-          label: 'Run step',
+          label: 'Continue loop',
           priority: 'P2',
           phase: 'PHASE_4_IMPLEMENT',
           href: '/loops/issue-2',
+        },
+        {
+          issueId: 'issue-3',
+          title: 'Finalize delivery',
+          action: 'finalize',
+          label: 'Continue loop',
+          priority: 'P1',
+          phase: 'PHASE_6_CONVERGE',
+          href: '/loops/issue-3',
+        },
+        {
+          issueId: 'issue-4',
+          title: 'Paused implementation',
+          action: 'resume',
+          label: 'Continue loop',
+          priority: 'P1',
+          phase: 'PAUSED',
+          href: '/loops/issue-4',
         },
       ],
       [
@@ -200,6 +243,75 @@ describe('loops-dashboard-model', () => {
       ['Cost guard needs review', 'notification', 'critical'],
       ['Critical checkout fix', 'action', 'warning'],
     ]);
+    expect(inbox.map((item) => item.title)).not.toContain('Finalize delivery');
+    expect(inbox.map((item) => item.title)).not.toContain('Paused implementation');
+  });
+
+  it('builds a loop board with user-facing stages, modes, and delivery signals', () => {
+    const board = buildLoopBoard(list.list, cost);
+
+    expect(board.map((column) => [column.id, column.items.map((item) => item.title)])).toEqual([
+      ['backlog', []],
+      ['specReview', []],
+      ['running', ['Critical checkout fix']],
+      ['blocked', ['Docs reloop']],
+      ['delivered', []],
+    ]);
+
+    const running = board.find((column) => column.id === 'running')?.items[0];
+    expect(running).toMatchObject({
+      mode: 'Code',
+      humanGate: 'None',
+      evidence: '1/3 shards',
+      gitRef: 'loops/issue-1',
+      prState: 'Pending PR',
+    });
+
+    const blocked = board.find((column) => column.id === 'blocked')?.items[0];
+    expect(blocked).toMatchObject({
+      mode: 'Recovery',
+      humanGate: 'Exception',
+      blocker: 'Cost guard',
+      evidence: '2/2 shards',
+    });
+  });
+
+  it('builds an exception center with owners, actions, evidence, and capacity', () => {
+    const center = buildExceptionCenter(list.list, {
+      cost,
+      runtime,
+      health: {
+        ok: false,
+        root: '/repo/.loops',
+        loops: 2,
+        issues: 2,
+        fileProblems: [],
+        dbProblems: [],
+        consistencyProblems: ['issue index is stale'],
+        problems: ['issue index is stale'],
+      },
+    });
+
+    expect(center.capacity).toEqual({
+      running: 1,
+      queued: 0,
+      attention: 1,
+      failed: 1,
+      capacity: 4,
+    });
+    expect(center.items.map((item) => [item.reason, item.level, item.owner, item.action])).toEqual([
+      ['Cost guard tripped', 'critical', 'Product owner', 'Adjust budget or reduce scope'],
+      ['Paused', 'critical', 'Loop operator', 'Resume or assign recovery'],
+      ['Global FAIL', 'warning', 'Reviewer', 'Review failure evidence'],
+      ['Spec draft is waiting for human review', 'warning', 'spec-review-agent', 'Open diagnostic'],
+      ['issue index is stale', 'warning', 'Runtime owner', 'Run doctor or re-index'],
+    ]);
+    expect(center.items[0]).toMatchObject({
+      title: 'Docs reloop',
+      href: '/loops/issue-2',
+      evidence: '0 calls · 0 tokens remaining',
+      source: 'cost',
+    });
   });
 
   it('formats known and unknown phases for display', () => {

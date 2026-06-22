@@ -211,9 +211,48 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
       expect.objectContaining({
         issueId: created.issue.id,
         action: 'generate-spec',
-        label: 'Generate spec',
+        label: 'Continue loop',
       }),
     ]);
+  });
+
+  it('uses user-facing action labels in the dashboard action queue', async () => {
+    const cases = [
+      { title: 'Needs planning', phase: 'PHASE_3_DECOMPOSE', label: 'Continue loop' },
+      { title: 'Needs final review', phase: 'PHASE_6_CONVERGE', label: 'Continue loop' },
+      { title: 'Needs delivery finish', phase: 'PHASE_4_IMPLEMENT', label: 'Continue loop' },
+      { title: 'Needs continuation', phase: 'PHASE_4_IMPLEMENT', label: 'Continue loop' },
+    ];
+
+    for (const item of cases) {
+      const created = await service.createIssue({
+        title: item.title,
+        targetRepo: workspace,
+        body: `${item.title} should expose a product-level next action.`,
+        priority: 'P2',
+        acceptanceCriteria: ['- action queue label is user-facing'],
+      });
+      await store.upsertState({
+        ...created.state,
+        phase: item.phase,
+        specVersion: 'v1',
+        globalVerdict: item.title === 'Needs delivery finish' ? 'PASS' : undefined,
+        finalized: false,
+        updated: new Date().toISOString(),
+      });
+    }
+
+    const metrics = await service.metrics();
+    expect(metrics.actionQueue).toEqual(
+      expect.arrayContaining(
+        cases.map((item) =>
+          expect.objectContaining({
+            title: item.title,
+            label: item.label,
+          }),
+        ),
+      ),
+    );
   });
 
   it('returns agent runtime status and diagnostics as a first-class backend contract', async () => {
@@ -543,5 +582,182 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
       expect(detail.state.finalized).toBe(true);
       expect(detail.shards.every((shard) => shard.status === 'DONE')).toBe(true);
     }
+  });
+
+  // ---- 0622 · advance decision-table coverage + max-step guard ----
+
+  it('returns the current detail unchanged when advance is called on a CLOSED issue', async () => {
+    const created = await service.createIssue({
+      title: 'Closed issue advance',
+      targetRepo: workspace,
+      body: 'Advancing a closed loop must stay closed.',
+      priority: 'P2',
+      acceptanceCriteria: ['- closed loop is idempotent under advance'],
+    });
+    await service.advance(created.issue.id); // generate DRAFT
+    const finalized = await service.reviewSpec(created.issue.id, {
+      action: 'approve',
+      reviewer: 'tester',
+    });
+    expect(finalized.issue.status).toBe('CLOSED');
+
+    const afterAdvance = await service.advance(created.issue.id);
+    expect(afterAdvance.issue.status).toBe('CLOSED');
+    expect(afterAdvance.state.phase).toBe('CLOSED');
+    expect(afterAdvance.state.finalized).toBe(true);
+  });
+
+  it('regenerates a DRAFT spec when advancing a REVISION_REQUESTED spec', async () => {
+    const created = await service.createIssue({
+      title: 'Revision requested advance',
+      targetRepo: workspace,
+      body: 'Advancing after a revision request should regenerate the draft.',
+      priority: 'P2',
+      acceptanceCriteria: ['- advance regenerates draft after revision request'],
+    });
+    await service.advance(created.issue.id); // DRAFT
+    await service.reviewSpec(created.issue.id, {
+      action: 'request-revision',
+      reviewer: 'tester',
+      notes: 'tighten scope',
+    });
+    const before = await service.getIssue(created.issue.id);
+    expect(before.spec?.status).toBe('REVISION_REQUESTED');
+
+    const after = await service.advance(created.issue.id);
+    expect(after.spec?.status).toBe('DRAFT');
+  });
+
+  it('resumes a paused issue and then stops at the DRAFT spec human gate', async () => {
+    const created = await service.createIssue({
+      title: 'Paused issue advance',
+      targetRepo: workspace,
+      body: 'Advancing a paused loop should resume it first.',
+      priority: 'P2',
+      acceptanceCriteria: ['- advance resumes a paused loop'],
+    });
+    await service.advance(created.issue.id); // DRAFT
+    await service.intervene(created.issue.id, { action: 'pause', actor: 'tester' });
+    const paused = await service.getIssue(created.issue.id);
+    expect(paused.state.paused).toBe(true);
+
+    const after = await service.advance(created.issue.id);
+    expect(after.state.paused).toBe(false);
+    expect(after.spec?.status).toBe('DRAFT');
+  });
+
+  it('rejects advance when the spec is in a non-approved, non-closed state', async () => {
+    const created = await service.createIssue({
+      title: 'Rejected spec advance',
+      targetRepo: workspace,
+      body: 'A rejected-but-not-closed spec should not be advanceable.',
+      priority: 'P2',
+      acceptanceCriteria: ['- advance refuses a non-approved spec'],
+    });
+    const draft = await service.advance(created.issue.id); // DRAFT
+    // Force an inconsistent state (REJECTED without CLOSED) to exercise the guard.
+    await store.writeSpec(draft.issue, { ...draft.spec, status: 'REJECTED' }, {
+      ...draft.state,
+      phase: 'PHASE_1_SPEC',
+      updated: new Date().toISOString(),
+    } as typeof draft.state);
+
+    await expect(service.advance(created.issue.id)).rejects.toThrow(
+      /Approved spec is required before advancing loop automation/,
+    );
+  });
+
+  it('runs global review and finalizes when advancing from PHASE_6_CONVERGE', async () => {
+    const created = await service.createIssue({
+      title: 'Converge advance',
+      targetRepo: workspace,
+      body: 'Advancing a converged loop should finalize on PASS.',
+      priority: 'P2',
+      acceptanceCriteria: ['- advance finalizes a converged loop'],
+    });
+    const draft = await service.advance(created.issue.id); // DRAFT
+    await store.writeSpec(
+      draft.issue,
+      { ...draft.spec, status: 'APPROVED', approvedBy: 'tester' },
+      { ...draft.state, phase: 'PHASE_3_DECOMPOSE', updated: new Date().toISOString() },
+    );
+    await service.decompose(created.issue.id);
+    // Drive the shards to DONE through the real runner so implementation/test/review
+    // evidence exists, then advance from PHASE_6_CONVERGE should PASS and finalize.
+    let converged = await service.getIssue(created.issue.id);
+    while (converged.state.phase !== 'PHASE_6_CONVERGE') {
+      converged = await service.runLoop(created.issue.id);
+    }
+    expect(converged.state.phase).toBe('PHASE_6_CONVERGE');
+
+    const result = await service.advance(created.issue.id);
+    expect(result.state.globalVerdict).toBe('PASS');
+    expect(result.state.phase).toBe('CLOSED');
+    expect(result.state.finalized).toBe(true);
+    expect(result.issue.status).toBe('CLOSED');
+  });
+
+  it('stops and returns the current detail when the global verdict is not PASS', async () => {
+    const created = await service.createIssue({
+      title: 'Needs-work advance',
+      targetRepo: workspace,
+      body: 'A non-PASS global verdict should stop advance without regressing state.',
+      priority: 'P2',
+      acceptanceCriteria: ['- advance stops on a non-PASS verdict'],
+    });
+    const draft = await service.advance(created.issue.id); // DRAFT
+    await store.writeSpec(
+      draft.issue,
+      { ...draft.spec, status: 'APPROVED', approvedBy: 'tester' },
+      { ...draft.state, phase: 'PHASE_3_DECOMPOSE', updated: new Date().toISOString() },
+    );
+    await service.decompose(created.issue.id);
+    let converged = await service.getIssue(created.issue.id);
+    while (converged.state.phase !== 'PHASE_6_CONVERGE') {
+      converged = await service.runLoop(created.issue.id);
+    }
+    // Simulate a recorded NEEDS-WORK verdict and drop back to an execution phase:
+    // advance must return without re-running reviewGlobal or regressing state.
+    await store.upsertState({
+      ...converged.state,
+      phase: 'PHASE_4_IMPLEMENT',
+      globalVerdict: 'NEEDS-WORK',
+      finalized: false,
+      updated: new Date().toISOString(),
+    });
+
+    const result = await service.advance(created.issue.id);
+    expect(result.state.globalVerdict).toBe('NEEDS-WORK');
+    expect(result.state.phase).toBe('PHASE_4_IMPLEMENT');
+    expect(result.state.finalized).toBe(false);
+  });
+
+  it('logs a LOOP_ADVANCE_LIMIT safety event when the engine cannot converge', async () => {
+    const created = await service.createIssue({
+      title: 'Advance step limit',
+      targetRepo: workspace,
+      body: 'A non-progressing adapter must trip the advance step guard.',
+      priority: 'P2',
+      acceptanceCriteria: ['- advance step guard logs LOOP_ADVANCE_LIMIT'],
+    });
+    const draft = await service.advance(created.issue.id); // DRAFT
+    await store.writeSpec(
+      draft.issue,
+      { ...draft.spec, status: 'APPROVED', approvedBy: 'tester' },
+      { ...draft.state, phase: 'PHASE_3_DECOMPOSE', updated: new Date().toISOString() },
+    );
+    const decomposed = await service.decompose(created.issue.id);
+    const frozen = await service.getIssue(created.issue.id);
+    expect(decomposed.shards.length).toBeGreaterThan(0);
+
+    // Simulate a broken/looping adapter: runLoop returns without changing state,
+    // so advance must exhaust its step budget and log the guard event.
+    jest.spyOn(service, 'runLoop').mockResolvedValue(frozen);
+    const result = await service.advance(created.issue.id);
+    expect(result.state.finalized).not.toBe(true);
+    expect(result.issue.status).not.toBe('CLOSED');
+
+    const fresh = await service.getIssue(created.issue.id);
+    expect(fresh.logs.some((entry) => entry.type === 'LOOP_ADVANCE_LIMIT')).toBe(true);
   });
 });

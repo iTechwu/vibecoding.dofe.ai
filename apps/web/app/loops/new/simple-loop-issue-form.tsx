@@ -100,6 +100,13 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
   }
 
   const workspaceBlocked = !workspacesQuery.isLoading && workspaces.length === 0;
+  const requestLength = request.trim().length;
+  const requestRemaining = Math.max(0, 10 - requestLength);
+  const submitBlockedReason = workspaceBlocked
+    ? t('simple.submitWorkspaceBlocked')
+    : requestRemaining > 0
+      ? t('simple.submitRequestBlocked', { count: requestRemaining })
+      : t('simple.submitReady');
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -293,20 +300,28 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
       ) : null}
       {createIssue.isError ? <p className="text-sm text-destructive">{t('error')}</p> : null}
 
-      <div className="flex justify-end gap-3">
-        <Link
-          className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium hover:bg-muted/30"
-          href="/loops"
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p
+          aria-live="polite"
+          className={`text-sm ${workspaceBlocked || requestRemaining > 0 ? 'text-muted-foreground' : 'text-emerald-700 dark:text-emerald-300'}`}
         >
-          {t('cancel')}
-        </Link>
-        <button
-          className="inline-flex h-10 items-center justify-center rounded-md bg-foreground px-4 text-sm font-medium text-background disabled:opacity-60"
-          disabled={createIssue.isPending || workspaceBlocked || request.trim().length < 10}
-          type="submit"
-        >
-          {createIssue.isPending ? t('creating') : t('create')}
-        </button>
+          {submitBlockedReason}
+        </p>
+        <div className="flex justify-end gap-3">
+          <Link
+            className="inline-flex h-10 items-center justify-center rounded-md border px-4 text-sm font-medium hover:bg-muted/30"
+            href="/loops"
+          >
+            {t('cancel')}
+          </Link>
+          <button
+            className="inline-flex h-10 items-center justify-center rounded-md bg-foreground px-4 text-sm font-medium text-background disabled:opacity-60"
+            disabled={createIssue.isPending || workspaceBlocked || request.trim().length < 10}
+            type="submit"
+          >
+            {createIssue.isPending ? t('creating') : t('create')}
+          </button>
+        </div>
       </div>
     </form>
   );
