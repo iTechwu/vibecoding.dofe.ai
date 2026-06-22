@@ -8,6 +8,11 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import createIntlMiddleware from 'next-intl/middleware';
 import { routing } from './i18n/routing';
+import {
+  AUTH_EXPIRE_COOKIE,
+  AUTH_PRESENCE_COOKIE,
+  shouldRedirectToLogin,
+} from './lib/auth/proxy-auth';
 
 // 创建国际化中间件
 const intlMiddleware = createIntlMiddleware(routing);
@@ -25,19 +30,22 @@ export default async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 先应用国际化中间件
-  const intlResponse = intlMiddleware(request);
-
-  // 提取语言前缀后的实际路径（例如 /zh-CN/home -> /home）
-  const pathWithoutLocale = pathname.replace(/^\/(zh-CN|en)/, '') || '/';
-
-  // Skip daily check-in logic for public routes
-  const publicRoutes = ['/login'];
-  if (publicRoutes.some((route) => pathWithoutLocale.includes(route))) {
-    return intlResponse;
+  if (
+    shouldRedirectToLogin({
+      pathname,
+      tokenPresence: request.cookies.get(AUTH_PRESENCE_COOKIE)?.value,
+      tokenExpire: request.cookies.get(AUTH_EXPIRE_COOKIE)?.value,
+    })
+  ) {
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set(
+      'callbackUrl',
+      `${request.nextUrl.pathname}${request.nextUrl.search}`,
+    );
+    return NextResponse.redirect(loginUrl);
   }
 
-  return intlResponse;
+  return intlMiddleware(request);
 }
 
 export const config = {
