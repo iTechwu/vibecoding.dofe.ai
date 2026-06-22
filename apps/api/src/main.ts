@@ -56,6 +56,7 @@ import { IoAdapter } from '@nestjs/platform-socket.io';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 import { RedisService } from '@dofe/infra-redis';
+import { DEFAULT_CORS_ALLOWED_HEADERS, isCorsOriginAllowed } from './bootstrap/cors.bootstrap';
 
 // 添加全局错误处理
 process.on('unhandledRejection', (reason, promise) => {
@@ -226,26 +227,17 @@ async function bootstrap() {
   // await app.register(fastifyCookie, {
   //     secret: 'my-secret', // 用于cookie签名的密钥
   // })
-  // Pre-compile CORS regex once at bootstrap (env config does not change at runtime)
   const { corsDomains } = environmentUtil.generateEnvironmentUrls({
     domain: config.app.domain,
     subDomain: config.app.subDomain,
     apiSubDomain: config.app.apiSubDomain,
   });
   const isDevEnv = environmentUtil.isDev();
-  const corsRegex = new RegExp(
-    `^https?://(.*\\.)?${corsDomains.join('|').replace(/\*/g, '.*')}${isDevEnv ? '(:[0-9]+)?$' : '$'}`,
-  );
 
   // 跨域配置
   const corsOptions: FastifyCorsOptions = {
     origin: (origin: string | undefined, callback: (err: Error | null, allow: boolean) => void) => {
-      if (
-        !origin ||
-        corsRegex.test(origin) ||
-        origin.includes('localhost') ||
-        origin.includes('127.0.0.1')
-      ) {
+      if (isCorsOriginAllowed({ origin, corsDomains, isDevEnv })) {
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'), false);
@@ -253,6 +245,7 @@ async function bootstrap() {
     },
     // origin: '*',
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    allowedHeaders: DEFAULT_CORS_ALLOWED_HEADERS,
     credentials: true,
     optionsSuccessStatus: 204,
   };

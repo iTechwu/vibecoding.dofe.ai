@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3003",
+    "dev": "cross-env NODE_EXTRA_CA_CERTS=/Users/techwu/Documents/codes/dofe.ai/docker-helm.dofe.ai/nginx/certs/dofe.local.dofe.ai.mkcert-rootCA.pem next dev -p 3003",
     "build": "cross-env NODE_OPTIONS='--max-old-space-size=8192' next build",
-    "start": "next start -p 3003",
+    "start": "cross-env NODE_EXTRA_CA_CERTS=/Users/techwu/Documents/codes/dofe.ai/docker-helm.dofe.ai/nginx/certs/dofe.local.dofe.ai.mkcert-rootCA.pem next start -p 3003",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "type-check": "cross-env NODE_OPTIONS='--max-old-space-size=8192' tsc --noEmit",

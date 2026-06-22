@@ -58,4 +58,4 @@
 | 4. Docker 必须绑定 workspace，独立 profile           | ✅ 已实施 | `LoopsWorkspaceProfileService` + `.loops/runtime/profile.json`                                    |
 | 5. Issue 简单模式优先                                | ✅ 已实施 | `POST /loops/issues/simple` + `/loops/new` 简单表单                                               |
 
-**v1 边界**：`AUTH_REQUIRED` 诊断码已在 schema 预留，但 v1 不托管也不探测 CLI 登录态，避免误判和泄露 token；Docker 镜像已使用相邻 `agents.dofe.ai` 的 UCloud Hub 凭据在临时 Docker config 中验证并 pin digest；Docker 探测、镜像 inspect/pull 已通过 `@dofe/infra-docker` 的 Docker Engine 工具函数接入，agent 实际执行仍由 `docker run` 命令边界承载。
+**v1 边界**：`AUTH_REQUIRED` 诊断码已在 schema 预留，但 v1 不托管也不探测 CLI 登录态，避免误判和泄露 token；Docker 镜像已使用相邻 `agents.dofe.ai` 的 UCloud Hub 凭据在临时 Docker config 中验证并 pin digest；Docker 探测与镜像 inspect 已通过 `@dofe/infra-docker` 的 Docker Engine 工具函数接入，私有 UCloud Hub 拉取在配置 `DOCKER_REGISTRY_USERNAME` / `DOCKER_REGISTRY_PASSWORD` 时走 Dockerode `{ authconfig }` 鉴权（凭据只存 env、不落盘，错误脱敏），agent 实际执行仍由 `docker run` 命令边界承载。

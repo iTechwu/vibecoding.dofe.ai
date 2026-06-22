@@ -137,14 +137,14 @@
 
 ## 实施状态（2026-06-22）
 
-| 批次                          | 状态 | 关键产物                                                                                                                                                                           |
-| ----------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| B1 Runtime Detection Contract | ✅   | `loops.schema.ts`（runtime schemas）· `AgentRuntimeDetectionService` · `agentRuntime()` 扩展 `runtimes`+`workspaceId`                                                              |
-| B2 Workspace Profile          | ✅   | `LoopsWorkspaceProfileService` · `.loops/runtime/profile.json` · `GET/POST /loops/workspaces` · `detect-runtime`                                                                   |
-| B3 Docker Fallback Runner     | ✅   | `planAgentInvocation` / `buildDockerAgentCommand` · `CliLoopsAgentAdapter` / `CliLoopsClaudeAdapter` 按工作区 mode 选 local/docker · `LoopsDockerClient` 接入 `@dofe/infra-docker` |
-| B4 简化 Issue API             | ✅   | `POST /loops/issues/simple` · `createSimpleIssue()` · 共享归一化 `loops-simple-issue.ts`                                                                                           |
-| B5 前端提交体验重做           | ✅   | `SimpleLoopIssueForm`（request + workspace + template + 预览 + 高级折叠）                                                                                                          |
-| B6 Runtime UI 操作闭环        | ✅   | workspace switcher · Retry detection / Pull image / Use Docker / Select workspace / View setup guide · 操作后自动刷新                                                              |
+| 批次                          | 状态 | 关键产物                                                                                                                                                                                                                                                    |
+| ----------------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| B1 Runtime Detection Contract | ✅   | `loops.schema.ts`（runtime schemas）· `AgentRuntimeDetectionService` · `agentRuntime()` 扩展 `runtimes`+`workspaceId`                                                                                                                                       |
+| B2 Workspace Profile          | ✅   | `LoopsWorkspaceProfileService` · `.loops/runtime/profile.json` · `GET/POST /loops/workspaces` · `detect-runtime`                                                                                                                                            |
+| B3 Docker Fallback Runner     | ✅   | `planAgentInvocation` / `buildDockerAgentCommand` · `CliLoopsAgentAdapter` / `CliLoopsClaudeAdapter` 按工作区 mode 选 local/docker · `LoopsDockerClient` 接入 `@dofe/infra-docker`（私有 UCloud Hub 鉴权拉取走 Dockerode `{ authconfig }`，env 凭据不落盘） |
+| B4 简化 Issue API             | ✅   | `POST /loops/issues/simple` · `createSimpleIssue()` · 共享归一化 `loops-simple-issue.ts`                                                                                                                                                                    |
+| B5 前端提交体验重做           | ✅   | `SimpleLoopIssueForm`（request + workspace + template + 预览 + 高级折叠）                                                                                                                                                                                   |
+| B6 Runtime UI 操作闭环        | ✅   | workspace switcher · Retry detection / Pull image / Use Docker / Select workspace / View setup guide · 操作后自动刷新                                                                                                                                       |
 
 ### 退出条件核对
 
@@ -159,3 +159,4 @@
 - `AUTH_REQUIRED` 探测：schema 保留，v1 决策为不托管 token、不探测登录态。
 - Docker 镜像 pin digest：已完成；2026-06-22 使用相邻 `agents.dofe.ai` 的 UCloud Hub 凭据在临时 Docker config 中验证 manifest digest。
 - Docker 管理：已接入 `@dofe/infra-docker`；`LoopsDockerClient` 保留为 Loops contract 适配层。
+- 私有仓库鉴权拉取：`DOCKER_REGISTRY_USERNAME` / `DOCKER_REGISTRY_PASSWORD`（可选 `DOCKER_REGISTRY_SERVER`）配置后，`LoopsDockerClient.pull()` 走 Dockerode `{ authconfig }` 鉴权拉取；仅对归属配置 registry 的镜像附带凭据；凭据不落盘、错误脱敏、401 映射可操作文案。`loops-docker.client.spec.ts` 覆盖鉴权拉取、无关 registry 不附带凭据、401 脱敏三条路径。

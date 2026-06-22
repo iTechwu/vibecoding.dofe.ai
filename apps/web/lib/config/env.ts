@@ -14,6 +14,31 @@ export type FrontendEnv = z.infer<typeof frontendEnvSchema>;
 
 let cached: FrontendEnv | null = null;
 
+function getCurrentPageProtocol(): string | undefined {
+  return typeof window === 'undefined' ? undefined : window.location.protocol;
+}
+
+export function normalizeFrontendServerBaseUrl(
+  baseUrl: string,
+  pageProtocol = getCurrentPageProtocol(),
+): string {
+  if (pageProtocol !== 'https:') {
+    return baseUrl;
+  }
+
+  try {
+    const url = new URL(baseUrl);
+    if (url.protocol === 'http:' && url.hostname.endsWith('.local.dofe.ai')) {
+      url.protocol = 'https:';
+      return url.toString().replace(/\/$/, '');
+    }
+  } catch {
+    return baseUrl;
+  }
+
+  return baseUrl;
+}
+
 export function getFrontendEnv(): FrontendEnv {
   if (cached) return cached;
   const result = frontendEnvSchema.safeParse({
@@ -31,6 +56,11 @@ export function getFrontendEnv(): FrontendEnv {
     cached = frontendEnvSchema.parse({});
     return cached;
   }
-  cached = result.data;
+  cached = {
+    ...result.data,
+    NEXT_PUBLIC_SERVER_BASE_URL: normalizeFrontendServerBaseUrl(
+      result.data.NEXT_PUBLIC_SERVER_BASE_URL,
+    ),
+  };
   return cached;
 }

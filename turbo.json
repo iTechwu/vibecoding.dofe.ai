@@ -1,7 +1,14 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "globalDependencies": ["**/.env.*local", "**/.env", "**/config.local.yaml"],
-  "globalEnv": ["NODE_ENV", "DOCKER_HOST", "LOOPS_RUNTIME_DETECT_TIMEOUT_MS"],
+  "globalEnv": [
+    "NODE_ENV",
+    "DOCKER_HOST",
+    "LOOPS_RUNTIME_DETECT_TIMEOUT_MS",
+    "DOCKER_REGISTRY_SERVER",
+    "DOCKER_REGISTRY_USERNAME",
+    "DOCKER_REGISTRY_PASSWORD"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

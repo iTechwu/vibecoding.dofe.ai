@@ -30,6 +30,7 @@ import {
   isSsoRefreshTokenExpired,
 } from '@repo/constants';
 import type { Configuration } from 'openid-client';
+import { resolveOidcApiBaseUrl, resolveOidcFrontendBaseUrl } from './url-resolver';
 
 const OIDC_CALLBACK_RESULT_PREFIX = 'dofe:oidc:callback-result:';
 const OIDC_CALLBACK_RESULT_TTL_S = OIDC_EXCHANGE_CODE_TTL_S;
@@ -67,44 +68,12 @@ export class OidcClientApiService implements OnModuleInit {
     return this.configService.get<string>('SSO_CLIENT_SECRET', '');
   }
 
-  /**
-   * 动态解析 API 基础地址：
-   * - 显式配置 app.baseUrl 优先
-   * - dev 环境：http://127.0.0.1:{app.port}
-   * - 生产环境：https://{app.subDomain}.{app.domain}（与前端共用反向代理域名）
-   */
   private resolveApiBaseUrl(): string {
-    const explicit = this.configService.get<string>('app.baseUrl');
-    if (explicit) return explicit;
-
-    const isDev = this.configService.get<string>('NODE_ENV', 'dev') === 'dev';
-    if (isDev) {
-      const port = this.configService.get<number>('app.port', 13100);
-      return `http://127.0.0.1:${port}`;
-    }
-
-    const domain = this.configService.get<string>('app.domain', 'dofe.ai');
-    const subDomain = this.configService.get<string>('app.subDomain', 'www');
-    return `https://${subDomain}.${domain}`;
+    return resolveOidcApiBaseUrl(this.configService);
   }
 
-  /**
-   * 动态解析前端基础地址：
-   * - 显式配置 app.frontendUrl 优先
-   * - dev 环境：http://127.0.0.1:{app.frontendPort}
-   * - 生产环境：与 API 同域名（反向代理）
-   */
   private resolveFrontendBaseUrl(): string {
-    const explicit = this.configService.get<string>('app.frontendUrl');
-    if (explicit) return explicit;
-
-    const isDev = this.configService.get<string>('NODE_ENV', 'dev') === 'dev';
-    if (isDev) {
-      const frontendPort = this.configService.get<number>('app.frontendPort', 3003);
-      return `http://127.0.0.1:${frontendPort}`;
-    }
-
-    return this.resolveApiBaseUrl();
+    return resolveOidcFrontendBaseUrl(this.configService);
   }
 
   private get redirectUri(): string {

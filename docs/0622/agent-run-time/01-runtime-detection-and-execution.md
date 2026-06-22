@@ -168,7 +168,7 @@ docker run --rm \
 ## v1 决策边界
 
 - 本机 CLI 登录态由用户自己维护。Loops v1 不托管 token，也不触发 `AUTH_REQUIRED`，避免用不稳定 CLI 行为误判登录态。
-- Docker 镜像已 pin digest。2026-06-22 核查：使用相邻 `agents.dofe.ai` 的 UCloud Hub 凭据在临时 Docker config 中执行 `docker login` + `docker manifest inspect --verbose`，确认 Codex digest 为 `sha256:d1305f92fab11e80f8e4e03641bd418905f3fc7a61d4337644c6c71333ea7be0`，Claude Code digest 为 `sha256:92e7e97ed507b1f9760f253b8dbe82bdd0ef9191f66aa93a86961b91b2f78a63`。
+- Docker 镜像已 pin digest。2026-06-22 核查：使用相邻 `agents.dofe.ai` 的 UCloud Hub 凭据在临时 Docker config 中执行 `docker login` + `docker manifest inspect --verbose`，确认 Codex digest 为 `sha256:d1305f92fab11e80f8e4e03641bd418905f3fc7a61d4337644c6c71333ea7be0`，Claude Code digest 为 `sha256:92e7e97ed507b1f9760f253b8dbe82bdd0ef9191f66aa93a86961b91b2f78a63`。运行时拉取不再依赖宿主机 `docker login`：`DOCKER_REGISTRY_USERNAME` / `DOCKER_REGISTRY_PASSWORD`（可选 `DOCKER_REGISTRY_SERVER`）配置后，`LoopsDockerClient.pull()` 通过 Dockerode `{ authconfig }` 鉴权拉取，凭据仅存于 env、不落盘。
 - Docker 容器网络策略沿用默认 Docker 网络；如需任务级 network policy，应在后续发布策略中作为显式配置项加入 profile。
 
 ## 实施状态（2026-06-22）
@@ -182,5 +182,6 @@ docker run --rm \
 - ✅ Docker 管理：`LoopsDockerClient` 已接入 `@dofe/infra-docker/docker.utils` + `dockerode`，通过 Docker Engine 执行 daemon probe、image inspect 与 pull；不再通过本地 `docker image inspect/pull` 子进程做探测和拉取。
   - **包选择说明**：`@dofe/infra-docker` 提供两层 API——上层 `DockerService` / `DockerImageService` 是与 gateway/openclaw bot 强绑定的领域服务（`onModuleInit` 构建 bot 镜像、分配端口、管理 sandbox），与 Loops「探测 daemon + inspect/pull 固定镜像」的诉求不匹配；下层 `docker.utils`（`getDockerConnectionOptions` / `getLocalImageId` / `pullImage`）是领域无关的纯函数，正好覆盖 Loops 需要。因此 `LoopsDockerClient` 只消费 `docker.utils`，保持 Loops 与 bot 领理解耦，也避免引入无谓的 `OnModuleInit` 副作用与配置依赖。
   - **执行边界**：Docker Engine 的 probe/inspect/pull 走 `docker.utils`；agent 实际执行仍由 `loops-runtime-command-builder.util.ts` 生成的 `docker run` 命令承载（只挂载 workspace root），不进入 `DockerService` 的容器生命周期管理。
+  - **私有仓库鉴权**：固定镜像位于私有 UCloud Hub。`LoopsDockerClient.pull()` 在配置 `DOCKER_REGISTRY_USERNAME` / `DOCKER_REGISTRY_PASSWORD`（可选 `DOCKER_REGISTRY_SERVER`，均在 `turbo.json` `globalEnv` 声明）时，通过 Dockerode `{ authconfig }` 执行鉴权拉取；仅当镜像归属配置的 registry 时才附带凭据，避免向无关 registry（如 Docker Hub）泄露。`@dofe/infra-docker` 的 `pullImage` 为非鉴权工具，仅覆盖无凭据场景。凭据**永不落盘**（`.loops/runtime/` 不写 token），错误信息先脱敏（用户名/密码替换为 `***`）再上抛/记录，且 401 映射为可操作的「Registry authentication failed」文案。`docker run` 执行无需鉴权（使用本地已拉取镜像）。
 - ✅ `AUTH_REQUIRED` 诊断码：schema 已预留，v1 按决策不触发；CLI 登录态仍由用户在本机或容器 profile 中自行维护。
 - ✅ Docker digest / network policy 标注：digest pin 已完成；network policy 被归类为后续发布策略配置，不阻塞本轮 runtime v1。

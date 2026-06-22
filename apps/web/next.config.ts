@@ -35,7 +35,7 @@ const nextConfig: NextConfig = {
   },
   output: 'standalone',
   // Allow cross-origin requests for development
-  allowedDevOrigins: ['127.0.0.1', 'localhost'],
+  allowedDevOrigins: ['127.0.0.1', 'localhost', '**.dofe.ai'],
   experimental: {
     mcpServer: true,
   },

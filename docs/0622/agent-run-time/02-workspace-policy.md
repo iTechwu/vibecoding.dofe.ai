@@ -101,6 +101,7 @@ docker run --rm \
 
 - 若 repo 被提交，需要 `.gitignore` 覆盖 `.loops/runtime/`。
 - CLI token 当前不由 Loops 托管；如果未来引入 token 落盘，必须标记敏感，doctor 不得输出原值。
+- 私有仓库拉取凭据（`DOCKER_REGISTRY_USERNAME` / `DOCKER_REGISTRY_PASSWORD`）只在 `LoopsDockerClient.pull()` 拉取时从 env 读取并通过 Dockerode `{ authconfig }` 下发，**绝不写入** `.loops/runtime/`；错误信息在落日志/返回前先脱敏（见 01-runtime-detection-and-execution.md）。
 
 ## Workspace 状态机
 
