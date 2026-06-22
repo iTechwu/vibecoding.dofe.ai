@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import type { LoopsDockerClient } from './loops-docker.client';
 import { LoopsWorkspaceProfileService } from './loops-workspace-profile.service';
 
 describe('LoopsWorkspaceProfileService (0622 · B2)', () => {
@@ -77,8 +78,13 @@ describe('LoopsWorkspaceProfileService (0622 · B2)', () => {
   });
 
   it('pullImage reports failure via the docker client without throwing', async () => {
-    // No docker binary available in the test sandbox → expect a failed outcome.
-    const outcome = await service.pullImage('default', 'codex');
+    const docker = {
+      pull: jest.fn().mockResolvedValue({ ok: false, message: 'Docker is not available.' }),
+    } as unknown as LoopsDockerClient;
+    const serviceWithDocker = new LoopsWorkspaceProfileService(undefined, docker);
+    const outcome = await serviceWithDocker.pullImage('default', 'codex');
+
+    expect(docker.pull).toHaveBeenCalledWith(expect.stringContaining('codex-cli'));
     expect(outcome.status).toBe('failed');
     expect(outcome.agent).toBe('codex');
     expect(outcome.image).toMatch(/codex-cli/);

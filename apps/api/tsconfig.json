@@ -90,6 +90,7 @@
 
       // === @dofe/infra-* 子路径（moduleResolution: Node 不识别 exports 字段） ===
       "@dofe/infra-common/*": ["node_modules/@dofe/infra-common/dist/*"],
+      "@dofe/infra-docker/*": ["node_modules/@dofe/infra-docker/dist/*"],
       "@dofe/infra-clients/verify": ["node_modules/@dofe/infra-clients/dist/internal/verify"],
       "@dofe/infra-clients/sso": ["node_modules/@dofe/infra-clients/dist/internal/sso"],
       "@dofe/infra-shared-services/system-health": [

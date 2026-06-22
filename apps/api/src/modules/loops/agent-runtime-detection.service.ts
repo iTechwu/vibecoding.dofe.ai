@@ -27,7 +27,7 @@ const DEFAULT_DETECT_TIMEOUT_MS = 8000;
  *
  * Auth state is intentionally NOT probed in v1 (`AUTH_REQUIRED` is reserved in
  * the schema but not emitted — see docs/0622/agent-run-time/01-runtime-detection-and-execution.md
- * Open Questions).
+ * v1 decision boundaries).
  */
 @Injectable()
 export class AgentRuntimeDetectionService {

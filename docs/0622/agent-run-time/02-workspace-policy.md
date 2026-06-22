@@ -100,7 +100,7 @@ docker run --rm \
 风险：
 
 - 若 repo 被提交，需要 `.gitignore` 覆盖 `.loops/runtime/`。
-- CLI token 如果落盘，必须标记敏感，doctor 不得输出原值。
+- CLI token 当前不由 Loops 托管；如果未来引入 token 落盘，必须标记敏感，doctor 不得输出原值。
 
 ## Workspace 状态机
 
@@ -175,4 +175,4 @@ POST /loops/workspaces/:workspaceId/detect-runtime
 - ✅ Workspace 状态机：`validate()`（存在 + 可写 → `VALIDATED`，否则 `ERROR`）；`UNCONFIGURED`/`SELECTED`/`READY` 由 detection + 前端组合呈现。
 - ✅ 前端体验：dashboard 顶部 workspace switcher + Runtime 摘要（`apps/web/app/loops/page.tsx`）；issue 创建页 workspace 选择（`simple-loop-issue-form.tsx`）。
 - ✅ 后端接口：`GET/POST /loops/workspaces`、`POST /loops/workspaces/:id/detect-runtime`、`POST /loops/workspaces/:id/pull-image` 已落地（超越「最小实现」）。
-- ⏸ CLI token 落盘敏感标记 / doctor 不输出原值：当前不托管 token（见 01 Open Questions），留待 token 方案确定后补 doctor redaction。
+- ✅ CLI token redaction 边界：当前不托管 token，因此 doctor 无需输出或脱敏 token；若未来引入 token 托管，需要在同一轮补充敏感标记与 doctor redaction。

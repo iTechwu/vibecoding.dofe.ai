@@ -4,13 +4,14 @@ import type { LoopAgentKind } from '@repo/contracts';
  * Fixed Docker fallback images for the agent runtime (0622 · B3).
  *
  * Backend-only — the orchestration layer and frontend never see these tags;
- * they consume the `LoopRuntimeDetection` surface instead. Pinned to `latest`
- * during development; pin a digest before production (see 04-implementation-plan
- * risk table).
+ * they consume the `LoopRuntimeDetection` surface instead. Pinned by digest
+ * after verifying UCloud Hub manifests on 2026-06-22.
  */
 export const LOOPS_RUNTIME_IMAGES: Record<LoopAgentKind, string> = {
-  codex: 'uhub.service.ucloud.cn/techwu/codex-cli:latest',
-  'claude-code': 'uhub.service.ucloud.cn/techwu/claude-code-cli:latest',
+  codex:
+    'uhub.service.ucloud.cn/techwu/codex-cli@sha256:d1305f92fab11e80f8e4e03641bd418905f3fc7a61d4337644c6c71333ea7be0',
+  'claude-code':
+    'uhub.service.ucloud.cn/techwu/claude-code-cli@sha256:92e7e97ed507b1f9760f253b8dbe82bdd0ef9191f66aa93a86961b91b2f78a63',
 };
 
 /** Local CLI command name for each agent. */

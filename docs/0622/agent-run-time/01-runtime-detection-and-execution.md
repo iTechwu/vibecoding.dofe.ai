@@ -67,7 +67,7 @@ interface RuntimeCandidate {
 2. 若本机 CLI 可用，标记 `local-cli.ready`。
 3. 若不可用，检查 Docker：
    - `docker version`
-   - `docker image inspect uhub.service.ucloud.cn/techwu/codex-cli:latest`
+   - `docker image inspect uhub.service.ucloud.cn/techwu/codex-cli@sha256:d1305f92fab11e80f8e4e03641bd418905f3fc7a61d4337644c6c71333ea7be0`
    - 镜像不存在时允许后台拉取或提示用户拉取
 4. Docker 可用且 workspace 已配置，则标记 `docker.ready`。
 
@@ -78,7 +78,7 @@ interface RuntimeCandidate {
    - `claude --version` 或 `claude -v`
    - 可选 smoke：`claude --help`
 2. 若本机 CLI 不可用，检查镜像：
-   - `uhub.service.ucloud.cn/techwu/claude-code-cli:latest`
+   - `uhub.service.ucloud.cn/techwu/claude-code-cli@sha256:92e7e97ed507b1f9760f253b8dbe82bdd0ef9191f66aa93a86961b91b2f78a63`
 3. Docker 模式必须绑定 workspace。
 
 ## 镜像兜底
@@ -87,9 +87,9 @@ interface RuntimeCandidate {
 
 ```yaml
 codex:
-  image: uhub.service.ucloud.cn/techwu/codex-cli:latest
+  image: uhub.service.ucloud.cn/techwu/codex-cli@sha256:d1305f92fab11e80f8e4e03641bd418905f3fc7a61d4337644c6c71333ea7be0
 claude-code:
-  image: uhub.service.ucloud.cn/techwu/claude-code-cli:latest
+  image: uhub.service.ucloud.cn/techwu/claude-code-cli@sha256:92e7e97ed507b1f9760f253b8dbe82bdd0ef9191f66aa93a86961b91b2f78a63
 ```
 
 示意命令：
@@ -99,7 +99,7 @@ docker run --rm \
   -v "$WORKSPACE_ROOT:/workspace" \
   -w /workspace \
   -e CODEX_HOME=/workspace/.loops/runtime/codex \
-  uhub.service.ucloud.cn/techwu/codex-cli:latest \
+  uhub.service.ucloud.cn/techwu/codex-cli@sha256:d1305f92fab11e80f8e4e03641bd418905f3fc7a61d4337644c6c71333ea7be0 \
   codex --version
 ```
 
@@ -108,7 +108,7 @@ docker run --rm \
   -v "$WORKSPACE_ROOT:/workspace" \
   -w /workspace \
   -e CLAUDE_CONFIG_DIR=/workspace/.loops/runtime/claude-code \
-  uhub.service.ucloud.cn/techwu/claude-code-cli:latest \
+  uhub.service.ucloud.cn/techwu/claude-code-cli@sha256:92e7e97ed507b1f9760f253b8dbe82bdd0ef9191f66aa93a86961b91b2f78a63 \
   claude --version
 ```
 
@@ -126,11 +126,11 @@ docker run --rm \
     "codex": {
       "mode": "local-cli",
       "localCommand": "/usr/local/bin/codex",
-      "dockerImage": "uhub.service.ucloud.cn/techwu/codex-cli:latest"
+      "dockerImage": "uhub.service.ucloud.cn/techwu/codex-cli@sha256:d1305f92fab11e80f8e4e03641bd418905f3fc7a61d4337644c6c71333ea7be0"
     },
     "claude-code": {
       "mode": "docker",
-      "dockerImage": "uhub.service.ucloud.cn/techwu/claude-code-cli:latest"
+      "dockerImage": "uhub.service.ucloud.cn/techwu/claude-code-cli@sha256:92e7e97ed507b1f9760f253b8dbe82bdd0ef9191f66aa93a86961b91b2f78a63"
     }
   }
 }
@@ -165,19 +165,22 @@ docker run --rm \
 - `Retry detection`
 - `Open issue`
 
-## Open Questions
+## v1 决策边界
 
-- 本机 CLI 登录态是否统一由用户自己维护，还是允许 Loops runtime profile 持有 token。
-- Docker 镜像是否需要 pin digest，避免 `latest` 在生产中不可复现。
-- Docker 容器是否允许网络访问；不同任务可能需要不同 network policy。
+- 本机 CLI 登录态由用户自己维护。Loops v1 不托管 token，也不触发 `AUTH_REQUIRED`，避免用不稳定 CLI 行为误判登录态。
+- Docker 镜像已 pin digest。2026-06-22 核查：使用相邻 `agents.dofe.ai` 的 UCloud Hub 凭据在临时 Docker config 中执行 `docker login` + `docker manifest inspect --verbose`，确认 Codex digest 为 `sha256:d1305f92fab11e80f8e4e03641bd418905f3fc7a61d4337644c6c71333ea7be0`，Claude Code digest 为 `sha256:92e7e97ed507b1f9760f253b8dbe82bdd0ef9191f66aa93a86961b91b2f78a63`。
+- Docker 容器网络策略沿用默认 Docker 网络；如需任务级 network policy，应在后续发布策略中作为显式配置项加入 profile。
 
 ## 实施状态（2026-06-22）
 
 - ✅ Runtime Provider 模型：`LoopRuntimeDetection` / `LoopRuntimeCandidate` / `LoopRuntimeCheck` schema（`packages/contracts/src/schemas/loops.schema.ts`），后端 `AgentRuntimeDetectionService.detect()` 实现 `detect` 语义（`run` 由 adapter 内 `planAgentInvocation` 承担）。
-- ✅ 探测顺序（Codex / Claude Code）：本机 `codex` / `claude --version` → Docker daemon → `docker image inspect`，全部在 `AgentRuntimeDetectionService` + `LoopsDockerClient` 内。
+- ✅ 探测顺序（Codex / Claude Code）：本机 `codex` / `claude --version` → Docker Engine daemon → image inspect，全部在 `AgentRuntimeDetectionService` + `LoopsDockerClient` 内。
 - ✅ 镜像兜底：固定镜像在 `loops-runtime-images.ts`（后端专用），示意命令由 `buildDockerAgentCommand` 生成并通过 `-e CODEX_HOME=/workspace/.loops/runtime/codex`、`-e CLAUDE_CONFIG_DIR=...` 落实。
 - ✅ Runtime Profile：`.loops/runtime/profile.json` 由 `LoopsWorkspaceProfileService` 读写；`LOOPS_WORKSPACE_ROOT` 决定 `.loops` 根。
 - ✅ 诊断输出：`GET /loops/agent-runtime` 返回 `runtimes[]` + `workspaceId`；诊断码 `LOCAL_CLI_MISSING` / `DOCKER_DAEMON_DOWN` / `DOCKER_IMAGE_MISSING` / `WORKSPACE_REQUIRED` / `WORKSPACE_NOT_MOUNTABLE` 全部产出，并带稳定 `action` 键供前端按钮使用。
 - ✅ 前端诊断按钮：Retry detection / Select workspace / Use Docker / Pull image / Open issue / View setup guide（`apps/web/app/loops/page.tsx`）。
-- ⏸ `AUTH_REQUIRED` 诊断码：schema 已预留，但 v1 不触发（无法可靠探测 CLI 登录态）——见 Open Questions 第 1 条，留待 token 托管方案确定后再接。
-- ⏸ Docker pin digest / network policy：见 Open Questions，生产前处理。
+- ✅ Docker 管理：`LoopsDockerClient` 已接入 `@dofe/infra-docker/docker.utils` + `dockerode`，通过 Docker Engine 执行 daemon probe、image inspect 与 pull；不再通过本地 `docker image inspect/pull` 子进程做探测和拉取。
+  - **包选择说明**：`@dofe/infra-docker` 提供两层 API——上层 `DockerService` / `DockerImageService` 是与 gateway/openclaw bot 强绑定的领域服务（`onModuleInit` 构建 bot 镜像、分配端口、管理 sandbox），与 Loops「探测 daemon + inspect/pull 固定镜像」的诉求不匹配；下层 `docker.utils`（`getDockerConnectionOptions` / `getLocalImageId` / `pullImage`）是领域无关的纯函数，正好覆盖 Loops 需要。因此 `LoopsDockerClient` 只消费 `docker.utils`，保持 Loops 与 bot 领理解耦，也避免引入无谓的 `OnModuleInit` 副作用与配置依赖。
+  - **执行边界**：Docker Engine 的 probe/inspect/pull 走 `docker.utils`；agent 实际执行仍由 `loops-runtime-command-builder.util.ts` 生成的 `docker run` 命令承载（只挂载 workspace root），不进入 `DockerService` 的容器生命周期管理。
+- ✅ `AUTH_REQUIRED` 诊断码：schema 已预留，v1 按决策不触发；CLI 登录态仍由用户在本机或容器 profile 中自行维护。
+- ✅ Docker digest / network policy 标注：digest pin 已完成；network policy 被归类为后续发布策略配置，不阻塞本轮 runtime v1。

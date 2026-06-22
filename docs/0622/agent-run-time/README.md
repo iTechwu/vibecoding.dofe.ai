@@ -22,8 +22,8 @@
 
 1. Agent runner 采用“本机 CLI 优先、Docker 镜像兜底”的双模式。
 2. Docker 镜像固定为：
-   - Codex：`uhub.service.ucloud.cn/techwu/codex-cli:latest`
-   - Claude Code：`uhub.service.ucloud.cn/techwu/claude-code-cli:latest`
+   - Codex：`uhub.service.ucloud.cn/techwu/codex-cli@sha256:d1305f92fab11e80f8e4e03641bd418905f3fc7a61d4337644c6c71333ea7be0`
+   - Claude Code：`uhub.service.ucloud.cn/techwu/claude-code-cli@sha256:92e7e97ed507b1f9760f253b8dbe82bdd0ef9191f66aa93a86961b91b2f78a63`
 3. 后端提供统一 runtime capability / diagnostics，不把 CLI 路径、Docker 命令、镜像细节泄漏给前端。
 4. Docker 模式必须先选择 workspace；不同 workspace 使用独立 runtime profile，避免凭据、缓存、挂载和工作目录互相污染。
 5. Issue 提交改成“简单模式优先”：用户只填一句需求和目标 workspace/repo；系统自动生成标题、优先级建议、验收标准草案，并允许高级用户展开编辑。
@@ -50,12 +50,12 @@
 
 总体决策 1–5 已全部落地。详见各文档末尾的「实施状态」小节与 [04-implementation-plan.md](04-implementation-plan.md) 的批次勾选。
 
-| 决策                                                 | 状态      | 落点                                                                      |
-| ---------------------------------------------------- | --------- | ------------------------------------------------------------------------- |
-| 1. 本机 CLI 优先、Docker 兜底                        | ✅ 已实施 | `AgentRuntimeDetectionService` + `planAgentInvocation`                    |
-| 2. 固定 Docker 镜像                                  | ✅ 已实施 | `loops-runtime-images.ts`（后端专用，不外泄）                             |
-| 3. 统一 runtime capability / diagnostics，不外泄细节 | ✅ 已实施 | `LoopRuntimeDetection` contract；`LoopsDockerClient` 为单一 Docker 控制点 |
-| 4. Docker 必须绑定 workspace，独立 profile           | ✅ 已实施 | `LoopsWorkspaceProfileService` + `.loops/runtime/profile.json`            |
-| 5. Issue 简单模式优先                                | ✅ 已实施 | `POST /loops/issues/simple` + `/loops/new` 简单表单                       |
+| 决策                                                 | 状态      | 落点                                                                                              |
+| ---------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------- |
+| 1. 本机 CLI 优先、Docker 兜底                        | ✅ 已实施 | `AgentRuntimeDetectionService` + `planAgentInvocation`                                            |
+| 2. 固定 Docker 镜像                                  | ✅ 已实施 | `loops-runtime-images.ts`（后端专用，不外泄）                                                     |
+| 3. 统一 runtime capability / diagnostics，不外泄细节 | ✅ 已实施 | `LoopRuntimeDetection` contract；`LoopsDockerClient` 通过 `@dofe/infra-docker` 管理 Docker Engine |
+| 4. Docker 必须绑定 workspace，独立 profile           | ✅ 已实施 | `LoopsWorkspaceProfileService` + `.loops/runtime/profile.json`                                    |
+| 5. Issue 简单模式优先                                | ✅ 已实施 | `POST /loops/issues/simple` + `/loops/new` 简单表单                                               |
 
-**待优化（非阻塞）**：`AUTH_REQUIRED` 诊断码已在 schema 预留但暂不触发（无法可靠探测 CLI 登录态）；Docker 镜像仍用 `latest`，生产前需 pin digest；Docker 控制当前走本地 `docker` CLI（`LoopsDockerClient`），若 `infra.dofe.ai` 未来发布 `@dofe/infra-docker`（Docker Engine HTTP API），替换该类即可，contract 不变。
+**v1 边界**：`AUTH_REQUIRED` 诊断码已在 schema 预留，但 v1 不托管也不探测 CLI 登录态，避免误判和泄露 token；Docker 镜像已使用相邻 `agents.dofe.ai` 的 UCloud Hub 凭据在临时 Docker config 中验证并 pin digest；Docker 探测、镜像 inspect/pull 已通过 `@dofe/infra-docker` 的 Docker Engine 工具函数接入，agent 实际执行仍由 `docker run` 命令边界承载。

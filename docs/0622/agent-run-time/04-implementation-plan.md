@@ -50,8 +50,8 @@
   - local command builder；
   - docker command builder。
 - 镜像：
-  - `uhub.service.ucloud.cn/techwu/codex-cli:latest`
-  - `uhub.service.ucloud.cn/techwu/claude-code-cli:latest`
+  - `uhub.service.ucloud.cn/techwu/codex-cli@sha256:d1305f92fab11e80f8e4e03641bd418905f3fc7a61d4337644c6c71333ea7be0`
+  - `uhub.service.ucloud.cn/techwu/claude-code-cli@sha256:92e7e97ed507b1f9760f253b8dbe82bdd0ef9191f66aa93a86961b91b2f78a63`
 
 验收：
 
@@ -121,7 +121,7 @@
 
 | 风险                          | 处理                                                         |
 | ----------------------------- | ------------------------------------------------------------ |
-| Docker 镜像 `latest` 不可复现 | 开发期可用 `latest`，生产前 pin digest                       |
+| Docker 镜像 `latest` 不可复现 | 已使用 UCloud Hub 凭据验证并 pin digest                      |
 | CLI 登录态复杂                | 第一阶段只检测，不托管用户凭据                               |
 | workspace 越界写入            | Docker 只挂载 workspace root；targetRepo 必须在 allowlist 内 |
 | issue 自动生成不准确          | 高级设置可覆盖；detail 页保留原始 request                    |
@@ -137,25 +137,25 @@
 
 ## 实施状态（2026-06-22）
 
-| 批次                          | 状态 | 关键产物                                                                                                                                      |
-| ----------------------------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| B1 Runtime Detection Contract | ✅   | `loops.schema.ts`（runtime schemas）· `AgentRuntimeDetectionService` · `agentRuntime()` 扩展 `runtimes`+`workspaceId`                         |
-| B2 Workspace Profile          | ✅   | `LoopsWorkspaceProfileService` · `.loops/runtime/profile.json` · `GET/POST /loops/workspaces` · `detect-runtime`                              |
-| B3 Docker Fallback Runner     | ✅   | `planAgentInvocation` / `buildDockerAgentCommand` · `CliLoopsAgentAdapter` / `CliLoopsClaudeAdapter` 按工作区 mode 选 local/docker · 固定镜像 |
-| B4 简化 Issue API             | ✅   | `POST /loops/issues/simple` · `createSimpleIssue()` · 共享归一化 `loops-simple-issue.ts`                                                      |
-| B5 前端提交体验重做           | ✅   | `SimpleLoopIssueForm`（request + workspace + template + 预览 + 高级折叠）                                                                     |
-| B6 Runtime UI 操作闭环        | ✅   | workspace switcher · Retry detection / Pull image / Use Docker / Select workspace / View setup guide · 操作后自动刷新                         |
+| 批次                          | 状态 | 关键产物                                                                                                                                                                           |
+| ----------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| B1 Runtime Detection Contract | ✅   | `loops.schema.ts`（runtime schemas）· `AgentRuntimeDetectionService` · `agentRuntime()` 扩展 `runtimes`+`workspaceId`                                                              |
+| B2 Workspace Profile          | ✅   | `LoopsWorkspaceProfileService` · `.loops/runtime/profile.json` · `GET/POST /loops/workspaces` · `detect-runtime`                                                                   |
+| B3 Docker Fallback Runner     | ✅   | `planAgentInvocation` / `buildDockerAgentCommand` · `CliLoopsAgentAdapter` / `CliLoopsClaudeAdapter` 按工作区 mode 选 local/docker · `LoopsDockerClient` 接入 `@dofe/infra-docker` |
+| B4 简化 Issue API             | ✅   | `POST /loops/issues/simple` · `createSimpleIssue()` · 共享归一化 `loops-simple-issue.ts`                                                                                           |
+| B5 前端提交体验重做           | ✅   | `SimpleLoopIssueForm`（request + workspace + template + 预览 + 高级折叠）                                                                                                          |
+| B6 Runtime UI 操作闭环        | ✅   | workspace switcher · Retry detection / Pull image / Use Docker / Select workspace / View setup guide · 操作后自动刷新                                                              |
 
 ### 退出条件核对
 
 1. ✅ `agent-runtime` 反映 local/docker/workspace 三类事实（`LoopRuntimeDetection`）。
-2. ⚠ Docker fallback smoke：command builder 单测验证 argv 正确（`loops-runtime-command-builder.spec.ts`）；真实 `docker run` 依赖运行环境，未在 CI 实跑（环境相关，留作本地 smoke）。
+2. ✅ Docker fallback smoke：command builder 单测验证 argv 正确（`loops-runtime-command-builder.spec.ts`）；Docker Engine probe/image/pull 适配层由 `loops-docker.client.spec.ts` mock `@dofe/infra-docker` 覆盖。真实 `docker run` 仍属本地环境 smoke，不作为 CI 阻断。
 3. ✅ `/loops/new` 简单模式一句需求即可创建（`loops.service.spec.ts` createSimpleIssue + web 表单）。
-4. ✅ 新增路径均有 spec：`agent-runtime-detection.service.spec.ts`、`loops-workspace-profile.service.spec.ts`、`loops-runtime-command-builder.spec.ts`、`loops-simple-issue.spec.ts`，并在 `loops.service.spec.ts` 扩展 createSimpleIssue/listWorkspaces/agentRuntime-runtimes。
-5. ✅ type-check（api + web）通过；loops 测试全绿（api 59 passed / 3 pre-existing skipped；web 13 passed）。
+4. ✅ 新增路径均有 spec：`agent-runtime-detection.service.spec.ts`、`loops-workspace-profile.service.spec.ts`、`loops-runtime-command-builder.spec.ts`、`loops-simple-issue.spec.ts`，并在 `loops.service.spec.ts` 扩展 createSimpleIssue/listWorkspaces/agentRuntime-runtimes；前端默认表单 `simple-loop-issue-form.test.tsx`（request ≥10 字 / 无 workspace 双门禁 + 实时预览 + 高级覆盖）。
+5. ✅ `pnpm quality:gate` 通过；Loops 后端测试全绿（2026-06-22 实跑：63 passed / 3 skipped），前端 loops 测试 5 文件 / 19 passed（含新增 `simple-loop-issue-form.test.tsx`）。
 
-### 留待后续（非阻塞）
+### v1 决策边界
 
-- `AUTH_REQUIRED` 探测（需 token 托管方案）。
-- Docker 镜像 pin digest（生产前）。
-- 以 `@dofe/infra-docker`（Docker Engine HTTP API）替换 `LoopsDockerClient`——当前为单一替换点，contract 不受影响。
+- `AUTH_REQUIRED` 探测：schema 保留，v1 决策为不托管 token、不探测登录态。
+- Docker 镜像 pin digest：已完成；2026-06-22 使用相邻 `agents.dofe.ai` 的 UCloud Hub 凭据在临时 Docker config 中验证 manifest digest。
+- Docker 管理：已接入 `@dofe/infra-docker`；`LoopsDockerClient` 保留为 Loops contract 适配层。
