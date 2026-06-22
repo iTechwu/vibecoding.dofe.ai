@@ -1,5 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
-import type { LoopImplementationRecord } from '@repo/contracts';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import type { LoopImplementationRecord, LoopRuntimeMode } from '@repo/contracts';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
 import { z } from 'zod';
@@ -8,6 +8,8 @@ import { DeterministicLoopsClaudeAdapter } from './deterministic-loops-claude.ad
 import { extractJson, runProcess } from './loops-process.util';
 import { resolveAllowedTargetRepo } from '../loops-path-policy.util';
 import { readLoopsRuntimeConfig } from '../loops-runtime-config.util';
+import { LoopsWorkspaceProfileService } from '../loops-workspace-profile.service';
+import { planAgentInvocation } from '../loops-runtime-command-builder.util';
 
 const ClaudeCliResultSchema = z.object({
   summary: z.string().trim().min(1).optional(),
@@ -29,7 +31,11 @@ const ClaudeCliResultSchema = z.object({
 export class CliLoopsClaudeAdapter implements LoopsClaudeAdapter {
   private readonly fallback = new DeterministicLoopsClaudeAdapter();
 
-  constructor(@Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger) {}
+  constructor(
+    @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
+    @Optional()
+    private readonly workspaceProfile?: LoopsWorkspaceProfileService,
+  ) {}
 
   async run(input: LoopsClaudeRunInput) {
     const { shard } = input;
@@ -37,21 +43,32 @@ export class CliLoopsClaudeAdapter implements LoopsClaudeAdapter {
     const attempts = (await this.maxRetry()) + 1;
     const timeoutMs = await this.shardTimeoutMs();
     const safeCwd = await resolveAllowedTargetRepo(input.cwd);
+    const runtime = await this.resolveRuntime('claude-code');
 
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
-      const result = await runProcess({
-        command: 'claude',
-        args: [
+      // Local-CLI first, Docker fallback (0622 · B3): the planner assembles the
+      // argv for whichever mode the workspace profile selects, mounting only
+      // `safeCwd` when Docker is used.
+      const invocation = planAgentInvocation({
+        mode: runtime.mode,
+        agent: 'claude-code',
+        hostWorkspaceRoot: safeCwd,
+        containerWorkdir: runtime.containerWorkdir,
+        buildAgentArgs: (workdir) => [
           '-p',
           prompt,
           '--output-format',
           'json',
           '--add-dir',
-          safeCwd,
+          workdir,
           '--permission-mode',
           'acceptEdits',
         ],
-        cwd: safeCwd,
+      });
+      const result = await runProcess({
+        command: invocation.command,
+        args: invocation.args,
+        cwd: invocation.cwd,
         timeoutMs,
       });
 
@@ -124,11 +141,6 @@ export class CliLoopsClaudeAdapter implements LoopsClaudeAdapter {
   }
 
   private envNonNegativeInteger(name: string) {
-    const parsed = Number(process.env[name]);
-    return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
-  }
-
-  private envPositiveNumber(name: string) {
     const parsed = Number(process.env[name]);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
   }

@@ -3,7 +3,10 @@ import { z } from 'zod';
 import { ApiResponseSchema } from '../base';
 import {
   CreateLoopIssueRequestSchema,
+  CreateLoopIssueSimpleRequestSchema,
+  DetectLoopRuntimeResponseSchema,
   LoopCapabilitiesResponseSchema,
+  LoopAgentRuntimeResponseSchema,
   LoopCostResponseSchema,
   LoopDetailSchema,
   LoopInterventionRequestSchema,
@@ -26,6 +29,10 @@ import {
   LoopsDoctorResponseSchema,
   LoopsResumeResponseSchema,
   LoopReviewSpecRequestSchema,
+  PullLoopImageRequestSchema,
+  PullLoopImageResponseSchema,
+  UpsertLoopWorkspaceRequestSchema,
+  LoopWorkspacesResponseSchema,
 } from '../schemas/loops.schema';
 
 const c = initContract();
@@ -61,6 +68,16 @@ export const loopsContract = c.router(
         201: ApiResponseSchema(LoopIssueCreatedResponseSchema),
       },
       summary: 'Create a Web Issue intake for Loops',
+    },
+    createSimpleIssue: {
+      method: 'POST',
+      path: '/issues/simple',
+      body: CreateLoopIssueSimpleRequestSchema,
+      responses: {
+        201: ApiResponseSchema(LoopIssueCreatedResponseSchema),
+      },
+      summary:
+        'Create a Loops issue from a single natural-language request (auto-normalises title/priority/criteria)',
     },
     getIssue: {
       method: 'GET',
@@ -239,6 +256,55 @@ export const loopsContract = c.router(
         200: ApiResponseSchema(LoopCapabilitiesResponseSchema),
       },
       summary: 'Get the Loops capability registry and planned integration surface',
+    },
+    agentRuntime: {
+      method: 'GET',
+      path: '/agent-runtime',
+      responses: {
+        200: ApiResponseSchema(LoopAgentRuntimeResponseSchema),
+      },
+      summary: 'Get the current Loops agent runtime status and diagnostics',
+    },
+    listWorkspaces: {
+      method: 'GET',
+      path: '/workspaces',
+      responses: {
+        200: ApiResponseSchema(LoopWorkspacesResponseSchema),
+      },
+      summary: 'List configured Loops workspaces and the active workspace',
+    },
+    upsertWorkspace: {
+      method: 'POST',
+      path: '/workspaces',
+      body: UpsertLoopWorkspaceRequestSchema,
+      responses: {
+        200: ApiResponseSchema(LoopWorkspacesResponseSchema),
+      },
+      summary: 'Create or update a Loops workspace profile (root, agent modes)',
+    },
+    detectWorkspaceRuntime: {
+      method: 'POST',
+      path: '/workspaces/:workspaceId/detect-runtime',
+      pathParams: z.object({
+        workspaceId: z.string(),
+      }),
+      body: z.object({}).optional(),
+      responses: {
+        200: ApiResponseSchema(DetectLoopRuntimeResponseSchema),
+      },
+      summary: 'Probe local CLI + Docker runtimes for a workspace',
+    },
+    pullWorkspaceImage: {
+      method: 'POST',
+      path: '/workspaces/:workspaceId/pull-image',
+      pathParams: z.object({
+        workspaceId: z.string(),
+      }),
+      body: PullLoopImageRequestSchema,
+      responses: {
+        200: ApiResponseSchema(PullLoopImageResponseSchema),
+      },
+      summary: 'Pull the Docker fallback image for an agent in a workspace',
     },
     logs: {
       method: 'GET',

@@ -102,7 +102,15 @@ packages/contracts/src/schemas/prisma-enums.generated.ts
 *.sqlite3
 *.db
 
+# Loops runtime state
+# Keep reproducible runtime defaults, ignore local/CI execution state.
+.loops/*
+!.loops/config.yaml
+!.loops/.gitkeep
+.loops/**/*.jsonl
+.loops/runtime/
+apps/api/.loops/*
+
 # Claude Code
 .claude/
 apps/web/test-results/*
-apps/api/.loops/*

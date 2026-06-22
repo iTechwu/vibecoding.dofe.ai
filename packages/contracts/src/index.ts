@@ -9,6 +9,9 @@ export * from './base';
 // Zod schemas
 export * from './schemas';
 
+// Pure helpers shared by backend + frontend (deterministic, no LLM)
+export * from './loops-simple-issue';
+
 // API contracts
 export * from './api';
 

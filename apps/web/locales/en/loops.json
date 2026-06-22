@@ -36,6 +36,23 @@
       "loading": "Loading risk queue.",
       "empty": "No priority risks detected."
     },
+    "agentRuntime": {
+      "title": "Agent Runtime",
+      "summary": "{running} running · {attention} need attention · {total} registered",
+      "loading": "Loading agent runtime.",
+      "diagnostics": "Runtime Diagnostics",
+      "loadingDiagnostics": "Loading runtime diagnostics.",
+      "noDiagnostics": "No runtime diagnostics need attention.",
+      "noActiveIssue": "No active issue assigned.",
+      "openIssue": "Open issue",
+      "updated": "Updated {time}",
+      "noUpdate": "No update timestamp",
+      "status": {
+        "running": "Running",
+        "attention": "Attention",
+        "idle": "Idle"
+      }
+    },
     "actionQueue": {
       "title": "Action Queue",
       "summary": "{count} next actions sorted by the loop scheduler",

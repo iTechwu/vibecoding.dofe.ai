@@ -35,6 +35,7 @@ export {
   useLoopsDoctor,
   useLoopsCost,
   useLoopsMetrics,
+  useLoopsAgentRuntime,
   useLoopsCapabilities,
   useLoopsLogs,
   useLoopsNotifications,

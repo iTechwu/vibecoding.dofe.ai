@@ -214,6 +214,50 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     ]);
   });
 
+  it('returns agent runtime status and diagnostics as a first-class backend contract', async () => {
+    const created = await service.createIssue({
+      title: 'Runtime diagnostics issue',
+      targetRepo: workspace,
+      body: 'Agent runtime should expose current agents and actionable diagnostics.',
+      priority: 'P2',
+      acceptanceCriteria: ['- runtime exposes agent status'],
+    });
+    await service.generateSpec(created.issue.id);
+
+    const runtime = await service.agentRuntime();
+
+    expect(runtime.summary).toEqual({
+      running: 0,
+      attention: 1,
+      idle: 3,
+      total: 4,
+    });
+    expect(runtime.agents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'spec-review-agent',
+          label: 'Spec Review Agent',
+          status: 'attention',
+          issueId: created.issue.id,
+          issueTitle: created.issue.title,
+          href: `/loops/${created.issue.id}`,
+        }),
+        expect.objectContaining({
+          id: 'implementation-agent',
+          status: 'idle',
+        }),
+      ]),
+    );
+    expect(runtime.diagnostics).toEqual([
+      expect.objectContaining({
+        agentId: 'spec-review-agent',
+        issueId: created.issue.id,
+        level: 'warning',
+        reason: 'Spec draft is waiting for human review',
+      }),
+    ]);
+  });
+
   it('returns a capability registry with requested external items planned', async () => {
     const capabilities = await service.capabilities();
     const a2a = capabilities.capabilities.find((item) => item.id === 'a2a-tool-registry');

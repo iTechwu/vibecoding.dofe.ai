@@ -56,6 +56,23 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.CREATE)
+  @TsRestHandler(c.createSimpleIssue)
+  async createSimpleIssue(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.createSimpleIssue, async ({ body }) => {
+      // Same SSO-derived submitter + audit path as the full createIssue; the
+      // service normalises the one-sentence request first (0622 · B4).
+      const result = await this.loopsService.createSimpleIssue(body, req.userInfo);
+      await this.auditLoopCreate(req, result.issue.id, {
+        title: result.issue.title,
+        priority: result.issue.priority,
+        targetRepo: result.issue.targetRepo,
+        source: 'simple-intake',
+      });
+      return created(result);
+    });
+  }
+
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.getIssue)
   async getIssue() {
@@ -251,6 +268,65 @@ export class LoopsController {
   async capabilities() {
     return tsRestHandler(c.capabilities, async () => {
       return success(await this.loopsService.capabilities());
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.agentRuntime)
+  async agentRuntime() {
+    return tsRestHandler(c.agentRuntime, async () => {
+      return success(await this.loopsService.agentRuntime());
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.listWorkspaces)
+  async listWorkspaces() {
+    return tsRestHandler(c.listWorkspaces, async () => {
+      return success(await this.loopsService.listWorkspaces());
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.upsertWorkspace)
+  async upsertWorkspace(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.upsertWorkspace, async ({ body }) => {
+      const result = await this.loopsService.upsertWorkspace(body);
+      await this.auditLog(req, 'UPDATE', 'loops_workspace', body.workspaceId, 'upsertWorkspace', {
+        root: body.root,
+        makeDefault: body.makeDefault ?? false,
+      });
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.detectWorkspaceRuntime)
+  async detectWorkspaceRuntime(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.detectWorkspaceRuntime, async ({ params }) => {
+      const result = await this.loopsService.detectWorkspaceRuntime(params.workspaceId);
+      await this.auditLog(
+        req,
+        'UPDATE',
+        'loops_workspace',
+        params.workspaceId,
+        'detectRuntime',
+        {},
+      );
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.pullWorkspaceImage)
+  async pullWorkspaceImage(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.pullWorkspaceImage, async ({ params, body }) => {
+      const result = await this.loopsService.pullWorkspaceImage(params.workspaceId, body.agent);
+      await this.auditLog(req, 'UPDATE', 'loops_workspace', params.workspaceId, 'pullImage', {
+        agent: body.agent,
+        status: result.status,
+      });
+      return success(result);
     });
   }
 

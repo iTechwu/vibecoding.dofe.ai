@@ -8,6 +8,9 @@ import {
 import { randomUUID } from 'crypto';
 import type {
   CreateLoopIssueRequest,
+  CreateLoopIssueSimpleRequest,
+  DetectLoopRuntimeResponse,
+  LoopAgentRuntimeResponse,
   LoopAnnotation,
   LoopCapabilitiesResponse,
   LoopEvidenceArtifact,
@@ -21,10 +24,12 @@ import type {
   LoopMetricsActionItem,
   LoopMetricsResponse,
   LoopMetricsRiskItem,
+  PullLoopImageResponse,
   LoopRequirementCoverage,
   LoopRequirementCoverageItem,
   LoopRequirementCoverageSummary,
   LoopResumeSummary,
+  LoopRuntimeDetection,
   LoopTraceSummary,
   LoopRecordShardImplementationRequest,
   LoopReviewRecord,
@@ -32,13 +37,19 @@ import type {
   LoopRunShardTestsRequest,
   LoopReviewSpecRequest,
   LoopShard,
+  LoopPhase,
   LoopSpec,
   LoopStateItem,
   LoopSubmitter,
+  LoopWorkspacesResponse,
+  UpsertLoopWorkspaceRequest,
 } from '@repo/contracts';
+import { normaliseSimpleIssue } from '@repo/contracts';
 import type { AuthUserInfo } from '@app/auth';
 import { LoopsFileStoreService } from './loops-file-store.service';
 import { LoopsCapabilityRegistry } from './loops-capability-registry';
+import { AgentRuntimeDetectionService } from './agent-runtime-detection.service';
+import { LoopsWorkspaceProfileService } from './loops-workspace-profile.service';
 import { LoopsRunnerService } from './loops-runner.service';
 import {
   LOOPS_AGENT_ADAPTER,
@@ -64,6 +75,13 @@ import type { Logger } from 'winston';
 type LoopIssueDetail = Awaited<ReturnType<LoopsFileStoreService['readDetail']>>;
 type LoopListItem = LoopListResponse['list'][number];
 
+type AgentRuntimeDefinition = {
+  id: string;
+  label: string;
+  phase: LoopPhase;
+  supportedPhases: LoopPhase[];
+};
+
 const PHASE_LABELS: Record<string, string> = {
   PHASE_0_INTAKE: 'Intake',
   PHASE_1_SPEC: 'Spec',
@@ -77,6 +95,33 @@ const PHASE_LABELS: Record<string, string> = {
   CLOSED: 'Closed',
   PAUSED: 'Paused',
 };
+
+const AGENT_RUNTIME_DEFINITIONS: AgentRuntimeDefinition[] = [
+  {
+    id: 'spec-review-agent',
+    label: 'Spec Review Agent',
+    phase: 'PHASE_2_REVIEW',
+    supportedPhases: ['PHASE_2_REVIEW'],
+  },
+  {
+    id: 'implementation-agent',
+    label: 'Implementation Agent',
+    phase: 'PHASE_4_IMPLEMENT',
+    supportedPhases: ['PHASE_4_IMPLEMENT'],
+  },
+  {
+    id: 'shard-review-agent',
+    label: 'Shard Review Agent',
+    phase: 'PHASE_5_REVIEW',
+    supportedPhases: ['PHASE_5_REVIEW'],
+  },
+  {
+    id: 'global-review-agent',
+    label: 'Global Review Agent',
+    phase: 'PHASE_7_GLOBAL_REVIEW',
+    supportedPhases: ['PHASE_7_GLOBAL_REVIEW'],
+  },
+];
 
 @Injectable()
 export class LoopsService {
@@ -106,6 +151,14 @@ export class LoopsService {
     @Optional()
     @Inject(WINSTON_MODULE_PROVIDER)
     private readonly logger?: Logger,
+    // Agent runtime detection + workspace profile (0622 · B1/B2). Optional so
+    // standalone file-only consumers (and the hermetic service spec) keep working
+    // without shelling out; when absent, `agentRuntime()` omits `runtimes` and
+    // the workspace/simple-issue methods throw with a clear message.
+    @Optional()
+    private readonly runtimeDetection?: AgentRuntimeDetectionService,
+    @Optional()
+    private readonly workspaceProfile?: LoopsWorkspaceProfileService,
   ) {}
 
   async list(query: LoopIssuesQuery): Promise<LoopListResponse> {
@@ -211,6 +264,47 @@ export class LoopsService {
 
     await this.writeIssueRecord({ issue, intake, state, rawPayload: input });
     return { issue, intake, state };
+  }
+
+  /**
+   * Simple intake (0622 · B4): normalise a one-sentence request into a full
+   * issue, then reuse `createIssue` so permissions, audit, submitter derivation
+   * and persistence are identical to the full path. The SSO submitter stays
+   * server-derived; the original `request` is preserved verbatim as `body`.
+   */
+  async createSimpleIssue(input: CreateLoopIssueSimpleRequest, authUser?: AuthUserInfo) {
+    const targetRepo = await this.resolveSimpleTargetRepo(input);
+    const normalised = normaliseSimpleIssue({
+      request: input.request,
+      template: input.template,
+      title: input.title,
+      priority: input.priority,
+      acceptanceCriteria: input.acceptanceCriteria,
+      targetRepo,
+    });
+    return this.createIssue(
+      {
+        title: normalised.title,
+        targetRepo: normalised.targetRepo,
+        body: normalised.body,
+        priority: normalised.priority,
+        acceptanceCriteria: normalised.acceptanceCriteria,
+      },
+      authUser,
+    );
+  }
+
+  private async resolveSimpleTargetRepo(input: CreateLoopIssueSimpleRequest): Promise<string> {
+    if (input.targetRepo && input.targetRepo.trim().length > 0) {
+      return this.resolveTargetRepo(input.targetRepo);
+    }
+    if (this.workspaceProfile) {
+      const workspace = await this.workspaceProfile.resolve(input.workspaceId);
+      return this.resolveTargetRepo(workspace.root);
+    }
+    // Fallback for standalone consumers without a workspace profile: the repo
+    // root discovered by the path policy.
+    return this.resolveTargetRepo('.');
   }
 
   private normalizeSubmitter(
@@ -865,6 +959,159 @@ export class LoopsService {
       traceSummary: this.buildTraceSummary(logs),
       resumeSummary: this.buildResumeSummary(list.list),
     };
+  }
+
+  async agentRuntime(): Promise<LoopAgentRuntimeResponse> {
+    const [list, cost] = await Promise.all([this.list({ page: 1, limit: 200 }), this.cost()]);
+    const costByIssue = new Map(cost.loops.map((item) => [item.issueId, item]));
+    const activeItems = list.list.filter(
+      ({ issue }) => !['CLOSED', 'ARCHIVED', 'REJECTED'].includes(issue.status),
+    );
+
+    const agents = AGENT_RUNTIME_DEFINITIONS.map((definition) => {
+      const activeItem = activeItems.find((item) =>
+        item.state ? definition.supportedPhases.includes(item.state.phase) : false,
+      );
+      if (!activeItem) {
+        return {
+          id: definition.id,
+          label: definition.label,
+          status: 'idle' as const,
+          phase: definition.phase,
+          supportedPhases: definition.supportedPhases,
+          meta: this.formatPhase(definition.phase),
+          diagnostics: [],
+        };
+      }
+
+      const diagnostics = this.buildAgentDiagnostics(
+        activeItem,
+        costByIssue.get(activeItem.issue.id),
+      );
+      const state = activeItem.state;
+
+      return {
+        id: definition.id,
+        label: definition.label,
+        status: diagnostics.length ? ('attention' as const) : ('running' as const),
+        phase: definition.phase,
+        supportedPhases: definition.supportedPhases,
+        issueId: activeItem.issue.id,
+        issueTitle: activeItem.issue.title,
+        href: `/loops/${activeItem.issue.id}`,
+        meta: `${this.formatPhase(state?.phase ?? definition.phase)} · round ${state?.round ?? 1}`,
+        diagnostics,
+        updated: state?.updated ?? activeItem.issue.updated,
+      };
+    });
+
+    const diagnostics = agents.flatMap((agent) => {
+      if (!agent.issueId || !agent.issueTitle || !agent.href) return [];
+      const issueId = agent.issueId;
+      const title = agent.issueTitle;
+      const href = agent.href;
+
+      return agent.diagnostics.map((reason, index) => ({
+        id: `${agent.id}-${issueId}-${index}`,
+        agentId: agent.id,
+        issueId,
+        title,
+        href,
+        level: this.agentDiagnosticLevel(reason),
+        reason,
+        meta: agent.meta,
+        updated: agent.updated,
+      }));
+    });
+
+    const summary = agents.reduce<LoopAgentRuntimeResponse['summary']>(
+      (acc, agent) => {
+        acc[agent.status] += 1;
+        acc.total += 1;
+        return acc;
+      },
+      { running: 0, attention: 0, idle: 0, total: 0 },
+    );
+
+    // 0622 · B1: attach environment-derived runtime detection facts for the
+    // current workspace, when a detection service is wired in. Best-effort: a
+    // detection failure must never break the derived status view.
+    const detection = await this.detectCurrentRuntimeSafe();
+    return {
+      summary,
+      agents,
+      diagnostics,
+      ...(detection ? { runtimes: detection.runtimes, workspaceId: detection.workspaceId } : {}),
+    };
+  }
+
+  private async detectCurrentRuntimeSafe():
+    | Promise<{ workspaceId: string; runtimes: LoopRuntimeDetection[] } | undefined>
+    | undefined {
+    if (!this.runtimeDetection || !this.workspaceProfile) return undefined;
+    try {
+      const workspace = await this.workspaceProfile.resolve();
+      const runtimes = await this.runtimeDetection.detectAll(workspace);
+      return { workspaceId: workspace.workspaceId, runtimes };
+    } catch (error) {
+      this.log('warn', '[Loops] runtime detection failed; omitting runtimes from response', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Workspace + runtime detection (0622 · B2)
+  // --------------------------------------------------------------------------
+
+  async listWorkspaces(): Promise<LoopWorkspacesResponse> {
+    this.requireWorkspaceProfile('listWorkspaces');
+    return this.workspaceProfile!.list();
+  }
+
+  async upsertWorkspace(input: UpsertLoopWorkspaceRequest): Promise<LoopWorkspacesResponse> {
+    this.requireWorkspaceProfile('upsertWorkspace');
+    return this.workspaceProfile!.upsert(input);
+  }
+
+  async setCurrentWorkspace(workspaceId: string): Promise<LoopWorkspacesResponse> {
+    this.requireWorkspaceProfile('setCurrentWorkspace');
+    return this.workspaceProfile!.setCurrent(workspaceId);
+  }
+
+  async detectWorkspaceRuntime(workspaceId: string): Promise<DetectLoopRuntimeResponse> {
+    this.requireWorkspaceProfile('detectWorkspaceRuntime');
+    if (!this.runtimeDetection) {
+      throw new Error('Runtime detection is not configured on this instance');
+    }
+    const workspace = await this.workspaceProfile!.get(workspaceId);
+    if (!workspace) {
+      throw new NotFoundException(`Workspace ${workspaceId} not found`);
+    }
+    const runtimes = await this.runtimeDetection.detectAll(workspace);
+    return {
+      workspaceId: workspace.workspaceId,
+      root: workspace.root,
+      status: workspace.status,
+      runtimes,
+    };
+  }
+
+  async pullWorkspaceImage(
+    workspaceId: string,
+    agent: 'codex' | 'claude-code',
+  ): Promise<PullLoopImageResponse> {
+    this.requireWorkspaceProfile('pullWorkspaceImage');
+    return this.workspaceProfile!.pullImage(workspaceId, agent);
+  }
+
+  private requireWorkspaceProfile(operation: string): void {
+    if (!this.workspaceProfile) {
+      throw new Error(
+        `Workspace profile service is not configured; cannot run ${operation} on this instance`,
+      );
+    }
   }
 
   async capabilities(): Promise<LoopCapabilitiesResponse> {
@@ -1571,6 +1818,39 @@ export class LoopsService {
         return risks;
       })
       .slice(0, 10);
+  }
+
+  private buildAgentDiagnostics(
+    item: LoopListItem,
+    cost?: Awaited<ReturnType<LoopsFileStoreService['readCost']>>['loops'][number],
+  ): string[] {
+    const diagnostics: string[] = [];
+    if (item.state?.paused || item.state?.phase === 'PAUSED') {
+      diagnostics.push('Agent execution is paused');
+    }
+    if (cost?.tripped) {
+      diagnostics.push('Cost guard tripped');
+    }
+    if (item.state?.phase === 'PHASE_2_REVIEW') {
+      diagnostics.push('Spec draft is waiting for human review');
+    }
+    if (item.state?.phase === 'PHASE_7_GLOBAL_REVIEW') {
+      diagnostics.push('Global review is waiting to complete');
+    }
+    if (item.state?.globalVerdict && item.state.globalVerdict !== 'PASS') {
+      diagnostics.push(`Global ${item.state.globalVerdict}`);
+    }
+    return diagnostics;
+  }
+
+  private agentDiagnosticLevel(reason: string): 'critical' | 'warning' | 'info' {
+    if (reason === 'Cost guard tripped' || reason.includes('FAIL')) {
+      return 'critical';
+    }
+    if (reason.includes('waiting') || reason.includes('paused')) {
+      return 'warning';
+    }
+    return 'info';
   }
 
   private buildActionQueue(items: LoopListItem[]): LoopMetricsActionItem[] {

@@ -16,6 +16,7 @@ export const loopsKeys = {
   doctor: () => [...loopsKeys.all, 'doctor'] as const,
   cost: () => [...loopsKeys.all, 'cost'] as const,
   metrics: () => [...loopsKeys.all, 'metrics'] as const,
+  agentRuntime: () => [...loopsKeys.all, 'agent-runtime'] as const,
   capabilities: () => [...loopsKeys.all, 'capabilities'] as const,
   logs: (query: Record<string, unknown>) => [...loopsKeys.all, 'logs', query] as const,
   notifications: (query: Record<string, unknown>) =>
@@ -48,6 +49,12 @@ export function useLoopsCost() {
 export function useLoopsMetrics() {
   const queryKey = loopsKeys.metrics();
   return tsRestClient.loops.metrics.useQuery(queryKey, {}, { queryKey, staleTime: 0 });
+}
+
+/** Current Loops agent runtime status and diagnostics. */
+export function useLoopsAgentRuntime() {
+  const queryKey = loopsKeys.agentRuntime();
+  return tsRestClient.loops.agentRuntime.useQuery(queryKey, {}, { queryKey, staleTime: 0 });
 }
 
 /** Loops capability registry and planned integration surface. */

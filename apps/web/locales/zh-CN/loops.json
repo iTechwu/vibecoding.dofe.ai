@@ -36,6 +36,23 @@
       "loading": "正在加载风险队列。",
       "empty": "未发现高优先级风险。"
     },
+    "agentRuntime": {
+      "title": "Agent 运行态",
+      "summary": "{running} 个运行中 · {attention} 个需关注 · {total} 个已注册",
+      "loading": "正在加载 agent 运行态。",
+      "diagnostics": "运行时诊断",
+      "loadingDiagnostics": "正在加载运行时诊断。",
+      "noDiagnostics": "暂无需要关注的运行时诊断。",
+      "noActiveIssue": "暂无分配中的活跃 issue。",
+      "openIssue": "打开 issue",
+      "updated": "更新于 {time}",
+      "noUpdate": "暂无更新时间",
+      "status": {
+        "running": "运行中",
+        "attention": "需关注",
+        "idle": "空闲"
+      }
+    },
     "actionQueue": {
       "title": "动作队列",
       "summary": "{count} 个下一步动作已按调度器排序",

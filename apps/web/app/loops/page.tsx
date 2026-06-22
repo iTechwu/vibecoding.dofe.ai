@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   CircleDollarSign,
   ClipboardList,
+  Cpu,
   Inbox,
   GitBranch,
   ListChecks,
@@ -18,12 +19,14 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import type {
+  LoopAgentRuntimeResponse,
   LoopCapabilitiesResponse,
   LoopLogsResponse,
   LoopMetricsResponse,
   LoopNotificationsResponse,
 } from '@repo/contracts';
 import {
+  useLoopsAgentRuntime,
   useLoopsCost,
   useLoopsCapabilities,
   useLoopsDoctor,
@@ -61,6 +64,16 @@ function actionClass(action: string) {
     return 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100';
   }
   return 'border-border bg-muted/40 text-foreground';
+}
+
+function agentStatusClass(status: string) {
+  if (status === 'running') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100';
+  }
+  if (status === 'attention') {
+    return 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100';
+  }
+  return 'border-border bg-muted/40 text-muted-foreground';
 }
 
 function EmptyLine({ children }: { children: React.ReactNode }) {
@@ -122,6 +135,7 @@ export default function LoopsPage() {
   const listQuery = useLoopsList({ page: 1, limit: 20 });
   const doctorQuery = useLoopsDoctor();
   const costQuery = useLoopsCost();
+  const agentRuntimeQuery = useLoopsAgentRuntime();
   const capabilitiesQuery = useLoopsCapabilities();
   const metricsQuery = useLoopsMetrics();
   const logsQuery = useLoopsLogs({ limit: 10 });
@@ -131,6 +145,7 @@ export default function LoopsPage() {
   const data = listQuery.data?.body.data;
   const doctor = doctorQuery.data?.body.data;
   const cost = costQuery.data?.body.data;
+  const agentRuntime = agentRuntimeQuery.data?.body.data as LoopAgentRuntimeResponse | undefined;
   const capabilities = capabilitiesQuery.data?.body.data as LoopCapabilitiesResponse | undefined;
   const metrics = metricsQuery.data?.body.data as LoopMetricsResponse | undefined;
   const logs = logsQuery.data?.body.data as LoopLogsResponse | undefined;
@@ -316,6 +331,103 @@ export default function LoopsPage() {
                       <span className="shrink-0 text-xs">{formatRiskReason(risk.reason)}</span>
                     </div>
                     <p className="mt-1 truncate text-xs opacity-80">{risk.meta}</p>
+                  </Link>
+                ))
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">{t('agentRuntime.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('agentRuntime.summary', {
+                  running: agentRuntime?.summary.running ?? 0,
+                  attention: agentRuntime?.summary.attention ?? 0,
+                  total: agentRuntime?.summary.total ?? 0,
+                })}
+              </p>
+            </div>
+            <Cpu className="size-4 text-muted-foreground" />
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-4">
+            {!agentRuntime ? (
+              <EmptyLine>{t('agentRuntime.loading')}</EmptyLine>
+            ) : (
+              agentRuntime.agents.map((agent) => {
+                const content = (
+                  <div
+                    className={`h-full rounded-md border p-3 text-sm transition ${agentStatusClass(agent.status)} ${agent.href ? 'hover:opacity-80' : ''}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="min-w-0 font-medium">{agent.label}</span>
+                      <span className="shrink-0 rounded-md bg-background/70 px-2 py-1 text-xs">
+                        {t(`agentRuntime.status.${agent.status}`)}
+                      </span>
+                    </div>
+                    <p className="mt-2 truncate text-xs opacity-80">{agent.meta}</p>
+                    <p className="mt-2 line-clamp-2 text-xs">
+                      {agent.issueTitle ?? t('agentRuntime.noActiveIssue')}
+                    </p>
+                    {agent.diagnostics.length ? (
+                      <p className="mt-2 line-clamp-2 text-xs font-medium">
+                        {agent.diagnostics[0]}
+                      </p>
+                    ) : null}
+                    <div className="mt-3 flex items-center justify-between gap-2 text-xs">
+                      <span className="min-w-0 truncate opacity-80">
+                        {agent.updated
+                          ? t('agentRuntime.updated', { time: agent.updated })
+                          : t('agentRuntime.noUpdate')}
+                      </span>
+                      {agent.href ? (
+                        <span className="shrink-0 font-medium">{t('agentRuntime.openIssue')}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+
+                return agent.href ? (
+                  <Link href={agent.href} key={agent.id}>
+                    {content}
+                  </Link>
+                ) : (
+                  <div key={agent.id}>{content}</div>
+                );
+              })
+            )}
+          </div>
+          <div className="mt-4 border-t pt-4">
+            <h3 className="text-xs font-semibold text-muted-foreground">
+              {t('agentRuntime.diagnostics')}
+            </h3>
+            <div className="mt-2 flex flex-col gap-2">
+              {!agentRuntime ? (
+                <EmptyLine>{t('agentRuntime.loadingDiagnostics')}</EmptyLine>
+              ) : agentRuntime.diagnostics.length === 0 ? (
+                <EmptyLine>{t('agentRuntime.noDiagnostics')}</EmptyLine>
+              ) : (
+                agentRuntime.diagnostics.slice(0, 6).map((diagnostic) => (
+                  <Link
+                    className={`rounded-md border p-3 text-sm transition hover:opacity-80 ${riskClass(diagnostic.level)}`}
+                    href={diagnostic.href}
+                    key={diagnostic.id}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="truncate font-medium">{diagnostic.title}</span>
+                      <span className="shrink-0 text-xs">{diagnostic.reason}</span>
+                    </div>
+                    <p className="mt-1 truncate text-xs opacity-80">{diagnostic.meta}</p>
+                    <div className="mt-2 flex items-center justify-between gap-2 text-xs opacity-80">
+                      <span className="min-w-0 truncate">
+                        {diagnostic.updated
+                          ? t('agentRuntime.updated', { time: diagnostic.updated })
+                          : t('agentRuntime.noUpdate')}
+                      </span>
+                      <span className="shrink-0 font-medium">{t('agentRuntime.openIssue')}</span>
+                    </div>
                   </Link>
                 ))
               )}

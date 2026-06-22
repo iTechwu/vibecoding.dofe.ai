@@ -117,6 +117,79 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
       },
     },
   }),
+  useLoopsAgentRuntime: () => ({
+    data: {
+      body: {
+        data: {
+          summary: {
+            running: 1,
+            attention: 1,
+            idle: 2,
+            total: 4,
+          },
+          agents: [
+            {
+              id: 'spec-review-agent',
+              label: 'Spec Review Agent',
+              status: 'attention',
+              phase: 'PHASE_2_REVIEW',
+              supportedPhases: ['PHASE_2_REVIEW'],
+              issueId: 'issue-2',
+              issueTitle: 'Update docs',
+              href: '/loops/issue-2',
+              meta: 'Review · round 1',
+              diagnostics: ['Spec draft is waiting for human review'],
+              updated: '2026-06-20T00:00:00.000Z',
+            },
+            {
+              id: 'implementation-agent',
+              label: 'Implementation Agent',
+              status: 'running',
+              phase: 'PHASE_4_IMPLEMENT',
+              supportedPhases: ['PHASE_4_IMPLEMENT'],
+              issueId: 'issue-1',
+              issueTitle: 'Fix checkout flow',
+              href: '/loops/issue-1',
+              meta: 'Implement · round 2',
+              diagnostics: [],
+              updated: '2026-06-20T00:00:00.000Z',
+            },
+            {
+              id: 'shard-review-agent',
+              label: 'Shard Review Agent',
+              status: 'idle',
+              phase: 'PHASE_5_REVIEW',
+              supportedPhases: ['PHASE_5_REVIEW'],
+              meta: 'Shard Review',
+              diagnostics: [],
+            },
+            {
+              id: 'global-review-agent',
+              label: 'Global Review Agent',
+              status: 'idle',
+              phase: 'PHASE_7_GLOBAL_REVIEW',
+              supportedPhases: ['PHASE_7_GLOBAL_REVIEW'],
+              meta: 'Global Review',
+              diagnostics: [],
+            },
+          ],
+          diagnostics: [
+            {
+              id: 'spec-review-agent-issue-2-0',
+              agentId: 'spec-review-agent',
+              issueId: 'issue-2',
+              title: 'Update docs',
+              href: '/loops/issue-2',
+              level: 'warning',
+              reason: 'Spec draft is waiting for human review',
+              meta: 'Review · round 1',
+              updated: '2026-06-20T00:00:00.000Z',
+            },
+          ],
+        },
+      },
+    },
+  }),
   useLoopsCapabilities: () => ({
     data: {
       body: {
@@ -363,6 +436,12 @@ describe('LoopsPage', () => {
     expect(screen.getByText('Needs Attention')).toBeInTheDocument();
     expect(screen.getByText('Phase Distribution')).toBeInTheDocument();
     expect(screen.getByText('Risk Queue')).toBeInTheDocument();
+    expect(screen.getByText('Agent Runtime')).toBeInTheDocument();
+    expect(screen.getByText('1 running · 1 need attention · 4 registered')).toBeInTheDocument();
+    expect(screen.getByText('Implementation Agent')).toBeInTheDocument();
+    expect(screen.getByText('Spec Review Agent')).toBeInTheDocument();
+    expect(screen.getByText('Runtime Diagnostics')).toBeInTheDocument();
+    expect(screen.getAllByText('Spec draft is waiting for human review').length).toBeGreaterThan(0);
     expect(screen.getByText('Action Queue')).toBeInTheDocument();
     expect(screen.getByText('Review Inbox')).toBeInTheDocument();
     expect(screen.getByText('2 human review and takeover items')).toBeInTheDocument();
@@ -381,7 +460,7 @@ describe('LoopsPage', () => {
     expect(screen.getByText('Warning at 24h stale; critical at 72h stale.')).toBeInTheDocument();
     expect(screen.getAllByText(/73h stale/).length).toBeGreaterThan(0);
     expect(screen.getAllByText('Fix checkout flow').length).toBeGreaterThan(0);
-    expect(screen.getByText('Cost guard tripped')).toBeInTheDocument();
+    expect(screen.getAllByText('Cost guard tripped').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Resume loop').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Review needed').length).toBeGreaterThan(0);
     expect(screen.getByText('HUMAN INTERVENTION')).toBeInTheDocument();
