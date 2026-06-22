@@ -4,6 +4,7 @@
     "title": "Agent 交付控制台",
     "resume": "恢复中断任务",
     "resuming": "恢复中",
+    "loadError": "Loops 数据加载失败。请检查网络或稍后重试。",
     "newIssue": "新建 Issue",
     "metrics": {
       "active": "活跃",

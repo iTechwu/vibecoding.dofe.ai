@@ -66,13 +66,61 @@ export function useLoopsNotifications(query: { issueId?: string; limit?: number 
   return tsRestClient.loops.notifications.useQuery(loopsKeys.notifications(query), { query });
 }
 
+/**
+ * Phases that represent an actively-running loop. While an issue sits in one of
+ * these phases (and is not paused), the detail view polls so background
+ * scheduler progress surfaces without a manual refresh. Terminal phases
+ * (`CLOSED`/`PAUSED`) and terminal statuses stop polling.
+ */
+const LIVE_LOOP_PHASES = new Set([
+  'PHASE_4_IMPLEMENT',
+  'PHASE_5_REVIEW',
+  'PHASE_6_CONVERGE',
+  'PHASE_7_GLOBAL_REVIEW',
+]);
+
+const TERMINAL_LOOP_STATUSES = new Set(['CLOSED', 'ARCHIVED', 'REJECTED']);
+
+const LOOP_POLL_INTERVAL_MS = 4000;
+
+/**
+ * `refetchInterval` predicate for the issue detail query: poll only while the
+ * loop is live, stop on terminal/paused states. Returns `false` to disable.
+ */
+function liveLoopRefetchInterval(query: {
+  state: {
+    data?: {
+      body?: {
+        data?: { issue?: { status?: string }; state?: { phase?: string; paused?: boolean } };
+      };
+    };
+  };
+}): number | false {
+  const detail = query.state.data?.body?.data;
+  if (!detail) return false;
+  if (detail.state?.paused) return false;
+  const status = detail.issue?.status;
+  if (status && TERMINAL_LOOP_STATUSES.has(status)) return false;
+  if (status === 'IN_LOOP') return LOOP_POLL_INTERVAL_MS;
+  const phase = detail.state?.phase;
+  if (phase && LIVE_LOOP_PHASES.has(phase)) return LOOP_POLL_INTERVAL_MS;
+  return false;
+}
+
 /** Loops issue detail (spec, shards, state, records). */
 export function useLoopIssue(issueId: string) {
   const queryKey = loopsKeys.detail(issueId);
   return tsRestClient.loops.getIssue.useQuery(
     queryKey,
     { params: { issueId } },
-    { queryKey, enabled: Boolean(issueId) },
+    {
+      queryKey,
+      enabled: Boolean(issueId),
+      // Poll for live progress while the loop is running; auto-stops at
+      // terminal / paused states. Previously the detail view never polled, so
+      // a "Run Step" left the UI stale until the HTTP round-trip returned.
+      refetchInterval: liveLoopRefetchInterval,
+    },
   );
 }
 

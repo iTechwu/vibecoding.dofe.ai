@@ -164,6 +164,9 @@ export default function LoopsPage() {
   )?.agentToolRegistry;
   const actionQueue = metrics?.actionQueue ?? [];
   const reviewInbox = buildReviewInbox(actionQueue, notifications?.notifications);
+  // Distinct error state: previously a failed list/doctor query rendered as
+  // perpetual "loading". Surface it as an explicit banner instead.
+  const dataLoadFailed = listQuery.isError || doctorQuery.isError;
 
   useEffect(() => {
     setAgingNow(new Date());
@@ -196,6 +199,15 @@ export default function LoopsPage() {
             </Link>
           </div>
         </header>
+
+        {dataLoadFailed ? (
+          <div
+            role="alert"
+            className="rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+          >
+            {t('loadError')}
+          </div>
+        ) : null}
 
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
           <MetricCard

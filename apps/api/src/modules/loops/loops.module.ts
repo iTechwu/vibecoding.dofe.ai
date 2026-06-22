@@ -12,7 +12,10 @@ import { LOOPS_CLAUDE_ADAPTER } from './adapters/loops-claude-adapter.interface'
 import { LOOPS_GIT_ADAPTER } from './adapters/loops-git-adapter.interface';
 import { LoopsPrProviderClient } from './adapters/loops-pr-provider.client';
 import { LoopsController } from './loops.controller';
+import { LoopsCapabilityRegistry } from './loops-capability-registry';
 import { LoopsFileStoreService } from './loops-file-store.service';
+import { InMemoryLoopsLockBackend } from './in-memory-loops-lock.backend';
+import { LOOPS_LOCK_BACKEND } from './loops-lock-backend.interface';
 import { LoopsNotificationSender } from './loops-notification-sender.service';
 import { LoopsPersistenceService } from './loops-persistence.service';
 import { LOOPS_PERSISTENCE } from './loops-persistence.token';
@@ -28,6 +31,7 @@ import { LoopsWorkLockService } from './loops-work-lock.service';
   controllers: [LoopsController],
   providers: [
     LoopsService,
+    LoopsCapabilityRegistry,
     LoopsNotificationSender,
     LoopsFileStoreService,
     LoopsPersistenceService,
@@ -37,6 +41,12 @@ import { LoopsWorkLockService } from './loops-work-lock.service';
     { provide: LOOPS_PERSISTENCE, useExisting: LoopsPersistenceService },
     LoopsRunnerService,
     LoopsWorkLockService,
+    // Work-lock backend: in-memory by default (single-process, unchanged
+    // behaviour). Swap to RedisLoopsLockBackend (bound to @dofe/infra-redis
+    // via a factory) when multi-instance locking is enabled — see
+    // docs/0621/crewAI/04-optimization-recommendations.md (R9).
+    InMemoryLoopsLockBackend,
+    { provide: LOOPS_LOCK_BACKEND, useExisting: InMemoryLoopsLockBackend },
     DeterministicLoopsAgentAdapter,
     DeterministicLoopsClaudeAdapter,
     CliLoopsAgentAdapter,

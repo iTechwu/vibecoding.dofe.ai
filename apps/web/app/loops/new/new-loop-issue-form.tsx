@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@/i18n/navigation';
 import { useAuth } from '@/providers';
+import { CreateLoopIssueRequestSchema } from '@repo/contracts';
 import { useCreateLoopIssue } from '@/lib/api/contracts/hooks';
 import {
   DEFAULT_LOOP_ISSUE_TEMPLATE,
@@ -44,6 +45,7 @@ export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueForm
   const [acceptanceCriteria, setAcceptanceCriteria] = useState(() =>
     getTemplateCriteria(DEFAULT_LOOP_ISSUE_TEMPLATE).join('\n'),
   );
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -61,9 +63,30 @@ export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueForm
       .split('\n')
       .map((item) => item.trim())
       .filter(Boolean);
-    const result = await createIssue.mutateAsync({
-      body: { title, targetRepo, body, priority, acceptanceCriteria: criteria },
-    });
+    // Rule 2 (client side): validate against the contract Zod schema before
+    // hitting the network, so field-level errors are surfaced immediately
+    // rather than as a generic server failure.
+    const payload = {
+      title: title.trim(),
+      targetRepo: targetRepo.trim(),
+      body: body.trim(),
+      priority,
+      acceptanceCriteria: criteria,
+    };
+    const parsed = CreateLoopIssueRequestSchema.safeParse(payload);
+    if (!parsed.success) {
+      const fieldErrors: Record<string, string> = {};
+      for (const issue of parsed.error.issues) {
+        const key = issue.path[0]?.toString();
+        if (key && !fieldErrors[key]) {
+          fieldErrors[key] = issue.message;
+        }
+      }
+      setErrors(fieldErrors);
+      return;
+    }
+    setErrors({});
+    const result = await createIssue.mutateAsync({ body: parsed.data });
     const issueId = result.body.data.issue.id;
     router.push(`/loops/${issueId}`);
   }
@@ -143,6 +166,7 @@ export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueForm
           required
           value={title}
         />
+        {errors.title ? <span className="text-xs text-destructive">{errors.title}</span> : null}
       </label>
 
       <label className="flex flex-col gap-2 text-sm font-medium">
@@ -153,6 +177,9 @@ export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueForm
           required
           value={targetRepo}
         />
+        {errors.targetRepo ? (
+          <span className="text-xs text-destructive">{errors.targetRepo}</span>
+        ) : null}
       </label>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -179,6 +206,7 @@ export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueForm
           required
           value={body}
         />
+        {errors.body ? <span className="text-xs text-destructive">{errors.body}</span> : null}
       </label>
 
       <label className="flex flex-col gap-2 text-sm font-medium">
@@ -190,6 +218,9 @@ export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueForm
           required
           value={acceptanceCriteria}
         />
+        {errors.acceptanceCriteria ? (
+          <span className="text-xs text-destructive">{errors.acceptanceCriteria}</span>
+        ) : null}
       </label>
 
       {createIssue.isError ? <p className="text-sm text-destructive">{t('error')}</p> : null}

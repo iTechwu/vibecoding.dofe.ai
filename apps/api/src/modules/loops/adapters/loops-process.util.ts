@@ -102,23 +102,81 @@ async function sleep(ms: number) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** 从 CLI 的自由文本/JSON 输出中尽量抽出第一个 JSON 对象。 */
+/**
+ * 从 CLI/LLM 自由文本中健壮地抽取首个 JSON 值（对象或数组）。
+ *
+ * 比"首括号 + `lastIndexOf` 尾括号"更稳，避免两类常见误判：
+ * 1. LLM 输出常带 markdown 代码围栏（` ```json … ``` `）与前后提示语；
+ * 2. 对象之后还有尾随的 `}` `]` 等字符时，`lastIndexOf` 会把结束位置算错。
+ *
+ * 处理：剥离围栏 → 深度感知括号扫描（识别字符串与转义）定位首个完整 JSON
+ * 值的结束 → `JSON.parse`；失败再回退移除尾随逗号。
+ *
+ * `extractJson` 为历史别名，保持既有调用点不变。
+ */
 export function extractJson<T = unknown>(raw: string): T | undefined {
+  return parseJsonLoose<T>(raw);
+}
+
+export function parseJsonLoose<T = unknown>(raw: string): T | undefined {
   if (!raw) return undefined;
-  const start = raw.indexOf('{');
-  const startArr = raw.indexOf('[');
-  let begin = -1;
-  if (start === -1) begin = startArr;
-  else if (startArr === -1) begin = start;
-  else begin = Math.min(start, startArr);
+  const cleaned = stripCodeFences(raw).trim();
+  const begin = firstJsonBoundary(cleaned);
   if (begin === -1) return undefined;
-  const open = raw[begin];
-  const close = open === '{' ? '}' : ']';
-  const end = raw.lastIndexOf(close);
-  if (end <= begin) return undefined;
+  const end = matchJsonBoundary(cleaned, begin);
+  if (end === -1) return undefined;
+  const slice = cleaned.slice(begin, end + 1);
   try {
-    return JSON.parse(raw.slice(begin, end + 1)) as T;
+    return JSON.parse(slice) as T;
   } catch {
-    return undefined;
+    // 容忍尾随逗号（LLM 常见错误）。
+    const repaired = slice.replace(/,(\s*[}\]])/g, '$1');
+    try {
+      return JSON.parse(repaired) as T;
+    } catch {
+      return undefined;
+    }
   }
+}
+
+function stripCodeFences(raw: string): string {
+  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  return fence ? fence[1] : raw;
+}
+
+function firstJsonBoundary(text: string): number {
+  const obj = text.indexOf('{');
+  const arr = text.indexOf('[');
+  if (obj === -1) return arr;
+  if (arr === -1) return obj;
+  return Math.min(obj, arr);
+}
+
+/** 深度感知扫描：从 `begin` 的开括号找到其匹配的闭括号（忽略字符串/转义内的括号）。 */
+function matchJsonBoundary(text: string, begin: number): number {
+  const open = text[begin];
+  const close = open === '{' ? '}' : open === '[' ? ']' : '';
+  if (!close) return -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = begin; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === open) depth += 1;
+    else if (ch === close) {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
 }

@@ -4,6 +4,7 @@
     "title": "Agent Delivery Console",
     "resume": "Resume Interrupted",
     "resuming": "Resuming",
+    "loadError": "Failed to load Loops data. Check your connection and retry.",
     "newIssue": "New Issue",
     "metrics": {
       "active": "Active",

@@ -46,3 +46,15 @@
 - **`docs/0620`**：Loops v1 收尾已完成；本目录承接其"v1.1+ / 生产化后置"定位，但视角从"内部执行清单"升级为"竞品对标驱动"。
 - **`docs/0619/sso`**：SSO/file 唯一真源；本目录仅引用其鉴权结论（`dofe-sso` submitter 已由 AuthGuard 派生）。
 - 真实 PR provider 验收、真实 CLI token 计量、跨进程 worker 池仍依赖外部输入，沿用 `docs/0620/05-blockers.md` 口径。
+
+## 实施轮次记录
+
+- **round 1（批次 1 / P0）**：完成 R1（Rule 3：notification + PR client → `@nestjs/axios` `HttpService`）、R2（4 个 service 注入 Winston + 关键静默路径结构化日志）、R3（`createIssueId` 改 `crypto.randomUUID`）、R4（`commitShard` adapter 级幂等：`git diff --cached --quiet` 判空跳过）、R5（`runLoopUnlocked` 收敛判据改用 `currentDetail`）、R6（抽 `costGuardedState` helper + reviewShard 新增 cost 记账）。R6b（reviewGlobal/reloop + token estimated 标记）转 `designed`（依赖 schema 迁移）。回归：Loops Jest 18 passed / 3 skipped（DB smoke）+ API `tsc` 0 错 + `check:architecture`/`check:sensitive-logs`/`check:sso-boundaries` 全 PASS。详见 [04](04-optimization-recommendations.md)。
+
+- **round 2（批次 2 / P1 架构）**：完成 R7（原子状态：`upsertState` 改 per-issue `state/<id>.json` + `atomicWriteJson`(temp+rename) + `readState` 聚合 + legacy 惰性迁移，消除整文件覆写丢更新竞态）、R8（`extractJson` 重写为 `parseJsonLoose`：剥 markdown 围栏 + 深度感知括号扫描 + 尾随逗号修复，+12 单测）、R9（`LoopsLockBackend` 接口 + `InMemoryLoopsLockBackend`(默认,行为等价) + `RedisLoopsLockBackend`(SET NX PX + 所有权 release + partial 回滚, +4 mock 单测)；`LoopsWorkLockService` 经 `LOOPS_LOCK_BACKEND` 注入，默认行为不变）。回归：Loops Jest 34 passed / 3 skipped + `tsc` 0 错。Redis 生产启用=配置级（factory 一行 + env），多实例验收仍属 B3 blocked。
+
+- **round 3（批次 3 / P1 前端）**：完成 R10（`new-loop-issue-form` 接入契约 `CreateLoopIssueRequestSchema`，`handleSubmit` 内 `safeParse`，失败渲染字段级 `.text-destructive` 错误；+1 vitest 用例验证 2 字符 title 被拒）、R11（`useLoopIssue` 加 `liveLoopRefetchInterval` 谓词：活体态 `IN_LOOP`/`PHASE_4-7`→4000ms 轮询，`paused`/终态 status→停，详情页零改动自动生效）、R12（仪表盘派生 `dataLoadFailed`，header 下渲染 `role="alert"` 错误 banner，en/zh locale 各加 `loadError` key；乐观更新/onError 回滚转 R12b designed）。回归：web vitest loops 13 passed + web `tsc` 0 错。
+
+- **round 4（批次 4 / P2 测试覆盖）**：完成 R13（覆盖**两个最大生产风险**——cost cap 绕过 + 并发竞态：新增 `loops-cost-guard.spec.ts` 3 用例 call/token cap trip + 低于 cap 不触发；work-lock `Promise.all` 5 并发竞态 1 用例→恰好 1 成功 4 ConflictException）。R13b（reloop/autoReloop/context-budget/CLI-fallback/RBAC 等服务全链路）转 designed（需更重 fixture 或外部 harness）。回归：Loops Jest 38 passed / 3 skipped。
+
+- **round 5（批次 5 / P2 重构）**：完成 R14（抽 `LoopsCapabilityRegistry`：`capabilities()` 原 ~294 行纯静态能力/工具注册表原样迁出为 `@Injectable().build()`，`LoopsService` 改委托 + `@Optional()` 注入 + 模块注册，移除未用 `LoopCapabilityItem` 导入；行为零变更）。R15（抽 `LoopsCoverageService`）转 designed（集群 7 方法已定位，但 `aggregateCoverageSummaries`/`emptyCoverageSummary` 与 `metrics()` 共享，干净抽取需一并迁移共享 helper + 改接 2 处外部调用，跨方法耦合风险高于 R14，留独立 PR）。R16（拆 `[issueId]/page.tsx` 1124 行）转 designed（大型 UI 重构需人工验证）。**最终全量回归全绿**：`pnpm quality:gate` exit 0（含 architecture/sensitive-logs/sso-boundaries/type-check）+ API Jest 57 passed/3 skipped + web vitest 18 passed + `pnpm build`(web+api) exit 0。

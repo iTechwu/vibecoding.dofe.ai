@@ -1,6 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
+import { randomUUID } from 'crypto';
 import { existsSync } from 'fs';
 import { promises as fs } from 'fs';
 import * as path from 'path';
@@ -83,6 +84,9 @@ export class LoopsFileStoreService {
         'annotations',
         'notifications',
         'archive',
+        // Per-issue atomic state files (R7); each issue writes its own
+        // `state/<issueId>.json` instead of rewriting a monolithic state file.
+        'state',
       ].map((dir) => fs.mkdir(path.join(this.root, dir), { recursive: true })),
     );
 
@@ -768,14 +772,12 @@ export class LoopsFileStoreService {
   }
 
   async upsertState(next: LoopStateItem) {
-    const state = await this.readState();
-    const index = state.loops.findIndex((item) => item.issueId === next.issueId);
-    if (index >= 0) {
-      state.loops[index] = next;
-    } else {
-      state.loops.unshift(next);
-    }
-    await this.writeJson('state.json', state);
+    await this.ensureInitialized();
+    // Per-issue atomic write (temp + rename). This removes the lost-update
+    // race the monolithic `state.json` had: two issues mutated concurrently
+    // each did read-modify-write on the whole file, so the second writer
+    // clobbered the first. Each issue now owns its own file.
+    await this.atomicWriteJson(`state/${next.issueId}.json`, next);
   }
 
   intakeId(issueId: string) {
@@ -853,7 +855,29 @@ export class LoopsFileStoreService {
 
   private async readState(): Promise<StateFile> {
     await this.ensureInitialized();
-    return this.readJson<StateFile>('state.json');
+    const byIssue = new Map<string, LoopStateItem>();
+    // Source of truth: per-issue state files.
+    const files = await fs.readdir(path.join(this.root, 'state')).catch(() => [] as string[]);
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const loop = await this.readOptionalJson<LoopStateItem>(`state/${file}`);
+      if (loop?.issueId) {
+        byIssue.set(loop.issueId, loop);
+      }
+    }
+    // Lazy migration: legacy monolithic `state.json` entries are included only
+    // for issues that have not yet been written as a per-issue file. Once an
+    // issue is upserted it lives in `state/<id>.json` and shadows the legacy
+    // entry.
+    const legacy = await this.readOptionalJson<StateFile>('state.json');
+    if (legacy?.loops) {
+      for (const loop of legacy.loops) {
+        if (loop.issueId && !byIssue.has(loop.issueId)) {
+          byIssue.set(loop.issueId, loop);
+        }
+      }
+    }
+    return { loops: [...byIssue.values()] };
   }
 
   private inspectShardState(loop: LoopStateItem, shards: LoopShard[], problems: string[]) {
@@ -1015,6 +1039,21 @@ export class LoopsFileStoreService {
     const target = path.join(this.root, relativePath);
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+  }
+
+  /**
+   * Atomic JSON write: write to a uniquely-named temp file then rename. On a
+   * single filesystem `rename` is atomic, so a crash mid-write never leaves a
+   * truncated state file (a reader sees either the old or the new version,
+   * never a half-written one). Used for per-issue state so concurrent writers
+   * on different issues cannot corrupt each other.
+   */
+  private async atomicWriteJson(relativePath: string, data: unknown) {
+    const target = path.join(this.root, relativePath);
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    const tmp = `${target}.${randomUUID().slice(0, 8)}.tmp`;
+    await fs.writeFile(tmp, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+    await fs.rename(tmp, target);
   }
 
   private async writeText(relativePath: string, content: string) {

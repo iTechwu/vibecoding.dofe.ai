@@ -132,4 +132,21 @@ describe('NewLoopIssueForm', () => {
     });
     expect(push).toHaveBeenCalledWith('/loops/issue-template-1');
   });
+
+  it('blocks submit and shows a field error when the payload fails Zod validation (R10)', async () => {
+    mutateAsync.mockClear();
+    push.mockClear();
+    const user = userEvent.setup();
+    const { container } = renderWithIntl(<NewLoopIssueForm defaultTargetRepo="/repo/app" />);
+
+    // Type a 2-char title: it passes the HTML `required` check (non-empty) but
+    // fails the contract schema's min(4), so the client-side safeParse must
+    // reject before any network call and render a field-level error span.
+    await user.type(screen.getByLabelText('Title'), 'ab');
+    await user.click(screen.getByRole('button', { name: 'Create Issue' }));
+
+    expect(mutateAsync).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+    expect(container.querySelectorAll('.text-destructive').length).toBeGreaterThan(0);
+  });
 });
