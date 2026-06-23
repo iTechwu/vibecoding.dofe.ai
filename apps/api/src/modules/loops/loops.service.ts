@@ -10,10 +10,12 @@ import type {
   CreateLoopIssueRequest,
   CreateLoopIssueSimpleRequest,
   DetectLoopRuntimeResponse,
+  LoopBrowserQaRequest,
   LoopAgentRuntimeResponse,
   LoopAnnotation,
   LoopCapabilitiesResponse,
   LoopConvergencePr,
+  LoopDeliveryGovernanceRequest,
   LoopEvidenceArtifact,
   LoopGlobalReviewRecord,
   LoopImplementationRecord,
@@ -45,6 +47,7 @@ import type {
   LoopReviewShardRequest,
   LoopRunShardTestsRequest,
   LoopReviewSpecRequest,
+  LoopRuntimeSecurityException,
   LoopShard,
   LoopPhase,
   LoopSecondOpinion,
@@ -81,6 +84,13 @@ import { LOOPS_PERSISTENCE } from './loops-persistence.token';
 import { resolveAllowedTargetRepo } from './loops-path-policy.util';
 import { readLoopsRuntimeConfig } from './loops-runtime-config.util';
 import { LoopsWorkLockService } from './loops-work-lock.service';
+import { LoopsBrowserQaWorkerService } from './loops-browser-qa-worker.service';
+import { LoopsSecondOpinionWorkerService } from './loops-second-opinion-worker.service';
+import {
+  buildPrimarySecondOpinionFindings,
+  compareSecondOpinionFindings,
+} from './loops-second-opinion-comparison.util';
+import { enrichLoopLearning } from './loops-learning-memory.util';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
 
@@ -171,6 +181,10 @@ export class LoopsService {
     private readonly runtimeDetection?: AgentRuntimeDetectionService,
     @Optional()
     private readonly workspaceProfile?: LoopsWorkspaceProfileService,
+    @Optional()
+    private readonly browserQaWorker: LoopsBrowserQaWorkerService = new LoopsBrowserQaWorkerService(),
+    @Optional()
+    private readonly secondOpinionWorker: LoopsSecondOpinionWorkerService = new LoopsSecondOpinionWorkerService(),
   ) {}
 
   async list(query: LoopIssuesQuery): Promise<LoopListResponse> {
@@ -1159,6 +1173,49 @@ export class LoopsService {
     return this.syncAndRead(issueId);
   }
 
+  async runBrowserQa(issueId: string, request: LoopBrowserQaRequest) {
+    const detail = await this.store.readDetail(issueId);
+    const reportId = `browser-qa-${issueId}-${Date.now()}`;
+    const paths = this.store.browserQaArtifactPaths(issueId, reportId);
+    const report = await this.browserQaWorker.run({
+      issueId,
+      reportId,
+      targetRepo: detail.issue.targetRepo,
+      request,
+      screenshotPath: paths.screenshotPath,
+      screenshotRef: paths.screenshotRef,
+      tracePath: paths.tracePath,
+      traceRef: paths.traceRef,
+      baselinePath: paths.baselinePath,
+      baselineRef: paths.baselineRef,
+      diffPath: paths.diffPath,
+      diffRef: paths.diffRef,
+      handoffPath: paths.handoffPath,
+      handoffRef: paths.handoffRef,
+    });
+    await this.store.writeBrowserQaReport(report);
+    return this.getIssue(issueId);
+  }
+
+  async runSecondOpinion(issueId: string) {
+    const detail = await this.withRequirementsCoverage(await this.store.readDetail(issueId));
+    const derived = this.buildSecondOpinion(detail);
+    const report = await this.secondOpinionWorker.run({
+      detail,
+      primary: derived.primary,
+    });
+    await this.store.writeSecondOpinion(report);
+    return this.getIssue(issueId);
+  }
+
+  async governDelivery(
+    issueId: string,
+    request: LoopDeliveryGovernanceRequest,
+  ): Promise<LoopIssueDetail> {
+    await this.store.governDelivery({ issueId, request });
+    return this.getIssue(issueId);
+  }
+
   async doctor() {
     return this.persistence?.doctor() ?? this.store.doctor();
   }
@@ -1365,6 +1422,11 @@ export class LoopsService {
       throw new BadRequestException('targetLearningId is required when merging a learning');
     }
     await this.store.governLearning({ learningId, request });
+    return this.listWorkspaces();
+  }
+
+  async runLearningAutoMergeWorker(): Promise<LoopWorkspacesResponse> {
+    await this.store.runLearningAutoMergeWorker();
     return this.listWorkspaces();
   }
 
@@ -2275,14 +2337,55 @@ export class LoopsService {
     };
   }
 
-  private withDeliveryControlsList(result: LoopListResponse): LoopListResponse {
+  private async withDeliveryControlsList(result: LoopListResponse): Promise<LoopListResponse> {
+    const list = await Promise.all(
+      result.list.map(async (item) => {
+        let runtimeSecurityExceptions: LoopRuntimeSecurityException[] = [];
+        let deliveryItem: LoopListItem | LoopIssueDetail = item;
+        try {
+          const detail = await this.readDetail(item.issue.id);
+          deliveryItem = detail;
+          runtimeSecurityExceptions = this.buildRuntimeSecurityExceptions(detail);
+        } catch (error) {
+          this.log('warn', '[Loops] unable to read runtime security exceptions for list item', {
+            issueId: item.issue.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        return {
+          ...item,
+          ...this.buildDeliveryControls(deliveryItem),
+          ...(this.asDetail(deliveryItem)?.deliveryGovernance
+            ? { deliveryGovernance: this.asDetail(deliveryItem)?.deliveryGovernance }
+            : {}),
+          ...(runtimeSecurityExceptions.length ? { runtimeSecurityExceptions } : {}),
+        };
+      }),
+    );
     return {
       ...result,
-      list: result.list.map((item) => ({
-        ...item,
-        ...this.buildDeliveryControls(item),
-      })),
+      list,
     };
+  }
+
+  private buildRuntimeSecurityExceptions(detail: LoopIssueDetail): LoopRuntimeSecurityException[] {
+    return detail.testRecords.flatMap((record) =>
+      record.failedTests
+        .filter((failure) => failure.name.startsWith('runtime-security:'))
+        .map((failure, index) => ({
+          id: `${record.id}-${failure.name}-${index}`,
+          testRecordId: record.id,
+          shardId: record.shardId,
+          round: record.round,
+          level: failure.name === 'runtime-security:canary' ? 'critical' : 'warning',
+          reason: failure.reason,
+          evidence: `${failure.name} · ${record.status}`,
+          command:
+            record.commands.find((command) => failure.reason.includes(command.command))?.command ??
+            record.runtimeSecurityPolicy?.canary.leakedInCommands[0],
+          created: record.created,
+        })),
+    );
   }
 
   private buildDeliveryControls(item: LoopListItem | LoopIssueDetail): {
@@ -2311,6 +2414,10 @@ export class LoopsService {
     const releaseReady = this.isReleaseReady(item);
     const updated = item.state?.updated ?? item.issue.updated;
     const snapshot = this.asDetail(item)?.workflowRecipe;
+    const governance = this.asDetail(item)?.deliveryGovernance;
+    const workflowDefault = governance?.workflowDefaults.find(
+      (entry) => entry.loopKind === this.inferWorkflowKind(item),
+    );
 
     const steps: LoopWorkflowStep[] = [
       {
@@ -2445,12 +2552,12 @@ export class LoopsService {
     ];
 
     return {
-      id: snapshot?.id ?? `default-${this.inferWorkflowKind(item)}`,
+      id: snapshot?.id ?? workflowDefault?.recipeId ?? `default-${this.inferWorkflowKind(item)}`,
       name: snapshot?.name ?? 'Default Codex / Claude Code delivery',
       version: snapshot?.version ?? 1,
       appliesTo: snapshot?.appliesTo ?? [this.inferWorkflowKind(item)],
-      capturedAt: snapshot?.capturedAt ?? updated,
-      source: snapshot?.source ?? 'default',
+      capturedAt: snapshot?.capturedAt ?? workflowDefault?.updated ?? updated,
+      source: snapshot?.source ?? (workflowDefault ? 'workspace' : 'default'),
       steps,
     };
   }
@@ -2464,7 +2571,7 @@ export class LoopsService {
     const findingsCount = this.reviewFindingsCount(item);
     const evidenceByKind = this.evidenceIdsByKind(item);
 
-    return [
+    const gates: LoopReviewGate[] = [
       {
         id: `${item.issue.id}-gate-product`,
         kind: 'product',
@@ -2523,6 +2630,23 @@ export class LoopsService {
         updated,
       },
     ];
+    const overrides = this.asDetail(item)?.deliveryGovernance?.reviewGateOverrides ?? [];
+    return gates.map((gate) => {
+      const override = overrides.find((item) => item.gateKind === gate.kind);
+      if (!override) return gate;
+      return {
+        ...gate,
+        status: override.status,
+        reviewer: 'human',
+        confidence:
+          override.status === 'passed' || override.status === 'waived' ? 1 : gate.confidence,
+        waiverReason:
+          override.status === 'waived' || override.status === 'blocked'
+            ? (override.reason ?? `Governed by ${override.actor}`)
+            : gate.waiverReason,
+        updated: override.updated,
+      };
+    });
   }
 
   private buildReleaseGate(item: LoopListItem | LoopIssueDetail): LoopReleaseGate {
@@ -2530,11 +2654,16 @@ export class LoopsService {
     const evidenceByKind = this.evidenceIdsByKind(item);
     const detail = this.asDetail(item);
     const secondOpinion = detail ? this.buildSecondOpinion(detail) : undefined;
+    const governance = detail?.deliveryGovernance;
+    const reviewGates = this.buildReviewGates(item);
+    const canaryPassed = !governance?.releaseCanary || governance.releaseCanary.status === 'passed';
     const checklist = {
       specApproved: this.isSpecApproved(item),
       implementationEvidence: this.isImplementationDone(item),
       testsPassed: this.testsPassed(item),
-      requiredReviewsPassed: this.isReviewPassed(item),
+      requiredReviewsPassed: reviewGates.every(
+        (gate) => gate.status === 'passed' || gate.status === 'waived',
+      ),
       secondOpinionPassed: secondOpinion
         ? !secondOpinion.requiredForRelease || secondOpinion.status === 'passed'
         : true,
@@ -2542,6 +2671,7 @@ export class LoopsService {
       docsUpdated: true,
       prReady: Boolean(detail?.convergencePr || item.issue.status === 'CLOSED'),
       rollbackNote: Boolean(detail?.convergencePr || item.issue.status === 'CLOSED'),
+      canaryPassed,
     };
     const blocker = this.deliveryBlockedReason(item);
     return {
@@ -2568,13 +2698,18 @@ export class LoopsService {
   }
 
   private buildSecondOpinion(detail: LoopIssueDetail): LoopSecondOpinion {
+    if (detail.secondOpinion) {
+      return this.applySecondOpinionPolicy(detail, detail.secondOpinion);
+    }
     const primaryEvidenceIds = [
       ...detail.reviewRecords.map((record) => record.id),
       ...(detail.globalReview ? [detail.globalReview.id] : []),
     ];
-    const primaryFindings =
-      detail.reviewRecords.reduce((total, record) => total + record.issues.length, 0) +
-      (detail.globalReview?.issues.length ?? 0);
+    const primaryFindings = buildPrimarySecondOpinionFindings({
+      reviewRecords: detail.reviewRecords,
+      globalReview: detail.globalReview,
+    });
+    const comparison = compareSecondOpinionFindings({ primary: primaryFindings, secondary: [] });
     const primaryPassed = Boolean(
       detail.globalReview?.verdict === 'PASS' ||
       (detail.reviewRecords.length > 0 &&
@@ -2583,7 +2718,7 @@ export class LoopsService {
     const primaryStatus: LoopSecondOpinion['primary']['status'] =
       primaryEvidenceIds.length === 0
         ? 'not_run'
-        : primaryFindings > 0
+        : primaryFindings.length > 0
           ? 'needs_changes'
           : primaryPassed
             ? 'passed'
@@ -2591,26 +2726,33 @@ export class LoopsService {
     const secondaryStatus: LoopSecondOpinion['secondary']['status'] = detail.globalReview
       ? 'pending'
       : 'not_run';
-    const requiredForRelease = false;
+    const requiredForRelease =
+      detail.deliveryGovernance?.secondOpinionPolicy?.requiredForRelease ?? false;
+    const conflictHumanGate =
+      detail.deliveryGovernance?.secondOpinionPolicy?.conflictHumanGate ?? true;
+    const hasConflict = comparison.conflictCount > 0 && conflictHumanGate;
 
-    return {
+    return this.applySecondOpinionPolicy(detail, {
       id: `${detail.issue.id}-second-opinion`,
-      status: requiredForRelease
-        ? this.isSecondOpinionReviewerPassed(secondaryStatus) && primaryStatus === 'passed'
-          ? 'passed'
-          : primaryStatus === 'needs_changes'
-            ? 'needs_changes'
-            : 'pending'
-        : 'not_required',
+      status: hasConflict
+        ? 'conflict'
+        : requiredForRelease
+          ? this.isSecondOpinionReviewerPassed(secondaryStatus) && primaryStatus === 'passed'
+            ? 'passed'
+            : primaryStatus === 'needs_changes'
+              ? 'needs_changes'
+              : 'pending'
+          : 'not_required',
       primary: {
         role: 'primary',
         reviewer: 'codex',
         status: primaryStatus,
-        findingsCount: primaryFindings,
+        findingsCount: primaryFindings.length,
+        findings: primaryFindings,
         evidenceIds: primaryEvidenceIds,
         summary:
           primaryEvidenceIds.length > 0
-            ? `Codex primary review has ${primaryFindings} finding(s) across shard and global review evidence.`
+            ? `Codex primary review has ${primaryFindings.length} finding(s) across shard and global review evidence.`
             : 'Codex primary review has not produced evidence yet.',
       },
       secondary: {
@@ -2618,6 +2760,7 @@ export class LoopsService {
         reviewer: 'claude-code',
         status: secondaryStatus,
         findingsCount: 0,
+        findings: [],
         evidenceIds: [],
         summary:
           secondaryStatus === 'pending'
@@ -2625,13 +2768,34 @@ export class LoopsService {
             : 'Claude Code secondary review has not run yet.',
       },
       comparison: {
-        agreementCount: 0,
-        primaryOnlyCount: primaryFindings,
-        secondaryOnlyCount: 0,
-        conflictCount: 0,
+        ...comparison,
       },
       requiredForRelease,
       updated: detail.state.updated ?? detail.issue.updated,
+    });
+  }
+
+  private applySecondOpinionPolicy(
+    detail: LoopIssueDetail,
+    report: LoopSecondOpinion,
+  ): LoopSecondOpinion {
+    const policy = detail.deliveryGovernance?.secondOpinionPolicy;
+    if (!policy) return report;
+    const status =
+      policy.conflictHumanGate && report.comparison.conflictCount > 0
+        ? 'conflict'
+        : policy.requiredForRelease
+          ? report.secondary.status === 'passed' && report.primary.status === 'passed'
+            ? 'passed'
+            : report.status === 'needs_changes' || report.primary.status === 'needs_changes'
+              ? 'needs_changes'
+              : 'pending'
+          : report.status;
+    return {
+      ...report,
+      status,
+      requiredForRelease: policy.requiredForRelease,
+      updated: policy.updated,
     };
   }
 
@@ -2692,6 +2856,10 @@ export class LoopsService {
   }
 
   private isBrowserQaPassed(item: LoopListItem | LoopIssueDetail): boolean {
+    const reports = this.asDetail(item)?.browserQaReports ?? [];
+    if (reports.length > 0) {
+      return reports[0]?.status === 'passed';
+    }
     const phase = item.state?.phase ?? 'PHASE_0_INTAKE';
     return (
       item.issue.status === 'CLOSED' ||
@@ -2873,6 +3041,33 @@ export class LoopsService {
         ? `Convergence package references ${detail.convergencePr.commits.length} commits.`
         : 'Convergence PR evidence is pending until finalization.',
     });
+    const latestBrowserQa = detail.browserQaReports?.[0];
+    artifacts.push({
+      id: latestBrowserQa?.id ?? `${issueId}-browser-qa`,
+      label: 'Browser QA',
+      kind: 'browser-qa',
+      path: latestBrowserQa
+        ? `.loops/runs/${issueId}/browser-qa/${latestBrowserQa.id}.json`
+        : `.loops/runs/${issueId}/browser-qa`,
+      status: latestBrowserQa ? 'present' : 'pending',
+      count: latestBrowserQa
+        ? latestBrowserQa.consoleErrors.length + latestBrowserQa.networkFailures.length
+        : undefined,
+      summary: latestBrowserQa
+        ? `${latestBrowserQa.status} browser QA for ${latestBrowserQa.targetUrl}; ${latestBrowserQa.screenshots.length} screenshots, ${latestBrowserQa.traces?.length ?? 0} traces, ${latestBrowserQa.visualDiffs?.length ?? 0} visual checks and ${latestBrowserQa.handoffs?.length ?? 0} handoffs captured.`
+        : 'Browser QA report has not been run yet.',
+    });
+    artifacts.push({
+      id: detail.secondOpinion?.id ?? `${issueId}-second-opinion`,
+      label: 'Second Opinion',
+      kind: 'second-opinion',
+      path: `.loops/runs/${issueId}/second-opinion.json`,
+      status: detail.secondOpinion ? 'present' : 'pending',
+      count: detail.secondOpinion?.comparison.conflictCount,
+      summary: detail.secondOpinion
+        ? `${detail.secondOpinion.status} second opinion; secondary reviewer ${detail.secondOpinion.secondary.status}.`
+        : 'Second opinion worker has not produced evidence yet.',
+    });
 
     return artifacts;
   }
@@ -2953,7 +3148,7 @@ export class LoopsService {
       });
     }
 
-    return learnings;
+    return learnings.map(enrichLoopLearning);
   }
 
   private async readCoverageSummary(issueId: string): Promise<LoopRequirementCoverageSummary> {

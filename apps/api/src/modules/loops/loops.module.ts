@@ -25,6 +25,8 @@ import { LOOPS_PERSISTENCE } from './loops-persistence.token';
 import { LoopsRunnerService } from './loops-runner.service';
 import { LoopsService } from './loops.service';
 import { LoopsWorkLockService } from './loops-work-lock.service';
+import { LoopsBrowserQaWorkerService } from './loops-browser-qa-worker.service';
+import { LoopsSecondOpinionWorkerService } from './loops-second-opinion-worker.service';
 
 @Module({
   // HttpModule provides HttpService to LoopsNotificationSender and
@@ -50,6 +52,8 @@ import { LoopsWorkLockService } from './loops-work-lock.service';
     // NestJS graph and never into standalone `ts-node` consumers.
     { provide: LOOPS_PERSISTENCE, useExisting: LoopsPersistenceService },
     LoopsRunnerService,
+    LoopsBrowserQaWorkerService,
+    LoopsSecondOpinionWorkerService,
     LoopsWorkLockService,
     // Work-lock backend: in-memory by default (single-process, unchanged
     // behaviour). Swap to RedisLoopsLockBackend (bound to @dofe/infra-redis

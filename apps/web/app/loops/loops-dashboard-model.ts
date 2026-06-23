@@ -76,7 +76,13 @@ export interface LoopBoardColumn {
   items: LoopBoardItem[];
 }
 
-export type ExceptionSource = 'cost' | 'pause' | 'review' | 'runtime' | 'doctor';
+export type ExceptionSource =
+  | 'cost'
+  | 'pause'
+  | 'review'
+  | 'runtime'
+  | 'runtime-security'
+  | 'doctor';
 
 export interface ExceptionCenterItem {
   id: string;
@@ -151,6 +157,33 @@ export interface ProviderProfile {
   items: ProviderProfileItem[];
 }
 
+export type RuntimeBackendStatus = 'ready' | 'degraded' | 'unavailable';
+
+export interface RuntimeBackendItem {
+  id: string;
+  name: string;
+  kind: 'codex-cli' | 'claude-code-cli';
+  mode: string;
+  status: RuntimeBackendStatus;
+  supportedStages: string[];
+  permissionProfile: string;
+  workspacePolicy: string;
+  costPolicy: string;
+  fallbackPolicy: string;
+  healthChecks: string[];
+  evidence: string;
+}
+
+export interface RuntimeBackends {
+  summary: {
+    total: number;
+    ready: number;
+    degraded: number;
+    unavailable: number;
+  };
+  items: RuntimeBackendItem[];
+}
+
 export interface PerformanceSnapshot {
   passRate: number;
   redoRate: number;
@@ -158,6 +191,30 @@ export interface PerformanceSnapshot {
   averageTokens: number;
   traceEvents: number;
   recentEvents: number;
+}
+
+export type EvalCheckStatus = 'passed' | 'attention' | 'blocked';
+
+export interface EvalCheck {
+  id:
+    | 'architecture-compliance'
+    | 'delivery-readiness'
+    | 'runtime-safety'
+    | 'test-evidence'
+    | 'cost-policy';
+  status: EvalCheckStatus;
+  hardGate: boolean;
+  evidence: string;
+}
+
+export interface EvalPlan {
+  summary: {
+    total: number;
+    passed: number;
+    attention: number;
+    blocked: number;
+  };
+  checks: EvalCheck[];
 }
 
 export interface TriggerPortfolioSource {
@@ -801,6 +858,23 @@ export function buildExceptionCenter(
       });
     }
 
+    for (const runtimeSecurity of item.runtimeSecurityExceptions ?? []) {
+      exceptions.push({
+        id: runtimeSecurity.id,
+        title: item.issue.title,
+        href,
+        level: runtimeSecurity.level,
+        reason: runtimeSecurity.reason,
+        owner: 'Runtime security',
+        action: 'Review command evidence',
+        evidence: runtimeSecurity.command ?? runtimeSecurity.evidence,
+        impact: 'Test execution was blocked or redacted by runtime policy',
+        retryAction: 'Adjust the command or split the work, then rerun tests',
+        evidenceHref: href,
+        source: 'runtime-security',
+      });
+    }
+
     return exceptions;
   });
 
@@ -844,6 +918,7 @@ export function buildExceptionCenter(
     (item) =>
       item.state?.paused ||
       (item.state?.globalVerdict && item.state.globalVerdict !== 'PASS') ||
+      (item.runtimeSecurityExceptions?.length ?? 0) > 0 ||
       costByIssue.get(item.issue.id)?.tripped,
   ).length;
 
@@ -1049,6 +1124,76 @@ export function buildProviderProfile(
   };
 }
 
+const RUNTIME_BACKEND_BLUEPRINTS: Record<
+  'codex' | 'claude-code',
+  Omit<RuntimeBackendItem, 'mode' | 'status' | 'healthChecks' | 'evidence'>
+> = {
+  codex: {
+    id: 'runtime-backend-codex',
+    name: 'Codex CLI',
+    kind: 'codex-cli',
+    supportedStages: ['Intake', 'Spec', 'Planning', 'Review', 'Release'],
+    permissionProfile: 'read/review/test design; write only Loops artifacts',
+    workspacePolicy: 'uses selected workspace profile and target repo scope',
+    costPolicy: 'shares per-loop call/token guard',
+    fallbackPolicy: 'Fallback to deterministic review gate',
+  },
+  'claude-code': {
+    id: 'runtime-backend-claude-code',
+    name: 'Claude Code CLI',
+    kind: 'claude-code-cli',
+    supportedStages: ['Implementation', 'Test execution', 'Second opinion'],
+    permissionProfile: 'read/write/test within approved work package',
+    workspacePolicy: 'requires approved workspace mount for Docker mode',
+    costPolicy: 'shares per-loop call/token guard',
+    fallbackPolicy: 'Pause and ask for runtime recovery',
+  },
+};
+
+function runtimeBackendStatus(
+  runtime: NonNullable<LoopAgentRuntimeResponse['runtimes']>[number],
+): RuntimeBackendStatus {
+  if (runtime.checks.some((check) => check.level === 'critical')) return 'unavailable';
+  if (runtime.selected?.status === 'error' || runtime.selected?.status === 'misconfigured') {
+    return 'unavailable';
+  }
+  if (runtime.checks.length > 0 || runtime.selected?.status === 'missing') return 'degraded';
+  return runtime.selected?.status === 'ready' ? 'ready' : 'degraded';
+}
+
+export function buildRuntimeBackends(runtime?: LoopAgentRuntimeResponse): RuntimeBackends {
+  const items = (runtime?.runtimes ?? [])
+    .map((runtimeItem): RuntimeBackendItem => {
+      const blueprint = RUNTIME_BACKEND_BLUEPRINTS[runtimeItem.agent];
+      const selected = runtimeItem.selected ?? runtimeItem.docker ?? runtimeItem.local;
+      return {
+        ...blueprint,
+        mode: selected?.mode ?? runtimeItem.preferredMode,
+        status: runtimeBackendStatus(runtimeItem),
+        healthChecks: runtimeItem.checks.map((check) => check.message),
+        evidence: selected?.version ?? selected?.image ?? runtime?.workspaceId ?? 'detected',
+      };
+    })
+    .sort((a, b) => {
+      const rank: Record<RuntimeBackendStatus, number> = {
+        unavailable: 0,
+        degraded: 1,
+        ready: 2,
+      };
+      return rank[a.status] - rank[b.status] || a.name.localeCompare(b.name);
+    });
+
+  return {
+    summary: {
+      total: items.length,
+      ready: items.filter((item) => item.status === 'ready').length,
+      degraded: items.filter((item) => item.status === 'degraded').length,
+      unavailable: items.filter((item) => item.status === 'unavailable').length,
+    },
+    items,
+  };
+}
+
 function percent(numerator: number, denominator: number) {
   return denominator > 0 ? Math.round((numerator / denominator) * 100) : 0;
 }
@@ -1085,6 +1230,93 @@ export function buildPerformanceSnapshot(
     averageTokens: average(costLoops.map((item) => item.costTokens)),
     traceEvents: options.traceSummary?.total ?? 0,
     recentEvents: options.traceSummary?.recent ?? 0,
+  };
+}
+
+function hasRuntimeSecurityException(item: LoopListItem) {
+  return (item.runtimeSecurityExceptions?.length ?? 0) > 0;
+}
+
+export function buildEvalPlan(items: LoopListItem[], cost?: LoopCostResponse): EvalPlan {
+  const costByIssue = new Map((cost?.loops ?? []).map((item) => [item.issueId, item]));
+  const active = items.filter(
+    ({ issue }) => !['CLOSED', 'ARCHIVED', 'REJECTED'].includes(issue.status),
+  );
+  const blockedLoops = items.filter((item) => {
+    const costItem = costByIssue.get(item.issue.id);
+    return Boolean(
+      item.state?.paused ||
+      costItem?.tripped ||
+      (item.state?.globalVerdict && item.state.globalVerdict !== 'PASS'),
+    );
+  });
+  const runtimeSecurityExceptions = items.reduce(
+    (sum, item) => sum + (item.runtimeSecurityExceptions?.length ?? 0),
+    0,
+  );
+  const failedEvidenceLoops = items.filter(
+    (item) =>
+      item.state?.globalVerdict === 'FAIL' ||
+      item.runtimeSecurityExceptions?.some((exception) => exception.level === 'critical'),
+  );
+  const costTripped = cost?.loops.filter((item) => item.tripped).length ?? 0;
+
+  const checks: EvalCheck[] = [
+    {
+      id: 'architecture-compliance',
+      status: active.length > 0 ? 'attention' : 'passed',
+      hardGate: true,
+      evidence: active.length
+        ? `${active.length} active loops still need architecture/review evidence`
+        : 'All active architecture gates are clear',
+    },
+    {
+      id: 'delivery-readiness',
+      status: blockedLoops.length > 0 ? 'blocked' : active.length > 0 ? 'attention' : 'passed',
+      hardGate: true,
+      evidence: blockedLoops.length
+        ? `${blockedLoops.length} loops blocked before release`
+        : active.length
+          ? `${active.length} loops still moving toward release`
+          : 'No active delivery blockers',
+    },
+    {
+      id: 'runtime-safety',
+      status: runtimeSecurityExceptions > 0 ? 'attention' : 'passed',
+      hardGate: true,
+      evidence: runtimeSecurityExceptions
+        ? `${runtimeSecurityExceptions} runtime security exceptions recorded`
+        : 'Runtime security policy has no recorded exceptions',
+    },
+    {
+      id: 'test-evidence',
+      status:
+        failedEvidenceLoops.length > 0 ? 'blocked' : active.length > 0 ? 'attention' : 'passed',
+      hardGate: true,
+      evidence: failedEvidenceLoops.length
+        ? `${failedEvidenceLoops.length} loops failed global review or tests`
+        : active.length
+          ? `${active.length} loops still collecting test/review evidence`
+          : 'All completed loops have passing evidence',
+    },
+    {
+      id: 'cost-policy',
+      status: costTripped > 0 ? 'blocked' : 'passed',
+      hardGate: true,
+      evidence: costTripped
+        ? `${costTripped} loops tripped spend guard`
+        : 'Spend guard is within policy',
+    },
+  ];
+
+  return {
+    summary: {
+      total: checks.length,
+      passed: checks.filter((check) => check.status === 'passed').length,
+      attention: checks.filter((check) => check.status === 'attention').length,
+      blocked: checks.filter((check) => check.status === 'blocked').length,
+    },
+    checks,
   };
 }
 

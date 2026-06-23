@@ -220,6 +220,24 @@ describe('Schemas', () => {
               createdAt: '2026-06-23T00:00:00.000Z',
             },
           ],
+          learningGovernance: {
+            dismissed: [
+              {
+                learningId: 'learning-dismissed',
+                actor: 'dashboard',
+                reason: 'No longer relevant',
+                createdAt: '2026-06-23T01:00:00.000Z',
+              },
+            ],
+            merges: [
+              {
+                sourceLearningId: 'learning-duplicate',
+                targetLearningId: 'learning-1',
+                actor: 'human',
+                createdAt: '2026-06-23T01:05:00.000Z',
+              },
+            ],
+          },
           workspaces: [
             {
               workspaceId: 'default',
@@ -260,6 +278,67 @@ describe('Schemas', () => {
         });
 
         expect(result.success).toBe(true);
+      });
+
+      it('should validate learning governance requests', () => {
+        expect(
+          schemas.LoopLearningGovernanceRequestSchema.safeParse({
+            action: 'dismiss',
+            actor: 'dashboard',
+            reason: 'Stale learning',
+          }).success,
+        ).toBe(true);
+
+        expect(
+          schemas.LoopLearningGovernanceRequestSchema.safeParse({
+            action: 'merge',
+            targetLearningId: 'learning-target',
+          }).success,
+        ).toBe(true);
+
+        expect(
+          schemas.LoopLearningGovernanceRequestSchema.safeParse({
+            action: 'archive',
+          }).success,
+        ).toBe(false);
+      });
+
+      it('should validate browser QA request and report contracts', () => {
+        expect(
+          schemas.LoopBrowserQaRequestSchema.safeParse({
+            targetUrl: 'https://example.com',
+            checkedFlows: ['page-load'],
+          }).success,
+        ).toBe(true);
+
+        expect(
+          schemas.LoopBrowserQaReportSchema.safeParse({
+            id: 'browser-qa-1',
+            issueId: 'issue-1',
+            runner: 'playwright-cli',
+            status: 'passed',
+            targetUrl: 'https://example.com',
+            title: 'Example Domain',
+            screenshots: [
+              {
+                path: '.loops/runs/issue-1/browser-qa/browser-qa-1/screenshot.png',
+                label: 'page-load',
+              },
+            ],
+            traces: [
+              {
+                path: '.loops/runs/issue-1/browser-qa/browser-qa-1/trace.zip',
+                label: 'page-load',
+              },
+            ],
+            consoleErrors: [],
+            networkFailures: [],
+            checkedFlows: ['page-load'],
+            command: 'pnpm --filter @repo/web exec node -e <browser-qa-worker>',
+            durationMs: 120,
+            created: '2026-06-23T00:00:00.000Z',
+          }).success,
+        ).toBe(true);
       });
 
       it('should validate detail evidence artifacts', () => {
@@ -422,6 +501,19 @@ describe('Schemas', () => {
         expect(reviewGate.success).toBe(true);
         expect(releaseGate.success).toBe(true);
         expect(
+          schemas.LoopRuntimeSecurityExceptionSchema.safeParse({
+            id: 'runtime-security-test-record-1-0',
+            testRecordId: 'test-record-1',
+            shardId: 'shard-1',
+            round: 1,
+            level: 'warning',
+            reason: 'Command was blocked by runtime policy.',
+            evidence: 'runtime-security:command-policy · TEST-FAIL',
+            command: 'pnpm test && rm -rf /tmp/out',
+            created: '2026-06-23T00:00:00.000Z',
+          }).success,
+        ).toBe(true);
+        expect(
           schemas.LoopSecondOpinionSchema.safeParse({
             id: 'issue-1-second-opinion',
             status: 'not_required',
@@ -429,21 +521,37 @@ describe('Schemas', () => {
               role: 'primary',
               reviewer: 'codex',
               status: 'passed',
-              findingsCount: 0,
+              findingsCount: 1,
+              findings: [
+                {
+                  fingerprint: 'browser-qa-report',
+                  severity: 'major',
+                  desc: 'Browser QA report must be present before release.',
+                  sourceEvidenceId: 'global-review-1',
+                },
+              ],
               evidenceIds: ['global-review-1'],
             },
             secondary: {
               role: 'secondary',
               reviewer: 'claude-code',
-              status: 'pending',
-              findingsCount: 0,
-              evidenceIds: [],
+              status: 'needs_changes',
+              findingsCount: 1,
+              findings: [
+                {
+                  fingerprint: 'browser-qa-report',
+                  severity: 'critical',
+                  desc: 'Claude Code marked the same Browser QA gap as release-critical.',
+                },
+              ],
+              evidenceIds: ['issue-1-second-opinion'],
             },
             comparison: {
               agreementCount: 0,
               primaryOnlyCount: 0,
               secondaryOnlyCount: 0,
-              conflictCount: 0,
+              conflictCount: 1,
+              conflictFingerprints: ['browser-qa-report'],
             },
             requiredForRelease: false,
             updated: '2026-06-23T00:00:00.000Z',
@@ -469,6 +577,11 @@ describe('Schemas', () => {
             approvals: {
               override: 'not-supported',
               requiredFor: ['shell-control-operator'],
+            },
+            canary: {
+              strategy: 'env-token',
+              status: 'armed',
+              leakedInCommands: [],
             },
             capturedAt: '2026-06-23T00:00:00.000Z',
           }).success,

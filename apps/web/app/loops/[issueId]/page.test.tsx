@@ -1,9 +1,16 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { LoopDetail } from '@repo/contracts';
 import { NextIntlClientProvider } from 'next-intl';
 import { describe, expect, it, vi } from 'vitest';
 import loopsMessages from '@/locales/en/loops.json';
 import LoopIssueDetailPage from './page';
+
+const runBrowserQa = vi.fn();
+const runSecondOpinion = vi.fn();
+const requireSecondOpinion = vi.fn();
+const recordReleaseCanary = vi.fn();
+const setBrowserQaSessionPolicy = vi.fn();
+const recordRuntimeOverride = vi.fn();
 
 const detail: LoopDetail = {
   issue: {
@@ -277,6 +284,14 @@ const detail: LoopDetail = {
       reviewer: 'codex',
       status: 'passed',
       findingsCount: 1,
+      findings: [
+        {
+          fingerprint: 'review-1-finding',
+          severity: 'major',
+          desc: 'Primary reviewer finding.',
+          sourceEvidenceId: 'review-1',
+        },
+      ],
       evidenceIds: ['review-1'],
       summary: 'Codex primary review has 1 finding across shard review evidence.',
     },
@@ -285,6 +300,7 @@ const detail: LoopDetail = {
       reviewer: 'claude-code',
       status: 'pending',
       findingsCount: 0,
+      findings: [],
       evidenceIds: [],
       summary: 'Claude Code secondary review is waiting for the second-opinion worker.',
     },
@@ -293,6 +309,10 @@ const detail: LoopDetail = {
       primaryOnlyCount: 1,
       secondaryOnlyCount: 0,
       conflictCount: 0,
+      agreementFingerprints: [],
+      primaryOnlyFingerprints: ['review-1-finding'],
+      secondaryOnlyFingerprints: [],
+      conflictFingerprints: [],
     },
     requiredForRelease: false,
     updated: '2026-06-20T00:10:00.000Z',
@@ -381,6 +401,12 @@ vi.mock('./use-loop-operations', () => ({
     reloop: vi.fn(),
     requestRevision: vi.fn(),
     resumeLoop: vi.fn(),
+    runBrowserQa,
+    runSecondOpinion,
+    requireSecondOpinion,
+    recordReleaseCanary,
+    setBrowserQaSessionPolicy,
+    recordRuntimeOverride,
   }),
 }));
 
@@ -439,6 +465,7 @@ describe('LoopIssueDetailPage', () => {
       screen.getByText('2 reviewer annotations captured for requirement coverage.'),
     ).toBeInTheDocument();
     expect(screen.getByText('Delivery Controls')).toBeInTheDocument();
+    expect(screen.getByText('Delivery Actions')).toBeInTheDocument();
     expect(screen.getByText('Default Codex / Claude Code delivery')).toBeInTheDocument();
     expect(screen.getByText('Workflow Timeline')).toBeInTheDocument();
     expect(screen.getByText('Review Gates')).toBeInTheDocument();
@@ -446,8 +473,10 @@ describe('LoopIssueDetailPage', () => {
     expect(screen.getAllByText('Implementation').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Product').length).toBeGreaterThan(0);
     expect(screen.getByText('Loop is paused')).toBeInTheDocument();
-    expect(screen.getByText('Browser QA')).toBeInTheDocument();
+    expect(screen.getAllByText('Browser QA').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Run Browser QA' })).toBeInTheDocument();
     expect(screen.getAllByText('Second Opinion').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Run second opinion' })).toBeInTheDocument();
     expect(screen.getByText('Primary')).toBeInTheDocument();
     expect(screen.getByText('Secondary')).toBeInTheDocument();
     expect(screen.getAllByText('Codex').length).toBeGreaterThan(0);
@@ -464,6 +493,21 @@ describe('LoopIssueDetailPage', () => {
         'Loop finalized with global verdict PASS; convergence PR DRAFT captured 1 commit references.',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('submits Browser QA and second-opinion delivery actions', () => {
+    runBrowserQa.mockClear();
+    runSecondOpinion.mockClear();
+    renderWithIntl(<LoopIssueDetailPage />);
+
+    fireEvent.change(screen.getByLabelText('Target URL'), {
+      target: { value: 'https://example.com/qa' },
+    });
+    fireEvent.submit(screen.getByRole('button', { name: 'Run Browser QA' }).closest('form')!);
+    fireEvent.click(screen.getByRole('button', { name: 'Run second opinion' }));
+
+    expect(runBrowserQa).toHaveBeenCalledTimes(1);
+    expect(runSecondOpinion).toHaveBeenCalledTimes(1);
   });
 
   it('renders timeline entries with duplicate event identities without React key collisions', () => {

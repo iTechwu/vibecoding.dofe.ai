@@ -242,6 +242,24 @@ export function useInterveneLoop(issueId: string) {
   return tsRestClient.loops.intervene.useMutation({ onSuccess: invalidate });
 }
 
+/** Run report-only Browser QA for a loop issue. */
+export function useRunLoopBrowserQa(issueId: string) {
+  const invalidate = useInvalidateIssue(issueId);
+  return tsRestClient.loops.runBrowserQa.useMutation({ onSuccess: invalidate });
+}
+
+/** Run Claude Code second-opinion review for a loop issue. */
+export function useRunLoopSecondOpinion(issueId: string) {
+  const invalidate = useInvalidateIssue(issueId);
+  return tsRestClient.loops.runSecondOpinion.useMutation({ onSuccess: invalidate });
+}
+
+/** Record per-loop delivery governance decisions and policies. */
+export function useGovernLoopDelivery(issueId: string) {
+  const invalidate = useInvalidateIssue(issueId);
+  return tsRestClient.loops.governDelivery.useMutation({ onSuccess: invalidate });
+}
+
 // ============================================================================
 // Loops Workspace + Runtime (0622 · B2/B6)
 // ============================================================================
@@ -274,6 +292,16 @@ export function useUpsertLoopsWorkspace() {
 export function useGovernLoopLearning() {
   const queryClient = useQueryClient();
   return tsRestClient.loops.governLearning.useMutation({
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: loopsKeys.workspaces() });
+    },
+  });
+}
+
+/** Promote similar learning suggestions into pending approval candidates. */
+export function useRunLoopLearningAutoMergeWorker() {
+  const queryClient = useQueryClient();
+  return tsRestClient.loops.runLearningAutoMergeWorker.useMutation({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: loopsKeys.workspaces() });
     },

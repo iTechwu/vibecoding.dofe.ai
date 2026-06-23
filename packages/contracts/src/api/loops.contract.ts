@@ -5,9 +5,11 @@ import {
   CreateLoopIssueRequestSchema,
   CreateLoopIssueSimpleRequestSchema,
   DetectLoopRuntimeResponseSchema,
+  LoopBrowserQaRequestSchema,
   LoopCapabilitiesResponseSchema,
   LoopAgentRuntimeResponseSchema,
   LoopCostResponseSchema,
+  LoopDeliveryGovernanceRequestSchema,
   LoopDetailSchema,
   LoopInterventionRequestSchema,
   LoopImplementationRecordSchema,
@@ -241,6 +243,43 @@ export const loopsContract = c.router(
       },
       summary: 'Phase 8: terminal annotation refresh, close the issue and emit the convergence PR',
     },
+    runBrowserQa: {
+      method: 'POST',
+      path: '/issues/:issueId/browser-qa',
+      pathParams: z.object({
+        issueId: z.string(),
+      }),
+      body: LoopBrowserQaRequestSchema,
+      responses: {
+        200: ApiResponseSchema(LoopDetailSchema),
+      },
+      summary: 'Run a report-only browser QA check for a Loops issue',
+    },
+    runSecondOpinion: {
+      method: 'POST',
+      path: '/issues/:issueId/second-opinion',
+      pathParams: z.object({
+        issueId: z.string(),
+      }),
+      body: z.object({}).optional(),
+      responses: {
+        200: ApiResponseSchema(LoopDetailSchema),
+      },
+      summary: 'Run a report-only Claude Code second-opinion review for a Loops issue',
+    },
+    governDelivery: {
+      method: 'POST',
+      path: '/issues/:issueId/delivery-governance',
+      pathParams: z.object({
+        issueId: z.string(),
+      }),
+      body: LoopDeliveryGovernanceRequestSchema,
+      responses: {
+        200: ApiResponseSchema(LoopDetailSchema),
+      },
+      summary:
+        'Record per-loop delivery governance for workflow, gates, QA, release, memory, and runtime security',
+    },
     intervene: {
       method: 'POST',
       path: '/issues/:issueId/interventions',
@@ -312,6 +351,15 @@ export const loopsContract = c.router(
         200: ApiResponseSchema(LoopWorkspacesResponseSchema),
       },
       summary: 'Dismiss or merge a Loop learning memory item',
+    },
+    runLearningAutoMergeWorker: {
+      method: 'POST',
+      path: '/learnings/auto-merge-worker',
+      body: z.object({}).optional(),
+      responses: {
+        200: ApiResponseSchema(LoopWorkspacesResponseSchema),
+      },
+      summary: 'Promote learning similarity suggestions into pending auto-merge approvals',
     },
     upsertWorkspace: {
       method: 'POST',

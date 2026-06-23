@@ -3,8 +3,11 @@
 import type { FormEvent } from 'react';
 import {
   useAdvanceLoop,
+  useGovernLoopDelivery,
   useInterveneLoop,
   useReloopIssue,
+  useRunLoopBrowserQa,
+  useRunLoopSecondOpinion,
   useReviewLoopSpec,
 } from '@/lib/api/contracts/hooks';
 
@@ -50,7 +53,18 @@ export function useFormState(issueId: string) {
   const reviewSpec = useReviewLoopSpec(issueId);
   const reloopMutation = useReloopIssue(issueId);
   const intervene = useInterveneLoop(issueId);
-  const operations = collectOperationState([advance, reviewSpec, reloopMutation, intervene]);
+  const browserQa = useRunLoopBrowserQa(issueId);
+  const secondOpinion = useRunLoopSecondOpinion(issueId);
+  const deliveryGovernance = useGovernLoopDelivery(issueId);
+  const operations = collectOperationState([
+    advance,
+    reviewSpec,
+    reloopMutation,
+    intervene,
+    browserQa,
+    secondOpinion,
+    deliveryGovernance,
+  ]);
 
   return {
     operations,
@@ -82,6 +96,94 @@ export function useFormState(issueId: string) {
       event.preventDefault();
       const notes = String(new FormData(event.currentTarget).get('notes') ?? '') || undefined;
       reloopMutation.mutate({ params: { issueId }, body: { reviewer: 'human', notes } });
+    },
+    runBrowserQa: (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const targetUrl = String(form.get('targetUrl') ?? '').trim();
+      const checkedFlows = String(form.get('checkedFlows') ?? '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean);
+      const notes = String(form.get('notes') ?? '').trim() || undefined;
+      const authSessionRef = String(form.get('authSessionRef') ?? '').trim() || undefined;
+      browserQa.mutate({
+        params: { issueId },
+        body: {
+          targetUrl,
+          checkedFlows: checkedFlows.length > 0 ? checkedFlows : ['page-load'],
+          notes,
+          authSessionRef,
+        },
+      });
+    },
+    runSecondOpinion: () => secondOpinion.mutate({ params: { issueId }, body: {} }),
+    requireSecondOpinion: () =>
+      deliveryGovernance.mutate({
+        params: { issueId },
+        body: {
+          action: 'set-second-opinion-policy',
+          requiredForRelease: true,
+          conflictHumanGate: true,
+          actor: 'human',
+          reason: 'Require Claude Code second opinion before release.',
+        },
+      }),
+    recordReleaseCanary: (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const targetUrl = String(form.get('targetUrl') ?? '').trim() || undefined;
+      const status = String(form.get('status') ?? 'pending') as 'pending' | 'passed' | 'failed';
+      const reason = String(form.get('reason') ?? '').trim() || undefined;
+      deliveryGovernance.mutate({
+        params: { issueId },
+        body: {
+          action: 'record-release-canary',
+          status,
+          targetUrl,
+          actor: 'human',
+          reason,
+        },
+      });
+    },
+    setBrowserQaSessionPolicy: (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const authMode = String(form.get('authMode') ?? 'none') as
+        | 'none'
+        | 'test-account'
+        | 'manual-session';
+      const testAccountRef = String(form.get('testAccountRef') ?? '').trim() || undefined;
+      const reason = String(form.get('reason') ?? '').trim() || undefined;
+      deliveryGovernance.mutate({
+        params: { issueId },
+        body: {
+          action: 'set-browser-qa-session-policy',
+          authMode,
+          testAccountRef,
+          actor: 'human',
+          reason,
+        },
+      });
+    },
+    recordRuntimeOverride: (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const scope = String(form.get('scope') ?? 'network') as 'network' | 'write' | 'shell';
+      const reason = String(form.get('reason') ?? '').trim();
+      const expiresAt =
+        String(form.get('expiresAt') ?? '').trim() ||
+        new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      deliveryGovernance.mutate({
+        params: { issueId },
+        body: {
+          action: 'record-runtime-override',
+          scope,
+          actor: 'human',
+          reason: reason || 'Temporary runtime override.',
+          expiresAt,
+        },
+      });
     },
   };
 }

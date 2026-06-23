@@ -819,6 +819,7 @@ export default function LoopIssueDetailPage() {
   const runStepBlocker = getRunStepBlocker(detail);
   const runnableShard = getRunnableShard(detail);
   const recoverableShard = getRecoverableShard(detail);
+  const latestBrowserQa = detail.browserQaReports?.[0];
   const activePhaseIndex = Math.max(
     0,
     FLOW_PHASES.findIndex((phase) => phase === detail.state.phase),
@@ -1021,6 +1022,253 @@ export default function LoopIssueDetailPage() {
               </div>
 
               <div className="grid grid-cols-1 gap-5">
+                <div>
+                  <h3 className="text-sm font-semibold">{t('deliveryControls.actionsTitle')}</h3>
+                  <div className="mt-3 grid grid-cols-1 gap-3">
+                    <form
+                      className="rounded-md border bg-muted/20 p-3 text-xs"
+                      onSubmit={ops.runBrowserQa}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium">{t('deliveryControls.browserQa.title')}</span>
+                        <StatusBadge
+                          className={deliveryStatusClass(latestBrowserQa?.status ?? 'pending')}
+                        >
+                          {formatLoopStatus(latestBrowserQa?.status ?? 'pending', locale)}
+                        </StatusBadge>
+                      </div>
+                      <label className="mt-3 block">
+                        <span className="text-muted-foreground">
+                          {t('deliveryControls.browserQa.targetUrl')}
+                        </span>
+                        <input
+                          className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                          name="targetUrl"
+                          placeholder="https://example.com"
+                          required
+                          type="url"
+                        />
+                      </label>
+                      <label className="mt-2 block">
+                        <span className="text-muted-foreground">
+                          {t('deliveryControls.browserQa.checkedFlows')}
+                        </span>
+                        <input
+                          className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                          defaultValue="page-load"
+                          name="checkedFlows"
+                        />
+                      </label>
+                      <label className="mt-2 block">
+                        <span className="text-muted-foreground">
+                          {t('deliveryControls.browserQa.authSessionRef')}
+                        </span>
+                        <input
+                          className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                          name="authSessionRef"
+                        />
+                      </label>
+                      <label className="mt-2 block">
+                        <span className="text-muted-foreground">
+                          {t('deliveryControls.browserQa.notes')}
+                        </span>
+                        <input
+                          className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                          name="notes"
+                        />
+                      </label>
+                      <button
+                        className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={ops.operations.isPending}
+                        type="submit"
+                      >
+                        <Play className="size-4 shrink-0" />
+                        <span className="truncate">{t('deliveryControls.browserQa.run')}</span>
+                      </button>
+                    </form>
+
+                    <form
+                      className="rounded-md border bg-muted/20 p-3 text-xs"
+                      onSubmit={ops.setBrowserQaSessionPolicy}
+                    >
+                      <span className="font-medium">
+                        {t('deliveryControls.browserQa.sessionPolicy')}
+                      </span>
+                      <label className="mt-3 block">
+                        <span className="text-muted-foreground">
+                          {t('deliveryControls.browserQa.authMode')}
+                        </span>
+                        <select
+                          className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                          defaultValue={
+                            detail.deliveryGovernance?.browserQaSessionPolicy?.authMode ?? 'none'
+                          }
+                          name="authMode"
+                        >
+                          <option value="none">none</option>
+                          <option value="test-account">test-account</option>
+                          <option value="manual-session">manual-session</option>
+                        </select>
+                      </label>
+                      <label className="mt-2 block">
+                        <span className="text-muted-foreground">
+                          {t('deliveryControls.browserQa.testAccountRef')}
+                        </span>
+                        <input
+                          className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                          defaultValue={
+                            detail.deliveryGovernance?.browserQaSessionPolicy?.testAccountRef ?? ''
+                          }
+                          name="testAccountRef"
+                        />
+                      </label>
+                      <button
+                        className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={ops.operations.isPending}
+                        type="submit"
+                      >
+                        {t('deliveryControls.browserQa.saveSessionPolicy')}
+                      </button>
+                    </form>
+
+                    <div className="rounded-md border bg-muted/20 p-3 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium">
+                          {t('deliveryControls.secondOpinionTitle')}
+                        </span>
+                        <StatusBadge
+                          className={deliveryStatusClass(detail.secondOpinion?.status ?? 'pending')}
+                        >
+                          {formatLoopStatus(detail.secondOpinion?.status ?? 'pending', locale)}
+                        </StatusBadge>
+                      </div>
+                      <button
+                        className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={ops.operations.isPending}
+                        onClick={ops.runSecondOpinion}
+                        type="button"
+                      >
+                        <ClipboardCheck className="size-4 shrink-0" />
+                        <span className="truncate">{t('deliveryControls.secondOpinion.run')}</span>
+                      </button>
+                      <button
+                        className="mt-2 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={ops.operations.isPending}
+                        onClick={ops.requireSecondOpinion}
+                        type="button"
+                      >
+                        <ShieldCheck className="size-4 shrink-0" />
+                        <span className="truncate">
+                          {t('deliveryControls.secondOpinion.require')}
+                        </span>
+                      </button>
+                    </div>
+
+                    <form
+                      className="rounded-md border bg-muted/20 p-3 text-xs"
+                      onSubmit={ops.recordReleaseCanary}
+                    >
+                      <span className="font-medium">
+                        {t('deliveryControls.releaseCanary.title')}
+                      </span>
+                      <select
+                        className="mt-3 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                        defaultValue={detail.deliveryGovernance?.releaseCanary?.status ?? 'pending'}
+                        name="status"
+                      >
+                        <option value="pending">pending</option>
+                        <option value="passed">passed</option>
+                        <option value="failed">failed</option>
+                      </select>
+                      <input
+                        className="mt-2 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                        defaultValue={detail.deliveryGovernance?.releaseCanary?.targetUrl ?? ''}
+                        name="targetUrl"
+                        placeholder={t('deliveryControls.releaseCanary.targetUrl')}
+                        type="url"
+                      />
+                      <input
+                        className="mt-2 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                        name="reason"
+                        placeholder={t('deliveryControls.releaseCanary.reason')}
+                      />
+                      <button
+                        className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={ops.operations.isPending}
+                        type="submit"
+                      >
+                        {t('deliveryControls.releaseCanary.record')}
+                      </button>
+                    </form>
+
+                    <form
+                      className="rounded-md border bg-muted/20 p-3 text-xs"
+                      onSubmit={ops.recordRuntimeOverride}
+                    >
+                      <span className="font-medium">
+                        {t('deliveryControls.runtimeOverride.title')}
+                      </span>
+                      <select
+                        className="mt-3 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                        defaultValue="network"
+                        name="scope"
+                      >
+                        <option value="network">network</option>
+                        <option value="write">write</option>
+                        <option value="shell">shell</option>
+                      </select>
+                      <input
+                        className="mt-2 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                        name="reason"
+                        placeholder={t('deliveryControls.runtimeOverride.reason')}
+                        required
+                      />
+                      <input
+                        className="mt-2 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                        name="expiresAt"
+                        placeholder={t('deliveryControls.runtimeOverride.expiresAt')}
+                      />
+                      <button
+                        className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={ops.operations.isPending}
+                        type="submit"
+                      >
+                        {t('deliveryControls.runtimeOverride.record')}
+                      </button>
+                    </form>
+
+                    {detail.deliveryGovernance ? (
+                      <div className="rounded-md border bg-muted/20 p-3 text-xs">
+                        <p className="font-medium">{t('deliveryControls.governance.title')}</p>
+                        <p className="mt-2 text-muted-foreground">
+                          {t('deliveryControls.governance.browserQa', {
+                            mode:
+                              detail.deliveryGovernance.browserQaSessionPolicy?.authMode ?? 'none',
+                          })}
+                        </p>
+                        <p className="mt-1 text-muted-foreground">
+                          {t('deliveryControls.governance.secondOpinion', {
+                            required: String(
+                              detail.deliveryGovernance.secondOpinionPolicy?.requiredForRelease ??
+                                false,
+                            ),
+                          })}
+                        </p>
+                        <p className="mt-1 text-muted-foreground">
+                          {t('deliveryControls.governance.canary', {
+                            status: detail.deliveryGovernance.releaseCanary?.status ?? 'not_run',
+                          })}
+                        </p>
+                        <p className="mt-1 text-muted-foreground">
+                          {t('deliveryControls.governance.runtimeOverrides', {
+                            count: detail.deliveryGovernance.runtimeOverrides.length,
+                          })}
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
                 <div>
                   <h3 className="text-sm font-semibold">{t('deliveryControls.reviewTitle')}</h3>
                   <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">

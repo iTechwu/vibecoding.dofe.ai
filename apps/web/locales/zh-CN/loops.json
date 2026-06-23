@@ -33,6 +33,25 @@
       "traceEvents": "Trace 事件",
       "traceEventsNote": "近期 {recent} 条"
     },
+    "evalPlan": {
+      "title": "评测计划",
+      "summary": "{passed}/{total} 已通过 · {attention} 个需关注 · {blocked} 个阻塞",
+      "loading": "正在加载评测计划。",
+      "hardGate": "硬关卡",
+      "softSignal": "信号",
+      "status": {
+        "passed": "已通过",
+        "attention": "需关注",
+        "blocked": "阻塞"
+      },
+      "checks": {
+        "architecture-compliance": "架构合规",
+        "delivery-readiness": "交付就绪",
+        "runtime-safety": "运行时安全",
+        "test-evidence": "测试证据",
+        "cost-policy": "成本策略"
+      }
+    },
     "health": {
       "title": "运行健康度",
       "ok": "文件状态与数据库索引当前一致。",
@@ -144,6 +163,9 @@
       "stale": "待复用 learning",
       "noStale": "暂无待复用 learning。",
       "dismiss": "忽略",
+      "merge": "合并",
+      "runAutoMerge": "运行合并 worker",
+      "similar": "{count} 条相似建议",
       "confidence": "{value}%",
       "kind": {
         "pattern": "模式",
@@ -199,6 +221,22 @@
       "evidence": "证据",
       "impact": "影响",
       "retryAction": "重试"
+    },
+    "runtimeBackends": {
+      "title": "运行时后端",
+      "summary": "{ready}/{total} 已就绪 · {degraded} 个降级 · {unavailable} 个不可用",
+      "loading": "正在加载运行时后端。",
+      "empty": "暂无运行时后端探测结果。",
+      "permissions": "权限",
+      "workspace": "Workspace",
+      "cost": "成本",
+      "fallback": "Fallback",
+      "readyEvidence": "就绪证据：{evidence}",
+      "status": {
+        "ready": "就绪",
+        "degraded": "降级",
+        "unavailable": "不可用"
+      }
     },
     "agentRuntime": {
       "title": "Agent 运行态",
@@ -571,6 +609,7 @@
       "meta": "{steps} 个工作流步骤 · {gates} 个审阅关卡",
       "workflowTitle": "工作流时间线",
       "workflowVersion": "v{version}",
+      "actionsTitle": "交付操作",
       "reviewTitle": "审阅关卡",
       "secondOpinionTitle": "二次审查",
       "releaseTitle": "发布关卡",
@@ -587,7 +626,42 @@
         "agreement": "共同发现",
         "conflict": "冲突",
         "primaryOnly": "仅主审",
-        "secondaryOnly": "仅复审"
+        "secondaryOnly": "仅复审",
+        "run": "运行二次审查",
+        "require": "设为发布前必需"
+      },
+      "browserQa": {
+        "title": "Browser QA",
+        "targetUrl": "目标 URL",
+        "checkedFlows": "检查流程",
+        "authSessionRef": "登录会话引用",
+        "notes": "备注",
+        "run": "运行 Browser QA",
+        "sessionPolicy": "会话策略",
+        "authMode": "登录模式",
+        "testAccountRef": "测试账号引用",
+        "saveSessionPolicy": "保存会话策略"
+      },
+      "releaseCanary": {
+        "title": "发布 canary",
+        "status": "状态",
+        "targetUrl": "目标 URL",
+        "reason": "原因",
+        "record": "记录 canary"
+      },
+      "runtimeOverride": {
+        "title": "运行时 override",
+        "scope": "范围",
+        "reason": "原因",
+        "expiresAt": "过期时间",
+        "record": "记录 override"
+      },
+      "governance": {
+        "title": "治理状态",
+        "browserQa": "Browser QA 登录：{mode}",
+        "secondOpinion": "二次审查必需：{required}",
+        "canary": "Canary：{status}",
+        "runtimeOverrides": "{count} 个运行时 override"
       },
       "releaseChecklist": {
         "specApproved": "规格已批准",
@@ -598,7 +672,8 @@
         "browserQaPassed": "Browser QA",
         "docsUpdated": "文档",
         "prReady": "PR",
-        "rollbackNote": "回滚"
+        "rollbackNote": "回滚",
+        "canaryPassed": "Canary"
       }
     },
     "exceptions": {

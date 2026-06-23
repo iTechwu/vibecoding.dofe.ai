@@ -14,7 +14,7 @@
  * `GET /loops/doctor` endpoint against a migrated DB, documented in
  * `docs/0619/loops设计/todo/TASK-07-smoke-tests-and-quality-gate.md`.
  */
-import { mkdtempSync, writeFileSync, rmSync } from 'fs';
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { LoopConvergencePr, LoopRuntimeDetection, LoopTestRecord } from '@repo/contracts';
@@ -25,8 +25,10 @@ import type {
   LoopsGitAdapter,
 } from './adapters/loops-git-adapter.interface';
 import { AgentRuntimeDetectionService } from './agent-runtime-detection.service';
+import { LoopsBrowserQaWorkerService } from './loops-browser-qa-worker.service';
 import { LoopsFileStoreService } from './loops-file-store.service';
 import { LoopsRunnerService } from './loops-runner.service';
+import { LoopsSecondOpinionWorkerService } from './loops-second-opinion-worker.service';
 import { LoopsService } from './loops.service';
 import { LoopsWorkLockService } from './loops-work-lock.service';
 import { LoopsWorkspaceProfileService } from './loops-workspace-profile.service';
@@ -89,6 +91,82 @@ function createFakeGitAdapter(): LoopsGitAdapter {
       created: new Date().toISOString(),
     }),
   };
+}
+
+function createFakeBrowserQaWorker(status: 'passed' | 'failed' | 'blocked' = 'passed') {
+  return {
+    run: jest.fn(async (input: Parameters<LoopsBrowserQaWorkerService['run']>[0]) => ({
+      id: input.reportId,
+      issueId: input.issueId,
+      runner: 'playwright-cli' as const,
+      status,
+      targetUrl: input.request.targetUrl,
+      title: 'QA target',
+      screenshots: status === 'blocked' ? [] : [{ path: input.screenshotRef, label: 'page-load' }],
+      consoleErrors: status === 'failed' ? ['Hydration failed'] : [],
+      networkFailures: [],
+      checkedFlows: input.request.checkedFlows,
+      blockedReason: status === 'blocked' ? 'Playwright browser unavailable' : undefined,
+      command: 'fake-playwright',
+      durationMs: 1,
+      traces: status === 'blocked' ? [] : [{ path: input.traceRef, label: 'page-load' }],
+      visualDiffs:
+        status === 'blocked'
+          ? []
+          : [
+              {
+                baselinePath: input.baselineRef,
+                actualPath: input.screenshotRef,
+                diffPath: input.diffRef,
+                status: 'changed' as const,
+                label: 'page-load',
+              },
+            ],
+      handoffs:
+        status === 'blocked' ? [] : [{ path: input.handoffRef, label: 'playwright-context' }],
+      created: new Date().toISOString(),
+    })),
+  } as unknown as LoopsBrowserQaWorkerService;
+}
+
+function createFakeSecondOpinionWorker(status: 'passed' | 'needs_changes' = 'passed') {
+  return {
+    run: jest.fn(async (input: Parameters<LoopsSecondOpinionWorkerService['run']>[0]) => ({
+      id: `${input.detail.issue.id}-second-opinion`,
+      status,
+      primary: input.primary,
+      secondary: {
+        role: 'secondary' as const,
+        reviewer: 'claude-code' as const,
+        status,
+        findingsCount: status === 'needs_changes' ? 1 : 0,
+        findings:
+          status === 'needs_changes'
+            ? [
+                {
+                  fingerprint: 'secondary-finding',
+                  severity: 'major' as const,
+                  desc: 'Secondary reviewer found a change request.',
+                },
+              ]
+            : [],
+        evidenceIds: [`${input.detail.issue.id}-second-opinion`],
+        summary: 'Claude Code secondary review completed.',
+      },
+      comparison: {
+        agreementCount: 0,
+        primaryOnlyCount: input.primary.findingsCount,
+        secondaryOnlyCount: status === 'needs_changes' ? 1 : 0,
+        conflictCount: 0,
+        agreementFingerprints: [],
+        primaryOnlyFingerprints: input.primary.findings.map((finding) => finding.fingerprint),
+        secondaryOnlyFingerprints: status === 'needs_changes' ? ['secondary-finding'] : [],
+        conflictFingerprints: [],
+      },
+      requiredForRelease: false,
+      updated: new Date().toISOString(),
+    })),
+  } as unknown as LoopsSecondOpinionWorkerService;
 }
 
 describe('LoopsService v1 main chain (file-only smoke)', () => {
@@ -396,7 +474,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(queued.list[0].issue.id).toBe(created.issue.id);
     expect(queued.list[0].workflowRecipe).toMatchObject({
       id: 'default-feature',
-      source: 'default',
+      source: 'loop-snapshot',
       steps: expect.arrayContaining([
         expect.objectContaining({ kind: 'spec_review', owner: 'codex', status: 'current' }),
         expect.objectContaining({ kind: 'implementation', owner: 'claude-code' }),
@@ -513,10 +591,14 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
         expect.objectContaining({
           kind: 'decision',
           summary: expect.stringContaining('Loop finalized with global verdict PASS'),
+          fingerprint: expect.stringMatching(/^[a-f0-9]{16}$/),
+          tags: expect.arrayContaining(['decision']),
           evidenceIds: expect.arrayContaining([`${created.issue.id}-convergence-pr`]),
         }),
         expect.objectContaining({
           kind: 'test_policy',
+          fingerprint: expect.stringMatching(/^[a-f0-9]{16}$/),
+          tags: expect.arrayContaining(['test', 'policy']),
           evidenceIds: expect.arrayContaining([expect.stringContaining('test-record')]),
         }),
       ]),
@@ -528,10 +610,137 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(doctor.problems).toEqual([]);
   });
 
+  it('applies learning governance to recent learning recall', async () => {
+    const runtimeService = buildRuntimeService([]);
+    const created = await runtimeService.createIssue({
+      title: 'Govern learning memory',
+      targetRepo: workspace,
+      body: 'Finalized loops should produce learnings that humans can dismiss or merge.',
+      priority: 'P2',
+      acceptanceCriteria: ['- stale learnings can be governed out of recall'],
+    });
+
+    await runtimeService.advance(created.issue.id);
+    const finalized = await runtimeService.reviewSpec(created.issue.id, {
+      action: 'approve',
+      reviewer: 'tester',
+    });
+    const decisionLearning = finalized.learnings.find((learning) => learning.kind === 'decision');
+    const testPolicyLearning = finalized.learnings.find(
+      (learning) => learning.kind === 'test_policy',
+    );
+    expect(decisionLearning).toBeDefined();
+    expect(testPolicyLearning).toBeDefined();
+
+    let workspaces = await runtimeService.listWorkspaces();
+    expect(workspaces.recentLearnings?.map((learning) => learning.id)).toEqual(
+      expect.arrayContaining([decisionLearning!.id, testPolicyLearning!.id]),
+    );
+    expect(
+      workspaces.recentLearnings?.find((learning) => learning.id === decisionLearning!.id),
+    ).toEqual(
+      expect.objectContaining({
+        fingerprint: expect.stringMatching(/^[a-f0-9]{16}$/),
+        tags: expect.arrayContaining(['decision']),
+        similarLearningIds: expect.any(Array),
+      }),
+    );
+
+    workspaces = await runtimeService.governLearning(decisionLearning!.id, {
+      action: 'dismiss',
+      actor: 'tester',
+      reason: 'Covered by a newer delivery decision',
+    });
+    expect(workspaces.learningGovernance?.dismissed).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ learningId: decisionLearning!.id, actor: 'tester' }),
+      ]),
+    );
+    expect(workspaces.recentLearnings?.map((learning) => learning.id)).not.toContain(
+      decisionLearning!.id,
+    );
+
+    workspaces = await runtimeService.governLearning(testPolicyLearning!.id, {
+      action: 'merge',
+      actor: 'tester',
+      targetLearningId: decisionLearning!.id,
+    });
+    expect(workspaces.learningGovernance?.merges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceLearningId: testPolicyLearning!.id,
+          targetLearningId: decisionLearning!.id,
+        }),
+      ]),
+    );
+    expect(workspaces.recentLearnings?.map((learning) => learning.id)).not.toContain(
+      testPolicyLearning!.id,
+    );
+  });
+
+  it('surfaces runtime security blocked commands in list exception metadata', async () => {
+    const runtimeService = buildRuntimeService([]);
+    const created = await runtimeService.createIssue({
+      title: 'Runtime security exception',
+      targetRepo: workspace,
+      body: 'Blocked test commands should appear in dashboard exception metadata.',
+      priority: 'P1',
+      acceptanceCriteria: ['- runtime security failures are visible in list payload'],
+    });
+    await store.writeTestRecord({
+      issueId: created.issue.id,
+      shardId: 'shard-runtime-security',
+      record: {
+        id: 'test-record-runtime-security-r1',
+        issueId: created.issue.id,
+        shardId: 'shard-runtime-security',
+        round: 1,
+        runner: 'loops-runner',
+        reviewer: 'system',
+        status: 'TEST-FAIL',
+        commands: [
+          {
+            command: 'pnpm test && rm -rf /tmp/out',
+            exitCode: null,
+            durationMs: 0,
+            stdout: '',
+            stderr: 'Blocked by runtime command policy',
+          },
+        ],
+        failedTests: [
+          {
+            name: 'runtime-security:command-policy',
+            reason: 'Command "pnpm test && rm -rf /tmp/out" was blocked by runtime policy.',
+          },
+        ],
+        fixInstructions: ['Remove shell control operators and rerun tests.'],
+        created: '2026-06-23T00:00:00.000Z',
+      },
+      annotations: [],
+      shards: [],
+      state: created.state,
+    });
+
+    const list = await runtimeService.list({ page: 1, limit: 20 });
+
+    expect(list.list[0].runtimeSecurityExceptions).toEqual([
+      expect.objectContaining({
+        testRecordId: 'test-record-runtime-security-r1',
+        level: 'warning',
+        reason: expect.stringContaining('blocked by runtime policy'),
+        command: 'pnpm test && rm -rf /tmp/out',
+      }),
+    ]);
+  });
+
   // ---- 0622 · B1/B2/B4: runtime profile, detection facts, simple intake ----
 
   /** A LoopsService wired with a real workspace profile + a stub detection service. */
-  function buildRuntimeService(stubRuntimes: LoopRuntimeDetection[]) {
+  function buildRuntimeService(
+    stubRuntimes: LoopRuntimeDetection[],
+    browserQaWorker?: LoopsBrowserQaWorkerService,
+    secondOpinionWorker?: LoopsSecondOpinionWorkerService,
+  ) {
     const profile = new LoopsWorkspaceProfileService();
     const detection = {
       detectAll: async () => stubRuntimes,
@@ -549,6 +758,8 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
       undefined,
       detection,
       profile,
+      browserQaWorker,
+      secondOpinionWorker,
     );
   }
 
@@ -585,6 +796,217 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(runtime.workspaceId).toBe('default');
     expect(runtime.runtimes).toHaveLength(1);
     expect(runtime.runtimes?.[0].agent).toBe('codex');
+  });
+
+  it('runs the learning auto-merge worker into pending approvals', async () => {
+    const runtimeService = buildRuntimeService([]);
+    await store.ensureInitialized();
+    mkdirSync(join(workspace, '.loops', 'learnings'), { recursive: true });
+    writeFileSync(
+      join(workspace, '.loops', 'learnings', 'manual.json'),
+      JSON.stringify(
+        [
+          {
+            id: 'learning-a',
+            workspaceId: 'default',
+            repo: workspace,
+            kind: 'pattern',
+            summary: 'Use Browser QA trace evidence for release review',
+            evidenceIds: [],
+            confidence: 0.9,
+            createdAt: '2026-06-23T00:00:00.000Z',
+          },
+          {
+            id: 'learning-b',
+            workspaceId: 'default',
+            repo: workspace,
+            kind: 'pattern',
+            summary: 'Use Browser QA trace evidence for release checklist',
+            evidenceIds: [],
+            confidence: 0.8,
+            createdAt: '2026-06-23T00:01:00.000Z',
+          },
+        ],
+        null,
+        2,
+      ),
+    );
+
+    const result = await runtimeService.runLearningAutoMergeWorker();
+
+    expect(result.learningGovernance?.autoMergeCandidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: 'pending-approval',
+          sourceLearningId: expect.stringMatching(/^learning-/),
+          targetLearningId: expect.stringMatching(/^learning-/),
+        }),
+      ]),
+    );
+  });
+
+  it('runs report-only Browser QA and stores evidence on the loop detail', async () => {
+    const browserQaWorker = createFakeBrowserQaWorker('passed');
+    const runtimeService = buildRuntimeService([], browserQaWorker);
+    const created = await runtimeService.createIssue({
+      title: 'Browser QA issue',
+      targetRepo: workspace,
+      body: 'The loop should persist a report-only browser QA artifact.',
+      priority: 'P2',
+      acceptanceCriteria: ['- Browser QA report is written to .loops evidence'],
+    });
+
+    const detail = await runtimeService.runBrowserQa(created.issue.id, {
+      targetUrl: 'https://example.com',
+      checkedFlows: ['page-load'],
+    });
+
+    expect(browserQaWorker.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        issueId: created.issue.id,
+        targetRepo: workspace,
+        request: expect.objectContaining({ targetUrl: 'https://example.com' }),
+        screenshotRef: expect.stringContaining('.loops/runs/'),
+        traceRef: expect.stringContaining('.loops/runs/'),
+        baselineRef: expect.stringContaining('baseline-page-load.png'),
+        diffRef: expect.stringContaining('visual-diff.png'),
+        handoffRef: expect.stringContaining('handoff.json'),
+      }),
+    );
+    expect(detail.browserQaReports?.[0]).toMatchObject({
+      status: 'passed',
+      targetUrl: 'https://example.com',
+      title: 'QA target',
+      screenshots: [expect.objectContaining({ label: 'page-load' })],
+      traces: [
+        expect.objectContaining({
+          label: 'page-load',
+          path: expect.stringContaining('trace.zip'),
+        }),
+      ],
+      visualDiffs: [
+        expect.objectContaining({
+          status: 'changed',
+          diffPath: expect.stringContaining('visual-diff.png'),
+        }),
+      ],
+      handoffs: [expect.objectContaining({ path: expect.stringContaining('handoff.json') })],
+    });
+    expect(detail.evidenceArtifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'browser-qa',
+          status: 'present',
+          summary: expect.stringContaining('passed browser QA'),
+        }),
+      ]),
+    );
+    expect(detail.releaseGate?.checklist.browserQaPassed).toBe(true);
+  });
+
+  it('runs a Claude Code second-opinion worker and stores evidence on the loop detail', async () => {
+    const secondOpinionWorker = createFakeSecondOpinionWorker('passed');
+    const runtimeService = buildRuntimeService([], undefined, secondOpinionWorker);
+    const created = await runtimeService.createIssue({
+      title: 'Second opinion issue',
+      targetRepo: workspace,
+      body: 'The loop should persist a secondary Claude Code review artifact.',
+      priority: 'P2',
+      acceptanceCriteria: ['- Second opinion report is written to .loops evidence'],
+    });
+
+    const detail = await runtimeService.runSecondOpinion(created.issue.id);
+
+    expect(secondOpinionWorker.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detail: expect.objectContaining({
+          issue: expect.objectContaining({ id: created.issue.id }),
+        }),
+        primary: expect.objectContaining({ reviewer: 'codex' }),
+      }),
+    );
+    expect(detail.secondOpinion).toMatchObject({
+      status: 'passed',
+      secondary: expect.objectContaining({
+        reviewer: 'claude-code',
+        status: 'passed',
+        evidenceIds: [`${created.issue.id}-second-opinion`],
+      }),
+    });
+    expect(detail.evidenceArtifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'second-opinion',
+          status: 'present',
+          summary: expect.stringContaining('second opinion'),
+        }),
+      ]),
+    );
+    expect(detail.releaseGate?.checklist.secondOpinionPassed).toBe(true);
+  });
+
+  it('records delivery governance and applies release gate policies', async () => {
+    const created = await service.createIssue({
+      title: 'Govern release controls',
+      targetRepo: workspace,
+      body: 'The loop should persist delivery governance decisions.',
+      priority: 'P1',
+      acceptanceCriteria: ['- Delivery governance is visible on the detail payload'],
+    });
+
+    await service.governDelivery(created.issue.id, {
+      action: 'set-review-gate',
+      gateKind: 'code',
+      status: 'waived',
+      actor: 'human',
+      reason: 'Accepted for canary validation.',
+    });
+    await service.governDelivery(created.issue.id, {
+      action: 'set-second-opinion-policy',
+      requiredForRelease: true,
+      conflictHumanGate: true,
+      actor: 'human',
+    });
+    await service.governDelivery(created.issue.id, {
+      action: 'record-release-canary',
+      status: 'failed',
+      targetUrl: 'https://example.com/canary',
+      actor: 'human',
+      reason: 'Smoke failed.',
+    });
+    const detail = await service.governDelivery(created.issue.id, {
+      action: 'record-runtime-override',
+      scope: 'network',
+      actor: 'human',
+      reason: 'Allow localhost canary probe.',
+      expiresAt: '2026-06-23T10:00:00.000Z',
+    });
+
+    expect(detail.deliveryGovernance).toMatchObject({
+      reviewGateOverrides: [expect.objectContaining({ gateKind: 'code', status: 'waived' })],
+      secondOpinionPolicy: expect.objectContaining({ requiredForRelease: true }),
+      releaseCanary: expect.objectContaining({ status: 'failed' }),
+      runtimeOverrides: [
+        expect.objectContaining({ scope: 'network', reason: 'Allow localhost canary probe.' }),
+      ],
+    });
+    expect(detail.reviewGates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'code',
+          status: 'waived',
+          waiverReason: 'Accepted for canary validation.',
+        }),
+      ]),
+    );
+    expect(detail.secondOpinion).toMatchObject({
+      requiredForRelease: true,
+      status: 'pending',
+    });
+    expect(detail.releaseGate?.checklist).toMatchObject({
+      secondOpinionPassed: false,
+      canaryPassed: false,
+    });
   });
 
   it('recovers interrupted shards automatically when running the loop', async () => {

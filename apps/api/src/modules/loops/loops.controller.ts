@@ -255,6 +255,46 @@ export class LoopsController {
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.runBrowserQa)
+  async runBrowserQa(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.runBrowserQa, async ({ params, body }) => {
+      const result = await this.loopsService.runBrowserQa(params.issueId, body);
+      const latestReport = result.browserQaReports?.[0];
+      await this.auditLoopUpdate(req, params.issueId, 'runBrowserQa', {
+        targetUrl: body.targetUrl,
+        status: latestReport?.status,
+        reportId: latestReport?.id,
+      });
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.runSecondOpinion)
+  async runSecondOpinion(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.runSecondOpinion, async ({ params }) => {
+      const result = await this.loopsService.runSecondOpinion(params.issueId);
+      await this.auditLoopUpdate(req, params.issueId, 'runSecondOpinion', {
+        status: result.secondOpinion?.status,
+        secondaryStatus: result.secondOpinion?.secondary.status,
+      });
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.governDelivery)
+  async governDelivery(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.governDelivery, async ({ params, body }) => {
+      const result = await this.loopsService.governDelivery(params.issueId, body);
+      await this.auditLoopUpdate(req, params.issueId, 'governDelivery', {
+        action: body.action,
+      });
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.intervene)
   async intervene(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.intervene, async ({ params, body }) => {
@@ -327,6 +367,25 @@ export class LoopsController {
         targetLearningId: body.targetLearningId,
         reason: body.reason,
       });
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.runLearningAutoMergeWorker)
+  async runLearningAutoMergeWorker(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.runLearningAutoMergeWorker, async () => {
+      const result = await this.loopsService.runLearningAutoMergeWorker();
+      await this.auditLog(
+        req,
+        'UPDATE',
+        'loop_learning',
+        'auto-merge-worker',
+        'runLearningAutoMergeWorker',
+        {
+          candidates: result.learningGovernance?.autoMergeCandidates?.length ?? 0,
+        },
+      );
       return success(result);
     });
   }

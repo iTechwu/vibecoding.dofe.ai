@@ -282,15 +282,22 @@ export const LoopRuntimeSecurityPolicySnapshotSchema = z.object({
   }),
   network: z.object({
     strategy: z.literal('deny-by-default'),
-    status: z.literal('not-requested'),
+    status: z.enum(['not-requested', 'blocked', 'allowed-by-override']),
+    blockedTools: z.array(z.string()).default([]),
   }),
   write: z.object({
     strategy: z.literal('workspace-scoped'),
     scope: z.literal('target-repo'),
+    blockedPatterns: z.array(z.string()).default([]),
   }),
   approvals: z.object({
     override: z.literal('not-supported'),
     requiredFor: z.array(z.string()),
+  }),
+  canary: z.object({
+    strategy: z.literal('env-token'),
+    status: z.enum(['armed', 'leaked', 'not-run']),
+    leakedInCommands: z.array(z.string()),
   }),
   capturedAt: z.string(),
 });
@@ -362,6 +369,51 @@ export const LoopReloopResponseSchema = z.object({
   maxReloop: z.number(),
   phase: LoopPhaseSchema,
   paused: z.boolean(),
+});
+
+export const LoopBrowserQaRequestSchema = z.object({
+  targetUrl: z.string().url(),
+  checkedFlows: z.array(z.string().trim().min(1)).default(['page-load']),
+  notes: z.string().trim().optional(),
+  authSessionRef: z.string().trim().min(1).optional(),
+});
+
+export const LoopBrowserQaReportSchema = z.object({
+  id: z.string(),
+  issueId: z.string(),
+  runner: z.literal('playwright-cli'),
+  status: z.enum(['passed', 'failed', 'blocked']),
+  targetUrl: z.string().url(),
+  title: z.string().optional(),
+  screenshots: z.array(z.object({ path: z.string(), label: z.string() })),
+  traces: z.array(z.object({ path: z.string(), label: z.string() })).optional(),
+  visualDiffs: z
+    .array(
+      z.object({
+        baselinePath: z.string(),
+        actualPath: z.string(),
+        diffPath: z.string().optional(),
+        status: z.enum(['baseline-created', 'matched', 'changed']),
+        changedPixels: z.number().int().nonnegative().optional(),
+        label: z.string(),
+      }),
+    )
+    .optional(),
+  handoffs: z
+    .array(
+      z.object({
+        path: z.string(),
+        label: z.string(),
+      }),
+    )
+    .optional(),
+  consoleErrors: z.array(z.string()),
+  networkFailures: z.array(z.object({ url: z.string(), status: z.number().optional() })),
+  checkedFlows: z.array(z.string()),
+  blockedReason: z.string().optional(),
+  command: z.string(),
+  durationMs: z.number().int().nonnegative(),
+  created: z.string(),
 });
 
 export const LoopNaturalCommandIntentSchema = z.enum([
@@ -575,6 +627,8 @@ export const LoopEvidenceArtifactSchema = z.object({
     'review-record',
     'global-review',
     'convergence-pr',
+    'browser-qa',
+    'second-opinion',
     'annotations',
   ]),
   path: z.string(),
@@ -590,10 +644,25 @@ export const LoopLearningSchema = z.object({
   repo: z.string().optional(),
   kind: z.enum(['pattern', 'pitfall', 'decision', 'test_policy', 'ownership', 'security']),
   summary: z.string(),
+  fingerprint: z.string().trim().min(1).optional(),
+  tags: z.array(z.string().trim().min(1)).optional(),
+  similarLearningIds: z.array(z.string().trim().min(1)).optional(),
   evidenceIds: z.array(z.string()).default([]),
   confidence: z.number().min(0).max(1),
   lastUsedAt: z.string().optional(),
   createdAt: z.string(),
+});
+
+export const LoopRuntimeSecurityExceptionSchema = z.object({
+  id: z.string(),
+  testRecordId: z.string(),
+  shardId: z.string(),
+  round: z.number().int().positive(),
+  level: z.enum(['critical', 'warning']),
+  reason: z.string(),
+  evidence: z.string(),
+  command: z.string().optional(),
+  created: z.string(),
 });
 
 export const LoopLearningGovernanceActionSchema = z.enum(['dismiss', 'merge']);
@@ -623,6 +692,17 @@ export const LoopLearningGovernanceSchema = z.object({
       createdAt: z.string(),
     }),
   ),
+  autoMergeCandidates: z
+    .array(
+      z.object({
+        sourceLearningId: z.string(),
+        targetLearningId: z.string(),
+        status: z.enum(['pending-approval', 'approved', 'rejected']),
+        reason: z.string(),
+        createdAt: z.string(),
+      }),
+    )
+    .default([]),
 });
 
 export const LoopTraceSummarySchema = z.object({
@@ -733,10 +813,18 @@ export const LoopReleaseGateSchema = z.object({
     docsUpdated: z.boolean(),
     prReady: z.boolean(),
     rollbackNote: z.boolean(),
+    canaryPassed: z.boolean().optional(),
   }),
   evidenceIds: z.array(z.string()).default([]),
   blocker: z.string().optional(),
   updated: z.string(),
+});
+
+export const LoopSecondOpinionFindingSchema = z.object({
+  fingerprint: z.string().trim().min(1),
+  severity: z.enum(['minor', 'major', 'critical']),
+  desc: z.string().trim().min(1),
+  sourceEvidenceId: z.string().trim().min(1).optional(),
 });
 
 export const LoopSecondOpinionReviewerSchema = z.object({
@@ -744,6 +832,7 @@ export const LoopSecondOpinionReviewerSchema = z.object({
   reviewer: z.enum(['codex', 'claude-code']),
   status: z.enum(['not_run', 'pending', 'passed', 'needs_changes']),
   findingsCount: z.number().int().nonnegative().default(0),
+  findings: z.array(LoopSecondOpinionFindingSchema).default([]),
   evidenceIds: z.array(z.string()).default([]),
   summary: z.string().optional(),
 });
@@ -758,10 +847,141 @@ export const LoopSecondOpinionSchema = z.object({
     primaryOnlyCount: z.number().int().nonnegative(),
     secondaryOnlyCount: z.number().int().nonnegative(),
     conflictCount: z.number().int().nonnegative(),
+    agreementFingerprints: z.array(z.string()).default([]),
+    primaryOnlyFingerprints: z.array(z.string()).default([]),
+    secondaryOnlyFingerprints: z.array(z.string()).default([]),
+    conflictFingerprints: z.array(z.string()).default([]),
   }),
   requiredForRelease: z.boolean(),
   updated: z.string(),
 });
+
+export const LoopDeliveryGovernanceSchema = z.object({
+  workflowDefaults: z
+    .array(
+      z.object({
+        loopKind: z.enum(['feature', 'bugfix', 'refactor', 'docs', 'ops']),
+        recipeId: z.string().trim().min(1),
+        actor: z.string().trim().min(1),
+        reason: z.string().trim().optional(),
+        updated: z.string(),
+      }),
+    )
+    .default([]),
+  reviewGateOverrides: z
+    .array(
+      z.object({
+        gateKind: LoopReviewGateKindSchema,
+        status: z.enum(['passed', 'blocked', 'waived']),
+        actor: z.string().trim().min(1),
+        reason: z.string().trim().optional(),
+        expiresAt: z.string().optional(),
+        updated: z.string(),
+      }),
+    )
+    .default([]),
+  secondOpinionPolicy: z
+    .object({
+      requiredForRelease: z.boolean(),
+      conflictHumanGate: z.boolean(),
+      actor: z.string().trim().min(1),
+      reason: z.string().trim().optional(),
+      updated: z.string(),
+    })
+    .optional(),
+  releaseCanary: z
+    .object({
+      status: z.enum(['not_run', 'pending', 'passed', 'failed']),
+      targetUrl: z.string().url().optional(),
+      actor: z.string().trim().min(1),
+      reason: z.string().trim().optional(),
+      updated: z.string(),
+    })
+    .optional(),
+  runtimeOverrides: z
+    .array(
+      z.object({
+        id: z.string(),
+        scope: z.enum(['network', 'write', 'shell']),
+        actor: z.string().trim().min(1),
+        reason: z.string().trim().min(1),
+        expiresAt: z.string(),
+        updated: z.string(),
+      }),
+    )
+    .default([]),
+  browserQaSessionPolicy: z
+    .object({
+      authMode: z.enum(['none', 'test-account', 'manual-session']),
+      testAccountRef: z.string().trim().min(1).optional(),
+      actor: z.string().trim().min(1),
+      reason: z.string().trim().optional(),
+      updated: z.string(),
+    })
+    .optional(),
+  learningPolicy: z
+    .object({
+      dedupeScope: z.enum(['workspace', 'cross-workspace']),
+      autoMergeApproval: z.enum(['manual-only', 'approval-required']),
+      actor: z.string().trim().min(1),
+      reason: z.string().trim().optional(),
+      updated: z.string(),
+    })
+    .optional(),
+});
+
+export const LoopDeliveryGovernanceRequestSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('set-workflow-default'),
+    loopKind: z.enum(['feature', 'bugfix', 'refactor', 'docs', 'ops']),
+    recipeId: z.string().trim().min(1),
+    actor: z.string().trim().min(1).default('human'),
+    reason: z.string().trim().optional(),
+  }),
+  z.object({
+    action: z.literal('set-review-gate'),
+    gateKind: LoopReviewGateKindSchema,
+    status: z.enum(['passed', 'blocked', 'waived']),
+    actor: z.string().trim().min(1).default('human'),
+    reason: z.string().trim().optional(),
+    expiresAt: z.string().optional(),
+  }),
+  z.object({
+    action: z.literal('set-second-opinion-policy'),
+    requiredForRelease: z.boolean(),
+    conflictHumanGate: z.boolean().default(true),
+    actor: z.string().trim().min(1).default('human'),
+    reason: z.string().trim().optional(),
+  }),
+  z.object({
+    action: z.literal('record-release-canary'),
+    status: z.enum(['not_run', 'pending', 'passed', 'failed']),
+    targetUrl: z.string().url().optional(),
+    actor: z.string().trim().min(1).default('human'),
+    reason: z.string().trim().optional(),
+  }),
+  z.object({
+    action: z.literal('record-runtime-override'),
+    scope: z.enum(['network', 'write', 'shell']),
+    actor: z.string().trim().min(1).default('human'),
+    reason: z.string().trim().min(1),
+    expiresAt: z.string(),
+  }),
+  z.object({
+    action: z.literal('set-browser-qa-session-policy'),
+    authMode: z.enum(['none', 'test-account', 'manual-session']),
+    testAccountRef: z.string().trim().min(1).optional(),
+    actor: z.string().trim().min(1).default('human'),
+    reason: z.string().trim().optional(),
+  }),
+  z.object({
+    action: z.literal('set-learning-policy'),
+    dedupeScope: z.enum(['workspace', 'cross-workspace']),
+    autoMergeApproval: z.enum(['manual-only', 'approval-required']),
+    actor: z.string().trim().min(1).default('human'),
+    reason: z.string().trim().optional(),
+  }),
+]);
 
 // ============================================================================
 // Agent Runtime detection facts (0622 · B1).
@@ -904,6 +1124,7 @@ export const LoopDetailSchema = z.object({
   state: LoopStateItemSchema,
   globalReview: LoopGlobalReviewRecordSchema.optional(),
   convergencePr: LoopConvergencePrSchema.optional(),
+  browserQaReports: z.array(LoopBrowserQaReportSchema).optional(),
   requirementsCoverage: LoopRequirementCoverageSchema.optional(),
   evidenceArtifacts: z.array(LoopEvidenceArtifactSchema).optional(),
   learnings: z.array(LoopLearningSchema).optional(),
@@ -911,6 +1132,7 @@ export const LoopDetailSchema = z.object({
   reviewGates: z.array(LoopReviewGateSchema).optional(),
   releaseGate: LoopReleaseGateSchema.optional(),
   secondOpinion: LoopSecondOpinionSchema.optional(),
+  deliveryGovernance: LoopDeliveryGovernanceSchema.optional(),
 });
 
 export const LoopIssuesQuerySchema = PaginationQuerySchema.extend({
@@ -926,6 +1148,8 @@ export const LoopIssueListItemSchema = z.object({
   workflowRecipe: LoopWorkflowRecipeSchema.optional(),
   reviewGates: z.array(LoopReviewGateSchema).optional(),
   releaseGate: LoopReleaseGateSchema.optional(),
+  runtimeSecurityExceptions: z.array(LoopRuntimeSecurityExceptionSchema).optional(),
+  deliveryGovernance: LoopDeliveryGovernanceSchema.optional(),
 });
 
 export const LoopListResponseSchema = PaginatedResponseSchema(LoopIssueListItemSchema);
@@ -1246,6 +1470,7 @@ export type LoopRequirementCoverageSummary = z.infer<typeof LoopRequirementCover
 export type LoopRequirementCoverage = z.infer<typeof LoopRequirementCoverageSchema>;
 export type LoopEvidenceArtifact = z.infer<typeof LoopEvidenceArtifactSchema>;
 export type LoopLearning = z.infer<typeof LoopLearningSchema>;
+export type LoopRuntimeSecurityException = z.infer<typeof LoopRuntimeSecurityExceptionSchema>;
 export type LoopLearningGovernanceAction = z.infer<typeof LoopLearningGovernanceActionSchema>;
 export type LoopLearningGovernanceRequest = z.infer<typeof LoopLearningGovernanceRequestSchema>;
 export type LoopLearningGovernance = z.infer<typeof LoopLearningGovernanceSchema>;
@@ -1260,8 +1485,11 @@ export type LoopReviewGateKind = z.infer<typeof LoopReviewGateKindSchema>;
 export type LoopReviewGateStatus = z.infer<typeof LoopReviewGateStatusSchema>;
 export type LoopReviewGate = z.infer<typeof LoopReviewGateSchema>;
 export type LoopReleaseGate = z.infer<typeof LoopReleaseGateSchema>;
+export type LoopSecondOpinionFinding = z.infer<typeof LoopSecondOpinionFindingSchema>;
 export type LoopSecondOpinionReviewer = z.infer<typeof LoopSecondOpinionReviewerSchema>;
 export type LoopSecondOpinion = z.infer<typeof LoopSecondOpinionSchema>;
+export type LoopDeliveryGovernance = z.infer<typeof LoopDeliveryGovernanceSchema>;
+export type LoopDeliveryGovernanceRequest = z.infer<typeof LoopDeliveryGovernanceRequestSchema>;
 export type LoopAgentRuntimeStatus = z.infer<typeof LoopAgentRuntimeStatusSchema>;
 export type LoopAgentRuntimeItem = z.infer<typeof LoopAgentRuntimeItemSchema>;
 export type LoopAgentRuntimeDiagnostic = z.infer<typeof LoopAgentRuntimeDiagnosticSchema>;
@@ -1289,6 +1517,8 @@ export type LoopGlobalVerdict = z.infer<typeof LoopGlobalVerdictSchema>;
 export type LoopGlobalReviewRecord = z.infer<typeof LoopGlobalReviewRecordSchema>;
 export type LoopReloopRequest = z.infer<typeof LoopReloopRequestSchema>;
 export type LoopReloopResponse = z.infer<typeof LoopReloopResponseSchema>;
+export type LoopBrowserQaRequest = z.infer<typeof LoopBrowserQaRequestSchema>;
+export type LoopBrowserQaReport = z.infer<typeof LoopBrowserQaReportSchema>;
 export type LoopNaturalCommandIntent = z.infer<typeof LoopNaturalCommandIntentSchema>;
 export type LoopNaturalCommandRequest = z.infer<typeof LoopNaturalCommandRequestSchema>;
 export type LoopNaturalCommandResponse = z.infer<typeof LoopNaturalCommandResponseSchema>;

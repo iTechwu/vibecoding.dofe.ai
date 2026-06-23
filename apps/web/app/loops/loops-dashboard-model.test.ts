@@ -6,6 +6,7 @@ import {
   buildAgingQueue,
   buildDashboardGuide,
   buildExceptionCenter,
+  buildEvalPlan,
   buildLoopBoard,
   buildPermissionProfile,
   buildPerformanceSnapshot,
@@ -16,6 +17,7 @@ import {
   buildReviewInbox,
   buildReviewInboxGroups,
   buildRiskQueue,
+  buildRuntimeBackends,
   buildTriggerPortfolio,
   buildWorkflowRecipe,
   formatPhase,
@@ -54,6 +56,19 @@ const list: LoopListResponse = {
         updated: '2026-06-20T00:00:00.000Z',
         paused: false,
       },
+      runtimeSecurityExceptions: [
+        {
+          id: 'runtime-security-test-record-shard-1-r2-0',
+          testRecordId: 'test-record-shard-1-r2',
+          shardId: 'shard-1',
+          round: 2,
+          level: 'warning',
+          reason: 'Command "pnpm test && rm -rf /tmp/out" was blocked by runtime policy.',
+          evidence: 'runtime-security:command-policy · TEST-FAIL',
+          command: 'pnpm test && rm -rf /tmp/out',
+          created: '2026-06-20T00:00:00.000Z',
+        },
+      ],
     },
     {
       issue: {
@@ -487,12 +502,18 @@ describe('loops-dashboard-model', () => {
       running: 1,
       queued: 0,
       attention: 1,
-      failed: 1,
+      failed: 2,
       capacity: 4,
     });
     expect(center.items.map((item) => [item.reason, item.level, item.owner, item.action])).toEqual([
       ['Cost guard tripped', 'critical', 'Product owner', 'Adjust budget or reduce scope'],
       ['Paused', 'critical', 'Loop operator', 'Resume or assign recovery'],
+      [
+        'Command "pnpm test && rm -rf /tmp/out" was blocked by runtime policy.',
+        'warning',
+        'Runtime security',
+        'Review command evidence',
+      ],
       ['Global FAIL', 'warning', 'Reviewer', 'Review failure evidence'],
       ['Spec draft is waiting for human review', 'warning', 'spec-review-agent', 'Open diagnostic'],
       ['issue index is stale', 'warning', 'Runtime owner', 'Run doctor or re-index'],
@@ -585,6 +606,97 @@ describe('loops-dashboard-model', () => {
     expect(profile.items.map((item) => [item.provider, item.agents, item.runtimeMode])).toEqual([
       ['claude-code', 1, 'docker'],
       ['codex', 1, 'local-cli'],
+    ]);
+  });
+
+  it('packages runtime detection as governable runtime backends', () => {
+    const backends = buildRuntimeBackends({
+      ...runtime,
+      workspaceId: 'default',
+      runtimes: [
+        {
+          agent: 'codex',
+          preferredMode: 'local-cli',
+          selected: { mode: 'local-cli', status: 'ready', workspaceRequired: false },
+          checks: [],
+        },
+        {
+          agent: 'claude-code',
+          preferredMode: 'docker',
+          selected: { mode: 'docker', status: 'missing', workspaceRequired: true },
+          docker: {
+            mode: 'docker',
+            status: 'missing',
+            image: 'dofe/claude-code:latest',
+            workspaceRequired: true,
+          },
+          checks: [
+            {
+              code: 'DOCKER_IMAGE_MISSING',
+              level: 'warning',
+              message: 'Docker image is missing.',
+              action: 'pull-image',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(backends.summary).toEqual({
+      total: 2,
+      ready: 1,
+      degraded: 1,
+      unavailable: 0,
+    });
+    expect(
+      backends.items.map((item) => [
+        item.id,
+        item.status,
+        item.mode,
+        item.permissionProfile,
+        item.fallbackPolicy,
+      ]),
+    ).toEqual([
+      [
+        'runtime-backend-claude-code',
+        'degraded',
+        'docker',
+        'read/write/test within approved work package',
+        'Pause and ask for runtime recovery',
+      ],
+      [
+        'runtime-backend-codex',
+        'ready',
+        'local-cli',
+        'read/review/test design; write only Loops artifacts',
+        'Fallback to deterministic review gate',
+      ],
+    ]);
+    expect(backends.items[0]?.healthChecks).toEqual(['Docker image is missing.']);
+  });
+
+  it('builds an eval plan from delivery, runtime, test, and cost gates', () => {
+    const evalPlan = buildEvalPlan(list.list, cost);
+
+    expect(evalPlan.summary).toEqual({
+      total: 5,
+      passed: 0,
+      attention: 2,
+      blocked: 3,
+    });
+    expect(evalPlan.checks.map((check) => [check.id, check.status, check.hardGate])).toEqual([
+      ['architecture-compliance', 'attention', true],
+      ['delivery-readiness', 'blocked', true],
+      ['runtime-safety', 'attention', true],
+      ['test-evidence', 'blocked', true],
+      ['cost-policy', 'blocked', true],
+    ]);
+    expect(evalPlan.checks.map((check) => check.evidence)).toEqual([
+      '2 active loops still need architecture/review evidence',
+      '1 loops blocked before release',
+      '1 runtime security exceptions recorded',
+      '1 loops failed global review or tests',
+      '1 loops tripped spend guard',
     ]);
   });
 

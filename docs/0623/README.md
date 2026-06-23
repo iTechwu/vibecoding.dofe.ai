@@ -8,18 +8,19 @@
 
 ## 竞品分层
 
-| 层级                           | 项目         | 目录                                   | 对 DofeAI 的主要启发                                     |
-| ------------------------------ | ------------ | -------------------------------------- | -------------------------------------------------------- |
-| 团队级异步工程 agent           | Open SWE     | [open-swe](open-swe/README.md)         | GitHub issue 到 PR、异步 worker、plan approval           |
-| 自托管 agent 控制面            | OpenHands    | [openhands](openhands/README.md)       | 多 backend、agent server、automation server、self-host   |
-| Benchmark / issue repair agent | SWE-agent    | [swe-agent](swe-agent/README.md)       | 工具接口、SWE-bench、配置化 agent loop                   |
-| 终端 pair programming          | Aider        | [aider](aider/README.md)               | repo map、git 自动提交、lint/test feedback               |
-| 多端 IDE/CLI/SDK agent         | Cline        | [cline](cline/README.md)               | Plan/Act、Kanban、多 agent、定时任务、外部连接           |
-| 多 agent 任务板                | Cline Kanban | [cline-kanban](cline-kanban/README.md) | 独立 worktree、卡片依赖、实时 diff、PR                   |
-| IDE modes agent                | Roo Code     | [roo-code](roo-code/README.md)         | Code/Architect/Ask/Debug modes，本地化与模式分工         |
-| 开源 coding agent 先驱         | Continue     | [continue](continue/README.md)         | VS Code/CLI/JetBrains 多端经验，以及仓库只读后的产品风险 |
-| 轻量终端/桌面 agent            | OpenCode     | [opencode](opencode/README.md)         | build/plan 双 agent、只读规划、跨平台安装                |
-| 通用本机 agent runtime         | Goose        | [goose](goose/README.md)               | Desktop/CLI/API、MCP、ACP、多 provider、定制发行版       |
+| 层级                           | 项目         | 目录                                   | 对 DofeAI 的主要启发                                           |
+| ------------------------------ | ------------ | -------------------------------------- | -------------------------------------------------------------- |
+| 团队级异步工程 agent           | Open SWE     | [open-swe](open-swe/README.md)         | GitHub issue 到 PR、异步 worker、plan approval                 |
+| 自托管 agent 控制面            | OpenHands    | [openhands](openhands/README.md)       | 多 backend、agent server、automation server、self-host         |
+| Benchmark / issue repair agent | SWE-agent    | [swe-agent](swe-agent/README.md)       | 工具接口、SWE-bench、配置化 agent loop                         |
+| 终端 pair programming          | Aider        | [aider](aider/README.md)               | repo map、git 自动提交、lint/test feedback                     |
+| 多端 IDE/CLI/SDK agent         | Cline        | [cline](cline/README.md)               | Plan/Act、Kanban、多 agent、定时任务、外部连接                 |
+| 多 agent 任务板                | Cline Kanban | [cline-kanban](cline-kanban/README.md) | 独立 worktree、卡片依赖、实时 diff、PR                         |
+| IDE modes agent                | Roo Code     | [roo-code](roo-code/README.md)         | Code/Architect/Ask/Debug modes，本地化与模式分工               |
+| 开源 coding agent 先驱         | Continue     | [continue](continue/README.md)         | VS Code/CLI/JetBrains 多端经验，以及仓库只读后的产品风险       |
+| 轻量终端/桌面 agent            | OpenCode     | [opencode](opencode/README.md)         | build/plan 双 agent、只读规划、跨平台安装                      |
+| 通用本机 agent runtime         | Goose        | [goose](goose/README.md)               | Desktop/CLI/API、MCP、ACP、多 provider、定制发行版             |
+| 通用多 agent 框架 + 企业控制面 | CrewAI       | [crewAI](crewAI/README.md)             | Crews/Flows、AMP、ACP、RBAC、Traces、Triggers、Tool Repository |
 
 ## 总体判断
 

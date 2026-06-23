@@ -33,6 +33,25 @@
       "traceEvents": "Trace events",
       "traceEventsNote": "{recent} recent"
     },
+    "evalPlan": {
+      "title": "Eval Plan",
+      "summary": "{passed}/{total} passed · {attention} attention · {blocked} blocked",
+      "loading": "Loading eval plan.",
+      "hardGate": "Hard gate",
+      "softSignal": "Signal",
+      "status": {
+        "passed": "Passed",
+        "attention": "Attention",
+        "blocked": "Blocked"
+      },
+      "checks": {
+        "architecture-compliance": "Architecture",
+        "delivery-readiness": "Delivery",
+        "runtime-safety": "Runtime safety",
+        "test-evidence": "Test evidence",
+        "cost-policy": "Cost policy"
+      }
+    },
     "health": {
       "title": "Runtime Health",
       "ok": "File state and DB index are currently consistent.",
@@ -144,6 +163,9 @@
       "stale": "Stale learnings",
       "noStale": "No stale learnings.",
       "dismiss": "Dismiss",
+      "merge": "Merge",
+      "runAutoMerge": "Run merge worker",
+      "similar": "{count} similar suggestions",
       "confidence": "{value}%",
       "kind": {
         "pattern": "Pattern",
@@ -199,6 +221,22 @@
       "evidence": "Evidence",
       "impact": "Impact",
       "retryAction": "Retry"
+    },
+    "runtimeBackends": {
+      "title": "Runtime Backends",
+      "summary": "{ready}/{total} ready · {degraded} degraded · {unavailable} unavailable",
+      "loading": "Loading runtime backends.",
+      "empty": "No runtime backends detected.",
+      "permissions": "Permissions",
+      "workspace": "Workspace",
+      "cost": "Cost",
+      "fallback": "Fallback",
+      "readyEvidence": "Ready evidence: {evidence}",
+      "status": {
+        "ready": "Ready",
+        "degraded": "Degraded",
+        "unavailable": "Unavailable"
+      }
     },
     "agentRuntime": {
       "title": "Agent Runtime",
@@ -571,6 +609,7 @@
       "meta": "{steps} workflow steps · {gates} review gates",
       "workflowTitle": "Workflow Timeline",
       "workflowVersion": "v{version}",
+      "actionsTitle": "Delivery Actions",
       "reviewTitle": "Review Gates",
       "secondOpinionTitle": "Second Opinion",
       "releaseTitle": "Release Gate",
@@ -587,7 +626,42 @@
         "agreement": "Agreement",
         "conflict": "Conflict",
         "primaryOnly": "Primary only",
-        "secondaryOnly": "Secondary only"
+        "secondaryOnly": "Secondary only",
+        "run": "Run second opinion",
+        "require": "Require before release"
+      },
+      "browserQa": {
+        "title": "Browser QA",
+        "targetUrl": "Target URL",
+        "checkedFlows": "Checked flows",
+        "authSessionRef": "Auth session ref",
+        "notes": "Notes",
+        "run": "Run Browser QA",
+        "sessionPolicy": "Session policy",
+        "authMode": "Auth mode",
+        "testAccountRef": "Test account ref",
+        "saveSessionPolicy": "Save session policy"
+      },
+      "releaseCanary": {
+        "title": "Release canary",
+        "status": "Status",
+        "targetUrl": "Target URL",
+        "reason": "Reason",
+        "record": "Record canary"
+      },
+      "runtimeOverride": {
+        "title": "Runtime override",
+        "scope": "Scope",
+        "reason": "Reason",
+        "expiresAt": "Expires at",
+        "record": "Record override"
+      },
+      "governance": {
+        "title": "Governance",
+        "browserQa": "Browser QA auth: {mode}",
+        "secondOpinion": "Second opinion required: {required}",
+        "canary": "Canary: {status}",
+        "runtimeOverrides": "{count} runtime overrides"
       },
       "releaseChecklist": {
         "specApproved": "Spec approved",
@@ -598,7 +672,8 @@
         "browserQaPassed": "Browser QA",
         "docsUpdated": "Docs",
         "prReady": "PR",
-        "rollbackNote": "Rollback"
+        "rollbackNote": "Rollback",
+        "canaryPassed": "Canary"
       }
     },
     "exceptions": {

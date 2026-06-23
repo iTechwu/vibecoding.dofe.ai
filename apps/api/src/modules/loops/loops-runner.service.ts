@@ -1,6 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
+import { randomUUID } from 'crypto';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import type {
@@ -16,9 +17,32 @@ const OUTPUT_LIMIT = 12000;
 
 type CommandResult = LoopTestRecord['commands'][number];
 type Coverage = NonNullable<LoopTestRecord['coverage']>;
-type CommandPolicyDecision = { allowed: true } | { allowed: false; reason: string };
+type CommandPolicyDecision =
+  | { allowed: true }
+  | { allowed: false; reason: string; networkTool?: string; writePattern?: string };
+type CanaryStatus = LoopRuntimeSecurityPolicySnapshot['canary']['status'];
 
 const SHELL_CONTROL_OPERATOR_PATTERN = /(?:&&|\|\||[;|<>`]|[$][(]|\r|\n)/;
+const NETWORK_COMMAND_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
+  { label: 'curl', pattern: /\bcurl\b/ },
+  { label: 'wget', pattern: /\bwget\b/ },
+  { label: 'ssh', pattern: /\b(?:ssh|scp|sftp)\b/ },
+  { label: 'netcat', pattern: /\b(?:nc|netcat|telnet)\b/ },
+  { label: 'git-network', pattern: /\bgit\s+(?:clone|fetch|pull|push)\b/ },
+  { label: 'package-install', pattern: /\b(?:pnpm|npm|yarn)\s+(?:add|install|i|dlx)\b/ },
+  { label: 'npx', pattern: /\bnpx\b/ },
+  { label: 'pip-install', pattern: /\bpip(?:3)?\s+install\b/ },
+  { label: 'brew', pattern: /\bbrew\s+(?:install|update|upgrade)\b/ },
+];
+const WRITE_ESCAPE_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
+  { label: 'parent-directory', pattern: /(^|\s)\.\.(?:\/|\\)/ },
+  { label: 'absolute-write-command', pattern: /\b(?:rm|mv|cp|mkdir|touch)\s+(?:-[^\s]+\s+)*\// },
+  {
+    label: 'node-fs-outside-workspace',
+    pattern: /\b(?:writeFileSync|appendFileSync|rmSync|mkdirSync)\s*[(]\s*['"`](?:\/|\.\.)/,
+  },
+];
+const CANARY_REDACTION = '[LOOPS_RUNTIME_CANARY_REDACTED]';
 
 @Injectable()
 export class LoopsRunnerService {
@@ -49,25 +73,43 @@ export class LoopsRunnerService {
       ? input.request.commands
       : config.tests.defaultCommands;
     const results: CommandResult[] = [];
+    const canaryToken = this.createCanaryToken(input.issueId, input.shardId, input.round);
+    const leakedCanaryCommands: string[] = [];
+    const blockedNetworkTools: string[] = [];
+    const blockedWritePatterns: string[] = [];
+    let executedCommands = 0;
 
     for (const command of commands) {
       const policy = this.evaluateCommandPolicy(command, config.tests.allowedCommands);
       if (!policy.allowed) {
+        if (policy.networkTool) blockedNetworkTools.push(policy.networkTool);
+        if (policy.writePattern) blockedWritePatterns.push(policy.writePattern);
         results.push(this.blockedCommand(command, policy.reason));
         continue;
       }
-      results.push(await this.runCommand(command, input.cwd));
+      executedCommands += 1;
+      const commandResult = await this.runCommand(command, input.cwd, canaryToken);
+      const inspected = this.inspectCanary(commandResult, canaryToken);
+      if (inspected.leaked) {
+        leakedCanaryCommands.push(command);
+      }
+      results.push(inspected.result);
     }
 
     const coverage = this.extractCoverage(results);
     const coverageFailures = this.coverageFailures(coverage, config.tests.coverageFloor);
     const failed = results.filter((item) => item.exitCode !== 0);
+    const canaryFailures = leakedCanaryCommands.map((command) => ({
+      name: 'runtime-security:canary',
+      reason: `Runtime canary was leaked by command "${command}". Output was redacted before persistence.`,
+    }));
     const failedTests = [
       ...failed.map((item) => ({
         name: item.command,
         reason: item.stderr || item.stdout || `Command exited with ${item.exitCode}`,
       })),
       ...coverageFailures,
+      ...canaryFailures,
     ];
     const status = failed.length === 0 ? 'TEST-PASS' : 'TEST-FAIL';
     const created = new Date().toISOString();
@@ -75,6 +117,10 @@ export class LoopsRunnerService {
       input.shardId,
       input.round,
       config.tests.allowedCommands,
+      this.resolveCanaryStatus(executedCommands, leakedCanaryCommands),
+      leakedCanaryCommands,
+      blockedNetworkTools,
+      blockedWritePatterns,
       created,
     );
 
@@ -102,6 +148,10 @@ export class LoopsRunnerService {
     shardId: string,
     round: number,
     allowedCommands: string[],
+    canaryStatus: CanaryStatus,
+    leakedCanaryCommands: string[],
+    blockedNetworkTools: string[],
+    blockedWritePatterns: string[],
     capturedAt: string,
   ): LoopRuntimeSecurityPolicySnapshot {
     return {
@@ -114,18 +164,39 @@ export class LoopsRunnerService {
       },
       network: {
         strategy: 'deny-by-default',
-        status: 'not-requested',
+        status: blockedNetworkTools.length > 0 ? 'blocked' : 'not-requested',
+        blockedTools: [...new Set(blockedNetworkTools)],
       },
       write: {
         strategy: 'workspace-scoped',
         scope: 'target-repo',
+        blockedPatterns: [...new Set(blockedWritePatterns)],
       },
       approvals: {
         override: 'not-supported',
-        requiredFor: ['shell-control-operator', 'command-prefix-outside-allowlist'],
+        requiredFor: [
+          'shell-control-operator',
+          'command-prefix-outside-allowlist',
+          'network-command',
+          'write-outside-workspace',
+        ],
+      },
+      canary: {
+        strategy: 'env-token',
+        status: canaryStatus,
+        leakedInCommands: leakedCanaryCommands,
       },
       capturedAt,
     };
+  }
+
+  private createCanaryToken(issueId: string, shardId: string, round: number): string {
+    return `loops-canary:${issueId}:${shardId}:r${round}:${randomUUID()}`;
+  }
+
+  private resolveCanaryStatus(executedCommands: number, leakedCommands: string[]): CanaryStatus {
+    if (executedCommands === 0) return 'not-run';
+    return leakedCommands.length > 0 ? 'leaked' : 'armed';
   }
 
   private evaluateCommandPolicy(command: string, allowedCommands: string[]): CommandPolicyDecision {
@@ -147,6 +218,22 @@ export class LoopsRunnerService {
         reason: 'Command is not allowed by .loops/config.yaml tests.allowed_commands.',
       };
     }
+    const networkMatch = NETWORK_COMMAND_PATTERNS.find((item) => item.pattern.test(normalized));
+    if (networkMatch) {
+      return {
+        allowed: false,
+        reason: `Command is blocked by runtime security policy: network access via ${networkMatch.label} requires an approved override.`,
+        networkTool: networkMatch.label,
+      };
+    }
+    const writeMatch = WRITE_ESCAPE_PATTERNS.find((item) => item.pattern.test(normalized));
+    if (writeMatch) {
+      return {
+        allowed: false,
+        reason: `Command is blocked by runtime security policy: write pattern ${writeMatch.label} escapes the target repo scope.`,
+        writePattern: writeMatch.label,
+      };
+    }
     return { allowed: true };
   }
 
@@ -164,12 +251,17 @@ export class LoopsRunnerService {
     };
   }
 
-  private async runCommand(command: string, cwd: string): Promise<CommandResult> {
+  private async runCommand(
+    command: string,
+    cwd: string,
+    canaryToken: string,
+  ): Promise<CommandResult> {
     const started = Date.now();
     try {
       const safeCwd = await resolveAllowedTargetRepo(cwd);
       const result = await execFileAsync('/bin/sh', ['-lc', command], {
         cwd: safeCwd,
+        env: { ...process.env, LOOPS_RUNTIME_CANARY: canaryToken },
         timeout: 120000,
         maxBuffer: 1024 * 1024 * 8,
       });
@@ -201,6 +293,28 @@ export class LoopsRunnerService {
         stderr: this.truncate(err.stderr ?? err.message ?? err.signal ?? ''),
       };
     }
+  }
+
+  private inspectCanary(
+    result: CommandResult,
+    canaryToken: string,
+  ): { result: CommandResult; leaked: boolean } {
+    const leaked = result.stdout.includes(canaryToken) || result.stderr.includes(canaryToken);
+    if (!leaked) {
+      return { result, leaked: false };
+    }
+    return {
+      leaked: true,
+      result: {
+        ...result,
+        stdout: this.redactCanary(result.stdout, canaryToken),
+        stderr: this.redactCanary(result.stderr, canaryToken),
+      },
+    };
+  }
+
+  private redactCanary(value: string, canaryToken: string): string {
+    return value.split(canaryToken).join(CANARY_REDACTION);
   }
 
   private truncate(value: string) {

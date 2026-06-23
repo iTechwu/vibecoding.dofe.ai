@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { renderToString } from 'react-dom/server';
 import { hydrateRoot } from 'react-dom/client';
 import { NextIntlClientProvider } from 'next-intl';
@@ -23,6 +23,8 @@ vi.mock('@/i18n/navigation', () => ({
 }));
 
 const mutate = vi.fn();
+const governLearningMutate = vi.fn();
+const autoMergeWorkerMutate = vi.fn();
 
 vi.mock('@/lib/api/contracts/hooks', () => ({
   useLoopsList: () => ({
@@ -53,6 +55,19 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
                 globalVerdict: undefined,
                 updated: '2026-06-20T00:00:00.000Z',
               },
+              runtimeSecurityExceptions: [
+                {
+                  id: 'runtime-security-test-record-shard-1-r2-0',
+                  testRecordId: 'test-record-shard-1-r2',
+                  shardId: 'shard-1',
+                  round: 2,
+                  level: 'warning',
+                  reason: 'Command "pnpm test && rm -rf /tmp/out" was blocked by runtime policy.',
+                  evidence: 'runtime-security:command-policy · TEST-FAIL',
+                  command: 'pnpm test && rm -rf /tmp/out',
+                  created: '2026-06-20T00:00:00.000Z',
+                },
+              ],
             },
             {
               issue: {
@@ -433,6 +448,11 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
     },
   }),
   useResumeLoops: () => ({ isPending: false, mutate }),
+  useGovernLoopLearning: () => ({ isPending: false, mutate: governLearningMutate }),
+  useRunLoopLearningAutoMergeWorker: () => ({
+    isPending: false,
+    mutate: autoMergeWorkerMutate,
+  }),
   useLoopsWorkspaces: () => ({
     data: {
       body: {
@@ -445,6 +465,9 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
               repo: '/repo/app',
               kind: 'test_policy',
               summary: 'Run unit and type-check before dashboard changes.',
+              fingerprint: 'learning-test-policy-fingerprint',
+              tags: ['test', 'policy', 'dashboard'],
+              similarLearningIds: ['learning-ownership'],
               evidenceIds: ['test-record-1'],
               confidence: 0.92,
               createdAt: '2026-06-23T00:00:00.000Z',
@@ -455,6 +478,9 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
               repo: '/repo/docs',
               kind: 'ownership',
               summary: 'Docs changes usually touch docs/0623/gstack.',
+              fingerprint: 'learning-ownership-fingerprint',
+              tags: ['docs', 'gstack', 'dashboard'],
+              similarLearningIds: ['learning-test-policy'],
               evidenceIds: ['impl-1'],
               confidence: 0.76,
               lastUsedAt: '2026-06-23T00:30:00.000Z',
@@ -542,6 +568,7 @@ function renderWithIntl(ui: React.ReactElement) {
 
 describe('LoopsPage', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-23T01:00:00.000Z'));
   });
@@ -607,17 +634,43 @@ describe('LoopsPage', () => {
     expect(screen.getByText('Review Gates')).toBeInTheDocument();
     expect(screen.getByText('1/4 passed · 2 pending · 1 blocked')).toBeInTheDocument();
     expect(screen.getByText('Product')).toBeInTheDocument();
-    expect(screen.getByText('Architecture')).toBeInTheDocument();
+    expect(screen.getAllByText('Architecture').length).toBeGreaterThan(0);
     expect(screen.getByText('Security')).toBeInTheDocument();
     expect(screen.getByText('Learning Memory')).toBeInTheDocument();
     expect(screen.getByText('2 reusable learnings in this workspace')).toBeInTheDocument();
     expect(screen.getByText('Top learnings')).toBeInTheDocument();
     expect(screen.getByText('Stale learnings')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Run merge worker' }));
+    expect(autoMergeWorkerMutate).toHaveBeenCalledWith({ body: {} });
     expect(screen.getAllByText('Test Policy').length).toBeGreaterThan(0);
     expect(screen.getByText('92%')).toBeInTheDocument();
     expect(
       screen.getAllByText('Run unit and type-check before dashboard changes.').length,
     ).toBeGreaterThan(0);
+    expect(screen.getByText('1 similar suggestions')).toBeInTheDocument();
+    const mergeButton = screen.getAllByRole('button', { name: 'Merge' })[0];
+    expect(mergeButton).toBeDefined();
+    fireEvent.click(mergeButton!);
+    expect(governLearningMutate).toHaveBeenCalledWith({
+      params: { learningId: 'learning-test-policy' },
+      body: {
+        action: 'merge',
+        actor: 'dashboard',
+        targetLearningId: 'learning-ownership',
+        reason: 'Merged from dashboard stale learning queue into top learning',
+      },
+    });
+    const dismissButton = screen.getAllByRole('button', { name: 'Dismiss' })[0];
+    expect(dismissButton).toBeDefined();
+    fireEvent.click(dismissButton!);
+    expect(governLearningMutate).toHaveBeenLastCalledWith({
+      params: { learningId: 'learning-test-policy' },
+      body: {
+        action: 'dismiss',
+        actor: 'dashboard',
+        reason: 'Dismissed from dashboard stale learning queue',
+      },
+    });
     expect(screen.getByText('1 specs need decision')).toBeInTheDocument();
     expect(screen.getByText('1 blocked by exception')).toBeInTheDocument();
     expect(screen.getByText('Security review planned')).toBeInTheDocument();
@@ -636,8 +689,10 @@ describe('LoopsPage', () => {
     expect(screen.getAllByText('Implement · 1').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Review · 1').length).toBeGreaterThan(0);
     expect(screen.getByText('Exception Center')).toBeInTheDocument();
-    expect(screen.getByText('1 running · 0 queued · 1 failed · capacity 4')).toBeInTheDocument();
+    expect(screen.getByText('1 running · 0 queued · 2 failed · capacity 4')).toBeInTheDocument();
     expect(screen.getByText('Adjust budget or reduce scope')).toBeInTheDocument();
+    expect(screen.getByText('Review command evidence')).toBeInTheDocument();
+    expect(screen.getByText('pnpm test && rm -rf /tmp/out')).toBeInTheDocument();
     expect(screen.getByText('Product owner')).toBeInTheDocument();
     expect(screen.getByText('0 calls · 0 tokens remaining')).toBeInTheDocument();
     expect(
@@ -677,6 +732,18 @@ describe('LoopsPage', () => {
     expect(screen.getByText('Redo rate')).toBeInTheDocument();
     expect(screen.getByText('Avg calls')).toBeInTheDocument();
     expect(screen.getByText('Trace events')).toBeInTheDocument();
+    expect(screen.getByText('Eval Plan')).toBeInTheDocument();
+    expect(screen.getByText('0/5 passed · 3 attention · 2 blocked')).toBeInTheDocument();
+    expect(screen.getAllByText('Architecture').length).toBeGreaterThan(0);
+    expect(screen.getByText('Runtime safety')).toBeInTheDocument();
+    expect(screen.getByText('1 runtime security exceptions recorded')).toBeInTheDocument();
+    expect(screen.getAllByText('Hard gate').length).toBeGreaterThan(0);
+    expect(screen.getByText('Runtime Backends')).toBeInTheDocument();
+    expect(screen.getByText('2/2 ready · 0 degraded · 0 unavailable')).toBeInTheDocument();
+    expect(screen.getByText('Codex CLI')).toBeInTheDocument();
+    expect(screen.getByText('Claude Code CLI')).toBeInTheDocument();
+    expect(screen.getByText('read/write/test within approved work package')).toBeInTheDocument();
+    expect(screen.getByText('Fallback to deterministic review gate')).toBeInTheDocument();
     expect(screen.getByText('Feishu Integration')).toBeInTheDocument();
     expect(screen.getByText('Aging Queue')).toBeInTheDocument();
     expect(screen.getByText('Warning at 24h stale; critical at 72h stale.')).toBeInTheDocument();

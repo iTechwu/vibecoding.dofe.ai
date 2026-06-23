@@ -7,8 +7,11 @@ import { promises as fs } from 'fs';
 import * as path from 'path';
 import type {
   LoopAnnotation,
+  LoopBrowserQaReport,
   LoopConvergencePr,
   LoopCostItem,
+  LoopDeliveryGovernance,
+  LoopDeliveryGovernanceRequest,
   LoopDetail,
   LoopGlobalReviewRecord,
   LoopImplementationRecord,
@@ -21,6 +24,7 @@ import type {
   LoopNotification,
   LoopReviewRecord,
   LoopShard,
+  LoopSecondOpinion,
   LoopSpec,
   LoopSpecHistoryItem,
   LoopStateItem,
@@ -29,6 +33,10 @@ import type {
   LoopWorkflowRecipe,
 } from '@repo/contracts';
 import { LoopsNotificationSender } from './loops-notification-sender.service';
+import {
+  enrichLoopLearning,
+  withLearningSimilaritySuggestions,
+} from './loops-learning-memory.util';
 import { readLoopsRuntimeConfig } from './loops-runtime-config.util';
 
 type StateFile = {
@@ -157,6 +165,11 @@ export class LoopsFileStoreService {
     );
     const learnings =
       (await this.readOptionalJson<LoopLearning[]>(`learnings/${issueId}.json`)) ?? [];
+    const browserQaReports = await this.readBrowserQaReports(issueId);
+    const secondOpinion = await this.readOptionalJson<LoopSecondOpinion>(
+      `runs/${issueId}/second-opinion.json`,
+    );
+    const deliveryGovernance = await this.readDeliveryGovernance(issueId);
 
     return {
       issue,
@@ -176,6 +189,9 @@ export class LoopsFileStoreService {
       convergencePr,
       workflowRecipe,
       learnings,
+      browserQaReports,
+      secondOpinion,
+      deliveryGovernance,
     };
   }
 
@@ -339,11 +355,11 @@ export class LoopsFileStoreService {
     const dismissedIds = new Set(governance.dismissed.map((item) => item.learningId));
     const mergedSourceIds = new Set(governance.merges.map((item) => item.sourceLearningId));
 
-    return learnings
+    const activeLearnings = learnings
       .flatMap((items) => items ?? [])
       .filter((learning) => !dismissedIds.has(learning.id) && !mergedSourceIds.has(learning.id))
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .slice(0, limit);
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return withLearningSimilaritySuggestions(activeLearnings).slice(0, limit);
   }
 
   async readLearningGovernance(): Promise<LoopLearningGovernance> {
@@ -351,8 +367,186 @@ export class LoopsFileStoreService {
       (await this.readOptionalJson<LoopLearningGovernance>('learning-governance.json')) ?? {
         dismissed: [],
         merges: [],
+        autoMergeCandidates: [],
       }
     );
+  }
+
+  async runLearningAutoMergeWorker(createdAt = new Date().toISOString()) {
+    const governance = await this.readLearningGovernance();
+    const learnings = await this.readRecentLearnings(100);
+    const existingKeys = new Set([
+      ...governance.merges.map((item) => `${item.sourceLearningId}->${item.targetLearningId}`),
+      ...(governance.autoMergeCandidates ?? []).map(
+        (item) => `${item.sourceLearningId}->${item.targetLearningId}`,
+      ),
+    ]);
+    const candidates = [...(governance.autoMergeCandidates ?? [])];
+
+    for (const learning of learnings) {
+      const targetLearningId = learning.similarLearningIds?.[0];
+      if (!targetLearningId) continue;
+      const key = `${learning.id}->${targetLearningId}`;
+      if (existingKeys.has(key)) continue;
+      existingKeys.add(key);
+      candidates.push({
+        sourceLearningId: learning.id,
+        targetLearningId,
+        status: 'pending-approval' as const,
+        reason: `Similarity suggestion from fingerprint ${learning.fingerprint ?? 'unknown'}.`,
+        createdAt,
+      });
+    }
+
+    const next = { ...governance, autoMergeCandidates: candidates };
+    await this.writeJson('learning-governance.json', next);
+    await this.appendLog({
+      type: 'LEARNING_AUTO_MERGE_WORKER',
+      status: 'pending-approval',
+      payload: {
+        added: candidates.length - (governance.autoMergeCandidates ?? []).length,
+        total: candidates.length,
+      },
+    });
+    return next;
+  }
+
+  async readDeliveryGovernance(issueId: string): Promise<LoopDeliveryGovernance> {
+    return (
+      (await this.readOptionalJson<LoopDeliveryGovernance>(
+        `runs/${issueId}/delivery-governance.json`,
+      )) ?? {
+        workflowDefaults: [],
+        reviewGateOverrides: [],
+        runtimeOverrides: [],
+      }
+    );
+  }
+
+  async governDelivery(input: {
+    issueId: string;
+    request: LoopDeliveryGovernanceRequest;
+    createdAt?: string;
+  }): Promise<LoopDeliveryGovernance> {
+    const updated = input.createdAt ?? new Date().toISOString();
+    const governance = await this.readDeliveryGovernance(input.issueId);
+    const actor = input.request.actor || 'human';
+    let next: LoopDeliveryGovernance;
+
+    switch (input.request.action) {
+      case 'set-workflow-default': {
+        const request = input.request;
+        next = {
+          ...governance,
+          workflowDefaults: [
+            ...governance.workflowDefaults.filter((item) => item.loopKind !== request.loopKind),
+            {
+              loopKind: request.loopKind,
+              recipeId: request.recipeId,
+              actor,
+              reason: request.reason,
+              updated,
+            },
+          ],
+        };
+        break;
+      }
+      case 'set-review-gate': {
+        const request = input.request;
+        next = {
+          ...governance,
+          reviewGateOverrides: [
+            ...governance.reviewGateOverrides.filter((item) => item.gateKind !== request.gateKind),
+            {
+              gateKind: request.gateKind,
+              status: request.status,
+              actor,
+              reason: request.reason,
+              expiresAt: request.expiresAt,
+              updated,
+            },
+          ],
+        };
+        break;
+      }
+      case 'set-second-opinion-policy':
+        next = {
+          ...governance,
+          secondOpinionPolicy: {
+            requiredForRelease: input.request.requiredForRelease,
+            conflictHumanGate: input.request.conflictHumanGate,
+            actor,
+            reason: input.request.reason,
+            updated,
+          },
+        };
+        break;
+      case 'record-release-canary':
+        next = {
+          ...governance,
+          releaseCanary: {
+            status: input.request.status,
+            targetUrl: input.request.targetUrl,
+            actor,
+            reason: input.request.reason,
+            updated,
+          },
+        };
+        break;
+      case 'record-runtime-override':
+        next = {
+          ...governance,
+          runtimeOverrides: [
+            ...governance.runtimeOverrides,
+            {
+              id: `runtime-override-${randomUUID()}`,
+              scope: input.request.scope,
+              actor,
+              reason: input.request.reason,
+              expiresAt: input.request.expiresAt,
+              updated,
+            },
+          ],
+        };
+        break;
+      case 'set-browser-qa-session-policy':
+        next = {
+          ...governance,
+          browserQaSessionPolicy: {
+            authMode: input.request.authMode,
+            testAccountRef: input.request.testAccountRef,
+            actor,
+            reason: input.request.reason,
+            updated,
+          },
+        };
+        break;
+      case 'set-learning-policy':
+        next = {
+          ...governance,
+          learningPolicy: {
+            dedupeScope: input.request.dedupeScope,
+            autoMergeApproval: input.request.autoMergeApproval,
+            actor,
+            reason: input.request.reason,
+            updated,
+          },
+        };
+        break;
+    }
+
+    await this.writeJson(`runs/${input.issueId}/delivery-governance.json`, next);
+    await this.writeText(
+      `runs/${input.issueId}/delivery-governance.md`,
+      this.renderDeliveryGovernance(next),
+    );
+    await this.appendLog({
+      type: 'DELIVERY_GOVERNANCE',
+      loop: input.issueId,
+      action: input.request.action,
+      actor,
+    });
+    return next;
   }
 
   async governLearning(input: {
@@ -778,8 +972,9 @@ export class LoopsFileStoreService {
     await this.writeJson(`runs/${input.issue.id}/convergence-pr.json`, input.convergencePr);
     await this.writeText(`runs/${input.issue.id}/convergence-pr.md`, input.convergencePr.prBody);
     if (input.learnings?.length) {
-      await this.writeJson(`learnings/${input.issue.id}.json`, input.learnings);
-      await this.writeText(`learnings/${input.issue.id}.md`, this.renderLearnings(input.learnings));
+      const learnings = input.learnings.map(enrichLoopLearning);
+      await this.writeJson(`learnings/${input.issue.id}.json`, learnings);
+      await this.writeText(`learnings/${input.issue.id}.md`, this.renderLearnings(learnings));
     }
     await this.writeJson(`issues/${input.issue.id}.json`, {
       ...input.issue,
@@ -792,6 +987,86 @@ export class LoopsFileStoreService {
       loop: input.issue.id,
       status: input.convergencePr.status,
       pr: input.convergencePr.id,
+    });
+  }
+
+  browserQaArtifactPaths(issueId: string, reportId: string) {
+    const relativeDir = `runs/${issueId}/browser-qa/${reportId}`;
+    const baselineRef = `.loops/runs/${issueId}/browser-qa/baseline-page-load.png`;
+    return {
+      screenshotRef: `.loops/${relativeDir}/screenshot.png`,
+      screenshotPath: path.join(this.root, relativeDir, 'screenshot.png'),
+      traceRef: `.loops/${relativeDir}/trace.zip`,
+      tracePath: path.join(this.root, relativeDir, 'trace.zip'),
+      baselineRef,
+      baselinePath: path.join(this.root, 'runs', issueId, 'browser-qa', 'baseline-page-load.png'),
+      diffRef: `.loops/${relativeDir}/visual-diff.png`,
+      diffPath: path.join(this.root, relativeDir, 'visual-diff.png'),
+      handoffRef: `.loops/${relativeDir}/handoff.json`,
+      handoffPath: path.join(this.root, relativeDir, 'handoff.json'),
+    };
+  }
+
+  async readBrowserQaReports(issueId: string): Promise<LoopBrowserQaReport[]> {
+    await this.ensureInitialized();
+    const dir = path.join(this.root, 'runs', issueId, 'browser-qa');
+    let entries: string[];
+    try {
+      entries = await fs.readdir(dir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        this.log('warn', '[Loops] unable to read browser QA reports', {
+          issueId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return [];
+    }
+    const reports = await Promise.all(
+      entries
+        .filter((entry) => entry.endsWith('.json'))
+        .map((entry) =>
+          this.readOptionalJson<LoopBrowserQaReport>(`runs/${issueId}/browser-qa/${entry}`),
+        ),
+    );
+    return reports
+      .filter((report): report is LoopBrowserQaReport => Boolean(report))
+      .sort((a, b) => b.created.localeCompare(a.created));
+  }
+
+  async writeBrowserQaReport(report: LoopBrowserQaReport): Promise<void> {
+    const base = `runs/${report.issueId}/browser-qa/${report.id}`;
+    await this.writeJson(`${base}.json`, report);
+    await this.writeText(`${base}.md`, this.renderBrowserQaReport(report));
+    await this.appendLog({
+      type: 'BROWSER_QA',
+      loop: report.issueId,
+      status: report.status,
+      payload: {
+        reportId: report.id,
+        targetUrl: report.targetUrl,
+        screenshotCount: report.screenshots.length,
+        traceCount: report.traces?.length ?? 0,
+        traces: report.traces ?? [],
+        visualDiffs: report.visualDiffs ?? [],
+        handoffs: report.handoffs ?? [],
+      },
+    });
+  }
+
+  async writeSecondOpinion(report: LoopSecondOpinion): Promise<void> {
+    const issueId = report.id.replace(/-second-opinion$/, '');
+    await this.writeJson(`runs/${issueId}/second-opinion.json`, report);
+    await this.writeText(`runs/${issueId}/second-opinion.md`, this.renderSecondOpinion(report));
+    await this.appendLog({
+      type: 'SECOND_OPINION',
+      loop: issueId,
+      status: report.status,
+      payload: {
+        primary: report.primary.status,
+        secondary: report.secondary.status,
+        conflicts: report.comparison.conflictCount,
+      },
     });
   }
 
@@ -1226,6 +1501,53 @@ export class LoopsFileStoreService {
     return `---\nid: ${issue.id}\ntitle: ${issue.title}\nstatus: ${issue.status}\npriority: ${issue.priority}\ncreated: ${issue.created}\nsource_channel: ${issue.sourceChannel}\nsubmitter_id: ${issue.submitterId}\ntarget_repo: ${issue.targetRepo}\n---\n\n${issue.body}\n\n## Acceptance Criteria\n${issue.acceptanceCriteria.map((item) => `- [ ] ${item}`).join('\n')}\n`;
   }
 
+  private renderBrowserQaReport(report: LoopBrowserQaReport) {
+    const screenshots = report.screenshots
+      .map((item) => `- ${item.label}: ${item.path}`)
+      .join('\n');
+    const consoleErrors = report.consoleErrors.map((item) => `- ${item}`).join('\n');
+    const traces = (report.traces ?? []).map((item) => `- ${item.label}: ${item.path}`).join('\n');
+    const visualDiffs = (report.visualDiffs ?? [])
+      .map(
+        (item) =>
+          `- ${item.label}: ${item.status} (${item.actualPath}, baseline ${item.baselinePath}${item.diffPath ? `, diff ${item.diffPath}` : ''})`,
+      )
+      .join('\n');
+    const handoffs = (report.handoffs ?? [])
+      .map((item) => `- ${item.label}: ${item.path}`)
+      .join('\n');
+    const networkFailures = report.networkFailures
+      .map((item) => `- ${item.status ?? 'unknown'} ${item.url}`)
+      .join('\n');
+    return `---\nid: ${report.id}\nissue: ${report.issueId}\nrunner: ${report.runner}\nstatus: ${report.status}\ntarget_url: ${report.targetUrl}\ncreated: ${report.created}\n---\n\n## Browser QA Summary\n- title: ${report.title ?? 'unknown'}\n- checked flows: ${report.checkedFlows.join(', ')}\n- command: ${report.command}\n- durationMs: ${report.durationMs}\n${report.blockedReason ? `- blocked: ${report.blockedReason}\n` : ''}\n## Screenshots\n${screenshots || 'none'}\n\n## Playwright Traces\n${traces || 'none'}\n\n## Visual Regression\n${visualDiffs || 'none'}\n\n## Browser Handoff\n${handoffs || 'none'}\n\n## Console Errors\n${consoleErrors || 'none'}\n\n## Network Failures\n${networkFailures || 'none'}\n`;
+  }
+
+  private renderSecondOpinion(report: LoopSecondOpinion) {
+    const primaryFindings = report.primary.findings
+      .map((item) => `- ${item.severity} ${item.fingerprint}: ${item.desc}`)
+      .join('\n');
+    const secondaryFindings = report.secondary.findings
+      .map((item) => `- ${item.severity} ${item.fingerprint}: ${item.desc}`)
+      .join('\n');
+    return `---\nid: ${report.id}\nstatus: ${report.status}\nupdated: ${report.updated}\nrequired_for_release: ${report.requiredForRelease}\n---\n\n## Primary\n- reviewer: ${report.primary.reviewer}\n- status: ${report.primary.status}\n- findings: ${report.primary.findingsCount}\n- summary: ${report.primary.summary ?? 'none'}\n\n${primaryFindings || 'No primary findings.'}\n\n## Secondary\n- reviewer: ${report.secondary.reviewer}\n- status: ${report.secondary.status}\n- findings: ${report.secondary.findingsCount}\n- summary: ${report.secondary.summary ?? 'none'}\n\n${secondaryFindings || 'No secondary findings.'}\n\n## Comparison\n- agreement: ${report.comparison.agreementCount} (${report.comparison.agreementFingerprints.join(', ') || 'none'})\n- primaryOnly: ${report.comparison.primaryOnlyCount} (${report.comparison.primaryOnlyFingerprints.join(', ') || 'none'})\n- secondaryOnly: ${report.comparison.secondaryOnlyCount} (${report.comparison.secondaryOnlyFingerprints.join(', ') || 'none'})\n- conflict: ${report.comparison.conflictCount} (${report.comparison.conflictFingerprints.join(', ') || 'none'})\n`;
+  }
+
+  private renderDeliveryGovernance(governance: LoopDeliveryGovernance) {
+    const workflowDefaults = governance.workflowDefaults
+      .map((item) => `- ${item.loopKind}: ${item.recipeId} by ${item.actor} at ${item.updated}`)
+      .join('\n');
+    const reviewOverrides = governance.reviewGateOverrides
+      .map(
+        (item) =>
+          `- ${item.gateKind}: ${item.status} by ${item.actor} at ${item.updated}${item.reason ? ` (${item.reason})` : ''}`,
+      )
+      .join('\n');
+    const runtimeOverrides = governance.runtimeOverrides
+      .map((item) => `- ${item.scope}: ${item.reason} by ${item.actor}; expires ${item.expiresAt}`)
+      .join('\n');
+    return `---\nkind: delivery-governance\n---\n\n## Workflow Defaults\n${workflowDefaults || 'none'}\n\n## Review Gate Overrides\n${reviewOverrides || 'none'}\n\n## Second Opinion Policy\n- requiredForRelease: ${governance.secondOpinionPolicy?.requiredForRelease ?? false}\n- conflictHumanGate: ${governance.secondOpinionPolicy?.conflictHumanGate ?? false}\n- updated: ${governance.secondOpinionPolicy?.updated ?? 'none'}\n\n## Release Canary\n- status: ${governance.releaseCanary?.status ?? 'not_run'}\n- targetUrl: ${governance.releaseCanary?.targetUrl ?? 'none'}\n- updated: ${governance.releaseCanary?.updated ?? 'none'}\n\n## Runtime Overrides\n${runtimeOverrides || 'none'}\n\n## Browser QA Session Policy\n- authMode: ${governance.browserQaSessionPolicy?.authMode ?? 'none'}\n- testAccountRef: ${governance.browserQaSessionPolicy?.testAccountRef ?? 'none'}\n- updated: ${governance.browserQaSessionPolicy?.updated ?? 'none'}\n\n## Learning Policy\n- dedupeScope: ${governance.learningPolicy?.dedupeScope ?? 'workspace'}\n- autoMergeApproval: ${governance.learningPolicy?.autoMergeApproval ?? 'manual-only'}\n- updated: ${governance.learningPolicy?.updated ?? 'none'}\n`;
+  }
+
   private issueStatusForSpec(spec: LoopSpec, state: LoopStateItem): LoopIssue['status'] {
     if (state.phase === 'CLOSED') {
       return spec.status === 'REJECTED' ? 'REJECTED' : 'CLOSED';
@@ -1288,6 +1610,8 @@ export class LoopsFileStoreService {
           `- network: ${record.runtimeSecurityPolicy.network.strategy}`,
           `- write: ${record.runtimeSecurityPolicy.write.strategy}/${record.runtimeSecurityPolicy.write.scope}`,
           `- approvals: ${record.runtimeSecurityPolicy.approvals.override}`,
+          `- canary: ${record.runtimeSecurityPolicy.canary.strategy}/${record.runtimeSecurityPolicy.canary.status}`,
+          `- canary leaks: ${record.runtimeSecurityPolicy.canary.leakedInCommands.join(', ') || 'none'}`,
         ].join('\n')
       : '未记录 runtime security policy snapshot';
     return `---\nid: ${record.id}\nscope: ${record.shardId}\nround: ${record.round}\nrunner: ${record.runner}\nreviewer: ${record.reviewer}\nstatus: ${record.status}\ncreated: ${record.created}\n---\n\n## 测试执行摘要\n${commands}\n\n## Runtime Security Policy\n${runtimeSecurityPolicy}\n\n## 覆盖率摘要\n${coverage}\n\n## 失败归因\n${failures}\n\n## 修复指令\n${record.fixInstructions.map((item) => `- ${item}`).join('\n') || '无'}\n`;
@@ -1331,6 +1655,11 @@ export class LoopsFileStoreService {
           '',
           `- workspace: ${learning.workspaceId}`,
           learning.repo ? `- repo: ${learning.repo}` : undefined,
+          learning.fingerprint ? `- fingerprint: ${learning.fingerprint}` : undefined,
+          learning.tags?.length ? `- tags: ${learning.tags.join(', ')}` : undefined,
+          learning.similarLearningIds?.length
+            ? `- similar: ${learning.similarLearningIds.join(', ')}`
+            : undefined,
           `- confidence: ${learning.confidence}`,
           `- evidence: ${learning.evidenceIds.join(', ') || 'none'}`,
           '',

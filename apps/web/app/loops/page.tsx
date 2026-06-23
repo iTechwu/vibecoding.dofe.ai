@@ -19,6 +19,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  ShieldCheck,
   Workflow,
 } from 'lucide-react';
 import type {
@@ -39,6 +40,7 @@ import {
   useLoopsNotifications,
   useLoopsWorkspaces,
   useGovernLoopLearning,
+  useRunLoopLearningAutoMergeWorker,
   usePullLoopsImage,
   useRetryLoopsAgentRuntime,
   useUpsertLoopsWorkspace,
@@ -49,6 +51,7 @@ import {
   aggregateLoops,
   buildAgingQueue,
   buildDashboardGuide,
+  buildEvalPlan,
   buildExceptionCenter,
   buildLoopBoard,
   buildPermissionProfile,
@@ -60,8 +63,11 @@ import {
   buildReviewInbox,
   buildReviewInboxGroups,
   buildRiskQueue,
+  buildRuntimeBackends,
   buildTriggerPortfolio,
   buildWorkflowRecipe,
+  type EvalCheckStatus,
+  type RuntimeBackendStatus,
   formatPhase,
   type RiskLevel,
 } from './loops-dashboard-model';
@@ -95,6 +101,26 @@ function agentStatusClass(status: string) {
     return 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100';
   }
   return 'border-border bg-muted/40 text-muted-foreground';
+}
+
+function runtimeBackendClass(status: RuntimeBackendStatus) {
+  if (status === 'ready') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100';
+  }
+  if (status === 'degraded') {
+    return 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100';
+  }
+  return 'border-red-200 bg-red-50 text-red-950 dark:border-red-900/70 dark:bg-red-950/20 dark:text-red-100';
+}
+
+function evalStatusClass(status: EvalCheckStatus) {
+  if (status === 'passed') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100';
+  }
+  if (status === 'attention') {
+    return 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100';
+  }
+  return 'border-red-200 bg-red-50 text-red-950 dark:border-red-900/70 dark:bg-red-950/20 dark:text-red-100';
 }
 
 function EmptyLine({ children }: { children: React.ReactNode }) {
@@ -165,6 +191,7 @@ export default function LoopsPage() {
   const resume = useResumeLoops();
   const workspacesQuery = useLoopsWorkspaces();
   const governLearning = useGovernLoopLearning();
+  const autoMergeWorker = useRunLoopLearningAutoMergeWorker();
   const upsertWorkspace = useUpsertLoopsWorkspace();
   const pullImage = usePullLoopsImage();
   const retryDetection = useRetryLoopsAgentRuntime();
@@ -210,6 +237,8 @@ export default function LoopsPage() {
     cost,
     traceSummary,
   });
+  const runtimeBackends = buildRuntimeBackends(agentRuntime);
+  const evalPlan = buildEvalPlan(fallbackSummary.items, cost);
   const agingQueue = agingNow ? buildAgingQueue(fallbackSummary.items, agingNow) : [];
   const agentToolRegistry = capabilities?.capabilities.find(
     (capability) => capability.id === 'a2a-tool-registry',
@@ -227,6 +256,7 @@ export default function LoopsPage() {
     .sort((a, b) => b.confidence - a.confidence || b.createdAt.localeCompare(a.createdAt))
     .slice(0, 3);
   const staleLearnings = recentLearnings.filter((learning) => !learning.lastUsedAt).slice(0, 3);
+  const learningById = new Map(recentLearnings.map((learning) => [learning.id, learning]));
   const triggerPortfolio = buildTriggerPortfolio(fallbackSummary.items);
   const repoContextMap = buildRepoContextMap(fallbackSummary.items, cost);
   const exceptionCenter = buildExceptionCenter(fallbackSummary.items, {
@@ -493,6 +523,41 @@ export default function LoopsPage() {
               value={performanceSnapshot.traceEvents}
             />
           </div>
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">{t('evalPlan.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('evalPlan.summary', evalPlan.summary)}
+              </p>
+            </div>
+            <ShieldCheck className="size-4 text-muted-foreground" />
+          </div>
+          {!data ? (
+            <EmptyLine>{t('evalPlan.loading')}</EmptyLine>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-5">
+              {evalPlan.checks.map((check) => (
+                <div
+                  className={`rounded-md border p-3 text-xs ${evalStatusClass(check.status)}`}
+                  key={check.id}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">{t(`evalPlan.checks.${check.id}`)}</span>
+                    <span className="shrink-0 rounded-md border bg-background/70 px-2 py-0.5">
+                      {t(`evalPlan.status.${check.status}`)}
+                    </span>
+                  </div>
+                  <p className="mt-2 line-clamp-2 opacity-80">{check.evidence}</p>
+                  <p className="mt-2 truncate font-medium">
+                    {check.hardGate ? t('evalPlan.hardGate') : t('evalPlan.softSignal')}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_380px]">
@@ -972,6 +1037,74 @@ export default function LoopsPage() {
         <section className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
+              <h2 className="text-sm font-semibold">{t('runtimeBackends.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('runtimeBackends.summary', runtimeBackends.summary)}
+              </p>
+            </div>
+            <Cpu className="size-4 text-muted-foreground" />
+          </div>
+          {!agentRuntime ? (
+            <EmptyLine>{t('runtimeBackends.loading')}</EmptyLine>
+          ) : runtimeBackends.items.length === 0 ? (
+            <EmptyLine>{t('runtimeBackends.empty')}</EmptyLine>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+              {runtimeBackends.items.map((backend) => (
+                <div
+                  className={`rounded-md border p-3 text-sm ${runtimeBackendClass(backend.status)}`}
+                  key={backend.id}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{backend.name}</p>
+                      <p className="mt-1 truncate text-xs opacity-80">
+                        {backend.kind} · {backend.mode}
+                      </p>
+                    </div>
+                    <span className="shrink-0 rounded-md border bg-background/70 px-2 py-1 text-xs">
+                      {t(`runtimeBackends.status.${backend.status}`)}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+                    <div className="rounded-md bg-background/60 px-2 py-1.5">
+                      <p className="opacity-70">{t('runtimeBackends.permissions')}</p>
+                      <p className="line-clamp-2 font-medium">{backend.permissionProfile}</p>
+                    </div>
+                    <div className="rounded-md bg-background/60 px-2 py-1.5">
+                      <p className="opacity-70">{t('runtimeBackends.workspace')}</p>
+                      <p className="line-clamp-2 font-medium">{backend.workspacePolicy}</p>
+                    </div>
+                    <div className="rounded-md bg-background/60 px-2 py-1.5">
+                      <p className="opacity-70">{t('runtimeBackends.cost')}</p>
+                      <p className="line-clamp-2 font-medium">{backend.costPolicy}</p>
+                    </div>
+                    <div className="rounded-md bg-background/60 px-2 py-1.5">
+                      <p className="opacity-70">{t('runtimeBackends.fallback')}</p>
+                      <p className="line-clamp-2 font-medium">{backend.fallbackPolicy}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
+                    {backend.supportedStages.map((stage) => (
+                      <span className="rounded-md border bg-background/60 px-2 py-1" key={stage}>
+                        {stage}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mt-3 truncate text-xs opacity-80">
+                    {backend.healthChecks.length
+                      ? backend.healthChecks[0]
+                      : t('runtimeBackends.readyEvidence', { evidence: backend.evidence })}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
               <h2 className="text-sm font-semibold">{t('agentRuntime.title')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('agentRuntime.summary', {
@@ -1191,7 +1324,17 @@ export default function LoopsPage() {
                     : t('learningMemory.emptySummary')}
                 </p>
               </div>
-              <Lightbulb className="size-4 text-muted-foreground" />
+              <div className="flex items-center gap-2">
+                <button
+                  className="inline-flex h-8 items-center justify-center rounded-md border px-3 text-xs font-medium hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={autoMergeWorker.isPending}
+                  onClick={() => autoMergeWorker.mutate({ body: {} })}
+                  type="button"
+                >
+                  {t('learningMemory.runAutoMerge')}
+                </button>
+                <Lightbulb className="size-4 text-muted-foreground" />
+              </div>
             </div>
             {workspacesQuery.isLoading ? (
               <EmptyLine>{t('learningMemory.loading')}</EmptyLine>
@@ -1234,36 +1377,74 @@ export default function LoopsPage() {
                         {t('learningMemory.noStale')}
                       </p>
                     ) : (
-                      staleLearnings.map((learning) => (
-                        <div
-                          className="rounded-md border bg-muted/20 p-3 text-xs"
-                          key={learning.id}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="font-medium">
-                              {t(`learningMemory.kind.${learning.kind}`)}
-                            </p>
-                            <button
-                              className="rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-muted/30 disabled:opacity-60"
-                              disabled={governLearning.isPending}
-                              onClick={() =>
-                                governLearning.mutate({
-                                  params: { learningId: learning.id },
-                                  body: {
-                                    action: 'dismiss',
-                                    actor: 'dashboard',
-                                    reason: 'Dismissed from dashboard stale learning queue',
-                                  },
-                                })
-                              }
-                              type="button"
-                            >
-                              {t('learningMemory.dismiss')}
-                            </button>
+                      staleLearnings.map((learning) => {
+                        const suggestedMergeTarget = learning.similarLearningIds
+                          ?.map((id) => learningById.get(id))
+                          .find((item) => item && item.id !== learning.id);
+                        const mergeTarget =
+                          suggestedMergeTarget ??
+                          topLearnings.find((item) => item.id !== learning.id);
+                        return (
+                          <div
+                            className="rounded-md border bg-muted/20 p-3 text-xs"
+                            key={learning.id}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="font-medium">
+                                {t(`learningMemory.kind.${learning.kind}`)}
+                              </p>
+                              <div className="flex shrink-0 gap-1">
+                                {mergeTarget ? (
+                                  <button
+                                    className="rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-muted/30 disabled:opacity-60"
+                                    disabled={governLearning.isPending}
+                                    onClick={() =>
+                                      governLearning.mutate({
+                                        params: { learningId: learning.id },
+                                        body: {
+                                          action: 'merge',
+                                          actor: 'dashboard',
+                                          targetLearningId: mergeTarget.id,
+                                          reason:
+                                            'Merged from dashboard stale learning queue into top learning',
+                                        },
+                                      })
+                                    }
+                                    type="button"
+                                  >
+                                    {t('learningMemory.merge')}
+                                  </button>
+                                ) : null}
+                                <button
+                                  className="rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-muted/30 disabled:opacity-60"
+                                  disabled={governLearning.isPending}
+                                  onClick={() =>
+                                    governLearning.mutate({
+                                      params: { learningId: learning.id },
+                                      body: {
+                                        action: 'dismiss',
+                                        actor: 'dashboard',
+                                        reason: 'Dismissed from dashboard stale learning queue',
+                                      },
+                                    })
+                                  }
+                                  type="button"
+                                >
+                                  {t('learningMemory.dismiss')}
+                                </button>
+                              </div>
+                            </div>
+                            <p className="mt-2 line-clamp-2">{learning.summary}</p>
+                            {learning.similarLearningIds?.length ? (
+                              <p className="mt-2 truncate text-muted-foreground">
+                                {t('learningMemory.similar', {
+                                  count: learning.similarLearningIds.length,
+                                })}
+                              </p>
+                            ) : null}
                           </div>
-                          <p className="mt-2 line-clamp-2">{learning.summary}</p>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 </div>
