@@ -37,11 +37,25 @@ export interface ReviewInboxItem {
   href: string;
   source: 'action' | 'notification';
   priority: RiskLevel;
+  gateKind: ReviewGateKind;
   label: string;
   meta: string;
 }
 
-export type LoopBoardColumnId = 'backlog' | 'specReview' | 'running' | 'blocked' | 'delivered';
+export interface ReviewInboxGroup {
+  gateKind: ReviewGateKind;
+  priority: RiskLevel;
+  count: number;
+  items: ReviewInboxItem[];
+}
+
+export type LoopBoardColumnId =
+  | 'backlog'
+  | 'specReview'
+  | 'running'
+  | 'blocked'
+  | 'readyToShip'
+  | 'delivered';
 
 export interface LoopBoardItem {
   id: string;
@@ -49,7 +63,7 @@ export interface LoopBoardItem {
   href: string;
   priority: string;
   mode: 'Plan' | 'Code' | 'Review' | 'Recovery' | 'Delivered';
-  humanGate: 'Spec review' | 'Exception' | 'None' | 'Done';
+  humanGate: 'Spec review' | 'Exception' | 'Release' | 'None' | 'Done';
   evidence: string;
   gitRef: string;
   prState: string;
@@ -232,7 +246,13 @@ export interface WorkflowRecipe {
   steps: WorkflowRecipeStep[];
 }
 
-export type ReviewGateKind = 'product' | 'architecture' | 'code' | 'security';
+export type ReviewGateKind =
+  | 'product'
+  | 'architecture'
+  | 'code'
+  | 'security'
+  | 'release'
+  | 'exception';
 export type ReviewGateStatus = 'passed' | 'pending' | 'needsChanges' | 'blocked';
 
 export interface ReviewGateItem {
@@ -454,6 +474,11 @@ export function buildReviewInbox(
         href: item.href,
         source: 'action',
         priority: item.action === 'reloop' ? 'critical' : 'warning',
+        gateKind: inferReviewGateKind({
+          action: item.action,
+          label: item.label,
+          phase: item.phase,
+        }),
         label: item.label,
         meta: `${formatPhase(item.phase ?? 'PHASE_0_INTAKE')} · ${item.priority}`,
       }),
@@ -474,6 +499,7 @@ export function buildReviewInbox(
           item.kind === 'CONTEXT_BUDGET_EXCEEDED'
             ? 'critical'
             : 'warning',
+        gateKind: inferReviewGateKind({ kind: item.kind, label: item.title }),
         label: formatLoopLabel(item.kind, locale),
         meta: `${formatLoopStatus(item.status, locale)} · ${item.created}`,
       }),
@@ -486,6 +512,75 @@ export function buildReviewInbox(
         severityRank[a.priority] - severityRank[b.priority] || a.title.localeCompare(b.title),
     )
     .slice(0, 8);
+}
+
+export function buildReviewInboxGroups(items: ReviewInboxItem[]): ReviewInboxGroup[] {
+  const priorityRank: Record<RiskLevel, number> = { critical: 0, warning: 1, info: 2 };
+  const gateRank: Record<ReviewGateKind, number> = {
+    exception: 0,
+    product: 1,
+    architecture: 2,
+    code: 3,
+    security: 4,
+    release: 5,
+  };
+  const groups = new Map<ReviewGateKind, ReviewInboxItem[]>();
+
+  for (const item of items) {
+    groups.set(item.gateKind, [...(groups.get(item.gateKind) ?? []), item]);
+  }
+
+  return [...groups.entries()]
+    .map(([gateKind, groupItems]) => {
+      const sortedItems = [...groupItems].sort(
+        (a, b) =>
+          priorityRank[a.priority] - priorityRank[b.priority] || a.title.localeCompare(b.title),
+      );
+      return {
+        gateKind,
+        priority: sortedItems[0]?.priority ?? 'info',
+        count: sortedItems.length,
+        items: sortedItems,
+      } satisfies ReviewInboxGroup;
+    })
+    .sort(
+      (a, b) =>
+        priorityRank[a.priority] - priorityRank[b.priority] ||
+        gateRank[a.gateKind] - gateRank[b.gateKind],
+    );
+}
+
+function inferReviewGateKind(input: {
+  action?: string;
+  kind?: LoopNotification['kind'];
+  label?: string;
+  phase?: string;
+}): ReviewGateKind {
+  if (
+    input.kind === 'COST_GUARD_TRIPPED' ||
+    input.kind === 'SHARD_REDO_LIMIT' ||
+    input.kind === 'RELOOP_LIMIT' ||
+    input.kind === 'CONTEXT_BUDGET_EXCEEDED' ||
+    input.action === 'reloop'
+  ) {
+    return 'exception';
+  }
+  if (
+    input.phase === 'PHASE_6_CONVERGE' ||
+    input.phase === 'PHASE_7_GLOBAL_REVIEW' ||
+    input.phase === 'PHASE_8_ANNOTATE'
+  ) {
+    return 'release';
+  }
+
+  const label = input.label?.toLowerCase() ?? '';
+  if (label.includes('security')) return 'security';
+  if (label.includes('architecture') || label.includes('design')) return 'architecture';
+  if (label.includes('code') || label.includes('implementation')) return 'code';
+  if (label.includes('release') || label.includes('ship') || label.includes('final')) {
+    return 'release';
+  }
+  return 'product';
 }
 
 function inferBoardColumn(item: LoopListItem, costItem?: LoopCostResponse['loops'][number]) {
@@ -511,7 +606,20 @@ function inferBoardColumn(item: LoopListItem, costItem?: LoopCostResponse['loops
   if (state.phase === 'PHASE_2_REVIEW') {
     return 'specReview' satisfies LoopBoardColumnId;
   }
+  if (isReadyToShipCandidate(item)) {
+    return 'readyToShip' satisfies LoopBoardColumnId;
+  }
   return 'running' satisfies LoopBoardColumnId;
+}
+
+function isReadyToShipCandidate(item: LoopListItem) {
+  const phase = item.state?.phase;
+  return (
+    item.state?.globalVerdict === 'PASS' ||
+    phase === 'PHASE_6_CONVERGE' ||
+    phase === 'PHASE_7_GLOBAL_REVIEW' ||
+    phase === 'PHASE_8_ANNOTATE'
+  );
 }
 
 function inferMode(item: LoopListItem): LoopBoardItem['mode'] {
@@ -552,6 +660,9 @@ function inferHumanGate(
   if (item.state?.phase === 'PHASE_2_REVIEW') {
     return 'Spec review';
   }
+  if (isReadyToShipCandidate(item)) {
+    return 'Release';
+  }
   return 'None';
 }
 
@@ -571,6 +682,7 @@ export function buildLoopBoard(items: LoopListItem[], cost?: LoopCostResponse): 
     { id: 'specReview', items: [] },
     { id: 'running', items: [] },
     { id: 'blocked', items: [] },
+    { id: 'readyToShip', items: [] },
     { id: 'delivered', items: [] },
   ];
 
@@ -592,7 +704,11 @@ export function buildLoopBoard(items: LoopListItem[], cost?: LoopCostResponse): 
       evidence: shardsTotal > 0 ? `${shardsDone}/${shardsTotal} shards` : 'No shards yet',
       gitRef: `loops/${item.issue.id}`,
       prState:
-        item.issue.status === 'CLOSED' || item.state?.finalized ? 'Ready for audit' : 'Pending PR',
+        item.issue.status === 'CLOSED' || item.state?.finalized
+          ? 'Ready for audit'
+          : isReadyToShipCandidate(item)
+            ? 'Ready to ship'
+            : 'Pending PR',
       blocker: inferBlocker(item, costItem),
       meta: `${formatPhase(phase)} · round ${item.state?.round ?? 0}`,
     });

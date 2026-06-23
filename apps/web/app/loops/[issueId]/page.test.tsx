@@ -170,6 +170,19 @@ const detail: LoopDetail = {
       summary: 'Shard tests have not been captured yet.',
     },
   ],
+  learnings: [
+    {
+      id: 'issue-1-learning-decision',
+      workspaceId: 'default',
+      repo: '/repo/app',
+      kind: 'decision',
+      summary:
+        'Loop finalized with global verdict PASS; convergence PR DRAFT captured 1 commit references.',
+      evidenceIds: ['issue-1-spec', 'issue-1-convergence-pr'],
+      confidence: 0.9,
+      createdAt: '2026-06-23T00:00:00.000Z',
+    },
+  ],
   workflowRecipe: {
     id: 'default-feature',
     name: 'Default Codex / Claude Code delivery',
@@ -246,6 +259,7 @@ const detail: LoopDetail = {
       implementationEvidence: false,
       testsPassed: false,
       requiredReviewsPassed: false,
+      secondOpinionPassed: true,
       browserQaPassed: false,
       docsUpdated: true,
       prReady: false,
@@ -253,6 +267,34 @@ const detail: LoopDetail = {
     },
     evidenceIds: ['issue-1-spec'],
     blocker: 'Loop is paused',
+    updated: '2026-06-20T00:10:00.000Z',
+  },
+  secondOpinion: {
+    id: 'issue-1-second-opinion',
+    status: 'not_required',
+    primary: {
+      role: 'primary',
+      reviewer: 'codex',
+      status: 'passed',
+      findingsCount: 1,
+      evidenceIds: ['review-1'],
+      summary: 'Codex primary review has 1 finding across shard review evidence.',
+    },
+    secondary: {
+      role: 'secondary',
+      reviewer: 'claude-code',
+      status: 'pending',
+      findingsCount: 0,
+      evidenceIds: [],
+      summary: 'Claude Code secondary review is waiting for the second-opinion worker.',
+    },
+    comparison: {
+      agreementCount: 0,
+      primaryOnlyCount: 1,
+      secondaryOnlyCount: 0,
+      conflictCount: 0,
+    },
+    requiredForRelease: false,
     updated: '2026-06-20T00:10:00.000Z',
   },
 };
@@ -405,6 +447,23 @@ describe('LoopIssueDetailPage', () => {
     expect(screen.getAllByText('Product').length).toBeGreaterThan(0);
     expect(screen.getByText('Loop is paused')).toBeInTheDocument();
     expect(screen.getByText('Browser QA')).toBeInTheDocument();
+    expect(screen.getAllByText('Second Opinion').length).toBeGreaterThan(0);
+    expect(screen.getByText('Primary')).toBeInTheDocument();
+    expect(screen.getByText('Secondary')).toBeInTheDocument();
+    expect(screen.getAllByText('Codex').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Claude Code').length).toBeGreaterThan(0);
+    expect(screen.getByText('Primary only')).toBeInTheDocument();
+    expect(screen.getAllByText('1').length).toBeGreaterThan(0);
+    expect(screen.getByText('Learning Memory')).toBeInTheDocument();
+    expect(screen.getByText('1 reusable learnings from this loop')).toBeInTheDocument();
+    expect(screen.getByText('Decision')).toBeInTheDocument();
+    expect(screen.getByText('90% confidence')).toBeInTheDocument();
+    expect(screen.getByText('2 evidence links')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Loop finalized with global verdict PASS; convergence PR DRAFT captured 1 commit references.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('renders timeline entries with duplicate event identities without React key collisions', () => {

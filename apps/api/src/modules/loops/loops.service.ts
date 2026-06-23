@@ -13,6 +13,7 @@ import type {
   LoopAgentRuntimeResponse,
   LoopAnnotation,
   LoopCapabilitiesResponse,
+  LoopConvergencePr,
   LoopEvidenceArtifact,
   LoopGlobalReviewRecord,
   LoopImplementationRecord,
@@ -20,6 +21,8 @@ import type {
   LoopInterventionRequest,
   LoopIssue,
   LoopIssuesQuery,
+  LoopLearning,
+  LoopLearningGovernanceRequest,
   LoopListResponse,
   LoopMetricsActionItem,
   LoopMetricsResponse,
@@ -44,6 +47,7 @@ import type {
   LoopReviewSpecRequest,
   LoopShard,
   LoopPhase,
+  LoopSecondOpinion,
   LoopSpec,
   LoopStateItem,
   LoopSubmitter,
@@ -272,8 +276,13 @@ export class LoopsService {
       updated: now,
       paused: false,
     };
+    const workflowRecipe = {
+      ...this.buildWorkflowRecipe({ issue, state }),
+      capturedAt: now,
+      source: 'loop-snapshot' as const,
+    };
 
-    await this.writeIssueRecord({ issue, intake, state, rawPayload: input });
+    await this.writeIssueRecord({ issue, intake, state, rawPayload: input, workflowRecipe });
     return { issue, intake, state };
   }
 
@@ -391,6 +400,7 @@ export class LoopsService {
     intake: LoopIntake;
     state: LoopStateItem;
     rawPayload: unknown;
+    workflowRecipe?: LoopWorkflowRecipe;
   }): Promise<void> {
     if (this.persistence) {
       await this.persistence.writeIssue(input);
@@ -1121,6 +1131,7 @@ export class LoopsService {
       shards: detail.shards,
       annotations: detail.annotations,
       commits,
+      evidenceArtifacts: this.buildEvidenceArtifacts(detail),
     });
     const annotations = await this.agentAdapter.annotateFinalize({
       issue: detail.issue,
@@ -1132,10 +1143,12 @@ export class LoopsService {
       globalReview: detail.globalReview,
       convergencePr,
     });
+    const learnings = this.buildLoopLearnings(detail, convergencePr, now);
     await this.store.writeFinalize({
       issue: detail.issue,
       annotations,
       convergencePr,
+      learnings,
       state: {
         ...detail.state,
         phase: 'CLOSED',
@@ -1336,7 +1349,23 @@ export class LoopsService {
 
   async listWorkspaces(): Promise<LoopWorkspacesResponse> {
     this.requireWorkspaceProfile('listWorkspaces');
-    return this.workspaceProfile!.list();
+    const response = await this.workspaceProfile!.list();
+    return {
+      ...response,
+      recentLearnings: await this.store.readRecentLearnings(),
+      learningGovernance: await this.store.readLearningGovernance(),
+    };
+  }
+
+  async governLearning(
+    learningId: string,
+    request: LoopLearningGovernanceRequest,
+  ): Promise<LoopWorkspacesResponse> {
+    if (request.action === 'merge' && !request.targetLearningId) {
+      throw new BadRequestException('targetLearningId is required when merging a learning');
+    }
+    await this.store.governLearning({ learningId, request });
+    return this.listWorkspaces();
   }
 
   async upsertWorkspace(input: UpsertLoopWorkspaceRequest): Promise<LoopWorkspacesResponse> {
@@ -2260,11 +2289,14 @@ export class LoopsService {
     workflowRecipe: LoopWorkflowRecipe;
     reviewGates: LoopReviewGate[];
     releaseGate: LoopReleaseGate;
+    secondOpinion?: LoopSecondOpinion;
   } {
+    const detail = this.asDetail(item);
     return {
       workflowRecipe: this.buildWorkflowRecipe(item),
       reviewGates: this.buildReviewGates(item),
       releaseGate: this.buildReleaseGate(item),
+      ...(detail ? { secondOpinion: this.buildSecondOpinion(detail) } : {}),
     };
   }
 
@@ -2278,6 +2310,7 @@ export class LoopsService {
     const browserQaPassed = this.isBrowserQaPassed(item);
     const releaseReady = this.isReleaseReady(item);
     const updated = item.state?.updated ?? item.issue.updated;
+    const snapshot = this.asDetail(item)?.workflowRecipe;
 
     const steps: LoopWorkflowStep[] = [
       {
@@ -2412,12 +2445,12 @@ export class LoopsService {
     ];
 
     return {
-      id: `default-${this.inferWorkflowKind(item)}`,
-      name: 'Default Codex / Claude Code delivery',
-      version: 1,
-      appliesTo: [this.inferWorkflowKind(item)],
-      capturedAt: updated,
-      source: 'default',
+      id: snapshot?.id ?? `default-${this.inferWorkflowKind(item)}`,
+      name: snapshot?.name ?? 'Default Codex / Claude Code delivery',
+      version: snapshot?.version ?? 1,
+      appliesTo: snapshot?.appliesTo ?? [this.inferWorkflowKind(item)],
+      capturedAt: snapshot?.capturedAt ?? updated,
+      source: snapshot?.source ?? 'default',
       steps,
     };
   }
@@ -2495,15 +2528,20 @@ export class LoopsService {
   private buildReleaseGate(item: LoopListItem | LoopIssueDetail): LoopReleaseGate {
     const updated = item.state?.updated ?? item.issue.updated;
     const evidenceByKind = this.evidenceIdsByKind(item);
+    const detail = this.asDetail(item);
+    const secondOpinion = detail ? this.buildSecondOpinion(detail) : undefined;
     const checklist = {
       specApproved: this.isSpecApproved(item),
       implementationEvidence: this.isImplementationDone(item),
       testsPassed: this.testsPassed(item),
       requiredReviewsPassed: this.isReviewPassed(item),
+      secondOpinionPassed: secondOpinion
+        ? !secondOpinion.requiredForRelease || secondOpinion.status === 'passed'
+        : true,
       browserQaPassed: this.isBrowserQaPassed(item),
       docsUpdated: true,
-      prReady: Boolean(this.asDetail(item)?.convergencePr || item.issue.status === 'CLOSED'),
-      rollbackNote: Boolean(this.asDetail(item)?.convergencePr || item.issue.status === 'CLOSED'),
+      prReady: Boolean(detail?.convergencePr || item.issue.status === 'CLOSED'),
+      rollbackNote: Boolean(detail?.convergencePr || item.issue.status === 'CLOSED'),
     };
     const blocker = this.deliveryBlockedReason(item);
     return {
@@ -2527,6 +2565,78 @@ export class LoopsService {
       blocker,
       updated,
     };
+  }
+
+  private buildSecondOpinion(detail: LoopIssueDetail): LoopSecondOpinion {
+    const primaryEvidenceIds = [
+      ...detail.reviewRecords.map((record) => record.id),
+      ...(detail.globalReview ? [detail.globalReview.id] : []),
+    ];
+    const primaryFindings =
+      detail.reviewRecords.reduce((total, record) => total + record.issues.length, 0) +
+      (detail.globalReview?.issues.length ?? 0);
+    const primaryPassed = Boolean(
+      detail.globalReview?.verdict === 'PASS' ||
+      (detail.reviewRecords.length > 0 &&
+        detail.reviewRecords.every((record) => record.verdict === 'PASS')),
+    );
+    const primaryStatus: LoopSecondOpinion['primary']['status'] =
+      primaryEvidenceIds.length === 0
+        ? 'not_run'
+        : primaryFindings > 0
+          ? 'needs_changes'
+          : primaryPassed
+            ? 'passed'
+            : 'pending';
+    const secondaryStatus: LoopSecondOpinion['secondary']['status'] = detail.globalReview
+      ? 'pending'
+      : 'not_run';
+    const requiredForRelease = false;
+
+    return {
+      id: `${detail.issue.id}-second-opinion`,
+      status: requiredForRelease
+        ? this.isSecondOpinionReviewerPassed(secondaryStatus) && primaryStatus === 'passed'
+          ? 'passed'
+          : primaryStatus === 'needs_changes'
+            ? 'needs_changes'
+            : 'pending'
+        : 'not_required',
+      primary: {
+        role: 'primary',
+        reviewer: 'codex',
+        status: primaryStatus,
+        findingsCount: primaryFindings,
+        evidenceIds: primaryEvidenceIds,
+        summary:
+          primaryEvidenceIds.length > 0
+            ? `Codex primary review has ${primaryFindings} finding(s) across shard and global review evidence.`
+            : 'Codex primary review has not produced evidence yet.',
+      },
+      secondary: {
+        role: 'secondary',
+        reviewer: 'claude-code',
+        status: secondaryStatus,
+        findingsCount: 0,
+        evidenceIds: [],
+        summary:
+          secondaryStatus === 'pending'
+            ? 'Claude Code secondary review is not required for release yet; enable the second-opinion worker to compare findings.'
+            : 'Claude Code secondary review has not run yet.',
+      },
+      comparison: {
+        agreementCount: 0,
+        primaryOnlyCount: primaryFindings,
+        secondaryOnlyCount: 0,
+        conflictCount: 0,
+      },
+      requiredForRelease,
+      updated: detail.state.updated ?? detail.issue.updated,
+    };
+  }
+
+  private isSecondOpinionReviewerPassed(status: LoopSecondOpinion['secondary']['status']): boolean {
+    return status === 'passed';
   }
 
   private deliveryBlockedReason(item: LoopListItem | LoopIssueDetail): string | undefined {
@@ -2765,6 +2875,85 @@ export class LoopsService {
     });
 
     return artifacts;
+  }
+
+  private buildLoopLearnings(
+    detail: LoopIssueDetail,
+    convergencePr: LoopConvergencePr,
+    createdAt: string,
+  ): LoopLearning[] {
+    const workspaceId = detail.intake.ruleSnapshot?.workspaceId ?? 'default';
+    const evidenceIds = [
+      ...this.buildEvidenceArtifacts(detail)
+        .filter((artifact) => artifact.status === 'present')
+        .map((artifact) => artifact.id),
+      `${detail.issue.id}-convergence-pr`,
+    ];
+    const reviewFindings = this.reviewFindingsCount(detail);
+    const testCommands = Array.from(
+      new Set(detail.testRecords.flatMap((record) => record.commands.map((item) => item.command))),
+    );
+    const changedFiles = Array.from(
+      new Set(detail.implementationRecords.flatMap((record) => record.changedFiles)),
+    );
+    const learnings: LoopLearning[] = [
+      {
+        id: `${detail.issue.id}-learning-decision`,
+        workspaceId,
+        repo: detail.issue.targetRepo,
+        kind: 'decision',
+        summary: `Loop finalized with global verdict ${detail.state.globalVerdict}; convergence PR ${convergencePr.status} captured ${convergencePr.commits.length} commit references.`,
+        evidenceIds,
+        confidence: detail.state.globalVerdict === 'PASS' ? 0.9 : 0.6,
+        createdAt,
+      },
+    ];
+
+    if (testCommands.length > 0) {
+      learnings.push({
+        id: `${detail.issue.id}-learning-test-policy`,
+        workspaceId,
+        repo: detail.issue.targetRepo,
+        kind: 'test_policy',
+        summary: `Validated test command policy for this loop: ${testCommands.slice(0, 3).join('; ')}.`,
+        evidenceIds: detail.testRecords.map((record) => record.id),
+        confidence: detail.testRecords.every((record) => record.status === 'TEST-PASS')
+          ? 0.85
+          : 0.55,
+        createdAt,
+      });
+    }
+
+    if (changedFiles.length > 0) {
+      learnings.push({
+        id: `${detail.issue.id}-learning-ownership`,
+        workspaceId,
+        repo: detail.issue.targetRepo,
+        kind: 'ownership',
+        summary: `Implementation touched ${changedFiles.length} file(s); primary ownership hints: ${changedFiles.slice(0, 5).join(', ')}.`,
+        evidenceIds: detail.implementationRecords.map((record) => record.id),
+        confidence: 0.75,
+        createdAt,
+      });
+    }
+
+    if (reviewFindings > 0) {
+      learnings.push({
+        id: `${detail.issue.id}-learning-review-pattern`,
+        workspaceId,
+        repo: detail.issue.targetRepo,
+        kind: 'pitfall',
+        summary: `${reviewFindings} review finding(s) were recorded before finalization; check review evidence before repeating similar changes.`,
+        evidenceIds: [
+          ...detail.reviewRecords.map((record) => record.id),
+          ...(detail.globalReview ? [detail.globalReview.id] : []),
+        ],
+        confidence: 0.7,
+        createdAt,
+      });
+    }
+
+    return learnings;
   }
 
   private async readCoverageSummary(issueId: string): Promise<LoopRequirementCoverageSummary> {

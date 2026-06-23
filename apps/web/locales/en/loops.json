@@ -87,6 +87,7 @@
         "specReview": "Spec Review",
         "running": "Running",
         "blocked": "Blocked",
+        "readyToShip": "Ready to Ship",
         "delivered": "Delivered"
       }
     },
@@ -131,6 +132,26 @@
         "pending": "Pending",
         "needsChanges": "Needs changes",
         "blocked": "Blocked"
+      }
+    },
+    "learningMemory": {
+      "title": "Learning Memory",
+      "summary": "{count} reusable learnings in this workspace",
+      "emptySummary": "No reusable learnings yet.",
+      "loading": "Loading learning memory.",
+      "empty": "No learnings have been recorded yet.",
+      "top": "Top learnings",
+      "stale": "Stale learnings",
+      "noStale": "No stale learnings.",
+      "dismiss": "Dismiss",
+      "confidence": "{value}%",
+      "kind": {
+        "pattern": "Pattern",
+        "pitfall": "Pitfall",
+        "decision": "Decision",
+        "test_policy": "Test Policy",
+        "ownership": "Ownership",
+        "security": "Security"
       }
     },
     "releaseReadiness": {
@@ -245,7 +266,16 @@
       "summary": "{count} human decision items",
       "emptySummary": "No human review items are waiting.",
       "loading": "Loading review inbox.",
-      "empty": "No review items."
+      "empty": "No review items.",
+      "groupCount": "{count} items",
+      "gates": {
+        "product": "Product gate",
+        "architecture": "Architecture gate",
+        "code": "Code gate",
+        "security": "Security gate",
+        "release": "Release gate",
+        "exception": "Exception gate"
+      }
     },
     "traceSummary": {
       "title": "Trace Summary",
@@ -387,6 +417,15 @@
       "previewTargetRepoLabel": "Target repo",
       "previewAgentPathLabel": "Recommended agent path",
       "previewTestPolicyLabel": "Suggested test policy",
+      "previewLearningLabel": "Relevant learnings",
+      "learningKind": {
+        "pattern": "Pattern",
+        "pitfall": "Pitfall",
+        "decision": "Decision",
+        "test_policy": "Test Policy",
+        "ownership": "Ownership",
+        "security": "Security"
+      },
       "agentPath": {
         "feature": "Planner → Implementer → Reviewer",
         "bugfix": "Recovery Agent → Implementer → Reviewer",
@@ -533,17 +572,29 @@
       "workflowTitle": "Workflow Timeline",
       "workflowVersion": "v{version}",
       "reviewTitle": "Review Gates",
+      "secondOpinionTitle": "Second Opinion",
       "releaseTitle": "Release Gate",
       "empty": "No delivery controls reported yet.",
       "gate": "Gate: {gate}",
       "reviewer": "Reviewer: {reviewer}",
       "findings": "{count} findings",
       "evidenceIds": "{count} evidence links",
+      "secondOpinionRoles": {
+        "primary": "Primary",
+        "secondary": "Secondary"
+      },
+      "secondOpinion": {
+        "agreement": "Agreement",
+        "conflict": "Conflict",
+        "primaryOnly": "Primary only",
+        "secondaryOnly": "Secondary only"
+      },
       "releaseChecklist": {
         "specApproved": "Spec approved",
         "implementationEvidence": "Implementation",
         "testsPassed": "Tests",
         "requiredReviewsPassed": "Review",
+        "secondOpinionPassed": "Second Opinion",
         "browserQaPassed": "Browser QA",
         "docsUpdated": "Docs",
         "prReady": "PR",
@@ -631,6 +682,20 @@
       "tested": "Tested",
       "reviewed": "Reviewed",
       "annotated": "Annotated"
+    },
+    "learningMemory": {
+      "title": "Learning Memory",
+      "summary": "{count} reusable learnings from this loop",
+      "confidence": "{value}% confidence",
+      "evidence": "{count} evidence links",
+      "kind": {
+        "pattern": "Pattern",
+        "pitfall": "Pitfall",
+        "decision": "Decision",
+        "test_policy": "Test Policy",
+        "ownership": "Ownership",
+        "security": "Security"
+      }
     },
     "reloop": {
       "title": "Re-loop",

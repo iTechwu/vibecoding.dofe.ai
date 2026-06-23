@@ -1,4 +1,10 @@
-import type { LoopAnnotation, LoopConvergencePr, LoopIssue, LoopShard } from '@repo/contracts';
+import type {
+  LoopAnnotation,
+  LoopConvergencePr,
+  LoopEvidenceArtifact,
+  LoopIssue,
+  LoopShard,
+} from '@repo/contracts';
 
 /**
  * Git Adapter（07 §9 / ADR-008：commit-per-shard + 收敛 PR）。
@@ -19,6 +25,7 @@ export type LoopsConvergencePrInput = {
   shards: LoopShard[];
   annotations: LoopAnnotation[];
   commits: LoopsCommitShardResult[];
+  evidenceArtifacts?: LoopEvidenceArtifact[];
 };
 
 export interface LoopsGitAdapter {

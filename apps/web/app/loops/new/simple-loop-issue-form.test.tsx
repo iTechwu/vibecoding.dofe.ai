@@ -35,7 +35,22 @@ const mutateAsync = vi.fn();
 // availability (the other documented submit gate) without re-mocking.
 let workspacesQuery: {
   data: {
-    body: { data: { workspaces: Array<{ workspaceId: string; root: string }>; current: string } };
+    body: {
+      data: {
+        workspaces: Array<{ workspaceId: string; root: string }>;
+        current: string;
+        recentLearnings?: Array<{
+          id: string;
+          workspaceId: string;
+          repo?: string;
+          kind: 'pattern' | 'pitfall' | 'decision' | 'test_policy' | 'ownership' | 'security';
+          summary: string;
+          evidenceIds: string[];
+          confidence: number;
+          createdAt: string;
+        }>;
+      };
+    };
   };
   isLoading: boolean;
 };
@@ -66,6 +81,18 @@ describe('SimpleLoopIssueForm (0622 · B5 simple-mode intake)', () => {
           data: {
             workspaces: [{ workspaceId: 'vibecoding', root: '/repo/vibecoding' }],
             current: 'vibecoding',
+            recentLearnings: [
+              {
+                id: 'learning-test-policy',
+                workspaceId: 'vibecoding',
+                repo: '/repo/vibecoding',
+                kind: 'test_policy',
+                summary: 'Use unit + type-check before dashboard UI changes.',
+                evidenceIds: ['test-record-1'],
+                confidence: 0.88,
+                createdAt: '2026-06-23T00:00:00.000Z',
+              },
+            ],
           },
         },
       },
@@ -158,6 +185,11 @@ describe('SimpleLoopIssueForm (0622 · B5 simple-mode intake)', () => {
     expect(screen.getByText('Planner → Implementer → Reviewer')).toBeInTheDocument();
     expect(screen.getByText('Suggested test policy')).toBeInTheDocument();
     expect(screen.getByText('unit + type-check + focused UI regression')).toBeInTheDocument();
+    expect(screen.getByText('Relevant learnings')).toBeInTheDocument();
+    expect(screen.getByText('Test Policy')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Use unit \+ type-check before dashboard UI changes/),
+    ).toBeInTheDocument();
   });
 
   it('binds bugfix templates to recovery mode and regression policy in preview', async () => {

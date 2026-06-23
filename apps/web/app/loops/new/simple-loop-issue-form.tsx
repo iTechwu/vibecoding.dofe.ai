@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@/i18n/navigation';
 import { useAuth } from '@/providers';
 import { normaliseSimpleIssue } from '@repo/contracts';
-import type { LoopPriority, LoopSimpleIssueTemplate } from '@repo/contracts';
+import type { LoopLearning, LoopPriority, LoopSimpleIssueTemplate } from '@repo/contracts';
 import { useCreateSimpleLoopIssue, useLoopsWorkspaces } from '@/lib/api/contracts/hooks';
 import { LOOP_ISSUE_TEMPLATES } from './loop-issue-templates';
 
@@ -47,6 +47,7 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
 
   const workspaces = workspacesQuery.data?.body?.data?.workspaces ?? EMPTY_WORKSPACES;
   const currentWorkspace = workspacesQuery.data?.body?.data?.current;
+  const recentLearnings = workspacesQuery.data?.body?.data?.recentLearnings ?? [];
 
   const [request, setRequest] = useState('');
   const [workspaceId, setWorkspaceId] = useState(currentWorkspace ?? '');
@@ -97,6 +98,12 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
     () => (preview ? LOOP_ISSUE_TEMPLATES.find((item) => item.id === preview.template) : undefined),
     [preview],
   );
+  const previewLearnings = useMemo(() => {
+    if (!preview) return [] as LoopLearning[];
+    return recentLearnings
+      .filter((learning) => !learning.repo || learning.repo === preview.targetRepo)
+      .slice(0, 3);
+  }, [preview, recentLearnings]);
 
   if (!isAuthenticated) {
     return <p className="text-sm text-muted-foreground">{t('simple.redirecting')}</p>;
@@ -239,6 +246,25 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
                   </dt>
                   <dd className="text-xs font-medium">{t(previewTemplate.testPolicyKey)}</dd>
                 </div>
+              </div>
+            ) : null}
+            {previewLearnings.length > 0 ? (
+              <div className="flex flex-col gap-2 rounded-md border bg-background px-3 py-2">
+                <dt className="text-xs text-muted-foreground">
+                  {t('simple.previewLearningLabel')}
+                </dt>
+                <dd>
+                  <ul className="flex flex-col gap-2 text-xs">
+                    {previewLearnings.map((learning) => (
+                      <li className="rounded-md border bg-muted/30 px-2 py-1.5" key={learning.id}>
+                        <span className="font-medium">
+                          {t(`simple.learningKind.${learning.kind}`)}
+                        </span>
+                        <span className="text-muted-foreground"> · {learning.summary}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </dd>
               </div>
             ) : null}
             <div className="flex flex-col gap-1">

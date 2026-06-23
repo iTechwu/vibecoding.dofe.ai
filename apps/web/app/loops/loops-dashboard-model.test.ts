@@ -14,6 +14,7 @@ import {
   buildReleaseReadiness,
   buildReviewGatePortfolio,
   buildReviewInbox,
+  buildReviewInboxGroups,
   buildRiskQueue,
   buildTriggerPortfolio,
   buildWorkflowRecipe,
@@ -310,8 +311,72 @@ describe('loops-dashboard-model', () => {
       ['Cost guard needs review', 'notification', 'critical'],
       ['Critical checkout fix', 'action', 'warning'],
     ]);
+    expect(inbox.map((item) => [item.title, item.gateKind])).toEqual([
+      ['Cost guard needs review', 'exception'],
+      ['Critical checkout fix', 'product'],
+    ]);
     expect(inbox.map((item) => item.title)).not.toContain('Finalize delivery');
     expect(inbox.map((item) => item.title)).not.toContain('Paused implementation');
+  });
+
+  it('groups review inbox items by gate kind', () => {
+    const inbox = buildReviewInbox([
+      {
+        issueId: 'issue-1',
+        title: 'Spec needs approval',
+        action: 'review-spec',
+        nextActionCategory: 'decision',
+        label: 'Review spec',
+        priority: 'P0',
+        phase: 'PHASE_2_REVIEW',
+        href: '/loops/issue-1',
+      },
+      {
+        issueId: 'issue-2',
+        title: 'Security finding',
+        action: 'run-step',
+        nextActionCategory: 'decision',
+        label: 'Security review',
+        priority: 'P1',
+        phase: 'PHASE_5_REVIEW',
+        href: '/loops/issue-2',
+      },
+      {
+        issueId: 'issue-3',
+        title: 'Release approval',
+        action: 'finalize',
+        nextActionCategory: 'decision',
+        label: 'Ship approval',
+        priority: 'P1',
+        phase: 'PHASE_7_GLOBAL_REVIEW',
+        href: '/loops/issue-3',
+      },
+      {
+        issueId: 'issue-4',
+        title: 'Reloop decision',
+        action: 'reloop',
+        nextActionCategory: 'decision',
+        label: 'Reloop',
+        priority: 'P0',
+        phase: 'PHASE_7_GLOBAL_REVIEW',
+        href: '/loops/issue-4',
+      },
+    ]);
+
+    const groups = buildReviewInboxGroups(inbox);
+
+    expect(groups.map((group) => [group.gateKind, group.count, group.priority])).toEqual([
+      ['exception', 1, 'critical'],
+      ['product', 1, 'warning'],
+      ['security', 1, 'warning'],
+      ['release', 1, 'warning'],
+    ]);
+    expect(groups.flatMap((group) => group.items.map((item) => item.title))).toEqual([
+      'Reloop decision',
+      'Spec needs approval',
+      'Security finding',
+      'Release approval',
+    ]);
   });
 
   it('uses next action category before internal action codes for human decisions', () => {
@@ -332,13 +397,47 @@ describe('loops-dashboard-model', () => {
   });
 
   it('builds a loop board with user-facing stages, modes, and delivery signals', () => {
-    const board = buildLoopBoard(list.list, cost);
+    const readyItem: LoopListResponse['list'][number] = {
+      issue: {
+        id: 'issue-3',
+        title: 'Ready release',
+        status: 'IN_LOOP',
+        priority: 'P1',
+        created: '2026-06-20T00:00:00.000Z',
+        updated: '2026-06-20T00:00:00.000Z',
+        sourceChannel: 'web',
+        sourceKind: 'web_form',
+        submitterId: 'u3',
+        submitterName: 'Lin',
+        targetRepo: '/repo/app',
+        body: 'Prepare release',
+        acceptanceCriteria: ['ready'],
+        rawPayloadRef: '.loops/intakes/issue-3.raw.json',
+      },
+      state: {
+        issueId: 'issue-3',
+        phase: 'PHASE_7_GLOBAL_REVIEW',
+        round: 1,
+        specVersion: 'v1',
+        shardsTotal: 1,
+        shardsDone: 1,
+        shardsInProgress: 0,
+        reloopCount: 0,
+        costTokens: 200,
+        costCalls: 2,
+        updated: '2026-06-20T00:00:00.000Z',
+        paused: false,
+        globalVerdict: 'PASS',
+      },
+    };
+    const board = buildLoopBoard([...list.list, readyItem], cost);
 
     expect(board.map((column) => [column.id, column.items.map((item) => item.title)])).toEqual([
       ['backlog', []],
       ['specReview', []],
       ['running', ['Critical checkout fix']],
       ['blocked', ['Docs reloop']],
+      ['readyToShip', ['Ready release']],
       ['delivered', []],
     ]);
 
@@ -357,6 +456,14 @@ describe('loops-dashboard-model', () => {
       humanGate: 'Exception',
       blocker: 'Cost guard',
       evidence: '2/2 shards',
+    });
+
+    const ready = board.find((column) => column.id === 'readyToShip')?.items[0];
+    expect(ready).toMatchObject({
+      mode: 'Review',
+      humanGate: 'Release',
+      evidence: '1/1 shards',
+      prState: 'Ready to ship',
     });
   });
 

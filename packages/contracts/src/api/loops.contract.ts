@@ -13,6 +13,7 @@ import {
   LoopImplementationRecordSchema,
   LoopIssueCreatedResponseSchema,
   LoopIssuesQuerySchema,
+  LoopLearningGovernanceRequestSchema,
   LoopListResponseSchema,
   LoopLogsQuerySchema,
   LoopLogsResponseSchema,
@@ -299,6 +300,18 @@ export const loopsContract = c.router(
         200: ApiResponseSchema(LoopWorkspacesResponseSchema),
       },
       summary: 'List configured Loops workspaces and the active workspace',
+    },
+    governLearning: {
+      method: 'POST',
+      path: '/learnings/:learningId/governance',
+      pathParams: z.object({
+        learningId: z.string(),
+      }),
+      body: LoopLearningGovernanceRequestSchema,
+      responses: {
+        200: ApiResponseSchema(LoopWorkspacesResponseSchema),
+      },
+      summary: 'Dismiss or merge a Loop learning memory item',
     },
     upsertWorkspace: {
       method: 'POST',

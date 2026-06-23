@@ -14,6 +14,9 @@ import type {
   LoopImplementationRecord,
   LoopIntake,
   LoopIssue,
+  LoopLearning,
+  LoopLearningGovernance,
+  LoopLearningGovernanceRequest,
   LoopLogEntry,
   LoopNotification,
   LoopReviewRecord,
@@ -23,6 +26,7 @@ import type {
   LoopStateItem,
   LoopTestMatrix,
   LoopTestRecord,
+  LoopWorkflowRecipe,
 } from '@repo/contracts';
 import { LoopsNotificationSender } from './loops-notification-sender.service';
 import { readLoopsRuntimeConfig } from './loops-runtime-config.util';
@@ -148,6 +152,11 @@ export class LoopsFileStoreService {
       state.finalized || state.phase === 'CLOSED'
         ? await this.readOptionalJson<LoopConvergencePr>(`runs/${issueId}/convergence-pr.json`)
         : undefined;
+    const workflowRecipe = await this.readOptionalJson<LoopWorkflowRecipe>(
+      `runs/${issueId}/workflow-recipe.snapshot.json`,
+    );
+    const learnings =
+      (await this.readOptionalJson<LoopLearning[]>(`learnings/${issueId}.json`)) ?? [];
 
     return {
       issue,
@@ -165,6 +174,8 @@ export class LoopsFileStoreService {
       state,
       globalReview,
       convergencePr,
+      workflowRecipe,
+      learnings,
     };
   }
 
@@ -302,6 +313,83 @@ export class LoopsFileStoreService {
     return { loops };
   }
 
+  async readRecentLearnings(limit = 12): Promise<LoopLearning[]> {
+    await this.ensureInitialized();
+    const dir = path.join(this.root, 'learnings');
+    let entries: string[];
+    try {
+      entries = await fs.readdir(dir);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException)?.code;
+      if (code !== 'ENOENT') {
+        this.log('warn', '[Loops] unable to read learning memory index', {
+          code,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return [];
+    }
+
+    const learnings = await Promise.all(
+      entries
+        .filter((entry) => entry.endsWith('.json'))
+        .map((entry) => this.readOptionalJson<LoopLearning[]>(`learnings/${entry}`)),
+    );
+    const governance = await this.readLearningGovernance();
+    const dismissedIds = new Set(governance.dismissed.map((item) => item.learningId));
+    const mergedSourceIds = new Set(governance.merges.map((item) => item.sourceLearningId));
+
+    return learnings
+      .flatMap((items) => items ?? [])
+      .filter((learning) => !dismissedIds.has(learning.id) && !mergedSourceIds.has(learning.id))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit);
+  }
+
+  async readLearningGovernance(): Promise<LoopLearningGovernance> {
+    return (
+      (await this.readOptionalJson<LoopLearningGovernance>('learning-governance.json')) ?? {
+        dismissed: [],
+        merges: [],
+      }
+    );
+  }
+
+  async governLearning(input: {
+    learningId: string;
+    request: LoopLearningGovernanceRequest;
+    createdAt?: string;
+  }): Promise<LoopLearningGovernance> {
+    const createdAt = input.createdAt ?? new Date().toISOString();
+    const governance = await this.readLearningGovernance();
+    const actor = input.request.actor || 'human';
+    const reason = input.request.reason;
+    const next: LoopLearningGovernance =
+      input.request.action === 'dismiss'
+        ? {
+            ...governance,
+            dismissed: [
+              ...governance.dismissed.filter((item) => item.learningId !== input.learningId),
+              { learningId: input.learningId, actor, reason, createdAt },
+            ],
+          }
+        : {
+            ...governance,
+            merges: [
+              ...governance.merges.filter((item) => item.sourceLearningId !== input.learningId),
+              {
+                sourceLearningId: input.learningId,
+                targetLearningId: input.request.targetLearningId ?? input.learningId,
+                actor,
+                reason,
+                createdAt,
+              },
+            ],
+          };
+    await this.writeJson('learning-governance.json', next);
+    return next;
+  }
+
   async readDefaultTestCommands() {
     const config = await readLoopsRuntimeConfig();
     return config.tests.defaultCommands;
@@ -395,6 +483,7 @@ export class LoopsFileStoreService {
     intake: LoopIntake;
     state: LoopStateItem;
     rawPayload: unknown;
+    workflowRecipe?: LoopWorkflowRecipe;
   }) {
     await this.ensureInitialized();
     await this.writeJson(`issues/${input.issue.id}.json`, input.issue);
@@ -405,6 +494,12 @@ export class LoopsFileStoreService {
       this.renderIntakeMarkdown(input.intake, input.issue),
     );
     await this.writeJson(`intakes/${input.intake.id}.raw.json`, input.rawPayload);
+    if (input.workflowRecipe) {
+      await this.writeJson(
+        `runs/${input.issue.id}/workflow-recipe.snapshot.json`,
+        input.workflowRecipe,
+      );
+    }
     await this.upsertState(input.state);
     await this.appendLog({
       type: 'INTAKE_RECEIVED',
@@ -673,6 +768,7 @@ export class LoopsFileStoreService {
     annotations: LoopAnnotation[];
     state: LoopStateItem;
     convergencePr: LoopConvergencePr;
+    learnings?: LoopLearning[];
   }) {
     await this.writeJson(`annotations/${input.issue.id}.json`, input.annotations);
     await this.writeText(
@@ -681,6 +777,10 @@ export class LoopsFileStoreService {
     );
     await this.writeJson(`runs/${input.issue.id}/convergence-pr.json`, input.convergencePr);
     await this.writeText(`runs/${input.issue.id}/convergence-pr.md`, input.convergencePr.prBody);
+    if (input.learnings?.length) {
+      await this.writeJson(`learnings/${input.issue.id}.json`, input.learnings);
+      await this.writeText(`learnings/${input.issue.id}.md`, this.renderLearnings(input.learnings));
+    }
     await this.writeJson(`issues/${input.issue.id}.json`, {
       ...input.issue,
       status: 'CLOSED',
@@ -1180,7 +1280,17 @@ export class LoopsFileStoreService {
       record.failedTests.length > 0
         ? record.failedTests.map((item) => `- ${item.name}: ${item.reason}`).join('\n')
         : '无';
-    return `---\nid: ${record.id}\nscope: ${record.shardId}\nround: ${record.round}\nrunner: ${record.runner}\nreviewer: ${record.reviewer}\nstatus: ${record.status}\ncreated: ${record.created}\n---\n\n## 测试执行摘要\n${commands}\n\n## 覆盖率摘要\n${coverage}\n\n## 失败归因\n${failures}\n\n## 修复指令\n${record.fixInstructions.map((item) => `- ${item}`).join('\n') || '无'}\n`;
+    const runtimeSecurityPolicy = record.runtimeSecurityPolicy
+      ? [
+          `- id: ${record.runtimeSecurityPolicy.id}`,
+          `- shell: ${record.runtimeSecurityPolicy.shell.strategy} (${record.runtimeSecurityPolicy.shell.allowedCommands.join(', ') || 'none'})`,
+          `- blocked operators: ${record.runtimeSecurityPolicy.shell.blockedOperators.join(', ')}`,
+          `- network: ${record.runtimeSecurityPolicy.network.strategy}`,
+          `- write: ${record.runtimeSecurityPolicy.write.strategy}/${record.runtimeSecurityPolicy.write.scope}`,
+          `- approvals: ${record.runtimeSecurityPolicy.approvals.override}`,
+        ].join('\n')
+      : '未记录 runtime security policy snapshot';
+    return `---\nid: ${record.id}\nscope: ${record.shardId}\nround: ${record.round}\nrunner: ${record.runner}\nreviewer: ${record.reviewer}\nstatus: ${record.status}\ncreated: ${record.created}\n---\n\n## 测试执行摘要\n${commands}\n\n## Runtime Security Policy\n${runtimeSecurityPolicy}\n\n## 覆盖率摘要\n${coverage}\n\n## 失败归因\n${failures}\n\n## 修复指令\n${record.fixInstructions.map((item) => `- ${item}`).join('\n') || '无'}\n`;
   }
 
   private renderTestMatrix(matrix: LoopTestMatrix) {
@@ -1211,6 +1321,25 @@ export class LoopsFileStoreService {
         ? record.issues.map((item) => `- ${item.severity}: ${item.desc}`).join('\n')
         : '无';
     return `---\nid: ${record.id}\nissue: ${record.issueId}\nreviewer: ${record.reviewer}\nround: ${record.round}\nverdict: ${record.verdict}\ncreated: ${record.created}\n---\n\n## 整体复查结论\n${record.summary}\n\n## 问题\n${issues}\n\n## 修复指令\n${record.fixInstructions.map((item) => `- ${item}`).join('\n') || '无'}\n`;
+  }
+
+  private renderLearnings(learnings: LoopLearning[]) {
+    return learnings
+      .map((learning) =>
+        [
+          `## ${learning.kind} · ${learning.id}`,
+          '',
+          `- workspace: ${learning.workspaceId}`,
+          learning.repo ? `- repo: ${learning.repo}` : undefined,
+          `- confidence: ${learning.confidence}`,
+          `- evidence: ${learning.evidenceIds.join(', ') || 'none'}`,
+          '',
+          learning.summary,
+        ]
+          .filter((line): line is string => typeof line === 'string')
+          .join('\n'),
+      )
+      .join('\n\n');
   }
 
   private renderNotification(notification: LoopNotification) {

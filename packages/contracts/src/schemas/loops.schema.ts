@@ -272,6 +272,29 @@ export const LoopReviewRecordSchema = z.object({
   created: z.string(),
 });
 
+export const LoopRuntimeSecurityPolicySnapshotSchema = z.object({
+  id: z.string(),
+  mode: z.literal('test-command'),
+  shell: z.object({
+    strategy: z.literal('allowlist'),
+    allowedCommands: z.array(z.string()),
+    blockedOperators: z.array(z.string()),
+  }),
+  network: z.object({
+    strategy: z.literal('deny-by-default'),
+    status: z.literal('not-requested'),
+  }),
+  write: z.object({
+    strategy: z.literal('workspace-scoped'),
+    scope: z.literal('target-repo'),
+  }),
+  approvals: z.object({
+    override: z.literal('not-supported'),
+    requiredFor: z.array(z.string()),
+  }),
+  capturedAt: z.string(),
+});
+
 export const LoopTestRecordSchema = z.object({
   id: z.string(),
   issueId: z.string(),
@@ -302,6 +325,7 @@ export const LoopTestRecordSchema = z.object({
     }),
   ),
   fixInstructions: z.array(z.string()),
+  runtimeSecurityPolicy: LoopRuntimeSecurityPolicySnapshotSchema.optional(),
   created: z.string(),
 });
 
@@ -560,6 +584,47 @@ export const LoopEvidenceArtifactSchema = z.object({
   summary: z.string().optional(),
 });
 
+export const LoopLearningSchema = z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+  repo: z.string().optional(),
+  kind: z.enum(['pattern', 'pitfall', 'decision', 'test_policy', 'ownership', 'security']),
+  summary: z.string(),
+  evidenceIds: z.array(z.string()).default([]),
+  confidence: z.number().min(0).max(1),
+  lastUsedAt: z.string().optional(),
+  createdAt: z.string(),
+});
+
+export const LoopLearningGovernanceActionSchema = z.enum(['dismiss', 'merge']);
+
+export const LoopLearningGovernanceRequestSchema = z.object({
+  action: LoopLearningGovernanceActionSchema,
+  actor: z.string().trim().min(1).default('human'),
+  reason: z.string().trim().optional(),
+  targetLearningId: z.string().trim().min(1).optional(),
+});
+
+export const LoopLearningGovernanceSchema = z.object({
+  dismissed: z.array(
+    z.object({
+      learningId: z.string(),
+      actor: z.string(),
+      reason: z.string().optional(),
+      createdAt: z.string(),
+    }),
+  ),
+  merges: z.array(
+    z.object({
+      sourceLearningId: z.string(),
+      targetLearningId: z.string(),
+      actor: z.string(),
+      reason: z.string().optional(),
+      createdAt: z.string(),
+    }),
+  ),
+});
+
 export const LoopTraceSummarySchema = z.object({
   total: z.number().int().nonnegative(),
   recent: z.number().int().nonnegative(),
@@ -663,6 +728,7 @@ export const LoopReleaseGateSchema = z.object({
     implementationEvidence: z.boolean(),
     testsPassed: z.boolean(),
     requiredReviewsPassed: z.boolean(),
+    secondOpinionPassed: z.boolean().optional(),
     browserQaPassed: z.boolean(),
     docsUpdated: z.boolean(),
     prReady: z.boolean(),
@@ -670,6 +736,30 @@ export const LoopReleaseGateSchema = z.object({
   }),
   evidenceIds: z.array(z.string()).default([]),
   blocker: z.string().optional(),
+  updated: z.string(),
+});
+
+export const LoopSecondOpinionReviewerSchema = z.object({
+  role: z.enum(['primary', 'secondary']),
+  reviewer: z.enum(['codex', 'claude-code']),
+  status: z.enum(['not_run', 'pending', 'passed', 'needs_changes']),
+  findingsCount: z.number().int().nonnegative().default(0),
+  evidenceIds: z.array(z.string()).default([]),
+  summary: z.string().optional(),
+});
+
+export const LoopSecondOpinionSchema = z.object({
+  id: z.string(),
+  status: z.enum(['not_required', 'pending', 'passed', 'needs_changes', 'conflict']),
+  primary: LoopSecondOpinionReviewerSchema,
+  secondary: LoopSecondOpinionReviewerSchema,
+  comparison: z.object({
+    agreementCount: z.number().int().nonnegative(),
+    primaryOnlyCount: z.number().int().nonnegative(),
+    secondaryOnlyCount: z.number().int().nonnegative(),
+    conflictCount: z.number().int().nonnegative(),
+  }),
+  requiredForRelease: z.boolean(),
   updated: z.string(),
 });
 
@@ -816,9 +906,11 @@ export const LoopDetailSchema = z.object({
   convergencePr: LoopConvergencePrSchema.optional(),
   requirementsCoverage: LoopRequirementCoverageSchema.optional(),
   evidenceArtifacts: z.array(LoopEvidenceArtifactSchema).optional(),
+  learnings: z.array(LoopLearningSchema).optional(),
   workflowRecipe: LoopWorkflowRecipeSchema.optional(),
   reviewGates: z.array(LoopReviewGateSchema).optional(),
   releaseGate: LoopReleaseGateSchema.optional(),
+  secondOpinion: LoopSecondOpinionSchema.optional(),
 });
 
 export const LoopIssuesQuerySchema = PaginationQuerySchema.extend({
@@ -1039,6 +1131,8 @@ export const LoopWorkspacesResponseSchema = z.object({
   workspaces: z.array(LoopWorkspaceSummarySchema),
   /** workspaceId of the current/active workspace. */
   current: z.string(),
+  recentLearnings: z.array(LoopLearningSchema).optional(),
+  learningGovernance: LoopLearningGovernanceSchema.optional(),
 });
 
 export const UpsertLoopWorkspaceAgentsSchema = z.object({
@@ -1130,6 +1224,9 @@ export type LoopReviewVerdict = z.infer<typeof LoopReviewVerdictSchema>;
 export type LoopImplementationRecord = z.infer<typeof LoopImplementationRecordSchema>;
 export type LoopReviewShardRequest = z.infer<typeof LoopReviewShardRequestSchema>;
 export type LoopReviewRecord = z.infer<typeof LoopReviewRecordSchema>;
+export type LoopRuntimeSecurityPolicySnapshot = z.infer<
+  typeof LoopRuntimeSecurityPolicySnapshotSchema
+>;
 export type LoopRunShardTestsRequest = z.infer<typeof LoopRunShardTestsRequestSchema>;
 export type LoopTestRecord = z.infer<typeof LoopTestRecordSchema>;
 export type LoopStateItem = z.infer<typeof LoopStateItemSchema>;
@@ -1148,6 +1245,10 @@ export type LoopRequirementCoverageItem = z.infer<typeof LoopRequirementCoverage
 export type LoopRequirementCoverageSummary = z.infer<typeof LoopRequirementCoverageSummarySchema>;
 export type LoopRequirementCoverage = z.infer<typeof LoopRequirementCoverageSchema>;
 export type LoopEvidenceArtifact = z.infer<typeof LoopEvidenceArtifactSchema>;
+export type LoopLearning = z.infer<typeof LoopLearningSchema>;
+export type LoopLearningGovernanceAction = z.infer<typeof LoopLearningGovernanceActionSchema>;
+export type LoopLearningGovernanceRequest = z.infer<typeof LoopLearningGovernanceRequestSchema>;
+export type LoopLearningGovernance = z.infer<typeof LoopLearningGovernanceSchema>;
 export type LoopTraceSummary = z.infer<typeof LoopTraceSummarySchema>;
 export type LoopResumeSummary = z.infer<typeof LoopResumeSummarySchema>;
 export type LoopWorkflowRuntimeOwner = z.infer<typeof LoopWorkflowRuntimeOwnerSchema>;
@@ -1159,6 +1260,8 @@ export type LoopReviewGateKind = z.infer<typeof LoopReviewGateKindSchema>;
 export type LoopReviewGateStatus = z.infer<typeof LoopReviewGateStatusSchema>;
 export type LoopReviewGate = z.infer<typeof LoopReviewGateSchema>;
 export type LoopReleaseGate = z.infer<typeof LoopReleaseGateSchema>;
+export type LoopSecondOpinionReviewer = z.infer<typeof LoopSecondOpinionReviewerSchema>;
+export type LoopSecondOpinion = z.infer<typeof LoopSecondOpinionSchema>;
 export type LoopAgentRuntimeStatus = z.infer<typeof LoopAgentRuntimeStatusSchema>;
 export type LoopAgentRuntimeItem = z.infer<typeof LoopAgentRuntimeItemSchema>;
 export type LoopAgentRuntimeDiagnostic = z.infer<typeof LoopAgentRuntimeDiagnosticSchema>;

@@ -11,6 +11,7 @@ import type {
   LoopListResponse,
   LoopsDoctorResponse,
   LoopStateItem,
+  LoopWorkflowRecipe,
 } from '@repo/contracts';
 import type {
   LoopIssue as DbLoopIssue,
@@ -98,6 +99,7 @@ export class LoopsPersistenceService {
     intake: LoopIntake;
     state: LoopStateItem;
     rawPayload: unknown;
+    workflowRecipe?: LoopWorkflowRecipe;
   }): Promise<LoopIssueCreatedResponse> {
     await this.store.writeIssue(input);
     await this.db.createIssue({
@@ -118,6 +120,7 @@ export class LoopsPersistenceService {
     intake: LoopIntake;
     state: LoopStateItem;
     rawPayload: unknown;
+    workflowRecipe?: LoopWorkflowRecipe;
   }): Promise<LoopIssueCreatedResponse> {
     return this.writeIssue(input);
   }

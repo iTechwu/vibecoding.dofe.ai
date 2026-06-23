@@ -158,6 +158,7 @@ export class CliLoopsGitAdapter implements LoopsGitAdapter {
       .filter((item) => item.committed)
       .map((item) => `- ${item.shardId}: ${item.message}`)
       .join('\n');
+    const evidenceSummary = this.renderEvidenceSummary(input);
     return [
       `# Loops 收敛 PR · ${input.issue.id}`,
       '',
@@ -170,7 +171,27 @@ export class CliLoopsGitAdapter implements LoopsGitAdapter {
       `## 标注摘要`,
       annotationsSummary,
       '',
+      `## Evidence 摘要`,
+      evidenceSummary,
+      '',
       '> 本 PR 由 Loops 收敛后自动产出，附完整标注摘要，供人最终合并（人在环）。',
     ].join('\n');
+  }
+
+  private renderEvidenceSummary(input: LoopsConvergencePrInput): string {
+    const artifacts = (input.evidenceArtifacts ?? []).filter(
+      (artifact) => artifact.status === 'present',
+    );
+    if (artifacts.length === 0) {
+      return '- （无已记录 evidence artifacts）';
+    }
+    return artifacts
+      .slice(0, 12)
+      .map((artifact) => {
+        const count = artifact.count === undefined ? '' : ` · count=${artifact.count}`;
+        const round = artifact.round === undefined ? '' : ` · round=${artifact.round}`;
+        return `- ${artifact.label} [${artifact.kind}]${round}${count}: ${artifact.summary} (${artifact.path})`;
+      })
+      .join('\n');
   }
 }

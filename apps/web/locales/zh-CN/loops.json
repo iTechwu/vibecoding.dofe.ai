@@ -87,6 +87,7 @@
         "specReview": "规格审阅",
         "running": "执行中",
         "blocked": "阻塞",
+        "readyToShip": "可发布",
         "delivered": "已交付"
       }
     },
@@ -131,6 +132,26 @@
         "pending": "待处理",
         "needsChanges": "需修改",
         "blocked": "阻塞"
+      }
+    },
+    "learningMemory": {
+      "title": "学习记忆",
+      "summary": "当前 workspace 有 {count} 条可复用 learning",
+      "emptySummary": "暂无可复用 learning。",
+      "loading": "正在加载学习记忆。",
+      "empty": "尚未记录 learning。",
+      "top": "高价值 learning",
+      "stale": "待复用 learning",
+      "noStale": "暂无待复用 learning。",
+      "dismiss": "忽略",
+      "confidence": "{value}%",
+      "kind": {
+        "pattern": "模式",
+        "pitfall": "陷阱",
+        "decision": "决策",
+        "test_policy": "测试策略",
+        "ownership": "归属",
+        "security": "安全"
       }
     },
     "releaseReadiness": {
@@ -245,7 +266,16 @@
       "summary": "{count} 个人工决策项",
       "emptySummary": "当前没有等待人工审阅的事项。",
       "loading": "正在加载审阅收件箱。",
-      "empty": "没有审阅项。"
+      "empty": "没有审阅项。",
+      "groupCount": "{count} 项",
+      "gates": {
+        "product": "产品门禁",
+        "architecture": "架构门禁",
+        "code": "代码门禁",
+        "security": "安全门禁",
+        "release": "发布门禁",
+        "exception": "异常门禁"
+      }
     },
     "traceSummary": {
       "title": "追踪摘要",
@@ -387,6 +417,15 @@
       "previewTargetRepoLabel": "目标仓库",
       "previewAgentPathLabel": "推荐 Agent 路径",
       "previewTestPolicyLabel": "建议测试策略",
+      "previewLearningLabel": "相关 learning",
+      "learningKind": {
+        "pattern": "模式",
+        "pitfall": "陷阱",
+        "decision": "决策",
+        "test_policy": "测试策略",
+        "ownership": "归属",
+        "security": "安全"
+      },
       "agentPath": {
         "feature": "规划 Agent → 实现 Agent → 审阅 Agent",
         "bugfix": "恢复 Agent → 实现 Agent → 审阅 Agent",
@@ -533,17 +572,29 @@
       "workflowTitle": "工作流时间线",
       "workflowVersion": "v{version}",
       "reviewTitle": "审阅关卡",
+      "secondOpinionTitle": "二次审查",
       "releaseTitle": "发布关卡",
       "empty": "暂无交付控制数据。",
       "gate": "关卡：{gate}",
       "reviewer": "审阅者：{reviewer}",
       "findings": "{count} 个发现",
       "evidenceIds": "{count} 条证据链接",
+      "secondOpinionRoles": {
+        "primary": "主审",
+        "secondary": "复审"
+      },
+      "secondOpinion": {
+        "agreement": "共同发现",
+        "conflict": "冲突",
+        "primaryOnly": "仅主审",
+        "secondaryOnly": "仅复审"
+      },
       "releaseChecklist": {
         "specApproved": "规格已批准",
         "implementationEvidence": "实现证据",
         "testsPassed": "测试",
         "requiredReviewsPassed": "审阅",
+        "secondOpinionPassed": "二次审查",
         "browserQaPassed": "Browser QA",
         "docsUpdated": "文档",
         "prReady": "PR",
@@ -631,6 +682,20 @@
       "tested": "已测试",
       "reviewed": "已审阅",
       "annotated": "已标注"
+    },
+    "learningMemory": {
+      "title": "学习记忆",
+      "summary": "此 Loop 沉淀 {count} 条可复用 learning",
+      "confidence": "{value}% 置信度",
+      "evidence": "{count} 条证据链接",
+      "kind": {
+        "pattern": "模式",
+        "pitfall": "陷阱",
+        "decision": "决策",
+        "test_policy": "测试策略",
+        "ownership": "归属",
+        "security": "安全"
+      }
     },
     "reloop": {
       "title": "Re-loop",

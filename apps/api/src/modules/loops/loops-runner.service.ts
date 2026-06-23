@@ -3,7 +3,11 @@ import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import type { LoopRunShardTestsRequest, LoopTestRecord } from '@repo/contracts';
+import type {
+  LoopRunShardTestsRequest,
+  LoopRuntimeSecurityPolicySnapshot,
+  LoopTestRecord,
+} from '@repo/contracts';
 import { resolveAllowedTargetRepo } from './loops-path-policy.util';
 import { readLoopsRuntimeConfig } from './loops-runtime-config.util';
 
@@ -12,6 +16,9 @@ const OUTPUT_LIMIT = 12000;
 
 type CommandResult = LoopTestRecord['commands'][number];
 type Coverage = NonNullable<LoopTestRecord['coverage']>;
+type CommandPolicyDecision = { allowed: true } | { allowed: false; reason: string };
+
+const SHELL_CONTROL_OPERATOR_PATTERN = /(?:&&|\|\||[;|<>`]|[$][(]|\r|\n)/;
 
 @Injectable()
 export class LoopsRunnerService {
@@ -44,8 +51,9 @@ export class LoopsRunnerService {
     const results: CommandResult[] = [];
 
     for (const command of commands) {
-      if (!this.isAllowedCommand(command, config.tests.allowedCommands)) {
-        results.push(this.blockedCommand(command));
+      const policy = this.evaluateCommandPolicy(command, config.tests.allowedCommands);
+      if (!policy.allowed) {
+        results.push(this.blockedCommand(command, policy.reason));
         continue;
       }
       results.push(await this.runCommand(command, input.cwd));
@@ -63,6 +71,12 @@ export class LoopsRunnerService {
     ];
     const status = failed.length === 0 ? 'TEST-PASS' : 'TEST-FAIL';
     const created = new Date().toISOString();
+    const runtimeSecurityPolicy = this.buildPolicySnapshot(
+      input.shardId,
+      input.round,
+      config.tests.allowedCommands,
+      created,
+    );
 
     return {
       id: `test-record-${input.shardId}-r${input.round}-${Date.now()}`,
@@ -79,26 +93,74 @@ export class LoopsRunnerService {
         failedTests.length > 0
           ? ['检查失败命令输出与覆盖率阈值，修复实现或补齐测试环境后重新运行 shard tests。']
           : [],
+      runtimeSecurityPolicy,
       created,
     };
   }
 
-  private isAllowedCommand(command: string, allowedCommands: string[]) {
+  private buildPolicySnapshot(
+    shardId: string,
+    round: number,
+    allowedCommands: string[],
+    capturedAt: string,
+  ): LoopRuntimeSecurityPolicySnapshot {
+    return {
+      id: `runtime-security-${shardId}-r${round}`,
+      mode: 'test-command',
+      shell: {
+        strategy: 'allowlist',
+        allowedCommands,
+        blockedOperators: ['&&', '||', ';', '|', '<', '>', '`', '$(', 'newline'],
+      },
+      network: {
+        strategy: 'deny-by-default',
+        status: 'not-requested',
+      },
+      write: {
+        strategy: 'workspace-scoped',
+        scope: 'target-repo',
+      },
+      approvals: {
+        override: 'not-supported',
+        requiredFor: ['shell-control-operator', 'command-prefix-outside-allowlist'],
+      },
+      capturedAt,
+    };
+  }
+
+  private evaluateCommandPolicy(command: string, allowedCommands: string[]): CommandPolicyDecision {
     const normalized = command.trim();
-    return allowedCommands.some((allowed) => {
+    if (SHELL_CONTROL_OPERATOR_PATTERN.test(normalized)) {
+      return {
+        allowed: false,
+        reason:
+          'Command is blocked by runtime security policy: shell control operators are not allowed.',
+      };
+    }
+    const prefixAllowed = allowedCommands.some((allowed) => {
       const prefix = allowed.trim();
       return normalized === prefix || normalized.startsWith(`${prefix} `);
     });
+    if (!prefixAllowed) {
+      return {
+        allowed: false,
+        reason: 'Command is not allowed by .loops/config.yaml tests.allowed_commands.',
+      };
+    }
+    return { allowed: true };
   }
 
-  private blockedCommand(command: string): CommandResult {
-    this.log('warn', '[Loops] blocked test command not in allowed_commands', { command });
+  private blockedCommand(command: string, reason: string): CommandResult {
+    this.log('warn', '[Loops] blocked test command by runtime security policy', {
+      command,
+      reason,
+    });
     return {
       command,
       exitCode: 126,
       durationMs: 0,
       stdout: '',
-      stderr: 'Command is not allowed by .loops/config.yaml tests.allowed_commands.',
+      stderr: reason,
     };
   }
 

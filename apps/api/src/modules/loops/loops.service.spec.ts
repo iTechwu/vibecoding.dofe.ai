@@ -414,6 +414,13 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     });
     let detail = await service.getIssue(created.issue.id);
     expect(detail.issue.id).toBe(created.issue.id);
+    expect(detail.workflowRecipe).toMatchObject({
+      source: 'loop-snapshot',
+      capturedAt: created.issue.created,
+      steps: expect.arrayContaining([
+        expect.objectContaining({ kind: 'spec_review', status: 'current' }),
+      ]),
+    });
     expect(detail.evidenceArtifacts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: 'raw-payload', status: 'present' }),
@@ -448,6 +455,10 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
         expect.objectContaining({ kind: 'release_gate', owner: 'codex', status: 'passed' }),
       ]),
     );
+    expect(detail.workflowRecipe).toMatchObject({
+      source: 'loop-snapshot',
+      capturedAt: created.issue.created,
+    });
     expect(detail.reviewGates).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: 'product', status: 'passed' }),
@@ -462,7 +473,25 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
         implementationEvidence: true,
         testsPassed: true,
         requiredReviewsPassed: true,
+        secondOpinionPassed: true,
         browserQaPassed: true,
+      }),
+    });
+    expect(detail.secondOpinion).toMatchObject({
+      status: 'not_required',
+      requiredForRelease: false,
+      primary: expect.objectContaining({
+        reviewer: 'codex',
+        status: 'passed',
+        evidenceIds: expect.arrayContaining([expect.stringContaining('global-review')]),
+      }),
+      secondary: expect.objectContaining({
+        reviewer: 'claude-code',
+        status: 'pending',
+      }),
+      comparison: expect.objectContaining({
+        conflictCount: 0,
+        secondaryOnlyCount: 0,
       }),
     });
     expect(detail.evidenceArtifacts).toEqual(
@@ -476,6 +505,19 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
           kind: 'convergence-pr',
           status: 'present',
           summary: expect.stringContaining('Convergence package references'),
+        }),
+      ]),
+    );
+    expect(detail.learnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'decision',
+          summary: expect.stringContaining('Loop finalized with global verdict PASS'),
+          evidenceIds: expect.arrayContaining([`${created.issue.id}-convergence-pr`]),
+        }),
+        expect.objectContaining({
+          kind: 'test_policy',
+          evidenceIds: expect.arrayContaining([expect.stringContaining('test-record')]),
         }),
       ]),
     );

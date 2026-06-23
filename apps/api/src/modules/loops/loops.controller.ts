@@ -318,6 +318,20 @@ export class LoopsController {
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.governLearning)
+  async governLearning(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.governLearning, async ({ params, body }) => {
+      const result = await this.loopsService.governLearning(params.learningId, body);
+      await this.auditLog(req, 'UPDATE', 'loop_learning', params.learningId, 'governLearning', {
+        action: body.action,
+        targetLearningId: body.targetLearningId,
+        reason: body.reason,
+      });
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.upsertWorkspace)
   async upsertWorkspace(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.upsertWorkspace, async ({ body }) => {

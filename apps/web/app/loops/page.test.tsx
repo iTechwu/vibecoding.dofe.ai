@@ -438,6 +438,29 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
       body: {
         data: {
           current: 'default',
+          recentLearnings: [
+            {
+              id: 'learning-test-policy',
+              workspaceId: 'default',
+              repo: '/repo/app',
+              kind: 'test_policy',
+              summary: 'Run unit and type-check before dashboard changes.',
+              evidenceIds: ['test-record-1'],
+              confidence: 0.92,
+              createdAt: '2026-06-23T00:00:00.000Z',
+            },
+            {
+              id: 'learning-ownership',
+              workspaceId: 'default',
+              repo: '/repo/docs',
+              kind: 'ownership',
+              summary: 'Docs changes usually touch docs/0623/gstack.',
+              evidenceIds: ['impl-1'],
+              confidence: 0.76,
+              lastUsedAt: '2026-06-23T00:30:00.000Z',
+              createdAt: '2026-06-22T00:00:00.000Z',
+            },
+          ],
           workspaces: [
             {
               workspaceId: 'default',
@@ -586,6 +609,15 @@ describe('LoopsPage', () => {
     expect(screen.getByText('Product')).toBeInTheDocument();
     expect(screen.getByText('Architecture')).toBeInTheDocument();
     expect(screen.getByText('Security')).toBeInTheDocument();
+    expect(screen.getByText('Learning Memory')).toBeInTheDocument();
+    expect(screen.getByText('2 reusable learnings in this workspace')).toBeInTheDocument();
+    expect(screen.getByText('Top learnings')).toBeInTheDocument();
+    expect(screen.getByText('Stale learnings')).toBeInTheDocument();
+    expect(screen.getAllByText('Test Policy').length).toBeGreaterThan(0);
+    expect(screen.getByText('92%')).toBeInTheDocument();
+    expect(
+      screen.getAllByText('Run unit and type-check before dashboard changes.').length,
+    ).toBeGreaterThan(0);
     expect(screen.getByText('1 specs need decision')).toBeInTheDocument();
     expect(screen.getByText('1 blocked by exception')).toBeInTheDocument();
     expect(screen.getByText('Security review planned')).toBeInTheDocument();

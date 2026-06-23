@@ -270,6 +270,16 @@ export function useUpsertLoopsWorkspace() {
   return tsRestClient.loops.upsertWorkspace.useMutation({ onSuccess: invalidate });
 }
 
+/** Dismiss or merge a reusable Loop learning memory item. */
+export function useGovernLoopLearning() {
+  const queryClient = useQueryClient();
+  return tsRestClient.loops.governLearning.useMutation({
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: loopsKeys.workspaces() });
+    },
+  });
+}
+
 /** Probe local CLI + Docker runtimes for a workspace (Retry detection). */
 export function useDetectLoopsRuntime() {
   const invalidate = useInvalidateWorkspaceRuntime();

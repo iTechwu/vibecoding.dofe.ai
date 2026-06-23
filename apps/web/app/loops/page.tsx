@@ -14,6 +14,7 @@ import {
   Inbox,
   GitBranch,
   KanbanSquare,
+  Lightbulb,
   ListChecks,
   Play,
   Plus,
@@ -37,6 +38,7 @@ import {
   useLoopsMetrics,
   useLoopsNotifications,
   useLoopsWorkspaces,
+  useGovernLoopLearning,
   usePullLoopsImage,
   useRetryLoopsAgentRuntime,
   useUpsertLoopsWorkspace,
@@ -56,6 +58,7 @@ import {
   buildReleaseReadiness,
   buildReviewGatePortfolio,
   buildReviewInbox,
+  buildReviewInboxGroups,
   buildRiskQueue,
   buildTriggerPortfolio,
   buildWorkflowRecipe,
@@ -161,12 +164,14 @@ export default function LoopsPage() {
   const notificationsQuery = useLoopsNotifications({ limit: 8 });
   const resume = useResumeLoops();
   const workspacesQuery = useLoopsWorkspaces();
+  const governLearning = useGovernLoopLearning();
   const upsertWorkspace = useUpsertLoopsWorkspace();
   const pullImage = usePullLoopsImage();
   const retryDetection = useRetryLoopsAgentRuntime();
 
   const workspaces = workspacesQuery.data?.body?.data?.workspaces ?? [];
   const currentWorkspaceId = workspacesQuery.data?.body?.data?.current ?? '';
+  const recentLearnings = workspacesQuery.data?.body?.data?.recentLearnings ?? [];
 
   const data = listQuery.data?.body.data;
   const doctor = doctorQuery.data?.body.data;
@@ -213,10 +218,15 @@ export default function LoopsPage() {
   const providerProfile = buildProviderProfile(agentToolRegistry, agentRuntime);
   const actionQueue = metrics?.actionQueue ?? [];
   const reviewInbox = buildReviewInbox(actionQueue, notifications?.notifications, locale);
+  const reviewInboxGroups = buildReviewInboxGroups(reviewInbox);
   const loopBoard = buildLoopBoard(fallbackSummary.items, cost);
   const workflowRecipe = buildWorkflowRecipe(fallbackSummary.items, cost);
   const reviewGatePortfolio = buildReviewGatePortfolio(fallbackSummary.items, cost);
   const releaseReadiness = buildReleaseReadiness(fallbackSummary.items, cost);
+  const topLearnings = [...recentLearnings]
+    .sort((a, b) => b.confidence - a.confidence || b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 3);
+  const staleLearnings = recentLearnings.filter((learning) => !learning.lastUsedAt).slice(0, 3);
   const triggerPortfolio = buildTriggerPortfolio(fallbackSummary.items);
   const repoContextMap = buildRepoContextMap(fallbackSummary.items, cost);
   const exceptionCenter = buildExceptionCenter(fallbackSummary.items, {
@@ -706,7 +716,7 @@ export default function LoopsPage() {
           {!data ? (
             <EmptyLine>{t('loopBoard.loading')}</EmptyLine>
           ) : (
-            <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-5">
+            <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-6">
               {loopBoard.map((column) => (
                 <div className="min-w-0 rounded-md border bg-muted/20 p-3" key={column.id}>
                   <div className="flex items-center justify-between gap-2">
@@ -1174,6 +1184,96 @@ export default function LoopsPage() {
           <div className="rounded-lg border p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
+                <h2 className="text-sm font-semibold">{t('learningMemory.title')}</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {recentLearnings.length
+                    ? t('learningMemory.summary', { count: recentLearnings.length })
+                    : t('learningMemory.emptySummary')}
+                </p>
+              </div>
+              <Lightbulb className="size-4 text-muted-foreground" />
+            </div>
+            {workspacesQuery.isLoading ? (
+              <EmptyLine>{t('learningMemory.loading')}</EmptyLine>
+            ) : recentLearnings.length === 0 ? (
+              <EmptyLine>{t('learningMemory.empty')}</EmptyLine>
+            ) : (
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <h3 className="text-xs font-medium text-muted-foreground">
+                    {t('learningMemory.top')}
+                  </h3>
+                  <div className="mt-2 flex flex-col gap-2">
+                    {topLearnings.map((learning) => (
+                      <div className="rounded-md border p-3 text-xs" key={learning.id}>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium">
+                            {t(`learningMemory.kind.${learning.kind}`)}
+                          </span>
+                          <span className="text-muted-foreground">
+                            {t('learningMemory.confidence', {
+                              value: Math.round(learning.confidence * 100),
+                            })}
+                          </span>
+                        </div>
+                        <p className="mt-2 line-clamp-2">{learning.summary}</p>
+                        {learning.repo ? (
+                          <p className="mt-2 truncate text-muted-foreground">{learning.repo}</p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-xs font-medium text-muted-foreground">
+                    {t('learningMemory.stale')}
+                  </h3>
+                  <div className="mt-2 flex flex-col gap-2">
+                    {staleLearnings.length === 0 ? (
+                      <p className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
+                        {t('learningMemory.noStale')}
+                      </p>
+                    ) : (
+                      staleLearnings.map((learning) => (
+                        <div
+                          className="rounded-md border bg-muted/20 p-3 text-xs"
+                          key={learning.id}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-medium">
+                              {t(`learningMemory.kind.${learning.kind}`)}
+                            </p>
+                            <button
+                              className="rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-muted/30 disabled:opacity-60"
+                              disabled={governLearning.isPending}
+                              onClick={() =>
+                                governLearning.mutate({
+                                  params: { learningId: learning.id },
+                                  body: {
+                                    action: 'dismiss',
+                                    actor: 'dashboard',
+                                    reason: 'Dismissed from dashboard stale learning queue',
+                                  },
+                                })
+                              }
+                              type="button"
+                            >
+                              {t('learningMemory.dismiss')}
+                            </button>
+                          </div>
+                          <p className="mt-2 line-clamp-2">{learning.summary}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg border p-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
                 <h2 className="text-sm font-semibold">{t('actionQueue.title')}</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {actionQueue.length
@@ -1227,18 +1327,28 @@ export default function LoopsPage() {
               ) : reviewInbox.length === 0 ? (
                 <EmptyLine>{t('reviewInbox.empty')}</EmptyLine>
               ) : (
-                reviewInbox.map((item) => (
-                  <Link
-                    className={`rounded-md border p-3 text-sm transition hover:opacity-80 ${riskClass(item.priority)}`}
-                    href={item.href}
-                    key={item.id}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="truncate font-medium">{item.title}</span>
-                      <span className="shrink-0 text-xs">{item.label}</span>
+                reviewInboxGroups.map((group) => (
+                  <div className="flex flex-col gap-2" key={group.gateKind}>
+                    <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">
+                        {t(`reviewInbox.gates.${group.gateKind}`)}
+                      </span>
+                      <span>{t('reviewInbox.groupCount', { count: group.count })}</span>
                     </div>
-                    <p className="mt-1 truncate text-xs opacity-80">{item.meta}</p>
-                  </Link>
+                    {group.items.map((item) => (
+                      <Link
+                        className={`rounded-md border p-3 text-sm transition hover:opacity-80 ${riskClass(item.priority)}`}
+                        href={item.href}
+                        key={item.id}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="truncate font-medium">{item.title}</span>
+                          <span className="shrink-0 text-xs">{item.label}</span>
+                        </div>
+                        <p className="mt-1 truncate text-xs opacity-80">{item.meta}</p>
+                      </Link>
+                    ))}
+                  </div>
                 ))
               )}
             </div>

@@ -208,6 +208,18 @@ describe('Schemas', () => {
       it('should validate workspace rules summaries', () => {
         const result = schemas.LoopWorkspacesResponseSchema.safeParse({
           current: 'default',
+          recentLearnings: [
+            {
+              id: 'learning-1',
+              workspaceId: 'default',
+              repo: '/repo',
+              kind: 'test_policy',
+              summary: 'Run focused tests before type-check.',
+              evidenceIds: ['test-record-1'],
+              confidence: 0.85,
+              createdAt: '2026-06-23T00:00:00.000Z',
+            },
+          ],
           workspaces: [
             {
               workspaceId: 'default',
@@ -396,6 +408,7 @@ describe('Schemas', () => {
             implementationEvidence: true,
             testsPassed: true,
             requiredReviewsPassed: true,
+            secondOpinionPassed: true,
             browserQaPassed: false,
             docsUpdated: true,
             prReady: true,
@@ -408,6 +421,58 @@ describe('Schemas', () => {
         expect(workflow.success).toBe(true);
         expect(reviewGate.success).toBe(true);
         expect(releaseGate.success).toBe(true);
+        expect(
+          schemas.LoopSecondOpinionSchema.safeParse({
+            id: 'issue-1-second-opinion',
+            status: 'not_required',
+            primary: {
+              role: 'primary',
+              reviewer: 'codex',
+              status: 'passed',
+              findingsCount: 0,
+              evidenceIds: ['global-review-1'],
+            },
+            secondary: {
+              role: 'secondary',
+              reviewer: 'claude-code',
+              status: 'pending',
+              findingsCount: 0,
+              evidenceIds: [],
+            },
+            comparison: {
+              agreementCount: 0,
+              primaryOnlyCount: 0,
+              secondaryOnlyCount: 0,
+              conflictCount: 0,
+            },
+            requiredForRelease: false,
+            updated: '2026-06-23T00:00:00.000Z',
+          }).success,
+        ).toBe(true);
+        expect(
+          schemas.LoopRuntimeSecurityPolicySnapshotSchema.safeParse({
+            id: 'runtime-security-shard-1-r1',
+            mode: 'test-command',
+            shell: {
+              strategy: 'allowlist',
+              allowedCommands: ['pnpm test'],
+              blockedOperators: ['&&', '||', ';', '|', '<', '>', '`', '$(', 'newline'],
+            },
+            network: {
+              strategy: 'deny-by-default',
+              status: 'not-requested',
+            },
+            write: {
+              strategy: 'workspace-scoped',
+              scope: 'target-repo',
+            },
+            approvals: {
+              override: 'not-supported',
+              requiredFor: ['shell-control-operator'],
+            },
+            capturedAt: '2026-06-23T00:00:00.000Z',
+          }).success,
+        ).toBe(true);
         expect(
           schemas.LoopWorkflowStepSchema.safeParse({
             id: 'bad-host',

@@ -12,6 +12,7 @@ import {
   FileText,
   GitPullRequest,
   Info,
+  Lightbulb,
   ListChecks,
   Pause,
   Play,
@@ -777,6 +778,7 @@ export default function LoopIssueDetailPage() {
       }),
     },
   ];
+  const learnings = detail.learnings ?? [];
   const traceTimeline = buildTraceTimeline(detail.logs, locale);
   const traceScopeSummary = buildTraceScopeSummary(detail.logs, locale);
   const resumeCheckpoints = buildResumeCheckpoints(detail, t, locale);
@@ -1052,6 +1054,73 @@ export default function LoopIssueDetailPage() {
                     )}
                   </div>
                 </div>
+
+                {detail.secondOpinion ? (
+                  <div>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <h3 className="text-sm font-semibold">
+                        {t('deliveryControls.secondOpinionTitle')}
+                      </h3>
+                      <StatusBadge className={deliveryStatusClass(detail.secondOpinion.status)}>
+                        {formatLoopStatus(detail.secondOpinion.status, locale)}
+                      </StatusBadge>
+                    </div>
+                    <div className="mt-3 rounded-md border bg-muted/20 p-3">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                        {[detail.secondOpinion.primary, detail.secondOpinion.secondary].map(
+                          (reviewer) => (
+                            <div
+                              className="rounded-md border bg-background p-3 text-xs"
+                              key={reviewer.role}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-medium">
+                                  {t(`deliveryControls.secondOpinionRoles.${reviewer.role}`)}
+                                </span>
+                                <span className="rounded-md border bg-muted/40 px-2 py-0.5">
+                                  {formatLoopStatus(reviewer.status, locale)}
+                                </span>
+                              </div>
+                              <p className="mt-2 truncate opacity-80">
+                                {t('deliveryControls.reviewer', {
+                                  reviewer: formatAgentName(reviewer.reviewer),
+                                })}
+                              </p>
+                              <p className="mt-1 truncate opacity-80">
+                                {t('deliveryControls.findings', {
+                                  count: reviewer.findingsCount,
+                                })}
+                              </p>
+                              {reviewer.summary ? (
+                                <p className="mt-2 line-clamp-2 text-muted-foreground">
+                                  {reviewer.summary}
+                                </p>
+                              ) : null}
+                            </div>
+                          ),
+                        )}
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                        <MetricTile
+                          label={t('deliveryControls.secondOpinion.agreement')}
+                          value={detail.secondOpinion.comparison.agreementCount}
+                        />
+                        <MetricTile
+                          label={t('deliveryControls.secondOpinion.conflict')}
+                          value={detail.secondOpinion.comparison.conflictCount}
+                        />
+                        <MetricTile
+                          label={t('deliveryControls.secondOpinion.primaryOnly')}
+                          value={detail.secondOpinion.comparison.primaryOnlyCount}
+                        />
+                        <MetricTile
+                          label={t('deliveryControls.secondOpinion.secondaryOnly')}
+                          value={detail.secondOpinion.comparison.secondaryOnlyCount}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
 
                 <div>
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1770,6 +1839,40 @@ export default function LoopIssueDetailPage() {
                 ))}
               </div>
             </SectionCard>
+
+            {learnings.length > 0 ? (
+              <SectionCard
+                icon={Lightbulb}
+                meta={t('learningMemory.summary', { count: learnings.length })}
+                title={t('learningMemory.title')}
+              >
+                <div className="flex flex-col gap-3">
+                  {learnings.map((learning) => (
+                    <div className="rounded-md border bg-muted/20 p-3" key={learning.id}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <StatusBadge>{t(`learningMemory.kind.${learning.kind}`)}</StatusBadge>
+                        <span className="text-xs text-muted-foreground">
+                          {t('learningMemory.confidence', {
+                            value: Math.round(learning.confidence * 100),
+                          })}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-sm">{learning.summary}</p>
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                        <span>
+                          {t('learningMemory.evidence', {
+                            count: learning.evidenceIds.length,
+                          })}
+                        </span>
+                        {learning.repo ? (
+                          <span className="max-w-full truncate">{learning.repo}</span>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </SectionCard>
+            ) : null}
 
             <SectionCard
               icon={RotateCcw}
