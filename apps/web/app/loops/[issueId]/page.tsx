@@ -30,7 +30,12 @@ import type {
   LoopSpecHistoryItem,
 } from '@repo/contracts';
 import { useFormState } from './use-loop-operations';
-import { useLoopIssue, useLoopsAgentRuntime } from '@/lib/api/contracts/hooks';
+import {
+  useLoopIssue,
+  useLoopsAgentRuntime,
+  useLoopDeliveryEvidence,
+} from '@/lib/api/contracts/hooks';
+import { buildAgentHandoffTimeline, type WorkforcePersonaId } from '../loops-dashboard-model';
 import {
   formatLoopEvent,
   formatLoopLabel,
@@ -571,6 +576,25 @@ function formatAgentName(agent?: string | null) {
   return 'Unknown';
 }
 
+const DETAIL_PERSONA_LABELS: Record<WorkforcePersonaId, string> = {
+  'intake-analyst': 'Intake Analyst',
+  'spec-writer': 'Spec Writer',
+  'human-gatekeeper': 'Human Gatekeeper',
+  'work-planner': 'Work Planner',
+  builder: 'Builder',
+  'test-runner': 'Test Runner',
+  'code-reviewer': 'Code Reviewer',
+  'release-reviewer': 'Release Reviewer',
+  'evidence-curator': 'Evidence Curator',
+};
+
+function handoffBackendLabel(backend: 'codex-cli' | 'claude-code-cli' | 'human' | 'system') {
+  if (backend === 'codex-cli') return 'Codex CLI';
+  if (backend === 'claude-code-cli') return 'Claude Code CLI';
+  if (backend === 'human') return 'Human';
+  return 'System';
+}
+
 function getActiveShard(detail: LoopDetail) {
   return (
     detail.shards.find((shard) =>
@@ -705,8 +729,10 @@ export default function LoopIssueDetailPage() {
   const { issueId } = useParams<{ issueId: string }>();
   const detailQuery = useLoopIssue(issueId);
   const agentRuntimeQuery = useLoopsAgentRuntime();
+  const deliveryEvidenceQuery = useLoopDeliveryEvidence(issueId);
   const detail = detailQuery.data?.body.data;
   const agentRuntime = agentRuntimeQuery.data?.body.data as LoopAgentRuntimeResponse | undefined;
+  const deliveryEvidence = deliveryEvidenceQuery.data?.body.data;
   const ops = useFormState(issueId);
 
   if (!detail) {
@@ -824,6 +850,7 @@ export default function LoopIssueDetailPage() {
     0,
     FLOW_PHASES.findIndex((phase) => phase === detail.state.phase),
   );
+  const handoffTimeline = buildAgentHandoffTimeline(detail);
 
   return (
     <main className="min-h-dvh bg-muted/20 px-4 py-5 md:px-8">
@@ -871,6 +898,57 @@ export default function LoopIssueDetailPage() {
             </div>
           </div>
         </header>
+
+        <SectionCard
+          icon={Bot}
+          meta={
+            handoffTimeline.currentPersona
+              ? t('handoff.summary', {
+                  current: DETAIL_PERSONA_LABELS[handoffTimeline.currentPersona],
+                  next: handoffTimeline.nextPersona
+                    ? DETAIL_PERSONA_LABELS[handoffTimeline.nextPersona]
+                    : t('nextAction.closed.label'),
+                })
+              : t('handoff.noCurrent')
+          }
+          title={t('handoff.title')}
+        >
+          {handoffTimeline.blocked ? (
+            <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100">
+              {t('handoff.blocked')}
+            </p>
+          ) : null}
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-9">
+            {handoffTimeline.steps.map((step) => {
+              const isCurrent = step.state === 'current';
+              return (
+                <div
+                  className={`rounded-md border p-2 text-xs ${deliveryStatusClass(
+                    step.state === 'done'
+                      ? 'passed'
+                      : isCurrent
+                        ? 'current'
+                        : step.state === 'blocked'
+                          ? 'blocked'
+                          : step.state === 'next'
+                            ? 'needs_changes'
+                            : 'pending',
+                  )}`}
+                  key={step.persona}
+                >
+                  <p className="truncate font-medium">{DETAIL_PERSONA_LABELS[step.persona]}</p>
+                  <p className="mt-1 truncate opacity-80">
+                    {handoffBackendLabel(step.runtimeBackend)}
+                    {step.humanGate ? ` · ${t('handoff.humanGate')}` : ''}
+                  </p>
+                  {step.evidence ? (
+                    <p className="mt-1 truncate font-medium">{step.evidence}</p>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </SectionCard>
 
         <SectionCard
           icon={Bot}
@@ -1058,6 +1136,27 @@ export default function LoopIssueDetailPage() {
                           defaultValue="page-load"
                           name="checkedFlows"
                         />
+                      </label>
+                      <label className="mt-2 block">
+                        <span className="text-muted-foreground">
+                          {t('deliveryControls.browserQa.viewports')}
+                        </span>
+                        <select
+                          className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                          defaultValue="desktop"
+                          name="viewports"
+                        >
+                          <option value="desktop">
+                            {t('deliveryControls.browserQa.viewportDesktop')}
+                          </option>
+                          <option value="tablet">
+                            {t('deliveryControls.browserQa.viewportTablet')}
+                          </option>
+                          <option value="mobile">
+                            {t('deliveryControls.browserQa.viewportMobile')}
+                          </option>
+                          <option value="all">{t('deliveryControls.browserQa.viewportAll')}</option>
+                        </select>
                       </label>
                       <label className="mt-2 block">
                         <span className="text-muted-foreground">
@@ -1366,6 +1465,34 @@ export default function LoopIssueDetailPage() {
                           value={detail.secondOpinion.comparison.secondaryOnlyCount}
                         />
                       </div>
+                      {detail.secondOpinion.comparison.conflictCount > 0 ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            className="inline-flex h-8 items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-950 hover:bg-emerald-100 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100 disabled:opacity-50"
+                            disabled={ops.operations.isPending}
+                            onClick={ops.acceptPrimaryFindings}
+                            type="button"
+                          >
+                            {t('deliveryControls.secondOpinion.acceptPrimary')}
+                          </button>
+                          <button
+                            className="inline-flex h-8 items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-3 text-xs font-medium text-sky-950 hover:bg-sky-100 dark:border-sky-900/70 dark:bg-sky-950/20 dark:text-sky-100 disabled:opacity-50"
+                            disabled={ops.operations.isPending}
+                            onClick={ops.acceptSecondaryFindings}
+                            type="button"
+                          >
+                            {t('deliveryControls.secondOpinion.acceptSecondary')}
+                          </button>
+                          <button
+                            className="inline-flex h-8 items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-3 text-xs font-medium text-amber-950 hover:bg-amber-100 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100 disabled:opacity-50"
+                            disabled={ops.operations.isPending}
+                            onClick={() => ops.waiveSecondOpinion()}
+                            type="button"
+                          >
+                            {t('deliveryControls.secondOpinion.waive')}
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 ) : null}
@@ -2086,6 +2213,114 @@ export default function LoopIssueDetailPage() {
                   />
                 ))}
               </div>
+            </SectionCard>
+
+            <SectionCard
+              icon={GitPullRequest}
+              meta={
+                deliveryEvidence
+                  ? deliveryEvidence.prReady
+                    ? t('deliveryEvidence.prReady')
+                    : t('deliveryEvidence.prNotReady')
+                  : t('deliveryEvidence.loading')
+              }
+              title={t('deliveryEvidence.title')}
+            >
+              {!deliveryEvidence ? (
+                <p className="text-sm text-muted-foreground">{t('deliveryEvidence.loading')}</p>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <div className="rounded-md bg-muted/40 p-3">
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-md bg-background p-2">
+                        <p className="text-muted-foreground">
+                          {t('deliveryEvidence.globalVerdict')}
+                        </p>
+                        <p className="mt-1 font-medium">{deliveryEvidence.globalVerdict}</p>
+                      </div>
+                      <div className="rounded-md bg-background p-2">
+                        <p className="text-muted-foreground">{t('deliveryEvidence.spec')}</p>
+                        <p className="mt-1 truncate font-medium">{deliveryEvidence.spec.summary}</p>
+                      </div>
+                      <div className="rounded-md bg-background p-2">
+                        <p className="text-muted-foreground">
+                          {t('deliveryEvidence.workPackages')}
+                        </p>
+                        <p className="mt-1 font-medium">
+                          {t('deliveryEvidence.workPackageCount', {
+                            count: deliveryEvidence.workPackages.length,
+                          })}
+                        </p>
+                      </div>
+                      <div className="rounded-md bg-background p-2">
+                        <p className="text-muted-foreground">{t('deliveryEvidence.tests')}</p>
+                        <p className="mt-1 font-medium">
+                          {t('deliveryEvidence.testsSummary', deliveryEvidence.tests)}
+                        </p>
+                      </div>
+                      <div className="rounded-md bg-background p-2">
+                        <p className="text-muted-foreground">{t('deliveryEvidence.reviews')}</p>
+                        <p className="mt-1 font-medium">
+                          {t('deliveryEvidence.reviewsSummary', deliveryEvidence.reviews)}
+                        </p>
+                      </div>
+                      <div className="rounded-md bg-background p-2">
+                        <p className="text-muted-foreground">{t('deliveryEvidence.cost')}</p>
+                        <p className="mt-1 font-medium">
+                          {t('deliveryEvidence.costSummary', {
+                            ...deliveryEvidence.cost,
+                            budget: deliveryEvidence.cost.budget,
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  {deliveryEvidence.risks.length > 0 ? (
+                    <div className="flex flex-col gap-2">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        {t('deliveryEvidence.risks')}
+                      </p>
+                      {deliveryEvidence.risks.slice(0, 3).map((risk, index) => (
+                        <div
+                          className={`rounded-md border px-3 py-2 text-xs ${
+                            risk.severity === 'critical'
+                              ? 'border-red-200 bg-red-50 text-red-950 dark:border-red-900/70 dark:bg-red-950/20 dark:text-red-100'
+                              : 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100'
+                          }`}
+                          key={`risk-${index}`}
+                        >
+                          {risk.description}
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="rounded-md border bg-muted/20 p-3">
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="font-medium">{t('deliveryEvidence.prStatus')}</span>
+                      <span className="rounded-md border bg-background px-2 py-1">
+                        {deliveryEvidence.prStatus}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {t('deliveryEvidence.prComment')}
+                    </p>
+                    <pre className="mt-2 max-h-32 overflow-auto rounded-md border bg-background p-3 text-xs leading-5 whitespace-pre-wrap">
+                      {deliveryEvidence.markdown.slice(0, 600)}
+                    </pre>
+                  </div>
+                  {detail.convergencePr?.url ? (
+                    <a
+                      className="inline-flex items-center justify-center gap-2 rounded-md border bg-background px-3 py-2 text-xs font-medium hover:bg-muted/30"
+                      href={detail.convergencePr.url}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      <GitPullRequest className="size-3" />
+                      {t('deliveryEvidence.openPr')}
+                    </a>
+                  ) : null}
+                </div>
+              )}
             </SectionCard>
 
             {learnings.length > 0 ? (

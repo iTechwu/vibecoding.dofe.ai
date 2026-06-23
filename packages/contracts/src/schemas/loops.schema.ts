@@ -376,6 +376,16 @@ export const LoopBrowserQaRequestSchema = z.object({
   checkedFlows: z.array(z.string().trim().min(1)).default(['page-load']),
   notes: z.string().trim().optional(),
   authSessionRef: z.string().trim().min(1).optional(),
+  /** gstack/0 P1-3: Configurable viewports for multi-viewport visual regression. */
+  viewports: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1),
+        width: z.number().int().positive(),
+        height: z.number().int().positive(),
+      }),
+    )
+    .default([{ name: 'desktop', width: 1440, height: 900 }]),
 });
 
 export const LoopBrowserQaReportSchema = z.object({
@@ -396,6 +406,23 @@ export const LoopBrowserQaReportSchema = z.object({
         status: z.enum(['baseline-created', 'matched', 'changed']),
         changedPixels: z.number().int().nonnegative().optional(),
         label: z.string(),
+        /** gstack/0 P1-3: Viewport identity for multi-viewport regression. */
+        viewport: z
+          .object({
+            name: z.string(),
+            width: z.number().int().positive(),
+            height: z.number().int().positive(),
+          })
+          .optional(),
+      }),
+    )
+    .optional(),
+  viewports: z
+    .array(
+      z.object({
+        name: z.string(),
+        width: z.number().int().positive(),
+        height: z.number().int().positive(),
       }),
     )
     .optional(),
@@ -889,6 +916,18 @@ export const LoopDeliveryGovernanceSchema = z.object({
       updated: z.string(),
     })
     .optional(),
+  secondOpinionResolutions: z
+    .array(
+      z.object({
+        id: z.string(),
+        resolution: z.enum(['accept-primary', 'accept-secondary', 'waive', 'request-changes']),
+        actor: z.string().trim().min(1),
+        reason: z.string().trim().min(1),
+        conflictFingerprint: z.string().trim().min(1).optional(),
+        updated: z.string(),
+      }),
+    )
+    .default([]),
   releaseCanary: z
     .object({
       status: z.enum(['not_run', 'pending', 'passed', 'failed']),
@@ -980,6 +1019,13 @@ export const LoopDeliveryGovernanceRequestSchema = z.discriminatedUnion('action'
     autoMergeApproval: z.enum(['manual-only', 'approval-required']),
     actor: z.string().trim().min(1).default('human'),
     reason: z.string().trim().optional(),
+  }),
+  z.object({
+    action: z.literal('resolve-second-opinion-conflict'),
+    resolution: z.enum(['accept-primary', 'accept-secondary', 'waive', 'request-changes']),
+    conflictFingerprint: z.string().trim().min(1).optional(),
+    actor: z.string().trim().min(1).default('human'),
+    reason: z.string().trim().min(1),
   }),
 ]);
 
@@ -1550,3 +1596,228 @@ export type PullLoopImageResponse = z.infer<typeof PullLoopImageResponseSchema>;
 export type LoopSimpleIssueTemplate = z.infer<typeof LoopSimpleIssueTemplateSchema>;
 export type CreateLoopIssueSimpleRequest = z.infer<typeof CreateLoopIssueSimpleRequestSchema>;
 export type LoopSimpleIssuePreview = z.infer<typeof LoopSimpleIssuePreviewSchema>;
+
+// ============================================================================
+// Delivery Evidence (P0-4, 0623 · CrewAI gap 8). A derived, exportable summary
+// of one loop's spec, work packages, tests, reviews, risks, cost and global
+// verdict, plus a pre-formatted markdown body for PR comments. v1 is derived
+// read-only from existing LoopDetail data; no new persistence is required.
+// Runtime execution still sits on Codex CLI / Cluade Code CLI.
+// ============================================================================
+export const LoopDeliveryEvidenceWorkPackageSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.string(),
+  files: z.array(z.string()).default([]),
+  tests: z.string(),
+  review: z.string(),
+});
+
+export const LoopDeliveryEvidenceSchema = z.object({
+  issueId: z.string(),
+  generatedAt: z.string(),
+  spec: z.object({
+    version: z.string(),
+    status: z.string(),
+    summary: z.string(),
+  }),
+  workPackages: z.array(LoopDeliveryEvidenceWorkPackageSchema).default([]),
+  tests: z.object({
+    total: z.number().int().nonnegative(),
+    passed: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+    coverage: z.string(),
+  }),
+  reviews: z.object({
+    shardReviews: z.number().int().nonnegative(),
+    globalVerdict: z.string(),
+    findings: z.number().int().nonnegative(),
+  }),
+  risks: z.array(
+    z.object({
+      severity: z.enum(['critical', 'warning', 'info']),
+      description: z.string(),
+    }),
+  ),
+  cost: z.object({
+    tokens: z.number().int().nonnegative(),
+    calls: z.number().int().nonnegative(),
+    budget: z.string(),
+  }),
+  globalVerdict: z.string(),
+  prReady: z.boolean(),
+  prStatus: z.string(),
+  markdown: z.string(),
+});
+
+export type LoopDeliveryEvidence = z.infer<typeof LoopDeliveryEvidenceSchema>;
+export type LoopDeliveryEvidenceWorkPackage = z.infer<typeof LoopDeliveryEvidenceWorkPackageSchema>;
+
+// ============================================================================
+// Runtime Backend Registry (P0-2, 0623 · CrewAI gap 2). A formal contract for
+// Codex CLI / Cluade Code CLI runtimes as first-class, configurable assets.
+// v1: derived read-only from existing agent-runtime-detection data.
+// ============================================================================
+export const RuntimeBackendKindSchema = z.enum([
+  'codex-cli',
+  'claude-code-cli',
+  'docker',
+  'remote-runner',
+]);
+export const RuntimeBackendStatusSchema = z.enum(['ready', 'degraded', 'unavailable']);
+export const RuntimeBackendModeSchema = z.enum(['local-cli', 'docker', 'remote']);
+
+export const RuntimeBackendHealthCheckSchema = z.object({
+  code: z.string(),
+  level: z.enum(['critical', 'warning', 'info']),
+  message: z.string(),
+  action: z.string(),
+});
+
+export const RuntimeBackendSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  kind: RuntimeBackendKindSchema,
+  mode: RuntimeBackendModeSchema,
+  status: RuntimeBackendStatusSchema,
+  version: z.string().optional(),
+  authStatus: z.enum(['authenticated', 'not-authenticated', 'unreported']),
+  supportedStages: z.array(z.string()),
+  permissionProfile: z.string(),
+  workspacePolicy: z.string(),
+  costPolicy: z.string(),
+  fallbackPolicy: z.string(),
+  healthChecks: z.array(RuntimeBackendHealthCheckSchema),
+  lastDetectedAt: z.string().optional(),
+});
+
+export const RuntimeBackendListResponseSchema = PaginatedResponseSchema(RuntimeBackendSchema);
+
+export const RuntimeBackendPolicyUpdateSchema = z.object({
+  fallbackPolicy: z.string().trim().min(1).optional(),
+  costPolicy: z.string().trim().min(1).optional(),
+  permissionProfile: z.string().trim().min(1).optional(),
+});
+
+export type RuntimeBackendKind = z.infer<typeof RuntimeBackendKindSchema>;
+export type RuntimeBackendStatus = z.infer<typeof RuntimeBackendStatusSchema>;
+export type RuntimeBackendMode = z.infer<typeof RuntimeBackendModeSchema>;
+export type RuntimeBackendHealthCheck = z.infer<typeof RuntimeBackendHealthCheckSchema>;
+export type RuntimeBackend = z.infer<typeof RuntimeBackendSchema>;
+export type RuntimeBackendListResponse = z.infer<typeof RuntimeBackendListResponseSchema>;
+export type RuntimeBackendPolicyUpdate = z.infer<typeof RuntimeBackendPolicyUpdateSchema>;
+
+// ============================================================================
+// Eval Suite / Eval Run (P0-3, 0623 · CrewAI gap 4). Formal quality gate
+// contracts so teams can track pass rates, trends, and baselines across loops.
+// v1: derived from existing loop evidence (architecture, delivery, runtime, test,
+// cost) — no new persistence. suite-scoped, not per-loop.
+// ============================================================================
+export const EvalScopeSchema = z.enum([
+  'workspace',
+  'blueprint',
+  'agent',
+  'runtime',
+  'tool',
+  'delivery',
+]);
+export const EvalCheckStatusSchema = z.enum(['passed', 'attention', 'blocked']);
+
+export const EvalSuiteCheckSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  category: z.enum(['architecture', 'delivery', 'runtime', 'test', 'cost']),
+  hardGate: z.boolean(),
+  status: EvalCheckStatusSchema,
+  evidence: z.string(),
+  passCount: z.number().int().nonnegative(),
+  failCount: z.number().int().nonnegative(),
+  blockedCount: z.number().int().nonnegative(),
+});
+
+export const EvalSuiteSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  scope: EvalScopeSchema,
+  version: z.number().int().positive(),
+  capturedAt: z.string(),
+  checks: z.array(EvalSuiteCheckSchema),
+  summary: z.object({
+    total: z.number().int().nonnegative(),
+    passed: z.number().int().nonnegative(),
+    attention: z.number().int().nonnegative(),
+    blocked: z.number().int().nonnegative(),
+    passRate: z.number().min(0).max(100),
+  }),
+});
+
+export const EvalSuiteListResponseSchema = PaginatedResponseSchema(EvalSuiteSchema);
+
+export const EvalRunSchema = z.object({
+  id: z.string(),
+  suiteId: z.string(),
+  loopId: z.string(),
+  targetRef: z.string(),
+  status: EvalCheckStatusSchema,
+  score: z.number().min(0).max(100),
+  checkResults: z.array(EvalSuiteCheckSchema),
+  evidenceRefs: z.array(z.string()).default([]),
+  trendDelta: z.number().optional(),
+  runAt: z.string(),
+});
+
+export const EvalRunListResponseSchema = PaginatedResponseSchema(EvalRunSchema);
+
+export type EvalScope = z.infer<typeof EvalScopeSchema>;
+export type EvalCheckStatus = z.infer<typeof EvalCheckStatusSchema>;
+export type EvalSuiteCheck = z.infer<typeof EvalSuiteCheckSchema>;
+export type EvalSuite = z.infer<typeof EvalSuiteSchema>;
+export type EvalSuiteListResponse = z.infer<typeof EvalSuiteListResponseSchema>;
+export type EvalRun = z.infer<typeof EvalRunSchema>;
+export type EvalRunListResponse = z.infer<typeof EvalRunListResponseSchema>;
+
+// ============================================================================
+// Second Opinion Resolution (P1-5, gstack/0, 0623).
+// ============================================================================
+export const LoopResolveSecondOpinionSchema = z.object({
+  action: z.enum(['accept-primary', 'accept-secondary', 'waive']),
+  role: z.enum(['primary', 'secondary']).optional(),
+  findingFingerprint: z.string().trim().min(1).optional(),
+  reason: z.string().trim().optional(),
+});
+
+export type LoopResolveSecondOpinion = z.infer<typeof LoopResolveSecondOpinionSchema>;
+
+// ============================================================================
+// Webhook Trigger (P0-2, 0623 · crewAI R7).
+// External systems can trigger loop creation via signed webhook POST.
+// ============================================================================
+export const LoopWebhookTriggerSourceSchema = z.enum([
+  'github',
+  'linear',
+  'jira',
+  'slack',
+  'generic',
+]);
+
+export const LoopWebhookTriggerSchema = z.object({
+  source: LoopWebhookTriggerSourceSchema,
+  event: z.string().trim().min(1),
+  payload: z.record(z.string(), z.unknown()),
+  signatureHeader: z.string().trim().min(1).optional(),
+  signature: z.string().trim().min(1).optional(),
+  secretRef: z.string().trim().min(1).optional(),
+});
+
+export const LoopWebhookTriggerResponseSchema = z.object({
+  loopId: z.string(),
+  issueId: z.string(),
+  source: LoopWebhookTriggerSourceSchema,
+  event: z.string(),
+  created: z.boolean(),
+  message: z.string(),
+});
+
+export type LoopWebhookTriggerSource = z.infer<typeof LoopWebhookTriggerSourceSchema>;
+export type LoopWebhookTrigger = z.infer<typeof LoopWebhookTriggerSchema>;
+export type LoopWebhookTriggerResponse = z.infer<typeof LoopWebhookTriggerResponseSchema>;

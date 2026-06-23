@@ -11,6 +11,7 @@ const mutations = vi.hoisted(() => ({
   browserQa: { mutate: vi.fn(), isPending: false, isError: false },
   secondOpinion: { mutate: vi.fn(), isPending: false, isError: false },
   deliveryGovernance: { mutate: vi.fn(), isPending: false, isError: false },
+  resolveSecondOpinion: { mutate: vi.fn(), isPending: false, isError: false },
 }));
 
 vi.mock('@/lib/api/contracts/hooks', () => ({
@@ -21,6 +22,7 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
   useRunLoopBrowserQa: () => mutations.browserQa,
   useRunLoopSecondOpinion: () => mutations.secondOpinion,
   useGovernLoopDelivery: () => mutations.deliveryGovernance,
+  useResolveSecondOpinion: () => mutations.resolveSecondOpinion,
 }));
 
 describe('useFormState delivery actions', () => {
@@ -50,6 +52,7 @@ describe('useFormState delivery actions', () => {
         checkedFlows: ['page-load', 'smoke'],
         authSessionRef: '.loops/auth/session.json',
         notes: 'Report-only QA',
+        viewports: [{ name: 'desktop', width: 1440, height: 900 }],
       },
     });
     expect(mutations.secondOpinion.mutate).toHaveBeenCalledWith({

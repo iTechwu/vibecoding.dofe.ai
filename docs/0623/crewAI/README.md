@@ -15,14 +15,16 @@ DofeAI 不应横向复制 CrewAI 的通用 agent framework，而应把 Loops 定
 
 ## 文档地图
 
-| 文档                                                                       | 用途                                                                                   |
-| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| [01-product-analysis.md](./01-product-analysis.md)                         | CrewAI 产品定位、架构、开源仓库与企业能力拆解                                          |
-| [02-competitive-comparison.md](./02-competitive-comparison.md)             | CrewAI、LangGraph、AutoGen、OpenAI Agents SDK、LlamaIndex、Relevance AI 与 DofeAI 对比 |
-| [03-gap-analysis.md](./03-gap-analysis.md)                                 | 基于本项目当前 Loops 实现的差距分析                                                    |
-| [04-optimization-recommendations.md](./04-optimization-recommendations.md) | 对 DofeAI 的产品与工程优化建议                                                         |
-| [05-roadmap.md](./05-roadmap.md)                                           | 30/60/90 天路线图与验收标准                                                            |
-| [06-sources.md](./06-sources.md)                                           | 资料来源、可信度、分析边界                                                             |
+| 文档                                                                                 | 用途                                                                                   |
+| ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| [01-product-analysis.md](./01-product-analysis.md)                                   | CrewAI 产品定位、架构、开源仓库与企业能力拆解                                          |
+| [02-competitive-comparison.md](./02-competitive-comparison.md)                       | CrewAI、LangGraph、AutoGen、OpenAI Agents SDK、LlamaIndex、Relevance AI 与 DofeAI 对比 |
+| [03-gap-analysis.md](./03-gap-analysis.md)                                           | 基于本项目当前 Loops 实现的差距分析                                                    |
+| [04-optimization-recommendations.md](./04-optimization-recommendations.md)           | 对 DofeAI 的产品与工程优化建议                                                         |
+| [05-roadmap.md](./05-roadmap.md)                                                     | 30/60/90 天路线图与验收标准                                                            |
+| [06-sources.md](./06-sources.md)                                                     | 资料来源、可信度、分析边界                                                             |
+| [IMPLEMENTATION-ANNOTATIONS.md](./IMPLEMENTATION-ANNOTATIONS.md)                     | 基于六轮代码实施后的准确标注（R1-R6）                                                  |
+| [07-product-iteration-recommendations.md](./07-product-iteration-recommendations.md) | 产品经理视角的深度对比审查与迭代建议（R7）                                             |
 
 ## 关键结论
 
@@ -34,15 +36,15 @@ DofeAI 不应横向复制 CrewAI 的通用 agent framework，而应把 Loops 定
 
 ## 推荐优先级
 
-| 优先级 | 建议                                        | 目标                                                                         |
-| ------ | ------------------------------------------- | ---------------------------------------------------------------------------- |
-| P0     | 将 Loops 包装为 Software Delivery Workforce | 把 Phase/Shards 变成用户能理解的团队与交接流程                               |
-| P0     | 建立 Runtime Backend Registry               | 明确 Codex/Claude CLI、本地/Docker/远程 runner 的能力、健康、权限和 fallback |
-| P0     | 建立 Eval Suite v1                          | 把测试、审阅、架构规则、证据链升级为可复用质量门禁                           |
-| P1     | 建立 Blueprint Marketplace v1               | 沉淀 Bugfix/API/UI/Refactor/Security 等可复制交付模板                        |
-| P1     | Trigger Contract v2                         | 从手动创建 Loop 扩展到 webhook、schedule、GitHub/Linear/Slack                |
-| P1     | Tool & Integration Registry                 | 将 capability registry 产品化为工具、权限、健康、授权和审计中心              |
-| P2     | Enterprise Control Plane                    | 组织级成本、运行时、规则、审计、事件流和资产权限                             |
+| 优先级 | 建议                                        | 目标                                                                          |
+| ------ | ------------------------------------------- | ----------------------------------------------------------------------------- |
+| P0     | 将 Loops 包装为 Software Delivery Workforce | 把 Phase/Shards 变成用户能理解的团队与交接流程                                |
+| P0     | 建立 Runtime Backend Registry               | 已闭合 Dashboard v1：将 Codex/Claude local/Docker 探测包装为 Runtime Backends |
+| P0     | 建立 Eval Suite v1                          | 已闭合 Eval Plan v1：把交付、运行时安全、测试证据和成本策略做成硬关卡视图     |
+| P1     | 建立 Blueprint Marketplace v1               | 沉淀 Bugfix/API/UI/Refactor/Security 等可复制交付模板                         |
+| P1     | Trigger Contract v2                         | 从手动创建 Loop 扩展到 webhook、schedule、GitHub/Linear/Slack                 |
+| P1     | Tool & Integration Registry                 | 将 capability registry 产品化为工具、权限、健康、授权和审计中心               |
+| P2     | Enterprise Control Plane                    | 组织级成本、运行时、规则、审计、事件流和资产权限                              |
 
 ## 对 DofeAI 的定位建议
 

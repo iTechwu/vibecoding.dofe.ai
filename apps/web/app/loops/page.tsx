@@ -13,6 +13,7 @@ import {
   Cpu,
   Inbox,
   GitBranch,
+  GitPullRequest,
   KanbanSquare,
   Lightbulb,
   ListChecks,
@@ -20,6 +21,7 @@ import {
   Plus,
   RefreshCw,
   ShieldCheck,
+  Users,
   Workflow,
 } from 'lucide-react';
 import type {
@@ -40,6 +42,7 @@ import {
   useLoopsNotifications,
   useLoopsWorkspaces,
   useGovernLoopLearning,
+  useGovernLoopDelivery,
   useRunLoopLearningAutoMergeWorker,
   usePullLoopsImage,
   useRetryLoopsAgentRuntime,
@@ -50,24 +53,39 @@ import {
   AGING_QUEUE_SLA_POLICY,
   aggregateLoops,
   buildAgingQueue,
+  buildAgentHandoffTimeline,
+  buildBlueprintMarketplace,
   buildDashboardGuide,
+  buildFleetHealth,
   buildEvalPlan,
   buildExceptionCenter,
+  buildLoopBench,
   buildLoopBoard,
   buildPermissionProfile,
   buildPerformanceSnapshot,
   buildProviderProfile,
+  buildRecipeAdminSummary,
   buildRepoContextMap,
+  buildReleaseGatePanel,
   buildReleaseReadiness,
+  buildRulesCenter,
+  buildRuntimeSecurityPanel,
   buildReviewGatePortfolio,
   buildReviewInbox,
   buildReviewInboxGroups,
   buildRiskQueue,
   buildRuntimeBackends,
+  buildSecondOpinionConflictItems,
+  buildToolRegistryLifecycle,
+  buildTriggerLifecycle,
   buildTriggerPortfolio,
+  buildWorkforceOverview,
   buildWorkflowRecipe,
   type EvalCheckStatus,
+  type HandoffStepState,
   type RuntimeBackendStatus,
+  type WorkforcePersona,
+  type WorkforcePersonaStatus,
   formatPhase,
   type RiskLevel,
 } from './loops-dashboard-model';
@@ -121,6 +139,54 @@ function evalStatusClass(status: EvalCheckStatus) {
     return 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100';
   }
   return 'border-red-200 bg-red-50 text-red-950 dark:border-red-900/70 dark:bg-red-950/20 dark:text-red-100';
+}
+
+function workforcePersonaClass(status: WorkforcePersonaStatus) {
+  if (status === 'active') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100';
+  }
+  if (status === 'blocked') {
+    return 'border-red-200 bg-red-50 text-red-950 dark:border-red-900/70 dark:bg-red-950/20 dark:text-red-100';
+  }
+  if (status === 'done') {
+    return 'border-emerald-200 bg-emerald-50/50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/10 dark:text-emerald-100';
+  }
+  return 'border-border bg-muted/40 text-muted-foreground';
+}
+
+function handoffStepClass(state: HandoffStepState) {
+  if (state === 'current') {
+    return 'border-foreground bg-foreground text-background';
+  }
+  if (state === 'blocked') {
+    return 'border-red-200 bg-red-50 text-red-950 dark:border-red-900/70 dark:bg-red-950/20 dark:text-red-100';
+  }
+  if (state === 'next') {
+    return 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100';
+  }
+  if (state === 'done') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100';
+  }
+  return 'border-border bg-muted/30 text-muted-foreground';
+}
+
+const WORKFORCE_PERSONA_LABELS: Record<WorkforcePersona['id'], string> = {
+  'intake-analyst': 'Intake Analyst',
+  'spec-writer': 'Spec Writer',
+  'human-gatekeeper': 'Human Gatekeeper',
+  'work-planner': 'Work Planner',
+  builder: 'Builder',
+  'test-runner': 'Test Runner',
+  'code-reviewer': 'Code Reviewer',
+  'release-reviewer': 'Release Reviewer',
+  'evidence-curator': 'Evidence Curator',
+};
+
+function workforceBackendLabel(backend: WorkforcePersona['runtimeBackend']) {
+  if (backend === 'codex-cli') return 'Codex CLI';
+  if (backend === 'claude-code-cli') return 'Claude Code CLI';
+  if (backend === 'human') return 'Human';
+  return 'System';
 }
 
 function EmptyLine({ children }: { children: React.ReactNode }) {
@@ -237,8 +303,12 @@ export default function LoopsPage() {
     cost,
     traceSummary,
   });
+  const loopBench = buildLoopBench(fallbackSummary.items, { cost, agentRuntime, recentLearnings });
+  const blueprintMarketplace = buildBlueprintMarketplace(fallbackSummary.items);
+  const fleetHealth = buildFleetHealth(fallbackSummary.items, { cost, agentRuntime });
   const runtimeBackends = buildRuntimeBackends(agentRuntime);
   const evalPlan = buildEvalPlan(fallbackSummary.items, cost);
+  const workforceOverview = buildWorkforceOverview(fallbackSummary.items, cost);
   const agingQueue = agingNow ? buildAgingQueue(fallbackSummary.items, agingNow) : [];
   const agentToolRegistry = capabilities?.capabilities.find(
     (capability) => capability.id === 'a2a-tool-registry',
@@ -246,18 +316,28 @@ export default function LoopsPage() {
   const permissionProfile = buildPermissionProfile(agentToolRegistry);
   const providerProfile = buildProviderProfile(agentToolRegistry, agentRuntime);
   const actionQueue = metrics?.actionQueue ?? [];
-  const reviewInbox = buildReviewInbox(actionQueue, notifications?.notifications, locale);
+  const secondOpinionConflicts = buildSecondOpinionConflictItems(fallbackSummary.items);
+  const reviewInbox = [
+    ...buildReviewInbox(actionQueue, notifications?.notifications, locale),
+    ...secondOpinionConflicts,
+  ];
   const reviewInboxGroups = buildReviewInboxGroups(reviewInbox);
   const loopBoard = buildLoopBoard(fallbackSummary.items, cost);
   const workflowRecipe = buildWorkflowRecipe(fallbackSummary.items, cost);
   const reviewGatePortfolio = buildReviewGatePortfolio(fallbackSummary.items, cost);
   const releaseReadiness = buildReleaseReadiness(fallbackSummary.items, cost);
+  const releaseGatePanel = buildReleaseGatePanel(fallbackSummary.items, { cost });
+  const runtimeSecurityPanel = buildRuntimeSecurityPanel(fallbackSummary.items, { agentRuntime });
+  const rulesCenter = buildRulesCenter(fallbackSummary.items, { agentRuntime });
   const topLearnings = [...recentLearnings]
     .sort((a, b) => b.confidence - a.confidence || b.createdAt.localeCompare(a.createdAt))
     .slice(0, 3);
   const staleLearnings = recentLearnings.filter((learning) => !learning.lastUsedAt).slice(0, 3);
   const learningById = new Map(recentLearnings.map((learning) => [learning.id, learning]));
   const triggerPortfolio = buildTriggerPortfolio(fallbackSummary.items);
+  const triggerLifecycle = buildTriggerLifecycle(fallbackSummary.items);
+  const toolRegistryLifecycle = buildToolRegistryLifecycle(agentToolRegistry);
+  const recipeAdmin = buildRecipeAdminSummary(fallbackSummary.items, cost);
   const repoContextMap = buildRepoContextMap(fallbackSummary.items, cost);
   const exceptionCenter = buildExceptionCenter(fallbackSummary.items, {
     cost,
@@ -485,6 +565,92 @@ export default function LoopsPage() {
         </section>
 
         <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">{t('fleetHealth.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{t('fleetHealth.summary')}</p>
+            </div>
+            <Activity className="size-4 text-muted-foreground" />
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+            <div className="rounded-md border bg-muted/20 p-3 text-xs">
+              <p className="text-muted-foreground">{t('fleetHealth.active')}</p>
+              <p className="mt-1 text-lg font-semibold">{fleetHealth.summary.activeLoops}</p>
+            </div>
+            <div
+              className={`rounded-md border p-3 text-xs ${fleetHealth.summary.blockedLoops > 0 ? 'border-red-200 bg-red-50 text-red-950 dark:border-red-900/70 dark:bg-red-950/20 dark:text-red-100' : 'bg-muted/20'}`}
+            >
+              <p className="text-muted-foreground">{t('fleetHealth.blocked')}</p>
+              <p className="mt-1 text-lg font-semibold">{fleetHealth.summary.blockedLoops}</p>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-3 text-xs">
+              <p className="text-muted-foreground">{t('fleetHealth.costTripped')}</p>
+              <p className="mt-1 text-lg font-semibold">{fleetHealth.summary.costTripped}</p>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-3 text-xs">
+              <p className="text-muted-foreground">{t('fleetHealth.humanGates')}</p>
+              <p className="mt-1 text-lg font-semibold">{fleetHealth.summary.humanGatesWaiting}</p>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-3 text-xs">
+              <p className="text-muted-foreground">{t('fleetHealth.runtimeReady')}</p>
+              <p className="mt-1 text-lg font-semibold">
+                {fleetHealth.summary.runtimeReady}/
+                {fleetHealth.summary.runtimeReady + fleetHealth.summary.runtimeDegraded}
+              </p>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-3 text-xs">
+              <p className="text-muted-foreground">{t('fleetHealth.releaseReady')}</p>
+              <p className="mt-1 text-lg font-semibold">{fleetHealth.summary.releaseReady}</p>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-3 text-xs">
+              <p className="text-muted-foreground">{t('fleetHealth.repos')}</p>
+              <p className="mt-1 text-lg font-semibold">{fleetHealth.repoBreakdown.length}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">{t('rulesCenter.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('rulesCenter.summary', rulesCenter.summary)}
+              </p>
+            </div>
+            <ShieldCheck className="size-4 text-muted-foreground" />
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-4">
+            {rulesCenter.rules.map((rule) => (
+              <div
+                className={`rounded-md border p-2 text-xs ${
+                  rule.enforced
+                    ? rule.violations > 0
+                      ? 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100'
+                    : 'border-border bg-muted/20 text-muted-foreground'
+                }`}
+                key={rule.id}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="truncate font-medium">
+                    {t(`rulesCenter.rules.${rule.id}`, { defaultValue: rule.label })}
+                  </span>
+                  <span className="shrink-0 rounded-md border bg-background/70 px-1.5 py-0.5">
+                    {t(`rulesCenter.categories.${rule.category}`, {
+                      defaultValue: rule.category,
+                    })}
+                  </span>
+                </div>
+                <p className="mt-1 truncate opacity-80">{rule.evidence}</p>
+                <p className="mt-1 truncate text-right font-medium">
+                  {rule.enforced ? t('rulesCenter.enforced') : t('rulesCenter.attention')}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-lg border p-4">
           <div className="flex flex-col gap-1">
             <h2 className="text-sm font-semibold">{t('performance.title')}</h2>
             <p className="text-sm text-muted-foreground">{t('performance.summary')}</p>
@@ -523,6 +689,163 @@ export default function LoopsPage() {
               value={performanceSnapshot.traceEvents}
             />
           </div>
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">{t('loopBench.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{t('loopBench.summary')}</p>
+            </div>
+            <Activity className="size-4 text-muted-foreground" />
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
+            <div className="rounded-md border bg-muted/20 p-3 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium truncate">{t('loopBench.firstPassRate')}</span>
+                <span
+                  className={`shrink-0 rounded-md border px-2 py-0.5 ${
+                    loopBench.firstPassReviewRate >= 70
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100'
+                      : 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100'
+                  }`}
+                >
+                  {loopBench.firstPassReviewRate}%
+                </span>
+              </div>
+              <p className="mt-2 text-muted-foreground">{t('loopBench.firstPassRateDesc')}</p>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-3 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium truncate">{t('loopBench.browserQaRegression')}</span>
+                <span className="shrink-0 rounded-md border bg-background px-2 py-0.5 text-xs text-muted-foreground">
+                  {loopBench.browserQaRegressionRate}%
+                </span>
+              </div>
+              <p className="mt-2 text-muted-foreground">{t('loopBench.browserQaRegressionDesc')}</p>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-3 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium truncate">{t('loopBench.secondOpinionConflict')}</span>
+                <span
+                  className={`shrink-0 rounded-md border px-2 py-0.5 ${
+                    loopBench.secondOpinionConflictRate <= 10
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100'
+                      : 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100'
+                  }`}
+                >
+                  {loopBench.secondOpinionConflictRate}%
+                </span>
+              </div>
+              <p className="mt-2 text-muted-foreground">
+                {t('loopBench.secondOpinionConflictDesc')}
+              </p>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-3 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium truncate">{t('loopBench.releaseBlocker')}</span>
+                <span
+                  className={`shrink-0 rounded-md border px-2 py-0.5 ${
+                    loopBench.releaseBlockerRate <= 20
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100'
+                      : loopBench.releaseBlockerRate <= 50
+                        ? 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100'
+                        : 'border-red-200 bg-red-50 text-red-950 dark:border-red-900/70 dark:bg-red-950/20 dark:text-red-100'
+                  }`}
+                >
+                  {loopBench.releaseBlockerRate}%
+                </span>
+              </div>
+              <p className="mt-2 text-muted-foreground">{t('loopBench.releaseBlockerDesc')}</p>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-3 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium truncate">{t('loopBench.runtimeViolation')}</span>
+                <span
+                  className={`shrink-0 rounded-md border px-2 py-0.5 ${
+                    loopBench.runtimeViolationRate <= 5
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100'
+                      : 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100'
+                  }`}
+                >
+                  {loopBench.runtimeViolationRate}%
+                </span>
+              </div>
+              <p className="mt-2 text-muted-foreground">{t('loopBench.runtimeViolationDesc')}</p>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-3 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium truncate">{t('loopBench.learningReuse')}</span>
+                <span
+                  className={`shrink-0 rounded-md border px-2 py-0.5 ${
+                    loopBench.learningReuseRate > 0
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100'
+                      : 'bg-background text-muted-foreground'
+                  }`}
+                >
+                  {loopBench.learningReuseRate > 0
+                    ? `${loopBench.learningReuseRate}%`
+                    : t('loopBench.planned')}
+                </span>
+              </div>
+              <p className="mt-2 text-muted-foreground">{t('loopBench.learningReuseDesc')}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">{t('workforce.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('workforce.summary', workforceOverview.summary)}
+              </p>
+            </div>
+            <Users className="size-4 text-muted-foreground" />
+          </div>
+          {!data ? (
+            <EmptyLine>{t('workforce.loading')}</EmptyLine>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {workforceOverview.personas.map((persona) => (
+                <Link
+                  className={`rounded-md border p-3 text-sm transition hover:opacity-80 ${workforcePersonaClass(
+                    persona.status,
+                  )}`}
+                  href={
+                    persona.activeIssueIds[0] ? `/loops/${persona.activeIssueIds[0]}` : '/loops'
+                  }
+                  key={persona.id}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="truncate font-medium">
+                      {WORKFORCE_PERSONA_LABELS[persona.id]}
+                    </span>
+                    <span className="shrink-0 rounded-md border bg-background/70 px-2 py-0.5 text-xs">
+                      {t(`workforce.status.${persona.status}`)}
+                    </span>
+                  </div>
+                  <p className="mt-2 truncate text-xs opacity-80">
+                    {workforceBackendLabel(persona.runtimeBackend)}
+                    {persona.humanGate ? ` · ${t('workforce.humanGate')}` : ''}
+                  </p>
+                  <p className="mt-1 truncate text-xs opacity-80">
+                    {persona.count > 0
+                      ? t('workforce.personaCount', { count: persona.count })
+                      : t('workforce.idle')}
+                  </p>
+                  {persona.activeIssueIds.length > 0 ? (
+                    <p className="mt-1 truncate text-xs font-medium">
+                      {persona.activeIssueIds.slice(0, 2).join(', ')}
+                      {persona.activeIssueIds.length > 2
+                        ? ` +${persona.activeIssueIds.length - 2}`
+                        : ''}
+                    </p>
+                  ) : null}
+                </Link>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="rounded-lg border p-4">
@@ -659,14 +982,36 @@ export default function LoopsPage() {
                   {t('triggerPortfolio.sources')}
                 </h3>
                 <div className="mt-2 flex flex-col gap-2">
-                  {triggerPortfolio.sources.map((source) => (
+                  {triggerLifecycle.sources.map((source) => (
                     <div
-                      className="flex items-center justify-between gap-3 rounded-md bg-background p-2 text-xs"
+                      className={`flex items-center justify-between gap-3 rounded-md p-2 text-xs ${
+                        source.status === 'active'
+                          ? 'border border-emerald-200 bg-background text-emerald-950 dark:border-emerald-900/70 dark:text-emerald-100'
+                          : source.status === 'error'
+                            ? 'border border-red-200 bg-background text-red-950 dark:border-red-900/70 dark:text-red-100'
+                            : 'bg-background'
+                      }`}
                       key={source.id}
                     >
-                      <span className="truncate font-medium">{source.id}</span>
-                      <span className="shrink-0 text-muted-foreground">
-                        {t('triggerPortfolio.sourceCount', { count: source.count })}
+                      <div className="min-w-0 flex-1">
+                        <span className="truncate font-medium">{source.id}</span>
+                        <p className="mt-0.5 truncate opacity-70">
+                          {t('triggerLifecycle.sourceCount', {
+                            count: source.count,
+                            repos: source.repos.length,
+                          })}
+                        </p>
+                      </div>
+                      <span
+                        className={`shrink-0 rounded-md border px-2 py-0.5 text-xs ${
+                          source.status === 'active'
+                            ? 'bg-background/70'
+                            : source.status === 'error'
+                              ? 'border-red-200 bg-red-50 text-red-950 dark:border-red-900/70 dark:bg-red-950/20 dark:text-red-100'
+                              : 'bg-background/70'
+                        }`}
+                      >
+                        {t(`triggerLifecycle.${source.status}`)}
                       </span>
                     </div>
                   ))}
@@ -882,6 +1227,100 @@ export default function LoopsPage() {
         <section className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
+              <h2 className="text-sm font-semibold">{t('recipeAdmin.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('recipeAdmin.summary', {
+                  kinds: recipeAdmin.summary.totalKinds,
+                  loops: recipeAdmin.summary.totalLoops,
+                  blocked: recipeAdmin.summary.totalBlocked,
+                })}
+              </p>
+            </div>
+            <Workflow className="size-4 text-muted-foreground" />
+          </div>
+          {!data ? (
+            <EmptyLine>{t('recipeAdmin.loading')}</EmptyLine>
+          ) : recipeAdmin.items.length === 0 ? (
+            <EmptyLine>{t('recipeAdmin.empty')}</EmptyLine>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {recipeAdmin.items.map((item) => (
+                <div className="rounded-md border bg-muted/20 p-3 text-xs" key={item.loopKind}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">
+                      {t(`recipeAdmin.kind.${item.loopKind}`, { defaultValue: item.loopKind })}
+                    </span>
+                    <span className="shrink-0 rounded-md bg-background px-2 py-0.5">
+                      {item.count}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-col gap-1.5 text-muted-foreground">
+                    <div className="flex items-center justify-between">
+                      <span>{t('recipeAdmin.blockerRate')}</span>
+                      <span
+                        className={
+                          item.blockerRate > 50
+                            ? 'text-red-600 font-medium'
+                            : item.blockerRate > 25
+                              ? 'text-amber-600 font-medium'
+                              : 'font-medium'
+                        }
+                      >
+                        {item.blockerRate}%
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>{t('recipeAdmin.avgShards')}</span>
+                      <span className="font-medium">
+                        {item.avgShardsDone}/{item.avgShardsTotal}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">{t('blueprintMarketplace.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('blueprintMarketplace.summary', blueprintMarketplace.summary)}
+              </p>
+            </div>
+            <Lightbulb className="size-4 text-muted-foreground" />
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+            {blueprintMarketplace.blueprints.map((bp) => (
+              <Link
+                className="rounded-md border p-3 text-xs transition hover:bg-muted/30"
+                href={`/loops/new?template=${bp.id}`}
+                key={bp.id}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate font-medium">{bp.label}</span>
+                  <span className="shrink-0 rounded-md border bg-background px-1.5 py-0.5">
+                    {bp.defaultPriority}
+                  </span>
+                </div>
+                <p className="mt-2 line-clamp-2 text-muted-foreground">{bp.description}</p>
+                <div className="mt-2 flex flex-wrap gap-1 text-muted-foreground">
+                  <span>{bp.personaCount} personas</span>
+                  <span>· {bp.evalCount} evals</span>
+                  <span>· {bp.gateCount} gates</span>
+                  {bp.humanGateCount > 0 ? <span>· {bp.humanGateCount} human</span> : null}
+                </div>
+                <p className="mt-1 text-muted-foreground">{bp.primaryRuntime}</p>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
               <h2 className="text-sm font-semibold">{t('reviewGates.title')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('reviewGates.summary', reviewGatePortfolio.summary)}
@@ -913,6 +1352,83 @@ export default function LoopsPage() {
                   <p className="mt-2 line-clamp-2 text-muted-foreground">{gate.evidence}</p>
                 </div>
               ))}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">{t('releaseGatePanel.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('releaseGatePanel.summary', releaseGatePanel.summary)}
+              </p>
+            </div>
+            <GitPullRequest className="size-4 text-muted-foreground" />
+          </div>
+          {!data ? (
+            <EmptyLine>{t('releaseGatePanel.loading')}</EmptyLine>
+          ) : releaseGatePanel.summary.totalWithGate === 0 ? (
+            <EmptyLine>{t('releaseGatePanel.empty')}</EmptyLine>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-5">
+                {releaseGatePanel.checklist.slice(0, 10).map((item) => (
+                  <div
+                    className={`rounded-md border p-2 text-xs ${
+                      item.rate >= 80
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100'
+                        : item.rate >= 50
+                          ? 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100'
+                          : 'border-red-200 bg-red-50 text-red-950 dark:border-red-900/70 dark:bg-red-950/20 dark:text-red-100'
+                    }`}
+                    key={item.key}
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="truncate font-medium">
+                        {t(`releaseGatePanel.checklist.${item.key}`)}
+                      </span>
+                      <span className="shrink-0 rounded-md border bg-background/70 px-1.5 py-0.5">
+                        {item.rate}%
+                      </span>
+                    </div>
+                    <p className="mt-1 truncate opacity-80">
+                      {item.passed}/{item.total} passed
+                      {item.blocked > 0 ? ` · ${item.blocked} blocked` : ''}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <div className="rounded-md border bg-muted/20 p-3">
+                <h3 className="text-xs font-semibold text-muted-foreground">
+                  {t('releaseGatePanel.topBlockers')}
+                </h3>
+                <div className="mt-2 flex flex-col gap-2">
+                  {releaseGatePanel.topBlockers.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {t('releaseGatePanel.noBlockers')}
+                    </p>
+                  ) : (
+                    releaseGatePanel.topBlockers.map((blocker) => (
+                      <Link
+                        className="rounded-md border bg-background p-2 text-xs transition hover:bg-muted/30"
+                        href={blocker.href}
+                        key={blocker.issueId}
+                      >
+                        <span className="line-clamp-2 font-medium">{blocker.title}</span>
+                        <p className="mt-1 truncate text-muted-foreground">
+                          {t(
+                            `releaseGatePanel.blockerReasons.${blocker.reason.replace(/ /g, '_')}`,
+                            {
+                              defaultValue: blocker.reason,
+                            },
+                          )}
+                        </p>
+                      </Link>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </section>
@@ -1313,6 +1829,75 @@ export default function LoopsPage() {
           </div>
         </section>
 
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">{t('runtimeSecurityPanel.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('runtimeSecurityPanel.summary', runtimeSecurityPanel.summary)}
+              </p>
+            </div>
+            <ShieldCheck className="size-4 text-muted-foreground" />
+          </div>
+          {!data ? (
+            <EmptyLine>{t('runtimeSecurityPanel.loading')}</EmptyLine>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_300px]">
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
+                {runtimeSecurityPanel.policies.map((policy) => (
+                  <div
+                    className={`rounded-md border p-3 text-xs ${
+                      policy.violations === 0
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100'
+                        : 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100'
+                    }`}
+                    key={policy.strategy}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate font-medium">{policy.strategy}</span>
+                      <span className="shrink-0 rounded-md border bg-background/70 px-1.5 py-0.5">
+                        {policy.violations === 0
+                          ? t('runtimeSecurityPanel.clear')
+                          : `${policy.violations}`}
+                      </span>
+                    </div>
+                    <p className="mt-1 truncate opacity-80">
+                      {policy.violations === 0
+                        ? t('runtimeSecurityPanel.noViolations')
+                        : t('runtimeSecurityPanel.violationsFound', { count: policy.violations })}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <div className="rounded-md border bg-muted/20 p-3">
+                <h3 className="text-xs font-semibold text-muted-foreground">
+                  {t('runtimeSecurityPanel.topViolations')}
+                </h3>
+                <div className="mt-2 flex flex-col gap-2">
+                  {runtimeSecurityPanel.topViolations.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {t('runtimeSecurityPanel.noViolations')}
+                    </p>
+                  ) : (
+                    runtimeSecurityPanel.topViolations.map((v) => (
+                      <Link
+                        className={`rounded-md border bg-background p-2 text-xs transition hover:bg-muted/30 ${
+                          v.level === 'critical' ? riskClass('critical') : riskClass('warning')
+                        }`}
+                        href={v.href}
+                        key={`${v.issueId}-${v.reason.slice(0, 20)}`}
+                      >
+                        <span className="line-clamp-2 font-medium">{v.reason}</span>
+                        <p className="mt-1 truncate text-muted-foreground">{v.title}</p>
+                      </Link>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+
         <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1fr]">
           <div className="rounded-lg border p-4">
             <div className="flex items-start justify-between gap-4">
@@ -1516,19 +2101,36 @@ export default function LoopsPage() {
                       </span>
                       <span>{t('reviewInbox.groupCount', { count: group.count })}</span>
                     </div>
-                    {group.items.map((item) => (
-                      <Link
-                        className={`rounded-md border p-3 text-sm transition hover:opacity-80 ${riskClass(item.priority)}`}
-                        href={item.href}
-                        key={item.id}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="truncate font-medium">{item.title}</span>
-                          <span className="shrink-0 text-xs">{item.label}</span>
+                    {group.items.map((item) => {
+                      const isConflict = item.id.endsWith('second-opinion-conflict');
+                      return (
+                        <div key={item.id}>
+                          <Link
+                            className={`rounded-md border p-3 text-sm transition hover:opacity-80 ${riskClass(item.priority)} ${isConflict ? 'rounded-b-none border-b-0' : ''}`}
+                            href={item.href}
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="truncate font-medium">{item.title}</span>
+                              <span className="shrink-0 text-xs">{item.label}</span>
+                            </div>
+                            <p className="mt-1 truncate text-xs opacity-80">{item.meta}</p>
+                          </Link>
+                          {isConflict ? (
+                            <div className="rounded-md rounded-t-none border border-t-0 bg-muted/20 px-3 py-1.5 flex items-center gap-2 text-xs">
+                              <span className="text-muted-foreground">
+                                {t('reviewInbox.conflictAction')}
+                              </span>
+                              <Link
+                                className="rounded border bg-background px-2 py-0.5 font-medium hover:bg-muted/30 transition"
+                                href={`${item.href}#delivery-controls`}
+                              >
+                                {t('reviewInbox.resolveConflict')}
+                              </Link>
+                            </div>
+                          ) : null}
                         </div>
-                        <p className="mt-1 truncate text-xs opacity-80">{item.meta}</p>
-                      </Link>
-                    ))}
+                      );
+                    })}
                   </div>
                 ))
               )}
@@ -1761,6 +2363,56 @@ export default function LoopsPage() {
               </div>
             </div>
           ) : null}
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">{t('toolRegistry.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('toolRegistry.summary', toolRegistryLifecycle.summary)}
+              </p>
+            </div>
+            <Cpu className="size-4 text-muted-foreground" />
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-4">
+            {toolRegistryLifecycle.tools.length === 0 ? (
+              <EmptyLine>{t('toolRegistry.empty')}</EmptyLine>
+            ) : (
+              toolRegistryLifecycle.tools.map((tool) => (
+                <div
+                  className={`rounded-md border p-3 text-xs ${
+                    tool.lifecycle === 'active'
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100'
+                      : 'border-border bg-muted/20 text-muted-foreground'
+                  }`}
+                  key={tool.id}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-medium">{tool.label}</span>
+                    <span className="shrink-0 rounded-md border bg-background/70 px-1.5 py-0.5">
+                      {tool.lifecycle}
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate opacity-80">
+                    {t(`toolRegistry.kinds.${tool.kind}`, { defaultValue: tool.kind })}
+                  </p>
+                  <p className="mt-1 truncate opacity-80">
+                    {tool.compatibility || t('toolRegistry.noCompat')}
+                  </p>
+                  <p className="mt-1 truncate opacity-80">{tool.deterministicBoundary}</p>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="mt-3 flex items-center justify-between rounded-md border bg-muted/20 p-3 text-xs">
+            <span className="font-medium">{t('toolRegistry.compatibility')}</span>
+            <span className="text-muted-foreground">
+              {toolRegistryLifecycle.compatibilityStatus.pass}/
+              {toolRegistryLifecycle.compatibilityStatus.total} pass ·{' '}
+              {toolRegistryLifecycle.compatibilityStatus.planned} planned
+            </span>
+          </div>
         </section>
 
         <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1fr]">

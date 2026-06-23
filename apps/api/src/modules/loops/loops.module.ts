@@ -27,6 +27,8 @@ import { LoopsService } from './loops.service';
 import { LoopsWorkLockService } from './loops-work-lock.service';
 import { LoopsBrowserQaWorkerService } from './loops-browser-qa-worker.service';
 import { LoopsSecondOpinionWorkerService } from './loops-second-opinion-worker.service';
+import { LoopsDockerSandboxService } from './loops-docker-sandbox.service';
+import { LoopsLearningGovernanceService } from './loops-learning-governance.service';
 
 @Module({
   // HttpModule provides HttpService to LoopsNotificationSender and
@@ -54,6 +56,8 @@ import { LoopsSecondOpinionWorkerService } from './loops-second-opinion-worker.s
     LoopsRunnerService,
     LoopsBrowserQaWorkerService,
     LoopsSecondOpinionWorkerService,
+    LoopsDockerSandboxService,
+    LoopsLearningGovernanceService,
     LoopsWorkLockService,
     // Work-lock backend: in-memory by default (single-process, unchanged
     // behaviour). Swap to RedisLoopsLockBackend (bound to @dofe/infra-redis

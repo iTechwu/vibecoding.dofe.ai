@@ -277,6 +277,77 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
                 </ul>
               </dd>
             </div>
+            {/* --- Delivery Loop Plan (P1-1: Invent Delivery Loop) --- */}
+            {previewTemplate ? (
+              <>
+                {/* Workforce Plan */}
+                <div className="rounded-md border bg-background px-3 py-2">
+                  <dt className="text-xs font-semibold text-muted-foreground">
+                    {t('simple.previewWorkforceLabel')}
+                  </dt>
+                  <dd className="mt-2 flex flex-wrap gap-1.5 text-xs">
+                    {previewTemplate.workforceSequence.map((persona) => (
+                      <span className="rounded-md border bg-muted/30 px-2 py-1" key={persona.id}>
+                        {t(`simple.persona.${persona.id}`, { defaultValue: persona.label })}
+                      </span>
+                    ))}
+                  </dd>
+                </div>
+                {/* Runtime Plan */}
+                <div className="rounded-md border bg-background px-3 py-2">
+                  <dt className="text-xs font-semibold text-muted-foreground">
+                    {t('simple.previewRuntimeLabel')}
+                  </dt>
+                  <dd className="mt-1 text-xs text-muted-foreground">
+                    {t('simple.previewRuntimeValue', {
+                      primary: previewTemplate.primaryRuntime,
+                      secondary: previewTemplate.secondaryRuntime,
+                    })}
+                  </dd>
+                </div>
+                {/* Eval Plan */}
+                <div className="rounded-md border bg-background px-3 py-2">
+                  <dt className="text-xs font-semibold text-muted-foreground">
+                    {t('simple.previewEvalLabel')}
+                  </dt>
+                  <dd className="mt-2 flex flex-wrap gap-1.5 text-xs">
+                    {previewTemplate.evalChecks.map((check) => (
+                      <span
+                        className={`rounded-md border px-2 py-1 ${
+                          check.hardGate
+                            ? 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100'
+                            : 'bg-muted/30'
+                        }`}
+                        key={check.id}
+                        title={check.hardGate ? t('simple.hardGateHint') : undefined}
+                      >
+                        {t(`simple.evalCheck.${check.id}`, { defaultValue: check.label })}
+                      </span>
+                    ))}
+                  </dd>
+                </div>
+                {/* Risk / Gate Plan */}
+                <div className="rounded-md border bg-background px-3 py-2">
+                  <dt className="text-xs font-semibold text-muted-foreground">
+                    {t('simple.previewGateLabel')}
+                  </dt>
+                  <dd className="mt-2 flex flex-wrap gap-1.5 text-xs">
+                    {previewTemplate.gates.map((gate) => (
+                      <span
+                        className={`rounded-md border px-2 py-1 ${
+                          gate.kind === 'human'
+                            ? 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100'
+                            : 'bg-muted/30'
+                        }`}
+                        key={gate.id}
+                      >
+                        {t(`simple.gateLabel.${gate.id}`, { defaultValue: gate.label })}
+                      </span>
+                    ))}
+                  </dd>
+                </div>
+              </>
+            ) : null}
           </dl>
         ) : (
           <p className="mt-2 text-xs text-muted-foreground">{t('simple.previewEmpty')}</p>

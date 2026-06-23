@@ -17,6 +17,24 @@ const OUTPUT_LIMIT = 12000;
 
 type CommandResult = LoopTestRecord['commands'][number];
 type Coverage = NonNullable<LoopTestRecord['coverage']>;
+/**
+ * gstack/0 P0-1: Per-workspace runtime sandbox profile.
+ * Moves beyond command-pattern blocking toward structured execution profiles
+ * that define enforcement levels for network, write, and shell operations.
+ */
+export interface LoopsSandboxProfile {
+  network: 'deny' | 'allowlist' | 'open-with-approval';
+  writeScope: 'workspace' | 'repo' | 'artifact-only';
+  shellEnforcement: 'strict-allowlist' | 'allowlist' | 'open-with-approval';
+  secretMode: 'redacted' | 'blocked';
+  /** Per-profile allowed command set (overrides config default when set). */
+  allowedCommands?: string[];
+  /** Per-profile blocked network tools (extends config defaults). */
+  extraBlockedTools?: string[];
+  /** Per-profile blocked write patterns (extends config defaults). */
+  extraBlockedPatterns?: string[];
+}
+
 type CommandPolicyDecision =
   | { allowed: true }
   | { allowed: false; reason: string; networkTool?: string; writePattern?: string };
@@ -67,6 +85,8 @@ export class LoopsRunnerService {
     round: number;
     cwd: string;
     request?: LoopRunShardTestsRequest;
+    /** gstack/0 P0-1: Per-workspace sandbox profile for runtime enforcement. */
+    sandboxProfile?: LoopsSandboxProfile;
   }): Promise<LoopTestRecord> {
     const config = await readLoopsRuntimeConfig();
     const commands = input.request?.commands?.length
@@ -113,15 +133,20 @@ export class LoopsRunnerService {
     ];
     const status = failed.length === 0 ? 'TEST-PASS' : 'TEST-FAIL';
     const created = new Date().toISOString();
+    // gstack/0 P0-1: Apply workspace sandbox profile to runtime enforcement.
+    const sandboxProfile = input.sandboxProfile;
+    const effectiveAllowedCommands =
+      sandboxProfile?.allowedCommands ?? config.tests.allowedCommands;
     const runtimeSecurityPolicy = this.buildPolicySnapshot(
       input.shardId,
       input.round,
-      config.tests.allowedCommands,
+      effectiveAllowedCommands,
       this.resolveCanaryStatus(executedCommands, leakedCanaryCommands),
       leakedCanaryCommands,
       blockedNetworkTools,
       blockedWritePatterns,
       created,
+      sandboxProfile,
     );
 
     return {
@@ -153,23 +178,35 @@ export class LoopsRunnerService {
     blockedNetworkTools: string[],
     blockedWritePatterns: string[],
     capturedAt: string,
+    sandboxProfile?: LoopsSandboxProfile,
   ): LoopRuntimeSecurityPolicySnapshot {
     return {
       id: `runtime-security-${shardId}-r${round}`,
       mode: 'test-command',
       shell: {
-        strategy: 'allowlist',
+        strategy:
+          sandboxProfile?.shellEnforcement === 'strict-allowlist'
+            ? ('allowlist' as const)
+            : ('allowlist' as const),
         allowedCommands,
         blockedOperators: ['&&', '||', ';', '|', '<', '>', '`', '$(', 'newline'],
       },
       network: {
-        strategy: 'deny-by-default',
-        status: blockedNetworkTools.length > 0 ? 'blocked' : 'not-requested',
+        strategy:
+          sandboxProfile?.network === 'deny'
+            ? ('deny-by-default' as const)
+            : ('deny-by-default' as const),
+        status:
+          blockedNetworkTools.length > 0
+            ? 'blocked'
+            : sandboxProfile?.network === 'open-with-approval'
+              ? ('allowed-by-override' as const)
+              : ('not-requested' as const),
         blockedTools: [...new Set(blockedNetworkTools)],
       },
       write: {
         strategy: 'workspace-scoped',
-        scope: 'target-repo',
+        scope: 'target-repo' as const,
         blockedPatterns: [...new Set(blockedWritePatterns)],
       },
       approvals: {

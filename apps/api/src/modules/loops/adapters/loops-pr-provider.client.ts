@@ -43,6 +43,16 @@ type ProviderResponse = {
   number?: unknown;
 };
 
+// R5 · gstack/0 — PR Comment types
+export type LoopsCreatePrCommentInput = {
+  prId: string;
+  body: string;
+};
+
+export type LoopsCreatePrCommentResult =
+  | { created: true; id: string; url: string }
+  | { created: false; reason: string };
+
 @Injectable()
 export class LoopsPrProviderClient {
   constructor(
@@ -201,6 +211,135 @@ export class LoopsPrProviderClient {
       }
     }
     return undefined;
+  }
+
+  // --------------------------------------------------------------------------
+  // PR Comment (R5 · gstack/0)
+  // --------------------------------------------------------------------------
+
+  /**
+   * Create a comment on an existing PR. Reuses the same provider auth config
+   * as openPullRequest. Returns the comment id and url on success.
+   */
+  async createPrComment(input: LoopsCreatePrCommentInput): Promise<LoopsCreatePrCommentResult> {
+    const missing = this.missingConfig();
+    if (missing) return { created: false, reason: missing };
+
+    const provider = this.config.provider!;
+    const repository = this.config.repository!;
+    const token = this.config.token!;
+    const baseUrl = this.config.apiBaseUrl!.replace(/\/+$/, '');
+    const encodedRepo = encodeURIComponent(repository);
+
+    let url: string;
+    if (provider === 'gitlab') {
+      url = `${baseUrl}/projects/${encodedRepo}/merge_requests/${input.prId}/notes`;
+    } else if (provider === 'gitea') {
+      url = `${baseUrl}/repos/${repository}/issues/${input.prId}/comments`;
+    } else {
+      url = `${baseUrl}/repos/${repository}/issues/${input.prId}/comments`;
+    }
+
+    const headers = this.headers(provider, token);
+    const data = await this.postJson(url, { body: input.body }, headers);
+    if (!data || data.status < 200 || data.status >= 300) {
+      return { created: false, reason: `provider api returned ${data?.status ?? 'error'}` };
+    }
+
+    const body = data.body as ProviderResponse & { html_url?: string; id?: number };
+    const commentUrl = body.html_url ?? '';
+    const commentId = this.extractId(body) ?? commentUrl;
+    return { created: true, id: commentId, url: commentUrl };
+  }
+
+  /**
+   * Update (edit) an existing PR comment. Currently only GitHub supports
+   * this via PATCH; GitLab supports PUT. Returns updated comment id.
+   */
+  async updatePrComment(commentId: string, body: string): Promise<LoopsCreatePrCommentResult> {
+    const missing = this.missingConfig();
+    if (missing) return { created: false, reason: missing };
+
+    const provider = this.config.provider!;
+    const repository = this.config.repository!;
+    const token = this.config.token!;
+    const baseUrl = this.config.apiBaseUrl!.replace(/\/+$/, '');
+    const encodedRepo = encodeURIComponent(repository);
+
+    let url: string;
+    if (provider === 'gitlab') {
+      url = `${baseUrl}/projects/${encodedRepo}/merge_requests/notes/${commentId}`;
+    } else {
+      // GitHub and Gitea use issues comments endpoint
+      url = `${baseUrl}/repos/${repository}/issues/comments/${commentId}`;
+    }
+
+    const headers = this.headers(provider, token);
+    // GitHub/GitLab use PATCH, Gitea might need PUT
+    const method = provider === 'gitea' ? 'PUT' : 'PATCH';
+    const data =
+      method === 'PATCH'
+        ? await this.patchJson(url, { body }, headers)
+        : await this.putJson(url, { body }, headers);
+
+    if (!data || data.status < 200 || data.status >= 300) {
+      return { created: false, reason: `provider api returned ${data?.status ?? 'error'}` };
+    }
+    return { created: true, id: commentId, url: '' };
+  }
+
+  private async patchJson(
+    url: string,
+    payload: Record<string, string>,
+    headers: Record<string, string>,
+  ): Promise<{ status: number; body: unknown } | undefined> {
+    try {
+      if (this.httpService) {
+        const response = await firstValueFrom(
+          this.httpService.patch(url, payload, {
+            headers,
+            timeout: 15_000,
+            validateStatus: () => true,
+          }),
+        );
+        return { status: response.status, body: response.data };
+      }
+      const response = await fetch(url, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      return { status: response.status, body: await response.json().catch(() => undefined) };
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async putJson(
+    url: string,
+    payload: Record<string, string>,
+    headers: Record<string, string>,
+  ): Promise<{ status: number; body: unknown } | undefined> {
+    try {
+      if (this.httpService) {
+        const response = await firstValueFrom(
+          this.httpService.put(url, payload, {
+            headers,
+            timeout: 15_000,
+            validateStatus: () => true,
+          }),
+        );
+        return { status: response.status, body: response.data };
+      }
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(payload),
+      });
+      return { status: response.status, body: await response.json().catch(() => undefined) };
+    } catch {
+      return undefined;
+    }
   }
 }
 

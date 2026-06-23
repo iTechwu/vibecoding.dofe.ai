@@ -13,20 +13,11 @@
 
 ### 交付 1：Workforce Overview v1
 
-范围：
-
-- 在 Dashboard 展示 Software Delivery Workforce；
-- 在 Detail 页展示 Agent Handoff Timeline；
-- 将 phase 映射为 persona；
-- Exception Center 按 persona/stage 聚合。
-
-验收：
-
-- 用户无需理解 shard/phase 也能知道当前谁在做什么；
-- 每个 Loop 可显示当前 active persona、next gate、blocked reason；
-- 不要求后端 schema 大改，可从现有 state 推导。
+状态：✅ 已完成（R1）。9 persona 映射 + Dashboard Workforce 区块 + Detail Agent Handoff Timeline。
 
 ### 交付 2：Runtime Backend Panel v1
+
+状态：已实施。
 
 范围：
 
@@ -36,11 +27,13 @@
 
 验收：
 
-- backend unavailable 会出现在 Dashboard；
+- backend unavailable 会出现在 Dashboard；v1 已能展示 ready/degraded/unavailable；
 - runtime override 有 audit；
-- backend health 可被用户手动刷新。
+- backend health 可被用户手动刷新；现有 runtime detection retry 保留在 Agent Runtime 区块。
 
 ### 交付 3：Eval Plan v1
+
+状态：已实施。
 
 范围：
 
@@ -51,9 +44,9 @@
 
 验收：
 
-- finalize 前能看到 hard gate；
+- finalize 前能看到 hard gate；v1 已在 Dashboard 显示 hard gate；
 - 架构规则检查可以作为 check result 展示；
-- failed check 能进入 Exception Center。
+- failed check 能进入 Exception Center；后续需要将 failed check 结构化接入 Exception Center。
 
 ## 31-60 天：可复用自动化资产
 

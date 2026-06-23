@@ -57,6 +57,21 @@ export class LoopsController {
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.CREATE)
+  @TsRestHandler(c.webhookTrigger)
+  async webhookTrigger(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.webhookTrigger, async ({ body }) => {
+      const result = await this.loopsService.webhookTrigger(body);
+      if (result.created) {
+        await this.auditLog(req, 'CREATE', 'loop_issue', result.issueId, 'webhookTrigger', {
+          source: body.source,
+          event: body.event,
+        });
+      }
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.CREATE)
   @TsRestHandler(c.createSimpleIssue)
   async createSimpleIssue(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.createSimpleIssue, async ({ body }) => {
@@ -78,6 +93,88 @@ export class LoopsController {
   async getIssue() {
     return tsRestHandler(c.getIssue, async ({ params }) => {
       return success(await this.loopsService.getIssue(params.issueId));
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.getDeliveryEvidence)
+  async getDeliveryEvidence() {
+    return tsRestHandler(c.getDeliveryEvidence, async ({ params }) => {
+      return success(await this.loopsService.getDeliveryEvidence(params.issueId));
+    });
+  }
+
+  // --- Runtime Backend Registry (P0-2) ---
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.listRuntimeBackends)
+  async listRuntimeBackends() {
+    return tsRestHandler(c.listRuntimeBackends, async ({ query }) => {
+      return success(await this.loopsService.listRuntimeBackends(query));
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.getRuntimeBackend)
+  async getRuntimeBackend() {
+    return tsRestHandler(c.getRuntimeBackend, async ({ params }) => {
+      return success(await this.loopsService.getRuntimeBackend(params.id));
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.runtimeBackendHealthCheck)
+  async runtimeBackendHealthCheck() {
+    return tsRestHandler(c.runtimeBackendHealthCheck, async ({ params }) => {
+      return success(await this.loopsService.runtimeBackendHealthCheck(params.id));
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.updateRuntimeBackendPolicy)
+  async updateRuntimeBackendPolicy(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.updateRuntimeBackendPolicy, async ({ params, body }) => {
+      const result = await this.loopsService.updateRuntimeBackendPolicy(params.id, body);
+      await this.auditLog(req, 'UPDATE', 'loop_runtime_backend', params.id, 'updatePolicy', {
+        fallbackPolicy: body.fallbackPolicy,
+        costPolicy: body.costPolicy,
+        permissionProfile: body.permissionProfile,
+      });
+      return success(result);
+    });
+  }
+
+  // --- Eval Suite / Eval Run (P0-3) ---
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.listEvalSuites)
+  async listEvalSuites() {
+    return tsRestHandler(c.listEvalSuites, async ({ query }) => {
+      return success(await this.loopsService.listEvalSuites(query));
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.getEvalSuite)
+  async getEvalSuite() {
+    return tsRestHandler(c.getEvalSuite, async ({ params }) => {
+      return success(await this.loopsService.getEvalSuite(params.id));
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.listEvalRuns)
+  async listEvalRuns() {
+    return tsRestHandler(c.listEvalRuns, async ({ query }) => {
+      return success(await this.loopsService.listEvalRuns(query));
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.getEvalRun)
+  async getEvalRun() {
+    return tsRestHandler(c.getEvalRun, async ({ params }) => {
+      return success(await this.loopsService.getEvalRun(params.id));
     });
   }
 
@@ -277,6 +374,32 @@ export class LoopsController {
       await this.auditLoopUpdate(req, params.issueId, 'runSecondOpinion', {
         status: result.secondOpinion?.status,
         secondaryStatus: result.secondOpinion?.secondary.status,
+      });
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.resolveSecondOpinion)
+  async resolveSecondOpinion(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.resolveSecondOpinion, async ({ params, body }) => {
+      const result = await this.loopsService.resolveSecondOpinion(params.issueId, body);
+      await this.auditLoopUpdate(req, params.issueId, 'resolveSecondOpinion', {
+        action: body.action,
+        fingerprint: body.findingFingerprint,
+      });
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.runReleaseCanary)
+  async runReleaseCanary(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.runReleaseCanary, async ({ params, body }) => {
+      const result = await this.loopsService.runReleaseCanary(params.issueId, body);
+      await this.auditLoopUpdate(req, params.issueId, 'runReleaseCanary', {
+        targetUrl: body.targetUrl,
+        riskLevel: body.riskLevel,
       });
       return success(result);
     });

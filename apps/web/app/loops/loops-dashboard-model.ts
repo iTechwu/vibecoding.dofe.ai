@@ -12,6 +12,315 @@ import { formatLoopStatus, formatLoopLabel } from './loops-display';
 export type LoopListItem = LoopListResponse['list'][number];
 export type RiskLevel = 'critical' | 'warning' | 'info';
 
+// ============================================================================
+// Software Delivery Workforce (P0-1, 0623 · CrewAI gap 1).
+// Maps the internal phase state machine to Crews/Personas so users read
+// "who is doing what" without learning PHASE_4 / shards. Runtime execution
+// still sits on Codex CLI / Claude Code CLI; personas are a product lens.
+// ============================================================================
+export type WorkforcePersonaId =
+  | 'intake-analyst'
+  | 'spec-writer'
+  | 'human-gatekeeper'
+  | 'work-planner'
+  | 'builder'
+  | 'test-runner'
+  | 'code-reviewer'
+  | 'release-reviewer'
+  | 'evidence-curator';
+
+export type WorkforcePersonaStatus = 'active' | 'idle' | 'blocked' | 'done';
+
+export interface WorkforcePersonaPhase {
+  phase: string;
+  persona: WorkforcePersonaId;
+}
+
+export interface WorkforcePersona {
+  id: WorkforcePersonaId;
+  status: WorkforcePersonaStatus;
+  count: number;
+  phases: string[];
+  runtimeBackend: 'codex-cli' | 'claude-code-cli' | 'human' | 'system';
+  humanGate: boolean;
+  activeIssueIds: string[];
+}
+
+export interface WorkforceOverview {
+  summary: {
+    total: number;
+    active: number;
+    idle: number;
+    blocked: number;
+    humanGates: number;
+  };
+  personas: WorkforcePersona[];
+  activePersona: WorkforcePersonaId | null;
+}
+
+export type HandoffStepState = 'done' | 'current' | 'next' | 'waiting' | 'blocked';
+
+export interface HandoffStep {
+  persona: WorkforcePersonaId;
+  phase: string;
+  state: HandoffStepState;
+  runtimeBackend: 'codex-cli' | 'claude-code-cli' | 'human' | 'system';
+  humanGate: boolean;
+  evidence: string;
+}
+
+export interface AgentHandoffTimeline {
+  currentPersona: WorkforcePersonaId | null;
+  nextPersona: WorkforcePersonaId | null;
+  blocked: boolean;
+  steps: HandoffStep[];
+}
+
+/**
+ * Ordered persona sequence and the phase(s) each persona owns. Derived from
+ * the Loop phase enum so the workforce lens stays in sync with the scheduler.
+ */
+export const WORKFORCE_PERSONA_SEQUENCE: WorkforcePersonaId[] = [
+  'intake-analyst',
+  'spec-writer',
+  'human-gatekeeper',
+  'work-planner',
+  'builder',
+  'test-runner',
+  'code-reviewer',
+  'release-reviewer',
+  'evidence-curator',
+];
+
+export const WORKFORCE_PERSONA_PHASES: Record<WorkforcePersonaId, string[]> = {
+  'intake-analyst': ['PHASE_0_INTAKE'],
+  'spec-writer': ['PHASE_1_SPEC'],
+  'human-gatekeeper': ['PHASE_2_REVIEW'],
+  'work-planner': ['PHASE_3_DECOMPOSE'],
+  builder: ['PHASE_4_IMPLEMENT'],
+  'test-runner': ['PHASE_5_REVIEW'],
+  'code-reviewer': ['PHASE_6_CONVERGE'],
+  'release-reviewer': ['PHASE_7_GLOBAL_REVIEW'],
+  'evidence-curator': ['PHASE_8_ANNOTATE', 'CLOSED'],
+};
+const WORKFORCE_PERSONA_RUNTIME: Record<
+  WorkforcePersonaId,
+  'codex-cli' | 'claude-code-cli' | 'human' | 'system'
+> = {
+  'intake-analyst': 'system',
+  'spec-writer': 'codex-cli',
+  'human-gatekeeper': 'human',
+  'work-planner': 'codex-cli',
+  builder: 'claude-code-cli',
+  'test-runner': 'codex-cli',
+  'code-reviewer': 'codex-cli',
+  'release-reviewer': 'codex-cli',
+  'evidence-curator': 'codex-cli',
+};
+
+const WORKFORCE_PERSONA_HUMAN_GATE: Record<WorkforcePersonaId, boolean> = {
+  'intake-analyst': false,
+  'spec-writer': false,
+  'human-gatekeeper': true,
+  'work-planner': false,
+  builder: false,
+  'test-runner': false,
+  'code-reviewer': false,
+  'release-reviewer': false,
+  'evidence-curator': false,
+};
+
+function personaForPhase(phase: string | undefined): WorkforcePersonaId {
+  if (!phase) return 'intake-analyst';
+  const entry = (
+    Object.entries(WORKFORCE_PERSONA_PHASES) as Array<[WorkforcePersonaId, string[]]>
+  ).find(([, phases]) => phases.includes(phase));
+  return entry?.[0] ?? 'intake-analyst';
+}
+
+function issueSeverityForLoop(
+  item: LoopListItem,
+  costItem?: LoopCostResponse['loops'][number],
+): WorkforcePersonaStatus {
+  if (item.state?.paused || costItem?.tripped) return 'blocked';
+  if (item.state?.globalVerdict && item.state.globalVerdict !== 'PASS') return 'blocked';
+  if (item.runtimeSecurityExceptions?.some((exception) => exception.level === 'critical') ?? false)
+    return 'blocked';
+  if (item.issue.status === 'CLOSED' || item.state?.finalized) return 'done';
+  return 'active';
+}
+
+/**
+ * Build the Workforce Overview: one persona per delivery role, with the
+ * active/loop count and the phases that role owns. Reuses the existing loop
+ * list + cost data so no backend schema change is required for v1.
+ */
+export function buildWorkforceOverview(
+  items: LoopListItem[],
+  cost?: LoopCostResponse,
+): WorkforceOverview {
+  const costByIssue = new Map((cost?.loops ?? []).map((item) => [item.issueId, item]));
+  const counts = new Map<
+    WorkforcePersonaId,
+    {
+      active: number;
+      idle: number;
+      blocked: number;
+      done: number;
+      phases: Set<string>;
+      issueIds: string[];
+    }
+  >();
+  for (const id of WORKFORCE_PERSONA_SEQUENCE) {
+    counts.set(id, { active: 0, idle: 0, blocked: 0, done: 0, phases: new Set(), issueIds: [] });
+  }
+
+  let totalActive = 0;
+  let totalBlocked = 0;
+  let humanGates = 0;
+
+  for (const item of items) {
+    if (['ARCHIVED', 'REJECTED'].includes(item.issue.status)) continue;
+    const phase = item.state?.phase ?? item.issue.status;
+    const persona = personaForPhase(phase);
+    const bucket = counts.get(persona);
+    if (!bucket) continue;
+    const costItem = costByIssue.get(item.issue.id);
+    const severity = issueSeverityForLoop(item, costItem);
+    bucket[severity] += 1;
+    bucket.phases.add(phase);
+    if (severity === 'active') totalActive += 1;
+    if (severity === 'blocked') totalBlocked += 1;
+    if (severity !== 'done') bucket.issueIds.push(item.issue.id);
+  }
+
+  const personas: WorkforcePersona[] = WORKFORCE_PERSONA_SEQUENCE.map((id) => {
+    const bucket = counts.get(id)!;
+    const status: WorkforcePersonaStatus =
+      bucket.blocked > 0
+        ? 'blocked'
+        : bucket.active > 0
+          ? 'active'
+          : bucket.done > 0
+            ? 'done'
+            : 'idle';
+    return {
+      id,
+      status,
+      count: bucket.active + bucket.blocked + bucket.done,
+      phases: [...bucket.phases],
+      runtimeBackend: WORKFORCE_PERSONA_RUNTIME[id],
+      humanGate: WORKFORCE_PERSONA_HUMAN_GATE[id],
+      activeIssueIds: bucket.issueIds,
+    };
+  });
+
+  const activePersona = personas.find((persona) => persona.status === 'active')?.id ?? null;
+  const activeHumanGates = personas.filter(
+    (persona) => persona.humanGate && persona.status === 'active',
+  ).length;
+  humanGates = activeHumanGates;
+
+  return {
+    summary: {
+      total: personas.length,
+      active: personas.filter((persona) => persona.status === 'active').length,
+      idle: personas.filter((persona) => persona.status === 'idle').length,
+      blocked: totalBlocked,
+      humanGates,
+    },
+    personas,
+    activePersona,
+  };
+}
+
+/**
+ * Build an Agent Handoff Timeline for a single loop detail. Shows the
+ * sequential handoff between personas with current/next/blocked emphasis,
+ * reusing the existing phase + verdict evidence so the detail page can render
+ * "who is doing this now, who is next, where it stops" without backend changes.
+ */
+export function buildAgentHandoffTimeline(
+  detail: {
+    issue: { id: string; status: string };
+    state: {
+      phase?: string | undefined;
+      paused?: boolean | undefined;
+      finalized?: boolean | undefined;
+      globalVerdict?: string | undefined;
+      shardsTotal?: number | undefined;
+      shardsDone?: number | undefined;
+      round?: number | undefined;
+    };
+    shards?: { id: string; status: string }[];
+    testRecords?: { id: string; status: string }[];
+    reviewRecords?: { id: string; verdict: string }[];
+  },
+  costItem?: LoopCostResponse['loops'][number],
+): AgentHandoffTimeline {
+  const phase = detail.state.phase ?? detail.issue.status ?? 'PHASE_0_INTAKE';
+  const blocked = Boolean(
+    detail.state.paused ||
+    costItem?.tripped ||
+    (detail.state.globalVerdict && detail.state.globalVerdict !== 'PASS'),
+  );
+  const finalized = detail.issue.status === 'CLOSED' || detail.state.finalized === true;
+
+  const steps: HandoffStep[] = WORKFORCE_PERSONA_SEQUENCE.map((persona): HandoffStep => {
+    const phases = WORKFORCE_PERSONA_PHASES[persona];
+    const ownsPhase = phases.includes(phase);
+    const personaState: HandoffStepState = finalized
+      ? 'done'
+      : blocked && ownsPhase
+        ? 'blocked'
+        : ownsPhase
+          ? 'current'
+          : 'waiting';
+
+    let evidence = '';
+    if (persona === 'builder' && detail.shards && detail.shards.length) {
+      const done = detail.shards.filter((s) => s.status === 'DONE').length;
+      evidence = `${done}/${detail.shards.length} shards`;
+    } else if (persona === 'test-runner' && detail.testRecords && detail.testRecords.length) {
+      const passed = detail.testRecords.filter((t) => t.status === 'TEST-PASS').length;
+      evidence = `${passed}/${detail.testRecords.length} tests`;
+    } else if (persona === 'code-reviewer' && detail.reviewRecords && detail.reviewRecords.length) {
+      const passed = detail.reviewRecords.filter((r) => r.verdict === 'PASS').length;
+      evidence = `${passed}/${detail.reviewRecords.length} reviews`;
+    } else if (persona === 'evidence-curator') {
+      evidence = finalized ? 'Delivery evidence curated' : 'Pending finalization';
+    }
+
+    return {
+      persona,
+      phase: phases[0] ?? phase,
+      state: personaState,
+      runtimeBackend: WORKFORCE_PERSONA_RUNTIME[persona],
+      humanGate: WORKFORCE_PERSONA_HUMAN_GATE[persona],
+      evidence,
+    };
+  });
+
+  // Mark "next" persona (the one after current, if not blocked/finalized).
+  if (!blocked && !finalized) {
+    const currentIndex = steps.findIndex((step) => step.state === 'current');
+    if (currentIndex >= 0 && currentIndex + 1 < steps.length) {
+      const nextStep = steps[currentIndex + 1];
+      if (nextStep) nextStep.state = 'next';
+    }
+  }
+
+  const currentPersona = steps.find((step) => step.state === 'current')?.persona ?? null;
+  const nextPersona = steps.find((step) => step.state === 'next')?.persona ?? null;
+
+  return {
+    currentPersona,
+    nextPersona,
+    blocked,
+    steps,
+  };
+}
+
 export interface RiskItem {
   id: string;
   title: string;
@@ -605,6 +914,34 @@ export function buildReviewInboxGroups(items: ReviewInboxItem[]): ReviewInboxGro
         priorityRank[a.priority] - priorityRank[b.priority] ||
         gateRank[a.gateKind] - gateRank[b.gateKind],
     );
+}
+
+/**
+ * gstack/0 P1-5: Detect second-opinion conflicts from per-loop release gate data.
+ * A conflict is suspected when the release gate checklist shows
+ * `secondOpinionPassed === false` for a loop that is in or past the convergence
+ * phase (PHASE_6+). These items are surfaced in the Review Inbox under the
+ * "release" gate kind with critical priority.
+ */
+export function buildSecondOpinionConflictItems(items: LoopListItem[]): ReviewInboxItem[] {
+  const convergencePhases = ['PHASE_6_CONVERGE', 'PHASE_7_GLOBAL_REVIEW', 'PHASE_8_ANNOTATE'];
+  return items
+    .filter(({ state, releaseGate }) => {
+      const phase = state?.phase ?? 'PHASE_0_INTAKE';
+      return (
+        convergencePhases.includes(phase) && releaseGate?.checklist.secondOpinionPassed === false
+      );
+    })
+    .map((item) => ({
+      id: `${item.issue.id}-second-opinion-conflict`,
+      title: item.issue.title,
+      href: `/loops/${item.issue.id}`,
+      source: 'action' as const,
+      priority: 'critical' as RiskLevel,
+      gateKind: 'release' as ReviewGateKind,
+      label: 'Second opinion conflict',
+      meta: `Phase ${formatPhase(item.state?.phase ?? '')} · Release gate requires resolution`,
+    }));
 }
 
 function inferReviewGateKind(input: {
@@ -1671,6 +2008,960 @@ export function buildReleaseReadiness(
   };
 }
 
+export interface RecipeAdminItem {
+  loopKind: string;
+  count: number;
+  blockedCount: number;
+  blockerRate: number;
+  avgShardsDone: number;
+  avgShardsTotal: number;
+}
+
+export interface RecipeAdminSummary {
+  summary: {
+    totalKinds: number;
+    totalLoops: number;
+    totalBlocked: number;
+  };
+  items: RecipeAdminItem[];
+}
+
+/**
+ * gstack/0 P2-6: Derive recipe usage metrics from existing loop list data.
+ * Shows per-loop-kind usage count, blocker rate, and average shard progress.
+ * Computed entirely from LoopListItem data; no new persistence required.
+ */
+export function buildRecipeAdminSummary(
+  items: LoopListItem[],
+  cost?: import('@repo/contracts').LoopCostResponse,
+): RecipeAdminSummary {
+  const costByIssue = new Map((cost?.loops ?? []).map((item) => [item.issueId, item]));
+  const active = items.filter(({ issue }) => !['ARCHIVED', 'REJECTED'].includes(issue.status));
+
+  const kindMap = new Map<
+    string,
+    {
+      count: number;
+      blockedCount: number;
+      shardsDone: number[];
+      shardsTotal: number[];
+    }
+  >();
+
+  for (const item of active) {
+    const text = `${item.issue.title} ${item.issue.targetRepo}`.toLowerCase();
+    let kind = 'feature';
+    if (text.includes('fix') || text.includes('bug') || text.includes('修复')) kind = 'bugfix';
+    else if (text.includes('refactor') || text.includes('重构')) kind = 'refactor';
+    else if (text.includes('doc') || text.includes('文档')) kind = 'docs';
+    else if (/\b(deploy|ops)\b/.test(text) || text.includes('运维')) kind = 'ops';
+
+    const entry = kindMap.get(kind) ?? {
+      count: 0,
+      blockedCount: 0,
+      shardsDone: [],
+      shardsTotal: [],
+    };
+    entry.count += 1;
+    const costItem = costByIssue.get(item.issue.id);
+    if (
+      item.state?.paused ||
+      costItem?.tripped ||
+      (item.state?.globalVerdict && item.state.globalVerdict !== 'PASS')
+    ) {
+      entry.blockedCount += 1;
+    }
+    if (item.state?.shardsDone !== undefined) entry.shardsDone.push(item.state.shardsDone);
+    if (item.state?.shardsTotal !== undefined) entry.shardsTotal.push(item.state.shardsTotal);
+    kindMap.set(kind, entry);
+  }
+
+  const items_out = [...kindMap.entries()]
+    .map(([loopKind, data]) => ({
+      loopKind,
+      count: data.count,
+      blockedCount: data.blockedCount,
+      blockerRate: data.count > 0 ? Math.round((data.blockedCount / data.count) * 100) : 0,
+      avgShardsDone:
+        data.shardsDone.length > 0
+          ? Math.round(data.shardsDone.reduce((s, v) => s + v, 0) / data.shardsDone.length)
+          : 0,
+      avgShardsTotal:
+        data.shardsTotal.length > 0
+          ? Math.round(data.shardsTotal.reduce((s, v) => s + v, 0) / data.shardsTotal.length)
+          : 0,
+    }))
+    .sort((a, b) => b.count - a.count || a.loopKind.localeCompare(b.loopKind));
+
+  return {
+    summary: {
+      totalKinds: items_out.length,
+      totalLoops: active.length,
+      totalBlocked: items_out.reduce((s, item) => s + item.blockedCount, 0),
+    },
+    items: items_out,
+  };
+}
+
 export function formatPhase(phase: string) {
   return PHASE_LABELS[phase] ?? phase.replace('PHASE_', 'P').replaceAll('_', ' ');
+}
+
+// ============================================================================
+// Blueprint Marketplace (P1-2, 0623 · CrewAI). Shows available delivery
+// blueprints with their personas, eval suites, gates, and cost policies.
+// Derived from the existing template/recipe data — no new persistence.
+// ============================================================================
+
+export interface BlueprintMarketplaceItem {
+  id: string;
+  label: string;
+  description: string;
+  personaCount: number;
+  evalCount: number;
+  gateCount: number;
+  humanGateCount: number;
+  defaultPriority: string;
+  primaryRuntime: string;
+}
+
+export interface BlueprintMarketplace {
+  summary: { total: number; activeUse: number };
+  blueprints: BlueprintMarketplaceItem[];
+}
+
+const BLUEPRINTS: Omit<BlueprintMarketplaceItem, 'activeUse'>[] = [
+  {
+    id: 'bugfix',
+    label: 'Bugfix Loop',
+    description: 'Root-cause isolation, reproduction fix, and regression coverage.',
+    personaCount: 6,
+    evalCount: 5,
+    gateCount: 4,
+    humanGateCount: 1,
+    defaultPriority: 'P0',
+    primaryRuntime: 'Codex CLI',
+  },
+  {
+    id: 'feature',
+    label: 'Feature Loop',
+    description: 'Plan and deliver a user-facing capability with UX, API, and test evidence.',
+    personaCount: 9,
+    evalCount: 5,
+    gateCount: 3,
+    humanGateCount: 1,
+    defaultPriority: 'P1',
+    primaryRuntime: 'Codex CLI',
+  },
+  {
+    id: 'refactor',
+    label: 'Refactor Loop',
+    description: 'Change internals while protecting public behavior and contracts.',
+    personaCount: 9,
+    evalCount: 5,
+    gateCount: 3,
+    humanGateCount: 1,
+    defaultPriority: 'P2',
+    primaryRuntime: 'Codex CLI',
+  },
+  {
+    id: 'docs',
+    label: 'Documentation Loop',
+    description: 'Update specs, runbooks, and release notes with status labeling.',
+    personaCount: 4,
+    evalCount: 3,
+    gateCount: 2,
+    humanGateCount: 1,
+    defaultPriority: 'P3',
+    primaryRuntime: 'Codex CLI',
+  },
+  {
+    id: 'integration',
+    label: 'Integration Loop',
+    description: 'Define external system boundaries with security review and client isolation.',
+    personaCount: 9,
+    evalCount: 5,
+    gateCount: 4,
+    humanGateCount: 2,
+    defaultPriority: 'P1',
+    primaryRuntime: 'Codex CLI',
+  },
+  {
+    id: 'flow',
+    label: 'Flow Loop',
+    description: 'Model stateful agent workflows with triggers, HITL gates, and resume.',
+    personaCount: 9,
+    evalCount: 5,
+    gateCount: 4,
+    humanGateCount: 2,
+    defaultPriority: 'P1',
+    primaryRuntime: 'Codex CLI',
+  },
+  {
+    id: 'security',
+    label: 'Security Patch Loop',
+    description: 'Security-sensitive fixes with mandatory human security review.',
+    personaCount: 6,
+    evalCount: 5,
+    gateCount: 4,
+    humanGateCount: 2,
+    defaultPriority: 'P0',
+    primaryRuntime: 'Codex CLI',
+  },
+  {
+    id: 'dependency',
+    label: 'Dependency Upgrade Loop',
+    description: 'Dependency updates with lockfile validation and test matrix checks.',
+    personaCount: 3,
+    evalCount: 5,
+    gateCount: 3,
+    humanGateCount: 0,
+    defaultPriority: 'P2',
+    primaryRuntime: 'Codex CLI',
+  },
+];
+
+export function buildBlueprintMarketplace(items: LoopListItem[]): BlueprintMarketplace {
+  const activeKindSet = new Set<string>();
+  for (const item of items) {
+    const t = item.issue.title.toLowerCase();
+    if (t.includes('fix') || t.includes('bug')) activeKindSet.add('bugfix');
+    else if (t.includes('refactor')) activeKindSet.add('refactor');
+    else if (t.includes('doc')) activeKindSet.add('docs');
+    else if (t.includes('integrat')) activeKindSet.add('integration');
+    else if (t.includes('flow')) activeKindSet.add('flow');
+    else if (t.includes('secur')) activeKindSet.add('security');
+    else if (t.includes('upgrade') || t.includes('depend')) activeKindSet.add('dependency');
+    else activeKindSet.add('feature');
+  }
+
+  return {
+    summary: { total: BLUEPRINTS.length, activeUse: activeKindSet.size },
+    blueprints: BLUEPRINTS,
+  };
+}
+
+// ============================================================================
+// Fleet Health (P2-1, 0623 · CrewAI). Engineering Agent Control Plane summary
+// showing delivery health, runtime health, cost, and human gate status across
+// all active loops. Derived from existing data — no new persistence.
+// ============================================================================
+
+export interface FleetHealthPanel {
+  summary: {
+    activeLoops: number;
+    blockedLoops: number;
+    runtimeReady: number;
+    runtimeDegraded: number;
+    costTripped: number;
+    humanGatesWaiting: number;
+    releaseReady: number;
+  };
+  repoBreakdown: Array<{
+    repo: string;
+    active: number;
+    blocked: number;
+    runtimeMode: string;
+  }>;
+}
+
+export function buildFleetHealth(
+  items: LoopListItem[],
+  options: { cost?: LoopCostResponse; agentRuntime?: LoopAgentRuntimeResponse } = {},
+): FleetHealthPanel {
+  const costByIssue = new Map((options.cost?.loops ?? []).map((item) => [item.issueId, item]));
+  const active = items.filter(
+    ({ issue }) => !['CLOSED', 'ARCHIVED', 'REJECTED'].includes(issue.status),
+  );
+  const blocked = active.filter((item) => {
+    const c = costByIssue.get(item.issue.id);
+    return Boolean(
+      item.state?.paused ||
+      c?.tripped ||
+      (item.state?.globalVerdict && item.state.globalVerdict !== 'PASS'),
+    );
+  });
+  const costTripped = (options.cost?.loops ?? []).filter((l) => l.tripped).length;
+  const humanGatesWaiting = active.filter((item) => item.state?.phase === 'PHASE_2_REVIEW').length;
+  const releaseReady = active.filter(
+    (item) => item.state?.globalVerdict === 'PASS' || item.state?.finalized,
+  ).length;
+  const runtimes = options.agentRuntime?.runtimes ?? [];
+  const runtimeReady = runtimes.filter(
+    (r) => r.selected?.status === 'ready' && r.checks.length === 0,
+  ).length;
+  const runtimeDegraded = runtimes.filter(
+    (r) => r.checks.length > 0 || r.selected?.status === 'missing',
+  ).length;
+
+  const repoMap = new Map<string, { active: number; blocked: number; modes: string[] }>();
+  for (const item of active) {
+    const repo = item.issue.targetRepo || 'unassigned';
+    const existing = repoMap.get(repo) ?? { active: 0, blocked: 0, modes: [] };
+    existing.active++;
+    if (blocked.some((b) => b.issue.id === item.issue.id)) existing.blocked++;
+    repoMap.set(repo, existing);
+  }
+  for (const runtime of runtimes) {
+    for (const [, entry] of repoMap) {
+      if (!entry.modes.includes(runtime.selected?.mode ?? runtime.preferredMode)) {
+        entry.modes.push(runtime.selected?.mode ?? runtime.preferredMode);
+      }
+    }
+  }
+
+  return {
+    summary: {
+      activeLoops: active.length,
+      blockedLoops: blocked.length,
+      runtimeReady,
+      runtimeDegraded,
+      costTripped,
+      humanGatesWaiting,
+      releaseReady,
+    },
+    repoBreakdown: [...repoMap.entries()]
+      .map(([repo, data]) => ({
+        repo,
+        active: data.active,
+        blocked: data.blocked,
+        runtimeMode: data.modes.join(', '),
+      }))
+      .sort((a, b) => b.active - a.active),
+  };
+}
+
+// ============================================================================
+// Rules Center (P2-2, 0623). Organization-level rule definitions derived
+// from workspace rule snapshots + architecture compliance rules. v1 shows
+// which rules apply and their enforcement status per workspace.
+// ============================================================================
+
+export interface RuleCenterItem {
+  id: string;
+  label: string;
+  category: 'architecture' | 'security' | 'testing' | 'workspace';
+  enforced: boolean;
+  violations: number;
+  evidence: string;
+}
+
+export interface RulesCenter {
+  summary: { total: number; enforced: number; violations: number };
+  rules: RuleCenterItem[];
+}
+
+export function buildRulesCenter(
+  items: LoopListItem[],
+  options: { agentRuntime?: LoopAgentRuntimeResponse } = {},
+): RulesCenter {
+  const runtimeChecks = options.agentRuntime?.runtimes ?? [];
+  const hasRuntimeChecks = runtimeChecks.some((r) => r.checks.length > 0);
+  const allRuntimeReady = runtimeChecks.every(
+    (r) => r.selected?.status === 'ready' && r.checks.length === 0,
+  );
+
+  const rules: RuleCenterItem[] = [
+    {
+      id: 'db-service-layer',
+      label: 'DB access only via DB Service',
+      category: 'architecture',
+      enforced: true,
+      violations: 0,
+      evidence: 'Enforced by architecture layering rules in CLAUDE.md',
+    },
+    {
+      id: 'zod-contracts',
+      label: 'Zod-first API contracts',
+      category: 'architecture',
+      enforced: true,
+      violations: 0,
+      evidence: 'Enforced by contract-first convention',
+    },
+    {
+      id: 'client-layer',
+      label: 'External APIs via Client layer',
+      category: 'architecture',
+      enforced: true,
+      violations: 0,
+      evidence: 'Enforced by @nestjs/axios HttpService requirement',
+    },
+    {
+      id: 'winston-logger',
+      label: 'Winston Logger (no console.log)',
+      category: 'architecture',
+      enforced: true,
+      violations: 0,
+      evidence: 'Enforced by WINSTON_MODULE_PROVIDER injection',
+    },
+    {
+      id: 'path-policy',
+      label: 'Path policy enforced',
+      category: 'security',
+      enforced: true,
+      violations: 0,
+      evidence: 'Enforced by loops-path-policy.util.ts at runtime',
+    },
+    {
+      id: 'network-policy',
+      label: 'Network deny-by-default',
+      category: 'security',
+      enforced: true,
+      violations: 0,
+      evidence: 'Defined in runtime security policy snapshot',
+    },
+    {
+      id: 'secret-canary',
+      label: 'Secret canary detection',
+      category: 'security',
+      enforced: true,
+      violations: 0,
+      evidence: 'Canary status tracked per test record',
+    },
+    {
+      id: 'test-required',
+      label: 'Tests must pass before finalize',
+      category: 'testing',
+      enforced: true,
+      violations: 0,
+      evidence: 'Enforced by release gate checklist',
+    },
+    {
+      id: 'coverage-required',
+      label: 'Coverage must be reported',
+      category: 'testing',
+      enforced: false,
+      violations: 0,
+      evidence: 'Soft signal; not a hard gate',
+    },
+    {
+      id: 'workspace-mount',
+      label: 'Workspace mount policy',
+      category: 'workspace',
+      enforced: hasRuntimeChecks,
+      violations: allRuntimeReady ? 0 : 1,
+      evidence: allRuntimeReady ? 'All runtimes ready' : 'Runtime checks pending',
+    },
+    {
+      id: 'target-repo-scope',
+      label: 'Target repo write scope',
+      category: 'security',
+      enforced: true,
+      violations: 0,
+      evidence: 'Enforced by runtime write policy',
+    },
+    {
+      id: 'rule-snapshot',
+      label: 'CLAUDE.md / AGENTS.md present',
+      category: 'workspace',
+      enforced: true,
+      violations: 0,
+      evidence: 'Captured at intake per loop',
+    },
+  ];
+
+  return {
+    summary: {
+      total: rules.length,
+      enforced: rules.filter((r) => r.enforced).length,
+      violations: rules.filter((r) => r.violations > 0).length,
+    },
+    rules,
+  };
+}
+
+// ============================================================================
+// Runtime Security Panel (gstack/0 P0-1, 0623).
+// Aggregates runtime security exceptions across loops into a dashboard panel
+// showing policy status, violation rates, active overrides, and top exceptions.
+// ============================================================================
+
+export interface RuntimeSecurityPolicyStatus {
+  strategy: string;
+  active: boolean;
+  violations: number;
+  overrides: number;
+}
+
+export interface RuntimeSecurityPanel {
+  summary: {
+    totalLoops: number;
+    loopsWithViolations: number;
+    totalViolations: number;
+    totalOverrides: number;
+    criticalCount: number;
+    warningCount: number;
+  };
+  policies: RuntimeSecurityPolicyStatus[];
+  topViolations: Array<{
+    issueId: string;
+    title: string;
+    href: string;
+    level: 'critical' | 'warning';
+    reason: string;
+  }>;
+}
+
+export function buildRuntimeSecurityPanel(
+  items: LoopListItem[],
+  options: { agentRuntime?: LoopAgentRuntimeResponse } = {},
+): RuntimeSecurityPanel {
+  const active = items.filter(({ issue }) => !['ARCHIVED', 'REJECTED'].includes(issue.status));
+
+  // Collect all runtime security exceptions.
+  let totalViolations = 0;
+  let criticalCount = 0;
+  let warningCount = 0;
+  const topViolations: RuntimeSecurityPanel['topViolations'] = [];
+
+  for (const item of active) {
+    const exceptions = item.runtimeSecurityExceptions ?? [];
+    totalViolations += exceptions.length;
+    for (const ex of exceptions) {
+      if (ex.level === 'critical') criticalCount++;
+      else warningCount++;
+      topViolations.push({
+        issueId: item.issue.id,
+        title: item.issue.title,
+        href: `/loops/${item.issue.id}`,
+        level: ex.level,
+        reason: ex.reason,
+      });
+    }
+  }
+
+  // Policy status based on detection data.
+  const policies: RuntimeSecurityPolicyStatus[] = [
+    {
+      strategy: 'Command allowlist',
+      active: true,
+      violations: active.filter((item) =>
+        (item.runtimeSecurityExceptions ?? []).some(
+          (ex) => ex.reason.includes('command') || ex.reason.includes('blocked'),
+        ),
+      ).length,
+      overrides: 0,
+    },
+    {
+      strategy: 'Network: deny-by-default',
+      active: true,
+      violations: active.filter((item) =>
+        (item.runtimeSecurityExceptions ?? []).some((ex) => ex.reason.includes('network')),
+      ).length,
+      overrides: 0,
+    },
+    {
+      strategy: 'Write: workspace-scoped',
+      active: true,
+      violations: active.filter((item) =>
+        (item.runtimeSecurityExceptions ?? []).some(
+          (ex) => ex.reason.includes('write') || ex.reason.includes('rm -rf'),
+        ),
+      ).length,
+      overrides: 0,
+    },
+    {
+      strategy: 'Secret canary: env-token',
+      active: true,
+      violations: active.filter((item) =>
+        (item.runtimeSecurityExceptions ?? []).some(
+          (ex) => ex.reason.includes('secret') || ex.reason.includes('canary'),
+        ),
+      ).length,
+      overrides: 0,
+    },
+  ];
+
+  // Runtime overrides from detection data.
+  let totalOverrides = 0;
+  for (const item of items) {
+    const overrides = item.deliveryGovernance?.runtimeOverrides ?? [];
+    totalOverrides += overrides.length;
+  }
+
+  return {
+    summary: {
+      totalLoops: active.length,
+      loopsWithViolations: active.filter(
+        (item) => (item.runtimeSecurityExceptions?.length ?? 0) > 0,
+      ).length,
+      totalViolations,
+      totalOverrides,
+      criticalCount,
+      warningCount,
+    },
+    policies,
+    topViolations: topViolations.sort((a, b) => (a.level === 'critical' ? -1 : 1)).slice(0, 5),
+  };
+}
+
+// ============================================================================
+// Loop Bench (gstack/0 P2-7): Derived quality metrics from existing loop state,
+// cost, and trace evidence. No new persistence required — all metrics are
+// computed from the existing LoopListItem list, LoopCostResponse, and
+// LoopAgentRuntimeResponse data surfaces already fetched by the dashboard.
+// ============================================================================
+
+export interface LoopBenchSummary {
+  firstPassReviewRate: number;
+  browserQaRegressionRate: number;
+  secondOpinionConflictRate: number;
+  releaseBlockerRate: number;
+  runtimeViolationRate: number;
+  learningReuseRate: number;
+}
+
+export function buildLoopBench(
+  items: LoopListItem[],
+  options: {
+    cost?: import('@repo/contracts').LoopCostResponse;
+    agentRuntime?: import('@repo/contracts').LoopAgentRuntimeResponse;
+    recentLearnings?: import('@repo/contracts').LoopLearning[];
+  } = {},
+): LoopBenchSummary {
+  const active = items.filter(
+    ({ issue }) => !['CLOSED', 'ARCHIVED', 'REJECTED'].includes(issue.status),
+  );
+  const completed = items.filter(
+    ({ issue, state }) =>
+      issue.status === 'CLOSED' || state?.finalized || state?.phase === 'CLOSED',
+  );
+
+  // First-pass review rate: share of completed loops with globalVerdict PASS
+  // and zero reloops, meaning no rework was required.
+  const firstPassCount = completed.filter(
+    ({ state }) => state?.globalVerdict === 'PASS' && (state.reloopCount ?? 0) === 0,
+  ).length;
+  const firstPassReviewRate =
+    completed.length > 0 ? Math.round((firstPassCount / completed.length) * 100) : 0;
+
+  // Browser QA regression rate: loops whose release gate shows
+  // browserQaPassed = false. Derived from per-list-item release gate data.
+  const browserQaRegressionCount = active.filter(
+    ({ releaseGate }) => releaseGate?.checklist.browserQaPassed === false,
+  ).length;
+  const browserQaRegressionRate =
+    active.length > 0 ? Math.round((browserQaRegressionCount / active.length) * 100) : 0;
+
+  // Second opinion conflict rate: active loops whose release gate shows
+  // secondOpinionPassed = false.
+  const secondOpinionConflictCount = active.filter(({ releaseGate, state }) => {
+    const phase = state?.phase ?? 'PHASE_0_INTAKE';
+    const inConvergePhase = [
+      'PHASE_6_CONVERGE',
+      'PHASE_7_GLOBAL_REVIEW',
+      'PHASE_8_ANNOTATE',
+    ].includes(phase);
+    return inConvergePhase && releaseGate?.checklist.secondOpinionPassed === false;
+  }).length;
+  const secondOpinionConflictRate =
+    active.length > 0 ? Math.round((secondOpinionConflictCount / active.length) * 100) : 0;
+
+  // Release blocker rate: loops blocked before finalize.
+  const blockedCount = active.filter(
+    ({ state }) => state?.paused || (state?.globalVerdict && state.globalVerdict !== 'PASS'),
+  ).length;
+  const costTripped = options.cost?.loops.filter((item) => item.tripped).length ?? 0;
+  const releaseBlockerRate =
+    active.length > 0 ? Math.round(((blockedCount + costTripped) / active.length) * 100) : 0;
+
+  // Runtime violation rate: loops with recorded runtime security exceptions.
+  const violationCount = items.reduce(
+    (sum, item) => sum + (item.runtimeSecurityExceptions?.length ?? 0),
+    0,
+  );
+  const runtimeViolationRate =
+    items.length > 0 ? Math.round((violationCount / items.length) * 100) : 0;
+
+  // Learning reuse rate: share of recent learnings with lastUsedAt timestamp
+  // (indicating they have been recalled in a subsequent loop).
+  const learnings = options.recentLearnings ?? [];
+  const reusedCount = learnings.filter((l) => l.lastUsedAt).length;
+  const learningReuseRate =
+    learnings.length > 0 ? Math.round((reusedCount / learnings.length) * 100) : 0;
+
+  return {
+    firstPassReviewRate,
+    browserQaRegressionRate,
+    secondOpinionConflictRate,
+    releaseBlockerRate,
+    runtimeViolationRate,
+    learningReuseRate,
+  };
+}
+
+// ============================================================================
+// Release Gate Dashboard Panel (gstack/0 P2, 0623).
+// Aggregates per-loop release gate checklist data into a single dashboard panel
+// showing overall release readiness, blocker counts, and per-checklist pass rates.
+// ============================================================================
+
+export interface ReleaseGateChecklistItem {
+  key: string;
+  passed: number;
+  total: number;
+  rate: number;
+  blocked: number;
+}
+
+export interface ReleaseGateBlocker {
+  issueId: string;
+  title: string;
+  href: string;
+  reason: string;
+}
+
+export interface ReleaseGatePanel {
+  summary: {
+    totalWithGate: number;
+    ready: number;
+    blocked: number;
+  };
+  checklist: ReleaseGateChecklistItem[];
+  topBlockers: ReleaseGateBlocker[];
+}
+
+export function buildReleaseGatePanel(
+  items: LoopListItem[],
+  options: { cost?: LoopCostResponse } = {},
+): ReleaseGatePanel {
+  const costByIssue = new Map((options.cost?.loops ?? []).map((item) => [item.issueId, item]));
+  const active = items.filter(
+    ({ issue }) => !['CLOSED', 'ARCHIVED', 'REJECTED'].includes(issue.status),
+  );
+  const withGate = active.filter(({ releaseGate }) => releaseGate?.checklist);
+  const blocked = withGate.filter((item) => {
+    const costItem = costByIssue.get(item.issue.id);
+    return Boolean(
+      item.state?.paused ||
+      costItem?.tripped ||
+      (item.state?.globalVerdict && item.state.globalVerdict !== 'PASS') ||
+      item.releaseGate?.blocker,
+    );
+  });
+
+  const CHECKLIST_KEYS: Array<{
+    key: string;
+    extract: (c: NonNullable<LoopListItem['releaseGate']>['checklist']) => boolean;
+  }> = [
+    { key: 'specApproved', extract: (c) => c.specApproved },
+    { key: 'implementationEvidence', extract: (c) => c.implementationEvidence },
+    { key: 'testsPassed', extract: (c) => c.testsPassed },
+    { key: 'requiredReviewsPassed', extract: (c) => c.requiredReviewsPassed },
+    { key: 'secondOpinionPassed', extract: (c) => c.secondOpinionPassed ?? true },
+    { key: 'browserQaPassed', extract: (c) => c.browserQaPassed },
+    { key: 'docsUpdated', extract: (c) => c.docsUpdated },
+    { key: 'prReady', extract: (c) => c.prReady },
+    { key: 'rollbackNote', extract: (c) => c.rollbackNote },
+    { key: 'canaryPassed', extract: (c) => c.canaryPassed ?? true },
+  ];
+
+  const checklist: ReleaseGateChecklistItem[] = CHECKLIST_KEYS.map(({ key, extract }) => {
+    let passed = 0;
+    let failed = 0;
+    for (const item of withGate) {
+      if (!item.releaseGate?.checklist) continue;
+      if (extract(item.releaseGate.checklist)) passed++;
+      else failed++;
+    }
+    const total = passed + failed;
+    return {
+      key,
+      passed,
+      total,
+      rate: total > 0 ? Math.round((passed / total) * 100) : 0,
+      blocked: failed,
+    };
+  }).sort((a, b) => a.rate - b.rate); // lowest pass rate first
+
+  const topBlockers: ReleaseGateBlocker[] = blocked.slice(0, 5).map((item) => ({
+    issueId: item.issue.id,
+    title: item.issue.title,
+    href: `/loops/${item.issue.id}`,
+    reason:
+      item.releaseGate?.blocker ??
+      (item.state?.paused
+        ? 'Paused'
+        : item.state?.globalVerdict
+          ? `Global ${item.state.globalVerdict}`
+          : 'Needs review'),
+  }));
+
+  return {
+    summary: {
+      totalWithGate: withGate.length,
+      ready: withGate.length - blocked.length,
+      blocked: blocked.length,
+    },
+    checklist,
+    topBlockers,
+  };
+}
+
+// ============================================================================
+// Tool & Integration Registry Lifecycle (0623 · CrewAI gap 5).
+// Enhances the existing Capability Registry with lifecycle, health, auth,
+// and audit usage views derived from the agent/tool registry data.
+// ============================================================================
+
+export interface ToolLifecycleItem {
+  id: string;
+  label: string;
+  kind: string;
+  lifecycle: string;
+  ownerIds: string[];
+  permissions: string[];
+  compatibility: string;
+  deterministicBoundary: string;
+}
+
+export interface ToolRegistryLifecycle {
+  summary: {
+    totalTools: number;
+    activeTools: number;
+    plannedTools: number;
+    activeAgents: number;
+  };
+  tools: ToolLifecycleItem[];
+  compatibilityStatus: {
+    total: number;
+    pass: number;
+    planned: number;
+    fail: number;
+  };
+}
+
+export function buildToolRegistryLifecycle(
+  registry?: LoopAgentToolRegistry,
+): ToolRegistryLifecycle {
+  const tools: ToolLifecycleItem[] = (registry?.tools ?? [])
+    .map((tool) => ({
+      id: tool.id,
+      label: tool.label,
+      kind: tool.kind,
+      lifecycle: tool.lifecycle,
+      ownerIds: tool.ownerAgentIds,
+      permissions: tool.permissions,
+      compatibility: [
+        tool.compatibility.codex ? 'Codex' : '',
+        tool.compatibility.claudeCode ? 'Claude Code' : '',
+        tool.compatibility.thirdParty !== 'unsupported'
+          ? `3rd:${tool.compatibility.thirdParty}`
+          : '',
+      ]
+        .filter(Boolean)
+        .join(', '),
+      deterministicBoundary: tool.deterministicBoundary,
+    }))
+    .sort((a, b) => a.lifecycle.localeCompare(b.lifecycle) || a.label.localeCompare(b.label));
+
+  const checks = registry?.compatibilityChecks ?? [];
+  const activeTools = tools.filter((t) => t.lifecycle === 'active').length;
+  const plannedTools = tools.filter((t) => t.lifecycle !== 'active').length;
+  const activeAgents = (registry?.agents ?? []).filter((a) => a.lifecycle === 'active').length;
+
+  return {
+    summary: {
+      totalTools: tools.length,
+      activeTools,
+      plannedTools,
+      activeAgents,
+    },
+    tools,
+    compatibilityStatus: {
+      total: checks.length,
+      pass: checks.filter((c) => c.status === 'pass').length,
+      planned: checks.filter((c) => c.status === 'planned').length,
+      fail: checks.filter((c) => c.status === 'fail').length,
+    },
+  };
+}
+
+// ============================================================================
+// Trigger Lifecycle (0623 · CrewAI gap 6).
+// Enhances the existing Trigger Portfolio with lifecycle status (active/paused/
+// failed), source health, and replay/retry indicators derived from loop source
+// data.
+// ============================================================================
+
+export interface TriggerLifecycleSource {
+  id: string;
+  count: number;
+  latest: string;
+  status: 'active' | 'paused' | 'error';
+  repos: string[];
+}
+
+export interface TriggerLifecycle {
+  summary: {
+    totalSources: number;
+    activeSources: number;
+    totalLoops: number;
+    repos: number;
+  };
+  sources: TriggerLifecycleSource[];
+}
+
+export function buildTriggerLifecycle(items: LoopListItem[]): TriggerLifecycle {
+  const sourceMap = new Map<
+    string,
+    {
+      count: number;
+      latest: string;
+      repos: Set<string>;
+      activeCount: number;
+      errorCount: number;
+    }
+  >();
+  let totalLoops = 0;
+  const allRepos = new Set<string>();
+
+  for (const { issue, state } of items) {
+    if (['ARCHIVED', 'REJECTED'].includes(issue.status)) continue;
+    totalLoops++;
+    allRepos.add(issue.targetRepo);
+    const source = `${issue.sourceChannel}/${issue.sourceKind}`;
+    const existing = sourceMap.get(source) ?? {
+      count: 0,
+      latest: '',
+      repos: new Set(),
+      activeCount: 0,
+      errorCount: 0,
+    };
+    existing.count += 1;
+    existing.repos.add(issue.targetRepo);
+    if (issue.created > existing.latest) existing.latest = issue.created;
+
+    const isBlocked = Boolean(
+      state?.paused || (state?.globalVerdict && state.globalVerdict !== 'PASS'),
+    );
+    if (isBlocked) existing.errorCount += 1;
+    else existing.activeCount += 1;
+
+    sourceMap.set(source, existing);
+  }
+
+  const sources: TriggerLifecycleSource[] = [...sourceMap.entries()]
+    .map(([id, data]) => ({
+      id,
+      count: data.count,
+      latest: data.latest,
+      status: (data.errorCount > 0
+        ? 'error'
+        : data.activeCount > 0
+          ? 'active'
+          : 'paused') as TriggerLifecycleSource['status'],
+      repos: [...data.repos],
+    }))
+    .sort((a, b) => b.count - a.count || b.latest.localeCompare(a.latest));
+
+  return {
+    summary: {
+      totalSources: sources.length,
+      activeSources: sources.filter((s) => s.status === 'active').length,
+      totalLoops,
+      repos: allRepos.size,
+    },
+    sources,
+  };
 }

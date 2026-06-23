@@ -57,6 +57,8 @@
 
 ### P0-2 · Runtime Backend Registry
 
+实施状态：✅ 全部闭合。Dashboard v1（前端）+ 后端 contract v1（8 个 endpoint：listRuntimeBackends/getRuntimeBackend/healthCheck/updatePolicy）+ policy lifecycle。后续 Epic 仅为 remote runner 执行池。
+
 目标：把 Codex CLI、Claude Code CLI、本地、Docker、远程 runner 做成可配置资产。
 
 Contract-first 草案：
@@ -90,12 +92,14 @@ diagnostics[]
 
 验收标准：
 
-- Dashboard 能显示每个 backend ready/degraded/unavailable；
+- Dashboard 能显示每个 backend ready/degraded/unavailable；已实施 v1；
 - Loop detail 能显示每个 stage 实际使用 backend；
 - backend unavailable 时进入 exception，而不是静默失败；
 - runtime override 写入 audit。
 
 ### P0-3 · Eval Suite v1
+
+实施状态：✅ 全部闭合。Eval Plan dashboard v1（前端）+ 后端 Eval Suite/Eval Run contract v1（listEvalSuites/getEvalSuite/listEvalRuns/getEvalRun，5 个内置 suite 16 个 check）。后续 Epic 仅为实时聚合 worker。
 
 目标：把测试/审阅/架构规则从单次记录升级为可复用质量门禁。
 
@@ -113,16 +117,21 @@ diagnostics[]
 
 - 新建页 preview 显示 Eval Plan；
 - Detail 页显示 Eval Results；
-- Dashboard 显示 pass rate / failure categories；
+- Dashboard 显示 pass rate / failure categories；已实施 Eval Plan v1；
 - Exception Center 可按 failed check 聚合。
 
 ### P0-4 · PR Evidence First
 
+实施状态：✅ 全部闭合。Detail 页 Delivery Evidence 区块 + 后端 getDeliveryEvidence endpoint + R6 PR comment 自动发布（finalize 自动调用 prProvider.createPrComment）。
+
 目标：让 `.loops` 证据进入工程团队真实 review 流程。
 
-最小实现：
+最小实现（已全部实施）：
 
-- finalize 生成 `delivery-evidence.md`；
+- ✅ finalize 生成 delivery evidence（R5，buildDeliveryEvidence + markdown）
+- ✅ PR provider adapter 支持创建/更新 PR comment（R6，createPrComment/updatePrComment）
+- ✅ comment 包含 spec、work packages、tests、reviews、risks、cost、global verdict
+- ✅ Loop detail 显示 PR status（Delivery Evidence 区块）
 - PR provider adapter 支持创建/更新 PR comment；
 - comment 包含 spec、work packages、tests、reviews、risks、cost、global verdict；
 - Loop detail 显示 PR status 和 CI status。

@@ -8,6 +8,7 @@ import {
   useReloopIssue,
   useRunLoopBrowserQa,
   useRunLoopSecondOpinion,
+  useResolveSecondOpinion,
   useReviewLoopSpec,
 } from '@/lib/api/contracts/hooks';
 
@@ -55,6 +56,7 @@ export function useFormState(issueId: string) {
   const intervene = useInterveneLoop(issueId);
   const browserQa = useRunLoopBrowserQa(issueId);
   const secondOpinion = useRunLoopSecondOpinion(issueId);
+  const resolveSecondOpinion = useResolveSecondOpinion(issueId);
   const deliveryGovernance = useGovernLoopDelivery(issueId);
   const operations = collectOperationState([
     advance,
@@ -63,6 +65,7 @@ export function useFormState(issueId: string) {
     intervene,
     browserQa,
     secondOpinion,
+    resolveSecondOpinion,
     deliveryGovernance,
   ]);
 
@@ -107,6 +110,19 @@ export function useFormState(issueId: string) {
         .filter(Boolean);
       const notes = String(form.get('notes') ?? '').trim() || undefined;
       const authSessionRef = String(form.get('authSessionRef') ?? '').trim() || undefined;
+      const viewportSelection = String(form.get('viewports') ?? 'desktop');
+      const viewports =
+        viewportSelection === 'all'
+          ? [
+              { name: 'desktop', width: 1440, height: 900 },
+              { name: 'tablet', width: 768, height: 1024 },
+              { name: 'mobile', width: 375, height: 812 },
+            ]
+          : viewportSelection === 'tablet'
+            ? [{ name: 'tablet', width: 768, height: 1024 }]
+            : viewportSelection === 'mobile'
+              ? [{ name: 'mobile', width: 375, height: 812 }]
+              : [{ name: 'desktop', width: 1440, height: 900 }];
       browserQa.mutate({
         params: { issueId },
         body: {
@@ -114,10 +130,26 @@ export function useFormState(issueId: string) {
           checkedFlows: checkedFlows.length > 0 ? checkedFlows : ['page-load'],
           notes,
           authSessionRef,
+          viewports,
         },
       });
     },
     runSecondOpinion: () => secondOpinion.mutate({ params: { issueId }, body: {} }),
+    acceptPrimaryFindings: () =>
+      resolveSecondOpinion.mutate({
+        params: { issueId },
+        body: { action: 'accept-primary' },
+      }),
+    acceptSecondaryFindings: () =>
+      resolveSecondOpinion.mutate({
+        params: { issueId },
+        body: { action: 'accept-secondary' },
+      }),
+    waiveSecondOpinion: (reason?: string) =>
+      resolveSecondOpinion.mutate({
+        params: { issueId },
+        body: { action: 'waive', reason },
+      }),
     requireSecondOpinion: () =>
       deliveryGovernance.mutate({
         params: { issueId },

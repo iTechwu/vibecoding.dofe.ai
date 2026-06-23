@@ -329,7 +329,23 @@ export class LoopsFileStoreService {
     return { loops };
   }
 
-  async readRecentLearnings(limit = 12): Promise<LoopLearning[]> {
+  async readRecentLearnings(
+    limit = 12,
+    options?: {
+      /** Filter to specific workspace (default: all in current root). */
+      workspaceId?: string;
+      /** Filter to specific repo */
+      repo?: string;
+      /**
+       * Scope governs recall behaviour:
+       * - 'workspace' (default): only learnings from the current .loops root.
+       * - 'cross-workspace': when dedupeScope policy is set, include all
+       *   learnings regardless of workspaceId; the caller must still filter
+       *   by repo/tag for precision.
+       */
+      recallScope?: 'workspace' | 'cross-workspace';
+    },
+  ): Promise<LoopLearning[]> {
     await this.ensureInitialized();
     const dir = path.join(this.root, 'learnings');
     let entries: string[];
@@ -355,10 +371,24 @@ export class LoopsFileStoreService {
     const dismissedIds = new Set(governance.dismissed.map((item) => item.learningId));
     const mergedSourceIds = new Set(governance.merges.map((item) => item.sourceLearningId));
 
-    const activeLearnings = learnings
+    let activeLearnings = learnings
       .flatMap((items) => items ?? [])
-      .filter((learning) => !dismissedIds.has(learning.id) && !mergedSourceIds.has(learning.id))
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      .filter((learning) => !dismissedIds.has(learning.id) && !mergedSourceIds.has(learning.id));
+
+    // gstack/0 P1-4: Cross-workspace learning recall.
+    // When recallScope is 'workspace', filter to matching workspaceId (or don't
+    // filter if none provided — back-compat). When 'cross-workspace', include
+    // all learnings. The caller should still apply repo/tag filters for relevance.
+    if (options?.recallScope === 'cross-workspace') {
+      // Include all learnings; caller filters by repo/tag externally.
+    } else if (options?.workspaceId) {
+      activeLearnings = activeLearnings.filter((l) => l.workspaceId === options.workspaceId);
+    }
+    if (options?.repo) {
+      activeLearnings = activeLearnings.filter((l) => l.repo === options.repo);
+    }
+
+    activeLearnings = activeLearnings.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return withLearningSimilaritySuggestions(activeLearnings).slice(0, limit);
   }
 
@@ -370,6 +400,41 @@ export class LoopsFileStoreService {
         autoMergeCandidates: [],
       }
     );
+  }
+
+  /**
+   * gstack/0 P2-6: Read shared workspace-level workflow defaults.
+   * Stored at `.loops/workflow-defaults.json` so it applies across all loops
+   * in the workspace without requiring per-issue governance.
+   */
+  async readWorkflowDefaults(): Promise<LoopDeliveryGovernance['workflowDefaults']> {
+    const raw = await this.readOptionalJson<{
+      workflowDefaults: LoopDeliveryGovernance['workflowDefaults'];
+    }>('workflow-defaults.json');
+    return raw?.workflowDefaults ?? [];
+  }
+
+  /**
+   * gstack/0 P2-6: Persist workspace-level workflow defaults.
+   */
+  async writeWorkflowDefaults(defaults: LoopDeliveryGovernance['workflowDefaults']): Promise<void> {
+    await this.writeJson('workflow-defaults.json', { workflowDefaults: defaults });
+  }
+
+  /**
+   * gstack/0 P1-4: Read an arbitrary governance file for cross-workspace
+   * learning index and approval workflow data.
+   */
+  async readGovernanceFile<T>(relativePath: string): Promise<T | undefined> {
+    return this.readOptionalJson<T>(relativePath);
+  }
+
+  /**
+   * gstack/0 P1-4: Write an arbitrary governance file for cross-workspace
+   * learning index and approval workflow persistence.
+   */
+  async writeGovernanceFile(relativePath: string, data: unknown): Promise<void> {
+    await this.writeJson(relativePath, data);
   }
 
   async runLearningAutoMergeWorker(createdAt = new Date().toISOString()) {
@@ -419,6 +484,7 @@ export class LoopsFileStoreService {
         workflowDefaults: [],
         reviewGateOverrides: [],
         runtimeOverrides: [],
+        secondOpinionResolutions: [],
       }
     );
   }
@@ -449,6 +515,9 @@ export class LoopsFileStoreService {
             },
           ],
         };
+        // gstack/0 P2-6: Also persist to shared workspace-level defaults
+        // so new loops pick up the default recipe on creation.
+        await this.writeWorkflowDefaults(next.workflowDefaults);
         break;
       }
       case 'set-review-gate': {
@@ -531,6 +600,24 @@ export class LoopsFileStoreService {
             reason: input.request.reason,
             updated,
           },
+        };
+        break;
+      // gstack/0 P1-5: Record second opinion conflict resolution with
+      // audit evidence so every human decision is tracked.
+      case 'resolve-second-opinion-conflict':
+        next = {
+          ...governance,
+          secondOpinionResolutions: [
+            ...(governance.secondOpinionResolutions ?? []),
+            {
+              id: `so-resolve-${input.issueId}-${Date.now()}`,
+              resolution: input.request.resolution,
+              conflictFingerprint: input.request.conflictFingerprint,
+              actor,
+              reason: input.request.reason,
+              updated,
+            },
+          ],
         };
         break;
     }

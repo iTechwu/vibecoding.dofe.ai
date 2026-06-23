@@ -33,6 +33,63 @@
       "traceEvents": "Trace events",
       "traceEventsNote": "{recent} recent"
     },
+    "loopBench": {
+      "title": "Loop Bench",
+      "summary": "Derived quality signals from delivery evidence, runtime security, and learning reuse.",
+      "firstPassRate": "First-pass rate",
+      "firstPassRateDesc": "Loops with PASS and no rework",
+      "browserQaRegression": "QA regression",
+      "browserQaRegressionDesc": "Browser QA failure rate (per-detail)",
+      "secondOpinionConflict": "2nd opinion conflict",
+      "secondOpinionConflictDesc": "Secondary review disagreement rate",
+      "releaseBlocker": "Release blocker",
+      "releaseBlockerDesc": "Loops blocked before shipping",
+      "runtimeViolation": "Runtime violation",
+      "runtimeViolationDesc": "Security exception rate per loop",
+      "learningReuse": "Learning reuse",
+      "learningReuseDesc": "Recall with positive outcome (planned)",
+      "planned": "Planned"
+    },
+    "workforce": {
+      "title": "Software Delivery Workforce",
+      "summary": "{active} active · {idle} idle · {blocked} blocked · {humanGates} human gates",
+      "loading": "Loading workforce overview.",
+      "humanGate": "Human gate",
+      "idle": "No active work",
+      "personaCount": "{count} loops",
+      "status": {
+        "active": "Active",
+        "idle": "Idle",
+        "blocked": "Blocked",
+        "done": "Done"
+      },
+      "personas": {
+        "intake-analyst": "Intake Analyst",
+        "spec-writer": "Spec Writer",
+        "human-gatekeeper": "Human Gatekeeper",
+        "work-planner": "Work Planner",
+        "builder": "Builder",
+        "test-runner": "Test Runner",
+        "code-reviewer": "Code Reviewer",
+        "release-reviewer": "Release Reviewer",
+        "evidence-curator": "Evidence Curator"
+      },
+      "handoff": {
+        "title": "Agent Handoff Timeline",
+        "summary": "Current: {current} → Next: {next}",
+        "blocked": "Handoff blocked — resolve the exception before the next persona takes over.",
+        "loading": "Loading handoff timeline.",
+        "state": {
+          "done": "Done",
+          "current": "Now",
+          "next": "Next",
+          "waiting": "Waiting",
+          "blocked": "Blocked"
+        },
+        "runtime": "Runtime: {backend}",
+        "noCurrent": "No active persona"
+      }
+    },
     "evalPlan": {
       "title": "Eval Plan",
       "summary": "{passed}/{total} passed · {attention} attention · {blocked} blocked",
@@ -109,6 +166,74 @@
         "readyToShip": "Ready to Ship",
         "delivered": "Delivered"
       }
+    },
+    "recipeAdmin": {
+      "title": "Recipe Admin",
+      "summary": "{kinds} recipe kinds · {loops} active loops · {blocked} blocked",
+      "loading": "Loading recipe metrics.",
+      "empty": "No active loops to analyze.",
+      "blockerRate": "Blocker rate",
+      "avgShards": "Avg shards",
+      "kind": {
+        "feature": "Feature",
+        "bugfix": "Bugfix",
+        "refactor": "Refactor",
+        "docs": "Docs",
+        "ops": "Ops"
+      }
+    },
+    "fleetHealth": {
+      "title": "Fleet Health",
+      "summary": "Engineering Agent Control Plane — cross-loop delivery, runtime, cost, and human gate status.",
+      "active": "Active",
+      "blocked": "Blocked",
+      "costTripped": "Cost tripped",
+      "humanGates": "Human gates",
+      "runtimeReady": "Runtime ready",
+      "releaseReady": "Release ready",
+      "repos": "Repos"
+    },
+    "rulesCenter": {
+      "title": "Rules Center",
+      "summary": "{total} rules · {enforced} enforced · {violations} violations",
+      "loading": "Loading rules center.",
+      "empty": "No rules defined.",
+      "enforced": "Enforced",
+      "attention": "Attention",
+      "categories": {
+        "architecture": "Architecture",
+        "security": "Security",
+        "testing": "Testing",
+        "workspace": "Workspace"
+      },
+      "rules": {
+        "db-service-layer": "DB access only via DB Service",
+        "zod-contracts": "Zod-first API contracts",
+        "client-layer": "External APIs via Client layer",
+        "winston-logger": "Winston Logger (no console.log)",
+        "path-policy": "Path policy enforced",
+        "network-policy": "Network deny-by-default",
+        "secret-canary": "Secret canary detection",
+        "test-required": "Tests must pass before finalize",
+        "coverage-required": "Coverage must be reported",
+        "workspace-mount": "Workspace mount policy",
+        "target-repo-scope": "Target repo write scope",
+        "rule-snapshot": "CLAUDE.md / AGENTS.md present"
+      }
+    },
+    "blueprintMarketplace": {
+      "title": "Blueprint Marketplace",
+      "summary": "{total} delivery blueprints · {activeUse} in active use",
+      "loading": "Loading blueprints."
+    },
+    "runtimeSecurityPanel": {
+      "title": "Runtime Security",
+      "summary": "{totalLoops} active · {loopsWithViolations} with violations · {criticalCount} critical · {totalOverrides} overrides",
+      "loading": "Loading runtime security panel.",
+      "clear": "Clear",
+      "noViolations": "No violations detected",
+      "violationsFound": "{count} loops affected",
+      "topViolations": "Top violations"
     },
     "workflowRecipe": {
       "title": "Workflow Recipe",
@@ -192,6 +317,55 @@
         "review": "Review",
         "qa": "QA"
       }
+    },
+    "releaseGatePanel": {
+      "title": "Release Gate Dashboard",
+      "summary": "{ready} ready · {blocked} blocked out of {totalWithGate} loops with gates",
+      "loading": "Loading release gate panel.",
+      "empty": "No loops with release gate data yet.",
+      "topBlockers": "Top blockers",
+      "noBlockers": "No blockers — all release gates are clear.",
+      "blockerReasons": {
+        "Paused": "Paused by operator",
+        "Global_NEEDS-WORK": "Needs work",
+        "Global_FAIL": "Global review failed",
+        "Needs_review": "Awaiting review"
+      },
+      "checklist": {
+        "specApproved": "Spec",
+        "implementationEvidence": "Impl",
+        "testsPassed": "Tests",
+        "requiredReviewsPassed": "Reviews",
+        "secondOpinionPassed": "2nd Opinion",
+        "browserQaPassed": "Browser QA",
+        "docsUpdated": "Docs",
+        "prReady": "PR",
+        "rollbackNote": "Rollback",
+        "canaryPassed": "Canary"
+      }
+    },
+    "toolRegistry": {
+      "title": "Tool & Integration Registry",
+      "summary": "{totalTools} tools · {activeTools} active · {activeAgents} agent owners · {plannedTools} planned",
+      "empty": "No tools registered yet.",
+      "compatibility": "Compatibility checks",
+      "noCompat": "No compatibility data",
+      "kinds": {
+        "code-execution": "Code exec",
+        "review": "Review",
+        "git": "Git",
+        "test": "Test",
+        "notification": "Notification",
+        "artifact": "Artifact"
+      }
+    },
+    "triggerLifecycle": {
+      "title": "Trigger Lifecycle",
+      "active": "Active",
+      "paused": "Paused",
+      "error": "Has errors",
+      "sourceCount": "{count} from {repos} repos",
+      "latestAt": "Latest: {time}"
     },
     "triggerPortfolio": {
       "title": "Trigger Portfolio",
@@ -313,7 +487,9 @@
         "security": "Security gate",
         "release": "Release gate",
         "exception": "Exception gate"
-      }
+      },
+      "conflictAction": "Unresolved conflict:",
+      "resolveConflict": "Resolve →"
     },
     "traceSummary": {
       "title": "Trace Summary",
@@ -456,6 +632,38 @@
       "previewAgentPathLabel": "Recommended agent path",
       "previewTestPolicyLabel": "Suggested test policy",
       "previewLearningLabel": "Relevant learnings",
+      "previewWorkforceLabel": "Workforce Plan",
+      "previewRuntimeLabel": "Runtime Plan",
+      "previewRuntimeValue": "Primary: {primary} · Implementation: {secondary}",
+      "previewEvalLabel": "Eval Plan",
+      "previewGateLabel": "Risk & Gate Plan",
+      "hardGateHint": "Hard gate — stops delivery if not met",
+      "persona": {
+        "intake-analyst": "Intake Analyst",
+        "spec-writer": "Spec Writer",
+        "human-gatekeeper": "Human Gatekeeper",
+        "work-planner": "Work Planner",
+        "builder": "Builder",
+        "test-runner": "Test Runner",
+        "code-reviewer": "Code Reviewer",
+        "release-reviewer": "Release Reviewer",
+        "evidence-curator": "Evidence Curator"
+      },
+      "evalCheck": {
+        "architecture-compliance": "Architecture",
+        "delivery-readiness": "Delivery",
+        "runtime-safety": "Runtime safety",
+        "test-evidence": "Test evidence",
+        "cost-policy": "Cost policy"
+      },
+      "gateLabel": {
+        "spec-review": "Spec review",
+        "code-review": "Code review",
+        "release-check": "Release gate",
+        "regression-test": "Regression test",
+        "security-review": "Security review",
+        "human-approval": "Human approval"
+      },
       "learningKind": {
         "pattern": "Pattern",
         "pitfall": "Pitfall",
@@ -604,6 +812,38 @@
       "noShard": "No shard yet",
       "noEvents": "No events yet"
     },
+    "handoff": {
+      "title": "Agent Handoff Timeline",
+      "summary": "Current: {current} → Next: {next}",
+      "blocked": "Handoff is blocked. Resolve the exception before the next persona takes over.",
+      "current": "Current",
+      "next": "Next",
+      "humanGate": "Human gate",
+      "evidence": "Evidence",
+      "noCurrent": "No active persona — the loop is finalized or waiting to start."
+    },
+    "deliveryEvidence": {
+      "title": "Delivery Evidence",
+      "summary": "PR-ready evidence summary generated from this loop's spec, work, tests, reviews, and cost.",
+      "loading": "Loading delivery evidence.",
+      "prReady": "Ready for PR",
+      "prNotReady": "Not ready for PR",
+      "globalVerdict": "Global verdict",
+      "spec": "Spec",
+      "workPackages": "Work packages",
+      "tests": "Tests",
+      "reviews": "Reviews",
+      "risks": "Risks",
+      "cost": "Cost",
+      "prStatus": "PR status",
+      "prComment": "PR comment preview",
+      "openPr": "Open PR",
+      "noConvergencePr": "No convergence PR yet — finalize the loop to publish evidence.",
+      "costSummary": "{tokens} tokens · {calls} calls · {budget}",
+      "testsSummary": "{passed}/{total} passed · {failed} failed · coverage {coverage}",
+      "reviewsSummary": "{shardReviews} shard reviews · {findings} findings",
+      "workPackageCount": "{count} work packages"
+    },
     "deliveryControls": {
       "title": "Delivery Controls",
       "meta": "{steps} workflow steps · {gates} review gates",
@@ -628,12 +868,20 @@
         "primaryOnly": "Primary only",
         "secondaryOnly": "Secondary only",
         "run": "Run second opinion",
-        "require": "Require before release"
+        "require": "Require before release",
+        "acceptPrimary": "Accept primary (Codex)",
+        "acceptSecondary": "Accept secondary (Claude Code)",
+        "waive": "Waive conflict"
       },
       "browserQa": {
         "title": "Browser QA",
         "targetUrl": "Target URL",
         "checkedFlows": "Checked flows",
+        "viewports": "Viewports",
+        "viewportDesktop": "Desktop (1440×900)",
+        "viewportTablet": "Tablet (768×1024)",
+        "viewportMobile": "Mobile (375×812)",
+        "viewportAll": "All viewports",
         "authSessionRef": "Auth session ref",
         "notes": "Notes",
         "run": "Run Browser QA",

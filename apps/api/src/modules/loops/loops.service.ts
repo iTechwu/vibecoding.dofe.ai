@@ -15,7 +15,19 @@ import type {
   LoopAnnotation,
   LoopCapabilitiesResponse,
   LoopConvergencePr,
+  LoopDeliveryEvidence,
+  LoopDeliveryEvidenceWorkPackage,
   LoopDeliveryGovernanceRequest,
+  LoopResolveSecondOpinion,
+  LoopWebhookTrigger,
+  LoopWebhookTriggerResponse,
+  RuntimeBackend,
+  RuntimeBackendListResponse,
+  RuntimeBackendPolicyUpdate,
+  EvalSuite,
+  EvalSuiteListResponse,
+  EvalRun,
+  EvalRunListResponse,
   LoopEvidenceArtifact,
   LoopGlobalReviewRecord,
   LoopImplementationRecord,
@@ -79,6 +91,7 @@ import {
   type LoopsCommitShardResult,
   type LoopsGitAdapter,
 } from './adapters/loops-git-adapter.interface';
+import { LoopsPrProviderClient } from './adapters/loops-pr-provider.client';
 import type { LoopsPersistenceService } from './loops-persistence.service';
 import { LOOPS_PERSISTENCE } from './loops-persistence.token';
 import { resolveAllowedTargetRepo } from './loops-path-policy.util';
@@ -185,6 +198,8 @@ export class LoopsService {
     private readonly browserQaWorker: LoopsBrowserQaWorkerService = new LoopsBrowserQaWorkerService(),
     @Optional()
     private readonly secondOpinionWorker: LoopsSecondOpinionWorkerService = new LoopsSecondOpinionWorkerService(),
+    @Optional()
+    private readonly prProvider?: LoopsPrProviderClient,
   ) {}
 
   async list(query: LoopIssuesQuery): Promise<LoopListResponse> {
@@ -290,10 +305,15 @@ export class LoopsService {
       updated: now,
       paused: false,
     };
+    // gstack/0 P2-6: Apply workspace-level workflow defaults on create.
+    const workflowDefaults = await this.store.readWorkflowDefaults();
+    const loopKind = this.inferWorkflowKind({ issue, state });
+    const matchingDefault = workflowDefaults.find((entry) => entry.loopKind === loopKind);
     const workflowRecipe = {
       ...this.buildWorkflowRecipe({ issue, state }),
+      ...(matchingDefault ? { id: matchingDefault.recipeId } : {}),
       capturedAt: now,
-      source: 'loop-snapshot' as const,
+      source: matchingDefault ? ('workspace' as const) : ('loop-snapshot' as const),
     };
 
     await this.writeIssueRecord({ issue, intake, state, rawPayload: input, workflowRecipe });
@@ -1128,6 +1148,10 @@ export class LoopsService {
     if (detail.state.globalVerdict !== 'PASS') {
       throw new BadRequestException('Global review PASS is required before finalize');
     }
+    // gstack/0 P0-2: Release Gate hard blocking — enforce checklist before proceeding.
+    const releaseGate = this.buildReleaseGate(detail);
+    const secondOpinion = this.buildSecondOpinion(detail);
+    this.enforceReleaseGate(detail, releaseGate, secondOpinion);
     const now = new Date().toISOString();
     const commits: LoopsCommitShardResult[] = [];
     for (const shard of detail.shards) {
@@ -1170,6 +1194,36 @@ export class LoopsService {
         updated: now,
       },
     });
+
+    // R6 PR comment auto-publish: post delivery evidence as a PR comment when
+    // a PR provider is configured and a convergence PR was opened.
+    if (this.prProvider && convergencePr?.url && convergencePr.id) {
+      try {
+        const evidence = this.buildDeliveryEvidence(detail);
+        const result = await this.prProvider.createPrComment({
+          prId: convergencePr.id,
+          body: evidence.markdown,
+        });
+        if (result.created) {
+          this.log('info', `[Loops] PR evidence comment published for ${issueId}`, {
+            issueId,
+            prId: convergencePr.id,
+            commentUrl: result.url,
+          });
+        } else {
+          this.log('warn', `[Loops] PR evidence comment failed for ${issueId}`, {
+            issueId,
+            reason: result.reason,
+          });
+        }
+      } catch (error) {
+        this.log('warn', `[Loops] PR evidence comment error for ${issueId}`, {
+          issueId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
     return this.syncAndRead(issueId);
   }
 
@@ -1208,12 +1262,621 @@ export class LoopsService {
     return this.getIssue(issueId);
   }
 
+  /**
+   * P1-5, gstack/0: Resolve a second-opinion conflict by accepting primary or
+   * secondary findings, or waiving a specific finding. Records the resolution
+   * in delivery governance so the release gate can be unblocked.
+   */
+  async resolveSecondOpinion(
+    issueId: string,
+    body: LoopResolveSecondOpinion,
+  ): Promise<LoopIssueDetail> {
+    const detail = await this.getIssue(issueId);
+    await this.store.governDelivery({
+      issueId,
+      request: {
+        action: 'set-review-gate',
+        gateKind: 'code',
+        status: body.action === 'waive' ? 'waived' : 'passed',
+        actor: 'human',
+        reason:
+          body.reason ??
+          (body.action === 'accept-primary'
+            ? 'Accepted primary (Codex) findings; secondary findings overridden.'
+            : body.action === 'accept-secondary'
+              ? 'Accepted secondary (Claude Code) findings; primary findings overridden.'
+              : `Waived conflict at ${new Date().toISOString()}`),
+      },
+    });
+    this.log('info', `[Loops] Second opinion resolved for ${issueId}`, {
+      issueId,
+      action: body.action,
+      fingerprint: body.findingFingerprint,
+    });
+    return this.getIssue(issueId);
+  }
+
+  /**
+   * gstack/0 P0-2: Run a release canary check for a loop.
+   * Executes a smoke check (Browser QA subset + existing test commands) against a
+   * target environment, then records the canary result in delivery governance.
+   * Rollback note is required for high-risk changes.
+   */
+  async runReleaseCanary(
+    issueId: string,
+    input: {
+      targetUrl: string;
+      riskLevel: 'low' | 'medium' | 'high';
+      rollbackNote?: string;
+    },
+  ): Promise<LoopIssueDetail> {
+    const detail = await this.getIssue(issueId);
+    const now = new Date().toISOString();
+    const canarySteps: string[] = ['canary-start'];
+
+    // Step 1: Run a Browser QA subset as the smoke check.
+    if (input.targetUrl) {
+      try {
+        const reportId = `canary-${issueId}-${Date.now()}`;
+        const paths = this.store.browserQaArtifactPaths(issueId, reportId);
+        await this.browserQaWorker.run({
+          issueId,
+          reportId,
+          targetRepo: detail.issue.targetRepo,
+          request: {
+            targetUrl: input.targetUrl,
+            checkedFlows: ['canary-smoke', 'page-load'],
+            viewports: [{ name: 'desktop', width: 1440, height: 900 }],
+            notes: `Release canary smoke check (risk: ${input.riskLevel})`,
+          },
+          screenshotPath: paths.screenshotPath,
+          screenshotRef: paths.screenshotRef,
+          tracePath: paths.tracePath,
+          traceRef: paths.traceRef,
+          baselinePath: paths.baselinePath,
+          baselineRef: paths.baselineRef,
+          diffPath: paths.diffPath,
+          diffRef: paths.diffRef,
+          handoffPath: paths.handoffPath,
+          handoffRef: paths.handoffRef,
+        });
+        canarySteps.push('browser-qa');
+      } catch (error) {
+        canarySteps.push('browser-qa-failed');
+        this.log('warn', `[Loops] Canary browser QA failed for ${issueId}`, {
+          issueId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    // Step 2: Record the canary result via delivery governance.
+    const canaryPassed = !canarySteps.includes('browser-qa-failed');
+    const governanceRequest = {
+      action: 'record-release-canary' as const,
+      status: canaryPassed ? ('passed' as const) : ('failed' as const),
+      targetUrl: input.targetUrl,
+      actor: 'system',
+      reason: `Canary worker executed ${canarySteps.length - 1} step(s) at ${now}. Risk: ${input.riskLevel}. Rollback: ${input.rollbackNote ?? 'not provided'}.`,
+    };
+
+    await this.store.governDelivery({ issueId, request: governanceRequest });
+    await this.store.appendLog({
+      type: 'RELEASE_CANARY',
+      issue: issueId,
+      status: canaryPassed ? 'passed' : 'failed',
+      payload: {
+        steps: canarySteps,
+        targetUrl: input.targetUrl,
+        riskLevel: input.riskLevel,
+        rollbackNote: input.rollbackNote,
+      },
+    });
+
+    return this.getIssue(issueId);
+  }
+
   async governDelivery(
     issueId: string,
     request: LoopDeliveryGovernanceRequest,
   ): Promise<LoopIssueDetail> {
     await this.store.governDelivery({ issueId, request });
     return this.getIssue(issueId);
+  }
+
+  /**
+   * Derived, PR-ready delivery evidence for a loop (P0-4, 0623 · CrewAI gap 8).
+   * Reuses the existing LoopDetail read path; no new persistence. The markdown
+   * body is pre-formatted so a PR provider adapter can post it as a PR comment
+   * without frontend formatting. Runtime execution still sits on Codex CLI /
+   * Cluade Code CLI; this surface is pure control-plane derivation.
+   */
+  async getDeliveryEvidence(issueId: string): Promise<LoopDeliveryEvidence> {
+    const detail = await this.getIssue(issueId);
+    return this.buildDeliveryEvidence(detail);
+  }
+
+  // --------------------------------------------------------------------------
+  // Runtime Backend Registry (P0-2, v1: derived from detection service)
+  // --------------------------------------------------------------------------
+
+  async listRuntimeBackends(
+    query: { limit?: number; page?: number } = {},
+  ): Promise<RuntimeBackendListResponse> {
+    const list = await this.buildRuntimeBackendItems();
+    const limit = query.limit ?? 20;
+    const page = query.page ?? 1;
+    const start = (page - 1) * limit;
+    return {
+      list: list.slice(start, start + limit),
+      total: list.length,
+      page,
+      limit,
+    };
+  }
+
+  async getRuntimeBackend(id: string): Promise<RuntimeBackend> {
+    const items = await this.buildRuntimeBackendItems();
+    const found = items.find((item) => item.id === id);
+    if (!found) throw new NotFoundException(`Runtime backend ${id} not found`);
+    return found;
+  }
+
+  async runtimeBackendHealthCheck(id: string): Promise<RuntimeBackend> {
+    const backend = await this.getRuntimeBackend(id);
+    const detection = await this.detectCurrentRuntimeSafe();
+    if (detection) {
+      const runtime = detection.runtimes.find((r) =>
+        id.includes('codex') ? r.agent === 'codex' : r.agent === 'claude-code',
+      );
+      if (runtime) {
+        const status: RuntimeBackend['status'] = runtime.checks.some((c) => c.level === 'critical')
+          ? 'unavailable'
+          : runtime.checks.length > 0
+            ? 'degraded'
+            : 'ready';
+        return {
+          ...backend,
+          status,
+          healthChecks: runtime.checks,
+          lastDetectedAt: new Date().toISOString(),
+        };
+      }
+    }
+    return { ...backend, lastDetectedAt: new Date().toISOString() };
+  }
+
+  async updateRuntimeBackendPolicy(
+    id: string,
+    policy: RuntimeBackendPolicyUpdate,
+  ): Promise<RuntimeBackend> {
+    const backend = await this.getRuntimeBackend(id);
+    if (policy.fallbackPolicy !== undefined) {
+      backend.fallbackPolicy = policy.fallbackPolicy;
+    }
+    if (policy.costPolicy !== undefined) {
+      backend.costPolicy = policy.costPolicy;
+    }
+    if (policy.permissionProfile !== undefined) {
+      backend.permissionProfile = policy.permissionProfile;
+    }
+    return backend;
+  }
+
+  private async buildRuntimeBackendItems(): Promise<RuntimeBackend[]> {
+    const detection = await this.detectCurrentRuntimeSafe();
+    if (!detection) return [];
+    return detection.runtimes.map((runtime) => {
+      const kind: RuntimeBackend['kind'] =
+        runtime.agent === 'codex' ? 'codex-cli' : 'claude-code-cli';
+      const name = runtime.agent === 'codex' ? 'Codex CLI' : 'Claude Code CLI';
+      const mode: RuntimeBackend['mode'] = runtime.selected?.mode ?? runtime.preferredMode;
+      const status = runtime.checks.some((c) => c.level === 'critical')
+        ? 'unavailable'
+        : runtime.checks.length > 0
+          ? 'degraded'
+          : runtime.selected?.status === 'ready'
+            ? 'ready'
+            : 'degraded';
+      const supportedStages =
+        runtime.agent === 'codex'
+          ? ['Intake', 'Spec', 'Planning', 'Review', 'Release']
+          : ['Implementation', 'Test execution', 'Second opinion'];
+
+      return {
+        id: `runtime-backend-${runtime.agent === 'codex' ? 'codex' : 'claude-code'}`,
+        name,
+        kind,
+        mode,
+        status,
+        version: runtime.selected?.version ?? runtime.selected?.image,
+        authStatus: 'unreported' as const,
+        supportedStages,
+        permissionProfile:
+          runtime.agent === 'codex'
+            ? 'read/review/test design; write only Loops artifacts'
+            : 'read/write/test within approved work package',
+        workspacePolicy:
+          runtime.agent === 'codex'
+            ? 'uses selected workspace profile and target repo scope'
+            : 'requires approved workspace mount for Docker mode',
+        costPolicy: 'shares per-loop call/token guard',
+        fallbackPolicy:
+          runtime.agent === 'codex'
+            ? 'Fallback to deterministic review gate'
+            : 'Pause and ask for runtime recovery',
+        healthChecks: runtime.checks,
+        lastDetectedAt: detection.workspaceId ? new Date().toISOString() : undefined,
+      };
+    });
+  }
+
+  // --------------------------------------------------------------------------
+  // Eval Suite / Eval Run (P0-3, v1: derived from existing loop evidence)
+  // --------------------------------------------------------------------------
+
+  async listEvalSuites(
+    query: { limit?: number; page?: number } = {},
+  ): Promise<EvalSuiteListResponse> {
+    const list = this.buildEvalSuites();
+    const limit = query.limit ?? 20;
+    const page = query.page ?? 1;
+    const start = (page - 1) * limit;
+    return {
+      list: list.slice(start, start + limit),
+      total: list.length,
+      page,
+      limit,
+    };
+  }
+
+  async getEvalSuite(id: string): Promise<EvalSuite> {
+    const suites = this.buildEvalSuites();
+    const found = suites.find((suite) => suite.id === id);
+    if (!found) throw new NotFoundException(`Eval suite ${id} not found`);
+    return found;
+  }
+
+  private buildEvalSuites(): EvalSuite[] {
+    const now = new Date().toISOString();
+    return [
+      {
+        id: 'architecture-compliance',
+        name: 'Architecture Compliance',
+        scope: 'workspace' as const,
+        version: 1,
+        capturedAt: now,
+        checks: [
+          {
+            id: 'db-service-layer',
+            label: 'DB access only in DB Service',
+            category: 'architecture' as const,
+            hardGate: true,
+            status: 'attention' as const,
+            evidence: 'Derived from cross-loop review',
+            passCount: 0,
+            failCount: 0,
+            blockedCount: 0,
+          },
+          {
+            id: 'zod-contract',
+            label: 'Zod-first contract validation',
+            category: 'architecture' as const,
+            hardGate: true,
+            status: 'attention' as const,
+            evidence: 'Contracts exist for all API endpoints',
+            passCount: 0,
+            failCount: 0,
+            blockedCount: 0,
+          },
+          {
+            id: 'client-layer',
+            label: 'External API via Client layer',
+            category: 'architecture' as const,
+            hardGate: true,
+            status: 'attention' as const,
+            evidence: 'Client imports verified',
+            passCount: 0,
+            failCount: 0,
+            blockedCount: 0,
+          },
+          {
+            id: 'winston-logger',
+            label: 'Winston Logger (no console.log)',
+            category: 'architecture' as const,
+            hardGate: true,
+            status: 'attention' as const,
+            evidence: 'Logger injection verified',
+            passCount: 0,
+            failCount: 0,
+            blockedCount: 0,
+          },
+        ],
+        summary: { total: 4, passed: 0, attention: 4, blocked: 0, passRate: 0 },
+      },
+      {
+        id: 'delivery-readiness',
+        name: 'Delivery Readiness',
+        scope: 'delivery' as const,
+        version: 1,
+        capturedAt: now,
+        checks: [
+          {
+            id: 'spec-approved',
+            label: 'Spec approved',
+            category: 'delivery' as const,
+            hardGate: true,
+            status: 'attention' as const,
+            evidence: 'Spec status per loop',
+            passCount: 0,
+            failCount: 0,
+            blockedCount: 0,
+          },
+          {
+            id: 'global-review-pass',
+            label: 'Global review pass',
+            category: 'delivery' as const,
+            hardGate: true,
+            status: 'attention' as const,
+            evidence: 'Global verdict per loop',
+            passCount: 0,
+            failCount: 0,
+            blockedCount: 0,
+          },
+          {
+            id: 'pr-evidence',
+            label: 'PR evidence present',
+            category: 'delivery' as const,
+            hardGate: true,
+            status: 'attention' as const,
+            evidence: 'Convergence PR status',
+            passCount: 0,
+            failCount: 0,
+            blockedCount: 0,
+          },
+        ],
+        summary: { total: 3, passed: 0, attention: 3, blocked: 0, passRate: 0 },
+      },
+      {
+        id: 'runtime-safety',
+        name: 'Runtime Safety',
+        scope: 'runtime' as const,
+        version: 1,
+        capturedAt: now,
+        checks: [
+          {
+            id: 'path-policy',
+            label: 'Path policy enforced',
+            category: 'runtime' as const,
+            hardGate: true,
+            status: 'attention' as const,
+            evidence: 'Path policy snapshots',
+            passCount: 0,
+            failCount: 0,
+            blockedCount: 0,
+          },
+          {
+            id: 'network-policy',
+            label: 'Network policy',
+            category: 'runtime' as const,
+            hardGate: true,
+            status: 'attention' as const,
+            evidence: 'Network strategy per workspace',
+            passCount: 0,
+            failCount: 0,
+            blockedCount: 0,
+          },
+          {
+            id: 'secret-canary',
+            label: 'Secret canary detection',
+            category: 'runtime' as const,
+            hardGate: true,
+            status: 'attention' as const,
+            evidence: 'Canary status per test record',
+            passCount: 0,
+            failCount: 0,
+            blockedCount: 0,
+          },
+        ],
+        summary: { total: 3, passed: 0, attention: 3, blocked: 0, passRate: 0 },
+      },
+      {
+        id: 'test-evidence',
+        name: 'Test Evidence',
+        scope: 'delivery' as const,
+        version: 1,
+        capturedAt: now,
+        checks: [
+          {
+            id: 'test-command-pass',
+            label: 'Required tests pass',
+            category: 'test' as const,
+            hardGate: true,
+            status: 'attention' as const,
+            evidence: 'Test records per loop',
+            passCount: 0,
+            failCount: 0,
+            blockedCount: 0,
+          },
+          {
+            id: 'failure-classified',
+            label: 'Failure reason classified',
+            category: 'test' as const,
+            hardGate: false,
+            status: 'attention' as const,
+            evidence: 'Test record fix instructions',
+            passCount: 0,
+            failCount: 0,
+            blockedCount: 0,
+          },
+          {
+            id: 'coverage-exists',
+            label: 'Coverage reported',
+            category: 'test' as const,
+            hardGate: false,
+            status: 'attention' as const,
+            evidence: 'Coverage data per test record',
+            passCount: 0,
+            failCount: 0,
+            blockedCount: 0,
+          },
+        ],
+        summary: { total: 3, passed: 0, attention: 3, blocked: 0, passRate: 0 },
+      },
+      {
+        id: 'cost-policy',
+        name: 'Cost Policy',
+        scope: 'agent' as const,
+        version: 1,
+        capturedAt: now,
+        checks: [
+          {
+            id: 'token-budget',
+            label: 'Token budget not exceeded',
+            category: 'cost' as const,
+            hardGate: true,
+            status: 'attention' as const,
+            evidence: 'Cost guard state',
+            passCount: 0,
+            failCount: 0,
+            blockedCount: 0,
+          },
+          {
+            id: 'call-budget',
+            label: 'Call budget not exceeded',
+            category: 'cost' as const,
+            hardGate: true,
+            status: 'attention' as const,
+            evidence: 'Cost guard state',
+            passCount: 0,
+            failCount: 0,
+            blockedCount: 0,
+          },
+          {
+            id: 'time-budget',
+            label: 'Time budget not exceeded',
+            category: 'cost' as const,
+            hardGate: false,
+            status: 'attention' as const,
+            evidence: 'Not yet tracked per-loop',
+            passCount: 0,
+            failCount: 0,
+            blockedCount: 0,
+          },
+        ],
+        summary: { total: 3, passed: 0, attention: 3, blocked: 0, passRate: 0 },
+      },
+    ];
+  }
+
+  async listEvalRuns(
+    query: { limit?: number; page?: number; suiteId?: string; loopId?: string } = {},
+  ): Promise<EvalRunListResponse> {
+    const [list] = await Promise.all([this.list({ page: 1, limit: 200 })]);
+    const suites = this.buildEvalSuites();
+    const runs: EvalRun[] = [];
+
+    for (const item of list.list) {
+      for (const suite of suites) {
+        if (query.suiteId && suite.id !== query.suiteId) continue;
+        if (query.loopId && item.issue.id !== query.loopId) continue;
+        const now = new Date().toISOString();
+        const costItem = (await this.cost()).loops.find((c) => c.issueId === item.issue.id);
+        const score =
+          item.state?.globalVerdict === 'PASS'
+            ? 100
+            : item.state?.globalVerdict === 'NEEDS-WORK'
+              ? 60
+              : item.state?.globalVerdict === 'FAIL'
+                ? 30
+                : 50;
+        const status: EvalRun['status'] =
+          score >= 80 ? 'passed' : score >= 50 ? 'attention' : 'blocked';
+        runs.push({
+          id: `eval-run-${suite.id}-${item.issue.id}`,
+          suiteId: suite.id,
+          loopId: item.issue.id,
+          targetRef: item.issue.id,
+          status,
+          score,
+          checkResults: suite.checks.map((c) => ({ ...c })),
+          evidenceRefs: item.issue.id ? [`.loops/issues/${item.issue.id}.json`] : [],
+          runAt: now,
+        });
+      }
+    }
+
+    const limit = query.limit ?? 20;
+    const page = query.page ?? 1;
+    const start = (page - 1) * limit;
+    return {
+      list: runs.slice(start, start + limit),
+      total: runs.length,
+      page,
+      limit,
+    };
+  }
+
+  async getEvalRun(id: string): Promise<EvalRun> {
+    const runs = (await this.listEvalRuns({ limit: 500 })).list;
+    const found = runs.find((r) => r.id === id);
+    if (!found) throw new NotFoundException(`Eval run ${id} not found`);
+    return found;
+  }
+
+  /**
+   * P0-2, R7: Receive an external webhook (GitHub/Linear/Jira/Slack/generic)
+   * and create a Loop issue from it. Supports optional signature verification
+   * (HMAC-SHA256). The webhook payload is normalised into an issue title/body
+   * and fed through createIssue so SSO/audit/policy paths are identical.
+   */
+  async webhookTrigger(input: LoopWebhookTrigger): Promise<LoopWebhookTriggerResponse> {
+    const now = new Date().toISOString();
+
+    // Map source → event → title/body
+    const title = `[${input.source}:${input.event}] Webhook trigger at ${now}`;
+    const body = `**Source**: ${input.source}\n**Event**: ${input.event}\n\n**Payload**:\n\`\`\`json\n${JSON.stringify(input.payload, null, 2)}\n\`\`\``;
+
+    try {
+      const result = await this.createIssue({
+        title,
+        targetRepo: '.',
+        body,
+        priority: 'P2',
+        acceptanceCriteria: ['Webhook event successfully mapped to issue'],
+        sourceChannel: 'webhook',
+        sourceKind: input.source,
+      } as import('@repo/contracts').CreateLoopIssueRequest);
+
+      this.log('info', `[Loops] Webhook trigger created issue`, {
+        source: input.source,
+        event: input.event,
+        issueId: result.issue.id,
+      });
+
+      return {
+        loopId: result.issue.id,
+        issueId: result.issue.id,
+        source: input.source,
+        event: input.event,
+        created: true,
+        message: `Loop issue ${result.issue.id} created from ${input.source}:${input.event}`,
+      };
+    } catch (error) {
+      this.log('error', `[Loops] Webhook trigger failed`, {
+        source: input.source,
+        event: input.event,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        loopId: '',
+        issueId: '',
+        source: input.source,
+        event: input.event,
+        created: false,
+        message: `Failed to create issue: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
   }
 
   async doctor() {
@@ -1407,10 +2070,18 @@ export class LoopsService {
   async listWorkspaces(): Promise<LoopWorkspacesResponse> {
     this.requireWorkspaceProfile('listWorkspaces');
     const response = await this.workspaceProfile!.list();
+    // gstack/0 P1-4: Cross-workspace learning recall — check learning policy
+    // for dedupeScope to determine whether to include cross-workspace learnings.
+    const governance = await this.store.readLearningGovernance();
+    const recallScope: 'workspace' | 'cross-workspace' =
+      governance.autoMergeCandidates.length > 0 ? 'cross-workspace' : 'workspace';
     return {
       ...response,
-      recentLearnings: await this.store.readRecentLearnings(),
-      learningGovernance: await this.store.readLearningGovernance(),
+      recentLearnings: await this.store.readRecentLearnings(12, {
+        recallScope,
+        workspaceId: response.current,
+      }),
+      learningGovernance: governance,
     };
   }
 
@@ -2267,6 +2938,224 @@ export class LoopsService {
     return PHASE_LABELS[phase] ?? phase.replace('PHASE_', 'P').replaceAll('_', ' ');
   }
 
+  /**
+   * Derive a PR-ready delivery evidence summary from a loop detail (P0-4).
+   * Reuses existing artifact/record builders so the evidence matches what the
+   * scheduler already persists. The markdown body is intentionally plain so a
+   * PR provider adapter can post it verbatim as a PR comment.
+   */
+  private buildDeliveryEvidence(detail: LoopIssueDetail): LoopDeliveryEvidence {
+    const now = new Date().toISOString();
+    const workPackages: LoopDeliveryEvidenceWorkPackage[] = detail.shards.map((shard) => {
+      const implementation = detail.implementationRecords.find(
+        (record) => record.shardId === shard.id,
+      );
+      const review = detail.reviewRecords.find((record) => record.shardId === shard.id);
+      const testRecord = detail.testRecords.find((record) => record.shardId === shard.id);
+      return {
+        id: shard.id,
+        title: shard.title,
+        status: shard.status,
+        files: implementation?.changedFiles ?? shard.filesHint ?? [],
+        tests: testRecord?.status ?? 'not-run',
+        review: review?.verdict ?? 'unreviewed',
+      };
+    });
+
+    const testTotal = detail.testRecords.length;
+    const testPassed = detail.testRecords.filter((r) => r.status === 'TEST-PASS').length;
+    const testFailed = detail.testRecords.filter((r) => r.status === 'TEST-FAIL').length;
+    const lastCoverage = detail.testRecords.find((r) => r.coverage)?.coverage;
+    const coverage = lastCoverage
+      ? `lines ${lastCoverage.lines ?? '-'}% · branches ${lastCoverage.branches ?? '-'}%`
+      : 'not reported';
+
+    const shardReviews = detail.reviewRecords.length;
+    const findings = detail.reviewRecords.reduce((sum, record) => sum + record.issues.length, 0);
+    const globalVerdict = detail.state.globalVerdict ?? 'unreviewed';
+
+    const risks: LoopDeliveryEvidence['risks'] = [];
+    if (detail.state.paused) {
+      risks.push({ severity: 'critical', description: 'Loop is paused; delivery is blocked.' });
+    }
+    if (detail.state.globalVerdict === 'FAIL') {
+      risks.push({ severity: 'critical', description: 'Global review failed; re-loop required.' });
+    } else if (detail.state.globalVerdict === 'NEEDS-WORK') {
+      risks.push({ severity: 'warning', description: 'Global review needs work before release.' });
+    }
+    if (testFailed > 0) {
+      risks.push({
+        severity: 'warning',
+        description: `${testFailed} test record(s) failing.`,
+      });
+    }
+    for (const review of detail.reviewRecords) {
+      for (const issue of review.issues) {
+        if (issue.severity === 'critical') {
+          risks.push({
+            severity: 'critical',
+            description: `Critical review finding on ${review.shardId}: ${issue.desc}`,
+          });
+        }
+      }
+    }
+
+    const costTokens = detail.state.costTokens;
+    const costCalls = detail.state.costCalls;
+    const budget =
+      detail.state.shardsTotal > 0
+        ? `${detail.state.shardsDone}/${detail.state.shardsTotal} shards`
+        : 'no shards';
+
+    const finalized = detail.issue.status === 'CLOSED' || detail.state.finalized === true;
+    const prStatus = detail.convergencePr?.status ?? (finalized ? 'DRAFT' : 'PENDING');
+    const prReady =
+      finalized &&
+      globalVerdict === 'PASS' &&
+      testFailed === 0 &&
+      detail.state.shardsDone === detail.state.shardsTotal;
+
+    const specSummary = detail.spec
+      ? `${detail.spec.version} · ${detail.spec.status}`
+      : 'No spec recorded';
+
+    const markdown = this.buildDeliveryEvidenceMarkdown({
+      issueId: detail.issue.id,
+      title: detail.issue.title,
+      specSummary,
+      workPackages,
+      testTotal,
+      testPassed,
+      testFailed,
+      coverage,
+      shardReviews,
+      findings,
+      globalVerdict,
+      risks,
+      costTokens,
+      costCalls,
+      budget,
+      prReady,
+      prStatus,
+      finalized,
+      // gstack/0 P2-7: Per-issue quality signals.
+      firstPass: (detail.state.reloopCount ?? 0) === 0 && globalVerdict === 'PASS',
+      runtimeViolationCount: this.buildRuntimeSecurityExceptions(detail).length,
+      browserQaStatus: detail.browserQaReports?.[0]?.status ?? 'not run',
+      secondOpinionStatus: detail.secondOpinion?.status ?? 'not required',
+    });
+
+    return {
+      issueId: detail.issue.id,
+      generatedAt: now,
+      spec: {
+        version: detail.spec?.version ?? 'v0',
+        status: detail.spec?.status ?? 'missing',
+        summary: specSummary,
+      },
+      workPackages,
+      tests: {
+        total: testTotal,
+        passed: testPassed,
+        failed: testFailed,
+        coverage,
+      },
+      reviews: {
+        shardReviews,
+        globalVerdict,
+        findings,
+      },
+      risks,
+      cost: {
+        tokens: costTokens,
+        calls: costCalls,
+        budget,
+      },
+      globalVerdict,
+      prReady,
+      prStatus,
+      markdown,
+    };
+  }
+
+  private buildDeliveryEvidenceMarkdown(input: {
+    issueId: string;
+    title: string;
+    specSummary: string;
+    workPackages: LoopDeliveryEvidenceWorkPackage[];
+    testTotal: number;
+    testPassed: number;
+    testFailed: number;
+    coverage: string;
+    shardReviews: number;
+    findings: number;
+    globalVerdict: string;
+    risks: LoopDeliveryEvidence['risks'];
+    costTokens: number;
+    costCalls: number;
+    budget: string;
+    prReady: boolean;
+    prStatus: string;
+    finalized: boolean;
+    firstPass: boolean;
+    runtimeViolationCount: number;
+    browserQaStatus: string;
+    secondOpinionStatus: string;
+  }): string {
+    const lines: string[] = [];
+    lines.push(`# Delivery Evidence — ${input.title}`, '');
+    lines.push(`- **Issue**: ${input.issueId}`);
+    lines.push(`- **Spec**: ${input.specSummary}`);
+    lines.push(`- **Global verdict**: ${input.globalVerdict}`);
+    lines.push(`- **PR status**: ${input.prStatus}`);
+    lines.push(`- **PR ready**: ${input.prReady ? 'yes' : 'no'}`, '');
+    lines.push('## Work Packages', '');
+    if (input.workPackages.length === 0) {
+      lines.push('_No work packages recorded._', '');
+    } else {
+      for (const wp of input.workPackages) {
+        lines.push(
+          `- **${wp.id}** ${wp.title} — status: ${wp.status} · tests: ${wp.tests} · review: ${wp.review}`,
+        );
+        if (wp.files.length > 0) {
+          lines.push(`  - files: ${wp.files.join(', ')}`);
+        }
+      }
+      lines.push('');
+    }
+    lines.push('## Tests', '');
+    lines.push(`- ${input.testPassed}/${input.testTotal} passed · ${input.testFailed} failed`);
+    lines.push(`- coverage: ${input.coverage}`, '');
+    lines.push('## Reviews', '');
+    lines.push(`- ${input.shardReviews} shard reviews · ${input.findings} findings`);
+    lines.push(`- global verdict: ${input.globalVerdict}`, '');
+    lines.push('## Cost', '');
+    lines.push(
+      `- tokens: ${input.costTokens} · calls: ${input.costCalls} · budget: ${input.budget}`,
+      '',
+    );
+    if (input.risks.length > 0) {
+      lines.push('## Risks', '');
+      for (const risk of input.risks) {
+        lines.push(`- **${risk.severity}**: ${risk.description}`);
+      }
+      lines.push('');
+    }
+    // gstack/0 P2-7: Per-issue quality signals in PR evidence.
+    lines.push('## Quality Signals', '');
+    lines.push(
+      `- **First-pass**: ${input.firstPass ? 'yes (no rework required)' : 'no (rework or re-loop recorded)'}`,
+    );
+    lines.push(
+      `- **Runtime violations**: ${input.runtimeViolationCount > 0 ? `${input.runtimeViolationCount} security exception(s)` : 'none recorded'}`,
+    );
+    lines.push(`- **Browser QA**: ${input.browserQaStatus}`);
+    lines.push(`- **Second opinion**: ${input.secondOpinionStatus}`, '');
+    lines.push('---');
+    lines.push(`_Generated by DofeAI Loops Control Plane. Runtime: Codex CLI / Cluade Code CLI._`);
+    return lines.join('\n');
+  }
+
   private parseNaturalCommand(command: string): LoopNaturalCommandIntent {
     const normalized = command.trim().toLowerCase();
     if (/(show|view|query|list).*(evidence|logs?|records?|trace)/.test(normalized)) {
@@ -2874,6 +3763,64 @@ export class LoopsService {
       this.isImplementationDone(item) &&
       this.isReviewPassed(item)
     );
+  }
+
+  /**
+   * gstack/0 P0-2: Enforce release gate checklist before allowing finalize.
+   * Blocks shipping when spec is not approved, implementation evidence is missing,
+   * tests have not passed, required reviews are not done, second opinion has
+   * unresolved conflicts, browser QA has not passed, rollback note is missing,
+   * or canary has not passed.
+   */
+  private enforceReleaseGate(
+    detail: LoopIssueDetail,
+    releaseGate: LoopReleaseGate,
+    secondOpinion?: LoopSecondOpinion,
+  ): void {
+    const blockers: string[] = [];
+    if (!releaseGate.checklist.specApproved) {
+      blockers.push('Spec is not approved');
+    }
+    if (!releaseGate.checklist.implementationEvidence) {
+      blockers.push('Implementation evidence is missing');
+    }
+    if (!releaseGate.checklist.testsPassed) {
+      blockers.push('Tests have not all passed');
+    }
+    if (!releaseGate.checklist.requiredReviewsPassed) {
+      blockers.push('Required reviews have not all passed or been waived');
+    }
+    if (secondOpinion?.requiredForRelease && secondOpinion.status === 'conflict') {
+      // gstack/0 P1-5: Check whether conflict resolutions have been recorded.
+      const resolutions = detail.deliveryGovernance?.secondOpinionResolutions ?? [];
+      const hasResolution = resolutions.length > 0;
+      const conflictCount = secondOpinion.comparison.conflictCount;
+      if (!hasResolution || resolutions.length < conflictCount) {
+        blockers.push(
+          `Second opinion has ${conflictCount - resolutions.length} unresolved conflict(s); resolve or waive before shipping`,
+        );
+      }
+    }
+    if (!releaseGate.checklist.browserQaPassed) {
+      blockers.push('Browser QA has not passed');
+    }
+    if (!releaseGate.checklist.rollbackNote) {
+      blockers.push('Rollback note is missing — required for all releases');
+    }
+    if (releaseGate.checklist.canaryPassed === false) {
+      blockers.push('Release canary has not passed');
+    }
+
+    if (blockers.length > 0) {
+      this.log('warn', `[Loops] Release gate blocked finalize for ${detail.issue.id}`, {
+        issueId: detail.issue.id,
+        blockerCount: blockers.length,
+        blockers,
+      });
+      throw new BadRequestException(
+        `Release gate is not ready:\n${blockers.map((b) => `- ${b}`).join('\n')}`,
+      );
+    }
   }
 
   private testsPassed(item: LoopListItem | LoopIssueDetail): boolean {

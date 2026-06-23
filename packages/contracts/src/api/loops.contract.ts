@@ -1,6 +1,6 @@
 import { initContract } from '@ts-rest/core';
 import { z } from 'zod';
-import { ApiResponseSchema } from '../base';
+import { ApiResponseSchema, PaginationQuerySchema } from '../base';
 import {
   CreateLoopIssueRequestSchema,
   CreateLoopIssueSimpleRequestSchema,
@@ -9,7 +9,15 @@ import {
   LoopCapabilitiesResponseSchema,
   LoopAgentRuntimeResponseSchema,
   LoopCostResponseSchema,
+  LoopDeliveryEvidenceSchema,
   LoopDeliveryGovernanceRequestSchema,
+  RuntimeBackendSchema,
+  RuntimeBackendListResponseSchema,
+  RuntimeBackendPolicyUpdateSchema,
+  EvalSuiteSchema,
+  EvalSuiteListResponseSchema,
+  EvalRunListResponseSchema,
+  EvalRunSchema,
   LoopDetailSchema,
   LoopInterventionRequestSchema,
   LoopImplementationRecordSchema,
@@ -27,6 +35,7 @@ import {
   LoopRecordShardImplementationRequestSchema,
   LoopReloopResponseSchema,
   LoopReloopRequestSchema,
+  LoopResolveSecondOpinionSchema,
   LoopReviewRecordSchema,
   LoopReviewShardRequestSchema,
   LoopRunShardTestsRequestSchema,
@@ -38,6 +47,8 @@ import {
   PullLoopImageResponseSchema,
   UpsertLoopWorkspaceRequestSchema,
   LoopWorkspacesResponseSchema,
+  LoopWebhookTriggerSchema,
+  LoopWebhookTriggerResponseSchema,
 } from '../schemas/loops.schema';
 
 const c = initContract();
@@ -94,6 +105,97 @@ export const loopsContract = c.router(
         200: ApiResponseSchema(LoopDetailSchema),
       },
       summary: 'Get a Loops issue detail',
+    },
+    getDeliveryEvidence: {
+      method: 'GET',
+      path: '/issues/:issueId/delivery-evidence',
+      pathParams: z.object({
+        issueId: z.string(),
+      }),
+      responses: {
+        200: ApiResponseSchema(LoopDeliveryEvidenceSchema),
+      },
+      summary: 'Get a derived, PR-ready delivery evidence summary for a Loops issue (P0-4)',
+    },
+    // --- Runtime Backend Registry (P0-2) ---
+    listRuntimeBackends: {
+      method: 'GET',
+      path: '/runtime-backends',
+      query: PaginationQuerySchema,
+      responses: {
+        200: ApiResponseSchema(RuntimeBackendListResponseSchema),
+      },
+      summary:
+        'List runtime backends (Codex CLI / Claude Code CLI) with health, policy, and stage support',
+    },
+    getRuntimeBackend: {
+      method: 'GET',
+      path: '/runtime-backends/:id',
+      pathParams: z.object({ id: z.string() }),
+      responses: {
+        200: ApiResponseSchema(RuntimeBackendSchema),
+      },
+      summary: 'Get a runtime backend detail',
+    },
+    runtimeBackendHealthCheck: {
+      method: 'POST',
+      path: '/runtime-backends/:id/health-check',
+      pathParams: z.object({ id: z.string() }),
+      body: z.object({}).optional(),
+      responses: {
+        200: ApiResponseSchema(RuntimeBackendSchema),
+      },
+      summary: 'Trigger a health check for a runtime backend',
+    },
+    updateRuntimeBackendPolicy: {
+      method: 'PATCH',
+      path: '/runtime-backends/:id/policy',
+      pathParams: z.object({ id: z.string() }),
+      body: RuntimeBackendPolicyUpdateSchema,
+      responses: {
+        200: ApiResponseSchema(RuntimeBackendSchema),
+      },
+      summary: 'Update fallback/cost/permission policy for a runtime backend',
+    },
+    // --- Eval Suite / Eval Run (P0-3) ---
+    listEvalSuites: {
+      method: 'GET',
+      path: '/eval-suites',
+      query: PaginationQuerySchema,
+      responses: {
+        200: ApiResponseSchema(EvalSuiteListResponseSchema),
+      },
+      summary: 'List eval suites with pass-rate summaries and hard gates',
+    },
+    getEvalSuite: {
+      method: 'GET',
+      path: '/eval-suites/:id',
+      pathParams: z.object({ id: z.string() }),
+      responses: {
+        200: ApiResponseSchema(EvalSuiteSchema),
+      },
+      summary: 'Get an eval suite detail with per-check pass/fail/blocked counts',
+    },
+    listEvalRuns: {
+      method: 'GET',
+      path: '/eval-runs',
+      query: PaginationQuerySchema.extend({
+        suiteId: z.string().optional(),
+        loopId: z.string().optional(),
+      }),
+      responses: {
+        200: ApiResponseSchema(EvalRunListResponseSchema),
+      },
+      summary: 'List eval runs across suites, optionally filtered by suite or loop',
+    },
+    getEvalRun: {
+      method: 'GET',
+      path: '/eval-runs/:id',
+      pathParams: z.object({ id: z.string() }),
+      responses: {
+        200: ApiResponseSchema(EvalRunSchema),
+      },
+      summary: 'Get a single eval run with per-check results and trend delta',
     },
     generateSpec: {
       method: 'POST',
@@ -267,6 +369,36 @@ export const loopsContract = c.router(
       },
       summary: 'Run a report-only Claude Code second-opinion review for a Loops issue',
     },
+    resolveSecondOpinion: {
+      method: 'POST',
+      path: '/issues/:issueId/second-opinion/resolve',
+      pathParams: z.object({
+        issueId: z.string(),
+      }),
+      body: LoopResolveSecondOpinionSchema,
+      responses: {
+        200: ApiResponseSchema(LoopDetailSchema),
+      },
+      summary:
+        'Resolve a second-opinion conflict by accepting primary/secondary findings or waiving (P1-5)',
+    },
+    runReleaseCanary: {
+      method: 'POST',
+      path: '/issues/:issueId/release-canary',
+      pathParams: z.object({
+        issueId: z.string(),
+      }),
+      body: z.object({
+        targetUrl: z.string().url(),
+        riskLevel: z.enum(['low', 'medium', 'high']).default('medium'),
+        rollbackNote: z.string().trim().min(1).optional(),
+      }),
+      responses: {
+        200: ApiResponseSchema(LoopDetailSchema),
+      },
+      summary:
+        'Run a release canary check (smoke + Browser QA subset) and record result in delivery governance',
+    },
     governDelivery: {
       method: 'POST',
       path: '/issues/:issueId/delivery-governance',
@@ -411,6 +543,16 @@ export const loopsContract = c.router(
         200: ApiResponseSchema(LoopNotificationsResponseSchema),
       },
       summary: 'Read recorded Loops notifications',
+    },
+    webhookTrigger: {
+      method: 'POST',
+      path: '/triggers/webhook',
+      body: LoopWebhookTriggerSchema,
+      responses: {
+        200: ApiResponseSchema(LoopWebhookTriggerResponseSchema),
+      },
+      summary:
+        'Receive an external webhook (GitHub/Linear/Jira/Slack/generic) and create a Loop issue from it (P0-2, R7)',
     },
     resume: {
       method: 'POST',

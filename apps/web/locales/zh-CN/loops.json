@@ -33,6 +33,63 @@
       "traceEvents": "Trace 事件",
       "traceEventsNote": "近期 {recent} 条"
     },
+    "loopBench": {
+      "title": "交付质量基准",
+      "summary": "从交付证据、运行时安全和学习复用中推导的质量信号。",
+      "firstPassRate": "首次通过率",
+      "firstPassRateDesc": "PASS 且无重做的 Loop 占比",
+      "browserQaRegression": "QA 回归率",
+      "browserQaRegressionDesc": "浏览器 QA 失败率（按详情统计）",
+      "secondOpinionConflict": "二次审查冲突率",
+      "secondOpinionConflictDesc": "二次审查意见分歧率",
+      "releaseBlocker": "发布阻断率",
+      "releaseBlockerDesc": "发布前被阻断的 Loop 占比",
+      "runtimeViolation": "运行时违规率",
+      "runtimeViolationDesc": "每个 Loop 的安全异常占比",
+      "learningReuse": "知识复用率",
+      "learningReuseDesc": "召回并带来正向结果的占比（规划中）",
+      "planned": "规划中"
+    },
+    "workforce": {
+      "title": "软件交付工作力",
+      "summary": "{active} 个进行中 · {idle} 个空闲 · {blocked} 个阻塞 · {humanGates} 个人工关卡",
+      "loading": "正在加载工作力总览。",
+      "humanGate": "人工关卡",
+      "idle": "暂无进行中的工作",
+      "personaCount": "{count} 个 Loop",
+      "status": {
+        "active": "进行中",
+        "idle": "空闲",
+        "blocked": "阻塞",
+        "done": "已完成"
+      },
+      "personas": {
+        "intake-analyst": "需求分析",
+        "spec-writer": "规格编写",
+        "human-gatekeeper": "人工把关",
+        "work-planner": "任务拆解",
+        "builder": "构建实现",
+        "test-runner": "测试执行",
+        "code-reviewer": "分片审阅",
+        "release-reviewer": "收敛审阅",
+        "evidence-curator": "证据整理"
+      },
+      "handoff": {
+        "title": "Agent 交接时间线",
+        "summary": "当前：{current} → 下一步：{next}",
+        "blocked": "交接已阻塞 — 解决异常后下一个角色才能接管。",
+        "loading": "正在加载交接时间线。",
+        "state": {
+          "done": "已完成",
+          "current": "进行中",
+          "next": "下一步",
+          "waiting": "等待中",
+          "blocked": "阻塞"
+        },
+        "runtime": "运行时：{backend}",
+        "noCurrent": "无进行中的角色"
+      }
+    },
     "evalPlan": {
       "title": "评测计划",
       "summary": "{passed}/{total} 已通过 · {attention} 个需关注 · {blocked} 个阻塞",
@@ -109,6 +166,74 @@
         "readyToShip": "可发布",
         "delivered": "已交付"
       }
+    },
+    "recipeAdmin": {
+      "title": "配方管理",
+      "summary": "{kinds} 类配方 · {loops} 个活跃 Loop · {blocked} 个阻断",
+      "loading": "加载配方指标中。",
+      "empty": "无活跃 Loop 可分析。",
+      "blockerRate": "阻断率",
+      "avgShards": "平均 Shard",
+      "kind": {
+        "feature": "功能",
+        "bugfix": "修复",
+        "refactor": "重构",
+        "docs": "文档",
+        "ops": "运维"
+      }
+    },
+    "runtimeSecurityPanel": {
+      "title": "运行时安全",
+      "summary": "{totalLoops} 个活跃 · {loopsWithViolations} 个有违规 · {criticalCount} 个严重 · {totalOverrides} 个覆盖",
+      "loading": "正在加载运行时安全面板。",
+      "clear": "正常",
+      "noViolations": "未检测到违规",
+      "violationsFound": "{count} 个 Loop 受影响",
+      "topViolations": "主要违规"
+    },
+    "fleetHealth": {
+      "title": "交付舰队健康度",
+      "summary": "工程 Agent 控制平面 — 跨 Loop 交付、运行时、成本及人工关卡状态汇总。",
+      "active": "活跃",
+      "blocked": "阻塞",
+      "costTripped": "成本触发",
+      "humanGates": "人工关卡",
+      "runtimeReady": "运行时就绪",
+      "releaseReady": "发布就绪",
+      "repos": "仓库"
+    },
+    "rulesCenter": {
+      "title": "规则中心",
+      "summary": "{total} 条规则 · {enforced} 条生效 · {violations} 条违规",
+      "loading": "正在加载规则中心。",
+      "empty": "尚未定义规则。",
+      "enforced": "已生效",
+      "attention": "需关注",
+      "categories": {
+        "architecture": "架构",
+        "security": "安全",
+        "testing": "测试",
+        "workspace": "工作区"
+      },
+      "rules": {
+        "db-service-layer": "仅 DB Service 层可访问数据库",
+        "zod-contracts": "Zod-first API 合约",
+        "client-layer": "外部 API 仅限 Client 层",
+        "winston-logger": "Winston Logger（禁止 console.log）",
+        "path-policy": "路径策略已生效",
+        "network-policy": "网络默认拒绝",
+        "secret-canary": "密钥金丝雀检测",
+        "test-required": "测试通过后方可完结",
+        "coverage-required": "必须上报覆盖率",
+        "workspace-mount": "工作区挂载策略",
+        "target-repo-scope": "目标仓库写入范围",
+        "rule-snapshot": "CLAUDE.md / AGENTS.md 存在"
+      }
+    },
+    "blueprintMarketplace": {
+      "title": "交付蓝图市场",
+      "summary": "{total} 个交付蓝图 · {activeUse} 个正在使用",
+      "loading": "正在加载蓝图。"
     },
     "workflowRecipe": {
       "title": "工作流配方",
@@ -192,6 +317,55 @@
         "review": "审阅",
         "qa": "QA"
       }
+    },
+    "releaseGatePanel": {
+      "title": "发布关卡仪表盘",
+      "summary": "{ready} 个就绪 · {blocked} 个阻塞（共 {totalWithGate} 个有关卡数据的 Loop）",
+      "loading": "正在加载发布关卡面板。",
+      "empty": "暂无带关卡数据的 Loop。",
+      "topBlockers": "主要阻塞项",
+      "noBlockers": "无阻塞 — 所有发布关卡已通过。",
+      "blockerReasons": {
+        "Paused": "已被操作者暂停",
+        "Global_NEEDS-WORK": "需要修改",
+        "Global_FAIL": "全局审阅未通过",
+        "Needs_review": "等待审阅"
+      },
+      "checklist": {
+        "specApproved": "规格",
+        "implementationEvidence": "实现",
+        "testsPassed": "测试",
+        "requiredReviewsPassed": "审阅",
+        "secondOpinionPassed": "二次审查",
+        "browserQaPassed": "浏览器QA",
+        "docsUpdated": "文档",
+        "prReady": "PR",
+        "rollbackNote": "回滚",
+        "canaryPassed": "灰度"
+      }
+    },
+    "toolRegistry": {
+      "title": "工具与集成注册中心",
+      "summary": "{totalTools} 个工具 · {activeTools} 个活跃 · {activeAgents} 个 agent 负责人 · {plannedTools} 个规划中",
+      "empty": "暂无已注册的工具。",
+      "compatibility": "兼容性检查",
+      "noCompat": "无兼容性数据",
+      "kinds": {
+        "code-execution": "代码执行",
+        "review": "审阅",
+        "git": "Git",
+        "test": "测试",
+        "notification": "通知",
+        "artifact": "产物"
+      }
+    },
+    "triggerLifecycle": {
+      "title": "触发器生命周期",
+      "active": "活跃",
+      "paused": "暂停",
+      "error": "有错误",
+      "sourceCount": "{count} 次来自 {repos} 个仓库",
+      "latestAt": "最近：{time}"
     },
     "triggerPortfolio": {
       "title": "触发来源组合",
@@ -313,7 +487,9 @@
         "security": "安全门禁",
         "release": "发布门禁",
         "exception": "异常门禁"
-      }
+      },
+      "conflictAction": "未解决的冲突：",
+      "resolveConflict": "解决 →"
     },
     "traceSummary": {
       "title": "追踪摘要",
@@ -456,6 +632,38 @@
       "previewAgentPathLabel": "推荐 Agent 路径",
       "previewTestPolicyLabel": "建议测试策略",
       "previewLearningLabel": "相关 learning",
+      "previewWorkforceLabel": "工作力计划",
+      "previewRuntimeLabel": "运行时计划",
+      "previewRuntimeValue": "主运行时：{primary} · 实现运行时：{secondary}",
+      "previewEvalLabel": "评测计划",
+      "previewGateLabel": "风险与关卡计划",
+      "hardGateHint": "硬关卡 — 若不满足将阻止交付",
+      "persona": {
+        "intake-analyst": "需求分析",
+        "spec-writer": "规格编写",
+        "human-gatekeeper": "人工把关",
+        "work-planner": "任务拆解",
+        "builder": "构建实现",
+        "test-runner": "测试执行",
+        "code-reviewer": "分片审阅",
+        "release-reviewer": "收敛审阅",
+        "evidence-curator": "证据整理"
+      },
+      "evalCheck": {
+        "architecture-compliance": "架构合规",
+        "delivery-readiness": "交付就绪",
+        "runtime-safety": "运行时安全",
+        "test-evidence": "测试证据",
+        "cost-policy": "成本策略"
+      },
+      "gateLabel": {
+        "spec-review": "规格审阅",
+        "code-review": "代码审阅",
+        "release-check": "发布关卡",
+        "regression-test": "回归测试",
+        "security-review": "安全审阅",
+        "human-approval": "人工审批"
+      },
       "learningKind": {
         "pattern": "模式",
         "pitfall": "陷阱",
@@ -604,6 +812,38 @@
       "noShard": "尚未拆分 Shard",
       "noEvents": "暂无事件"
     },
+    "handoff": {
+      "title": "Agent 交接时间线",
+      "summary": "当前：{current} → 下一步：{next}",
+      "blocked": "交接已阻塞。请先解决异常，下一个角色才能接管。",
+      "current": "当前",
+      "next": "下一步",
+      "humanGate": "人工关卡",
+      "evidence": "证据",
+      "noCurrent": "无进行中的角色 — Loop 已交付或尚未开始。"
+    },
+    "deliveryEvidence": {
+      "title": "交付证据",
+      "summary": "基于本 Loop 的规格、工作、测试、审阅和成本生成的 PR 交付证据摘要。",
+      "loading": "正在加载交付证据。",
+      "prReady": "可发起 PR",
+      "prNotReady": "暂未达到 PR 标准",
+      "globalVerdict": "整体结论",
+      "spec": "规格",
+      "workPackages": "工作包",
+      "tests": "测试",
+      "reviews": "审阅",
+      "risks": "风险",
+      "cost": "成本",
+      "prStatus": "PR 状态",
+      "prComment": "PR 评论预览",
+      "openPr": "打开 PR",
+      "noConvergencePr": "暂无收敛 PR — 完成 Loop 交付后将发布证据。",
+      "costSummary": "{tokens} tokens · {calls} 次调用 · {budget}",
+      "testsSummary": "{passed}/{total} 通过 · {failed} 失败 · 覆盖率 {coverage}",
+      "reviewsSummary": "{shardReviews} 次分片审阅 · {findings} 个发现",
+      "workPackageCount": "{count} 个工作包"
+    },
     "deliveryControls": {
       "title": "交付控制",
       "meta": "{steps} 个工作流步骤 · {gates} 个审阅关卡",
@@ -628,12 +868,20 @@
         "primaryOnly": "仅主审",
         "secondaryOnly": "仅复审",
         "run": "运行二次审查",
-        "require": "设为发布前必需"
+        "require": "设为发布前必需",
+        "acceptPrimary": "采纳主审（Codex）",
+        "acceptSecondary": "采纳复审（Claude Code）",
+        "waive": "豁免冲突"
       },
       "browserQa": {
         "title": "Browser QA",
         "targetUrl": "目标 URL",
         "checkedFlows": "检查流程",
+        "viewports": "视口",
+        "viewportDesktop": "桌面端 (1440×900)",
+        "viewportTablet": "平板 (768×1024)",
+        "viewportMobile": "移动端 (375×812)",
+        "viewportAll": "所有视口",
         "authSessionRef": "登录会话引用",
         "notes": "备注",
         "run": "运行 Browser QA",

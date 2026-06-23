@@ -4,6 +4,7 @@ import {
   AGING_QUEUE_SLA_POLICY,
   aggregateLoops,
   buildAgingQueue,
+  buildAgentHandoffTimeline,
   buildDashboardGuide,
   buildExceptionCenter,
   buildEvalPlan,
@@ -19,6 +20,7 @@ import {
   buildRiskQueue,
   buildRuntimeBackends,
   buildTriggerPortfolio,
+  buildWorkforceOverview,
   buildWorkflowRecipe,
   formatPhase,
 } from './loops-dashboard-model';
@@ -905,5 +907,103 @@ describe('loops-dashboard-model', () => {
   it('formats known and unknown phases for display', () => {
     expect(formatPhase('PHASE_4_IMPLEMENT')).toBe('Implement');
     expect(formatPhase('PHASE_9_CUSTOM')).toBe('P9 CUSTOM');
+  });
+
+  it('builds a workforce overview from loop phases and cost guards', () => {
+    const workforce = buildWorkforceOverview(list.list, cost);
+
+    expect(workforce.summary).toEqual({
+      total: 9,
+      active: 1,
+      idle: 7,
+      blocked: 1,
+      humanGates: 0,
+    });
+    const builder = workforce.personas.find((persona) => persona.id === 'builder');
+    expect(builder).toMatchObject({
+      id: 'builder',
+      status: 'active',
+      count: 1,
+      runtimeBackend: 'claude-code-cli',
+      humanGate: false,
+    });
+    expect(builder?.activeIssueIds).toEqual(['issue-1']);
+    const codeReviewer = workforce.personas.find((persona) => persona.id === 'code-reviewer');
+    expect(codeReviewer).toMatchObject({
+      id: 'code-reviewer',
+      status: 'blocked',
+      count: 1,
+    });
+    expect(codeReviewer?.activeIssueIds).toEqual(['issue-2']);
+    expect(workforce.activePersona).toBe('builder');
+  });
+
+  it('builds an agent handoff timeline for an in-progress loop', () => {
+    const timeline = buildAgentHandoffTimeline(
+      {
+        issue: { id: 'issue-1', status: 'IN_LOOP' },
+        state: {
+          phase: 'PHASE_4_IMPLEMENT',
+          round: 2,
+          shardsTotal: 3,
+          shardsDone: 1,
+          paused: false,
+        },
+        shards: [
+          { id: 's1', status: 'DONE' },
+          { id: 's2', status: 'IN_PROGRESS' },
+          { id: 's3', status: 'TODO' },
+        ],
+        testRecords: [],
+        reviewRecords: [],
+      },
+      {
+        issueId: 'issue-1',
+        costTokens: 100,
+        costCalls: 4,
+        tokenCap: 1000,
+        callCap: 10,
+        tokensRemaining: 900,
+        callsRemaining: 6,
+        paused: false,
+        tripped: false,
+      },
+    );
+
+    expect(timeline.blocked).toBe(false);
+    expect(timeline.currentPersona).toBe('builder');
+    expect(timeline.nextPersona).toBe('test-runner');
+    const builder = timeline.steps.find((step) => step.persona === 'builder');
+    expect(builder).toMatchObject({ state: 'current', runtimeBackend: 'claude-code-cli' });
+    expect(builder?.evidence).toBe('1/3 shards');
+    const testRunner = timeline.steps.find((step) => step.persona === 'test-runner');
+    expect(testRunner?.state).toBe('next');
+    const gatekeeper = timeline.steps.find((step) => step.persona === 'human-gatekeeper');
+    expect(gatekeeper).toMatchObject({ humanGate: true });
+  });
+
+  it('marks the handoff timeline as blocked when paused', () => {
+    const timeline = buildAgentHandoffTimeline({
+      issue: { id: 'issue-2', status: 'OPEN' },
+      state: { phase: 'PHASE_7_GLOBAL_REVIEW', paused: true, globalVerdict: 'FAIL' },
+      shards: [],
+      testRecords: [],
+      reviewRecords: [],
+    });
+    expect(timeline.blocked).toBe(true);
+    const current = timeline.steps.find((step) => step.state === 'blocked');
+    expect(current?.persona).toBe('release-reviewer');
+  });
+
+  it('marks the handoff timeline done when finalized', () => {
+    const timeline = buildAgentHandoffTimeline({
+      issue: { id: 'issue-3', status: 'CLOSED' },
+      state: { phase: 'CLOSED', finalized: true, globalVerdict: 'PASS' },
+      shards: [],
+      testRecords: [],
+      reviewRecords: [],
+    });
+    expect(timeline.currentPersona).toBeNull();
+    expect(timeline.steps.every((step) => step.state === 'done')).toBe(true);
   });
 });

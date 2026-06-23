@@ -387,6 +387,27 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
       },
     },
   }),
+  useLoopDeliveryEvidence: () => ({
+    data: {
+      body: {
+        data: {
+          issueId: 'issue-1',
+          generatedAt: '2026-06-20T00:00:00.000Z',
+          spec: { version: 'v1', status: 'APPROVED', summary: 'v1 · APPROVED' },
+          workPackages: [],
+          tests: { total: 0, passed: 0, failed: 0, coverage: 'not reported' },
+          reviews: { shardReviews: 0, globalVerdict: 'PASS', findings: 0 },
+          risks: [],
+          cost: { tokens: 0, calls: 0, budget: 'no shards' },
+          globalVerdict: 'PASS',
+          prReady: true,
+          prStatus: 'DRAFT',
+          markdown:
+            '# Delivery Evidence — Ship trace timeline\n\n- **Issue**: issue-1\n- **Global verdict**: PASS\n- **PR ready**: yes\n',
+        },
+      },
+    },
+  }),
 }));
 
 vi.mock('./use-loop-operations', () => ({

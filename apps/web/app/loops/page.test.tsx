@@ -635,7 +635,7 @@ describe('LoopsPage', () => {
     expect(screen.getByText('1/4 passed · 2 pending · 1 blocked')).toBeInTheDocument();
     expect(screen.getByText('Product')).toBeInTheDocument();
     expect(screen.getAllByText('Architecture').length).toBeGreaterThan(0);
-    expect(screen.getByText('Security')).toBeInTheDocument();
+    expect(screen.getAllByText('Security').length).toBeGreaterThan(0);
     expect(screen.getByText('Learning Memory')).toBeInTheDocument();
     expect(screen.getByText('2 reusable learnings in this workspace')).toBeInTheDocument();
     expect(screen.getByText('Top learnings')).toBeInTheDocument();
@@ -711,7 +711,7 @@ describe('LoopsPage', () => {
     expect(screen.getByText('Agent Registry')).toBeInTheDocument();
     expect(screen.getByText('Codex Planner / Reviewer')).toBeInTheDocument();
     expect(screen.getByText('Tool Registry')).toBeInTheDocument();
-    expect(screen.getByText('Repository Code Editor')).toBeInTheDocument();
+    expect(screen.getAllByText('Repository Code Editor').length).toBeGreaterThan(0);
     expect(screen.getByText('Compatibility Checks')).toBeInTheDocument();
     expect(screen.getByText('phase-tool-ownership')).toBeInTheDocument();
     expect(screen.getByText('Permission Profile')).toBeInTheDocument();
@@ -740,8 +740,8 @@ describe('LoopsPage', () => {
     expect(screen.getAllByText('Hard gate').length).toBeGreaterThan(0);
     expect(screen.getByText('Runtime Backends')).toBeInTheDocument();
     expect(screen.getByText('2/2 ready · 0 degraded · 0 unavailable')).toBeInTheDocument();
-    expect(screen.getByText('Codex CLI')).toBeInTheDocument();
-    expect(screen.getByText('Claude Code CLI')).toBeInTheDocument();
+    expect(screen.getAllByText('Codex CLI').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Claude Code CLI').length).toBeGreaterThan(0);
     expect(screen.getByText('read/write/test within approved work package')).toBeInTheDocument();
     expect(screen.getByText('Fallback to deterministic review gate')).toBeInTheDocument();
     expect(screen.getByText('Feishu Integration')).toBeInTheDocument();

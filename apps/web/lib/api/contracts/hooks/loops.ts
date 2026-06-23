@@ -13,6 +13,7 @@ export const loopsKeys = {
   lists: () => [...loopsKeys.all, 'list'] as const,
   list: (query: Record<string, unknown>) => [...loopsKeys.lists(), query] as const,
   detail: (issueId: string) => [...loopsKeys.all, 'detail', issueId] as const,
+  deliveryEvidence: (issueId: string) => [...loopsKeys.all, 'delivery-evidence', issueId] as const,
   doctor: () => [...loopsKeys.all, 'doctor'] as const,
   cost: () => [...loopsKeys.all, 'cost'] as const,
   metrics: () => [...loopsKeys.all, 'metrics'] as const,
@@ -128,6 +129,20 @@ export function useLoopIssue(issueId: string) {
       // terminal / paused states. Previously the detail view never polled, so
       // a Continue Loop action left the UI stale until the HTTP round-trip returned.
       refetchInterval: liveLoopRefetchInterval,
+    },
+  );
+}
+
+/** Derived, PR-ready delivery evidence summary for a Loops issue (P0-4). */
+export function useLoopDeliveryEvidence(issueId: string) {
+  const queryKey = loopsKeys.deliveryEvidence(issueId);
+  return tsRestClient.loops.getDeliveryEvidence.useQuery(
+    queryKey,
+    { params: { issueId } },
+    {
+      queryKey,
+      enabled: Boolean(issueId),
+      staleTime: 0,
     },
   );
 }
@@ -254,10 +269,22 @@ export function useRunLoopSecondOpinion(issueId: string) {
   return tsRestClient.loops.runSecondOpinion.useMutation({ onSuccess: invalidate });
 }
 
+/** Resolve a second-opinion conflict (accept primary/secondary or waive) - P1-5. */
+export function useResolveSecondOpinion(issueId: string) {
+  const invalidate = useInvalidateIssue(issueId);
+  return tsRestClient.loops.resolveSecondOpinion.useMutation({ onSuccess: invalidate });
+}
+
 /** Record per-loop delivery governance decisions and policies. */
 export function useGovernLoopDelivery(issueId: string) {
   const invalidate = useInvalidateIssue(issueId);
   return tsRestClient.loops.governDelivery.useMutation({ onSuccess: invalidate });
+}
+
+/** Run a release canary check (smoke + Browser QA subset) for a loop issue. */
+export function useRunLoopReleaseCanary(issueId: string) {
+  const invalidate = useInvalidateIssue(issueId);
+  return tsRestClient.loops.runReleaseCanary.useMutation({ onSuccess: invalidate });
 }
 
 // ============================================================================
