@@ -60,17 +60,17 @@ OpenHands README 明确提醒 direct mode 有完整文件系统访问风险。Do
 
 ## 对本项目的优化建议
 
-| 优先级 | 建议                         | 验收                                                                                    |
-| ------ | ---------------------------- | --------------------------------------------------------------------------------------- |
-| P0     | 抽象 runtime backend model   | 部分已实施：local CLI / Docker runtime diagnostics 已有；remote/cloud backend 后续 Epic |
-| P1     | Automation trigger contract  | Loop issue 记录 trigger source 与 payload                                               |
-| P1     | Webhook/Schedule trigger     | GitHub/Slack/cron 可创建或唤醒 Loop                                                     |
-| P1     | Backend capacity dashboard   | 已实施 v1：Exception Center 展示 running/queued/failed/capacity                         |
-| P2     | ACP-compatible agent adapter | 可接第三方 agent server                                                                 |
+| 优先级 | 建议                         | 验收                                                                                      |
+| ------ | ---------------------------- | ----------------------------------------------------------------------------------------- |
+| P0     | 抽象 runtime backend model   | 部分已实施：local CLI / Docker runtime diagnostics 已有；remote/cloud backend 后续 Epic   |
+| P1     | Automation trigger contract  | 已实施 v1：Trigger Portfolio 展示 issue source/repo/submitter；payload contract 后续 Epic |
+| P1     | Webhook/Schedule trigger     | GitHub/Slack/cron 可创建或唤醒 Loop                                                       |
+| P1     | Backend capacity dashboard   | 已实施 v1：Exception Center 展示 running/queued/failed/capacity                           |
+| P2     | ACP-compatible agent adapter | 可接第三方 agent server                                                                   |
 
 ## 实施标注
 
-2026-06-23 再审查确认：DofeAI 已有 local CLI / Docker fallback、workspace profile 和 runtime diagnostics，因此 OpenHands P0 的“backend model”已部分落地。remote agent server / cloud worker / automation trigger 需要新增 runtime backend contract、队列与外部 webhook，归入后续 Epic。Loop Board v1 已提升 control plane 的团队可视化；Exception Center v1 已补上 backend capacity dashboard 的第一层 running/queued/failed/capacity 可见性。
+2026-06-23 再审查确认：DofeAI 已有 local CLI / Docker fallback、workspace profile 和 runtime diagnostics，因此 OpenHands P0 的“backend model”已部分落地。本轮新增 Trigger Portfolio v1，基于现有 `LoopIssue.sourceChannel/sourceKind/targetRepo/submitter` 在 dashboard 展示入口来源、仓库覆盖与近期触发记录，闭合 Automation trigger contract 的第一层可见性。remote agent server / cloud worker / signed webhook / schedule trigger / payload replay 仍需要新增 runtime backend contract、队列与外部 webhook，归入后续 Epic。Loop Board v1 已提升 control plane 的团队可视化；Exception Center v1 已补上 backend capacity dashboard 的第一层 running/queued/failed/capacity 可见性。
 
 ## 结论
 

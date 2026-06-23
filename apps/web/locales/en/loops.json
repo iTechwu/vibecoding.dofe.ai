@@ -19,6 +19,20 @@
       "closed": "Closed",
       "closedNote": "finalized delivery loops"
     },
+    "performance": {
+      "title": "Performance Snapshot",
+      "summary": "Early evaluation signals from current loop state, cost, and trace evidence.",
+      "passRate": "Pass rate",
+      "passRateNote": "closed or reviewed PASS",
+      "redoRate": "Redo rate",
+      "redoRateNote": "loops with rework",
+      "averageCalls": "Avg calls",
+      "averageCallsNote": "per cost-tracked loop",
+      "averageTokens": "Avg tokens",
+      "averageTokensNote": "per cost-tracked loop",
+      "traceEvents": "Trace events",
+      "traceEventsNote": "{recent} recent"
+    },
     "health": {
       "title": "Runtime Health",
       "ok": "File state and DB index are currently consistent.",
@@ -30,6 +44,33 @@
       "loops": "Loops",
       "issues": "Issues",
       "problems": "Problems"
+    },
+    "guide": {
+      "title": "Delivery Guide",
+      "summary": "Use these checkpoints to read the dashboard without learning every panel first.",
+      "state": {
+        "done": "Done",
+        "active": "Now",
+        "pending": "Next"
+      },
+      "steps": {
+        "create": {
+          "title": "Create Loop",
+          "body": "Start from a simple request and let the issue preview choose a template."
+        },
+        "review": {
+          "title": "Review decisions",
+          "body": "Approve specs, re-loop requests, and human gates before work continues."
+        },
+        "exceptions": {
+          "title": "Resolve exceptions",
+          "body": "Use owner, action, and evidence cards to unblock paused or guarded loops."
+        },
+        "evidence": {
+          "title": "Audit evidence",
+          "body": "Check implementation, test, review, and convergence records before delivery."
+        }
+      }
     },
     "riskQueue": {
       "title": "Risk Queue",
@@ -49,6 +90,84 @@
         "delivered": "Delivered"
       }
     },
+    "workflowRecipe": {
+      "title": "Workflow Recipe",
+      "summary": "{total} loops mapped to Plan → Build → Review → QA → Ship · {blocked} blocked · {releaseReady} release-ready",
+      "loading": "Loading workflow recipe.",
+      "state": {
+        "done": "Done",
+        "current": "Now",
+        "waiting": "Next",
+        "blocked": "Blocked"
+      },
+      "gate": {
+        "none": "No gate",
+        "human": "Human gate",
+        "agent": "Agent gate",
+        "release": "Release gate"
+      },
+      "steps": {
+        "intake": "Intake",
+        "plan": "Plan",
+        "build": "Build",
+        "codeReview": "Review",
+        "browserQa": "Browser QA",
+        "release": "Ship",
+        "reflect": "Reflect"
+      }
+    },
+    "reviewGates": {
+      "title": "Review Gates",
+      "summary": "{passed}/{total} passed · {pending} pending · {blocked} blocked",
+      "loading": "Loading review gates.",
+      "kind": {
+        "product": "Product",
+        "architecture": "Architecture",
+        "code": "Code",
+        "security": "Security"
+      },
+      "status": {
+        "passed": "Passed",
+        "pending": "Pending",
+        "needsChanges": "Needs changes",
+        "blocked": "Blocked"
+      }
+    },
+    "releaseReadiness": {
+      "title": "Release Readiness",
+      "summary": "{ready} ready · {attention} need attention · {blocked} blocked",
+      "loading": "Loading release readiness.",
+      "empty": "No loops are near release yet.",
+      "state": {
+        "ready": "Ready",
+        "attention": "Attention",
+        "blocked": "Blocked"
+      },
+      "checklist": {
+        "spec": "Spec",
+        "implementation": "Implementation",
+        "review": "Review",
+        "qa": "QA"
+      }
+    },
+    "triggerPortfolio": {
+      "title": "Trigger Portfolio",
+      "summary": "{total} issues from {sources} sources across {repos} repositories",
+      "loading": "Loading trigger portfolio.",
+      "empty": "No trigger sources yet.",
+      "sources": "Sources",
+      "sourceCount": "{count} issues",
+      "submittedBy": "{user} · {time}"
+    },
+    "repoContext": {
+      "title": "Repo Context Map",
+      "summary": "{issues} issues across {repos} repositories · {blocked} blocked",
+      "loading": "Loading repo context.",
+      "empty": "No repository context yet.",
+      "issueCount": "{count} issues",
+      "blocked": "Blocked",
+      "latest": "Latest"
+    },
     "exceptionCenter": {
       "title": "Exception Center",
       "summary": "{running} running · {queued} queued · {failed} failed · capacity {capacity}",
@@ -56,7 +175,9 @@
       "empty": "No exceptions need a decision.",
       "owner": "Owner",
       "action": "Action",
-      "evidence": "Evidence"
+      "evidence": "Evidence",
+      "impact": "Impact",
+      "retryAction": "Retry"
     },
     "agentRuntime": {
       "title": "Agent Runtime",
@@ -101,7 +222,15 @@
       "title": "Workspace",
       "loading": "Loading workspaces.",
       "current": "{id} (active)",
-      "runtimeSummary": "Runtime: Codex {codex} · Claude {claude}"
+      "runtimeSummary": "Runtime: Codex {codex} · Claude {claude}",
+      "rules": {
+        "title": "Workspace Rules",
+        "summary": "{present}/{total} present",
+        "status": {
+          "present": "present",
+          "missing": "missing"
+        }
+      }
     },
     "actionQueue": {
       "title": "Action Queue",
@@ -144,7 +273,28 @@
       "toolRegistry": "Tool Registry",
       "compatibilityChecks": "Compatibility Checks",
       "tools": "{count} tools",
-      "owners": "{count} owners"
+      "owners": "{count} owners",
+      "permissionProfile": {
+        "title": "Permission Profile",
+        "summary": "{agents} agents · {tools} tools · {activeTools} active tools",
+        "state": {
+          "enabled": "Enabled",
+          "restricted": "Restricted",
+          "planned": "Planned"
+        },
+        "modes": {
+          "read": "Read",
+          "write": "Write",
+          "shell": "Shell/Test",
+          "network": "Network",
+          "approval": "Approval"
+        }
+      },
+      "providerProfile": {
+        "title": "Provider Profile",
+        "summary": "{providers} providers · {activeAgents} active agents · {plannedTools} planned tool routes",
+        "evidence": "{active}/{agents} active agents · {planned} planned tools"
+      }
     },
     "agingQueue": {
       "title": "Aging Queue",
@@ -235,6 +385,24 @@
       "previewPriorityLabel": "Priority",
       "previewCriteriaLabel": "Acceptance criteria",
       "previewTargetRepoLabel": "Target repo",
+      "previewAgentPathLabel": "Recommended agent path",
+      "previewTestPolicyLabel": "Suggested test policy",
+      "agentPath": {
+        "feature": "Planner → Implementer → Reviewer",
+        "bugfix": "Recovery Agent → Implementer → Reviewer",
+        "refactor": "Planner → Implementer → Reviewer",
+        "docs": "Planner → Documentation Reviewer",
+        "integration": "Planner → Integrator → Reviewer",
+        "flow": "Planner → Workflow Agent → Reviewer"
+      },
+      "testPolicy": {
+        "feature": "unit + type-check + focused UI regression",
+        "bugfix": "reproduction + regression test + type-check",
+        "refactor": "unit + contract compatibility + type-check",
+        "docs": "link/example smoke check + docs review",
+        "integration": "client boundary tests + failure-path smoke check",
+        "flow": "state transition tests + resume-path regression"
+      },
       "advancedSummary": "Advanced settings",
       "advancedTitle": "Title override",
       "advancedPriority": "Priority",
@@ -359,6 +527,51 @@
       "noShard": "No shard yet",
       "noEvents": "No events yet"
     },
+    "deliveryControls": {
+      "title": "Delivery Controls",
+      "meta": "{steps} workflow steps · {gates} review gates",
+      "workflowTitle": "Workflow Timeline",
+      "workflowVersion": "v{version}",
+      "reviewTitle": "Review Gates",
+      "releaseTitle": "Release Gate",
+      "empty": "No delivery controls reported yet.",
+      "gate": "Gate: {gate}",
+      "reviewer": "Reviewer: {reviewer}",
+      "findings": "{count} findings",
+      "evidenceIds": "{count} evidence links",
+      "releaseChecklist": {
+        "specApproved": "Spec approved",
+        "implementationEvidence": "Implementation",
+        "testsPassed": "Tests",
+        "requiredReviewsPassed": "Review",
+        "browserQaPassed": "Browser QA",
+        "docsUpdated": "Docs",
+        "prReady": "PR",
+        "rollbackNote": "Rollback"
+      }
+    },
+    "exceptions": {
+      "title": "Issue Exception",
+      "evidence": "Evidence",
+      "runtime": "Runtime",
+      "round": "round {round}",
+      "runtimeEvidence": "Runtime: {agent} is {status}",
+      "reasons": {
+        "paused": "Paused",
+        "globalVerdict": "Global {verdict}",
+        "priority": "{priority} priority"
+      },
+      "owners": {
+        "operator": "Loop operator",
+        "reviewer": "Reviewer",
+        "product": "Product owner"
+      },
+      "actions": {
+        "resume": "Resume loop or assign recovery",
+        "reviewEvidence": "Review failure evidence and start a re-loop",
+        "monitorBudget": "Monitor budget and shorten scope if guardrails trip"
+      }
+    },
     "nextAction": {
       "title": "Next Action",
       "resume": {
@@ -430,7 +643,12 @@
       "submitter": "Submitter",
       "targetRepo": "Target Repo",
       "rawPayload": "Raw Payload",
-      "source": "Source"
+      "source": "Source",
+      "ruleSnapshot": "Rule Snapshot",
+      "ruleSnapshotMeta": "{present}/{total} rules · {status}",
+      "ruleSnapshotCaptured": "Captured {time}",
+      "agentReadable": "Agent readable",
+      "notAgentReadable": "Needs rules"
     },
     "requirements": {
       "title": "Initial Requirements Coverage",
@@ -448,7 +666,14 @@
       "generate": "Generate Spec",
       "regenerate": "Regenerate Spec",
       "revisionNote": "Revision requested. Use Continue Loop to produce the next draft for review.",
-      "approvedNote": "Spec approved. The engine is continuing automatically — no further action is needed here."
+      "approvedNote": "Spec approved. The engine is continuing automatically — no further action is needed here.",
+      "diffTitle": "Spec Diff",
+      "diffMeta": "{from} to {to}",
+      "diffAdded": "{count} added",
+      "diffRemoved": "{count} removed",
+      "diffUnchanged": "{count} unchanged",
+      "diffAddedPreview": "Added lines",
+      "diffRemovedPreview": "Removed lines"
     },
     "shards": {
       "title": "Shards",
@@ -491,6 +716,8 @@
     },
     "records": {
       "implementation": "Implementation Records",
+      "currentRoundSummary": "Showing round {round} evidence. {hidden} historical records hidden.",
+      "currentRoundArtifactsSummary": "Showing round {round} artifacts. {hidden} historical artifacts hidden.",
       "noImplementation": "No implementation records yet.",
       "filesRound": "{files} files · round {round}",
       "artifacts": "Evidence Artifact Workspace",

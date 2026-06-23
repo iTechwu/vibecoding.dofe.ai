@@ -67,16 +67,16 @@ mini-SWE-agent 的转向说明，agent loop 越小越容易评测和稳定。
 
 ## 对本项目的优化建议
 
-| 优先级 | 建议                       | 验收                                                      |
-| ------ | -------------------------- | --------------------------------------------------------- |
-| P1     | 建立 Loop Bench            | 后续 Epic：需要标准任务集与隔离执行环境                   |
-| P1     | Workspace strategy profile | 后续 Epic：需扩展 workspace profile contract              |
-| P1     | Agent performance metrics  | 部分已有 cost/calls/trace；pass rate、redo rate 后续 Epic |
-| P2     | Benchmark dashboard        | PM/工程负责人看趋势                                       |
+| 优先级 | 建议                       | 验收                                                                    |
+| ------ | -------------------------- | ----------------------------------------------------------------------- |
+| P1     | 建立 Loop Bench            | 后续 Epic：需要标准任务集与隔离执行环境                                 |
+| P1     | Workspace strategy profile | 后续 Epic：需扩展 workspace profile contract                            |
+| P1     | Agent performance metrics  | 已实施 v1：dashboard 展示 pass rate、redo rate、平均成本和 trace events |
+| P2     | Benchmark dashboard        | PM/工程负责人看趋势                                                     |
 
 ## 实施标注
 
-2026-06-23 本轮未实施 Loop Bench，因为它需要测试仓库、隔离执行环境和评测指标定义。当前已有 Loops metrics、cost、trace 和 evidence 基础；benchmark 化与策略配置归入后续 Epic。
+2026-06-23 再审查确认：Loop Bench 仍需要测试仓库、隔离执行环境和评测指标定义，归入后续 Epic。当前已有 Loops metrics、cost、trace 和 evidence 基础；本轮新增 Performance Snapshot v1，将 pass rate、redo rate、平均 calls/tokens 和 trace events 展示到 dashboard。benchmark 化、策略配置和真实 duration 仍归入后续 Epic。
 
 ## 结论
 

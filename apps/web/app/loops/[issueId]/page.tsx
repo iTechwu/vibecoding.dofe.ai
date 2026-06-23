@@ -26,6 +26,7 @@ import type {
   LoopDetail,
   LoopEvidenceArtifact,
   LoopLogEntry,
+  LoopSpecHistoryItem,
 } from '@repo/contracts';
 import { useFormState } from './use-loop-operations';
 import { useLoopIssue, useLoopsAgentRuntime } from '@/lib/api/contracts/hooks';
@@ -151,6 +152,19 @@ function actionToneClass(tone: string) {
     return 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100';
   }
   return 'border-border bg-muted/40 text-foreground';
+}
+
+function deliveryStatusClass(status: string) {
+  if (status === 'passed' || status === 'ready' || status === 'shipped') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100';
+  }
+  if (status === 'current') {
+    return 'border-foreground bg-foreground text-background';
+  }
+  if (status === 'blocked' || status === 'needs_changes') {
+    return 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100';
+  }
+  return 'border-border bg-muted/30 text-muted-foreground';
 }
 
 function traceToneClass(type: string) {
@@ -374,6 +388,59 @@ function buildArtifactWorkspace(artifacts: LoopEvidenceArtifact[]) {
     .filter((item) => item.artifacts.length > 0);
 }
 
+function filterCurrentRoundArtifacts(artifacts: LoopEvidenceArtifact[], round: number) {
+  return artifacts.filter((artifact) => artifact.round === undefined || artifact.round === round);
+}
+
+function filterCurrentRound<T extends { round: number }>(items: T[], round: number) {
+  return items.filter((item) => item.round === round);
+}
+
+function normalizeSpecLines(body: string) {
+  return body
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function buildSpecDiffReview(detail: LoopDetail) {
+  if (!detail.spec) return undefined;
+  const history = detail.specHistory ?? [];
+  const current =
+    history.find((item) => item.version === detail.spec?.version) ??
+    ({
+      id: detail.spec.id,
+      issueId: detail.spec.issueId,
+      version: detail.spec.version,
+      status: detail.spec.status,
+      created: detail.spec.created,
+      approvedBy: detail.spec.approvedBy,
+      body: detail.spec.body,
+    } satisfies LoopSpecHistoryItem);
+  const currentIndex = history.findIndex((item) => item.version === current.version);
+  const previous =
+    currentIndex > 0
+      ? history[currentIndex - 1]
+      : history.filter((item) => item.version !== current.version).at(-1);
+
+  if (!previous) return undefined;
+
+  const previousLines = new Set(normalizeSpecLines(previous.body));
+  const currentLines = new Set(normalizeSpecLines(current.body));
+  const added = [...currentLines].filter((line) => !previousLines.has(line));
+  const removed = [...previousLines].filter((line) => !currentLines.has(line));
+
+  return {
+    fromVersion: previous.version,
+    toVersion: current.version,
+    added: added.length,
+    removed: removed.length,
+    unchanged: [...currentLines].filter((line) => previousLines.has(line)).length,
+    addedPreview: added.slice(0, 3),
+    removedPreview: removed.slice(0, 3),
+  };
+}
+
 type IconComponent = ComponentType<{ className?: string }>;
 
 function SectionCard({
@@ -563,6 +630,74 @@ function buildExecutionStatus(detail: LoopDetail, runtime?: LoopAgentRuntimeResp
   };
 }
 
+function buildIssueExceptions(
+  detail: LoopDetail,
+  executionStatus: ReturnType<typeof buildExecutionStatus>,
+  format: (key: string, values?: Record<string, string | number>) => string,
+  locale?: string,
+) {
+  const items: Array<{
+    id: string;
+    reason: string;
+    owner: string;
+    action: string;
+    evidence: string;
+  }> = [];
+
+  if (detail.state.paused) {
+    items.push({
+      id: 'paused',
+      reason: format('exceptions.reasons.paused'),
+      owner: format('exceptions.owners.operator'),
+      action: format('exceptions.actions.resume'),
+      evidence: `${formatLoopStatus(detail.state.phase, locale)} · ${format('exceptions.round', {
+        round: detail.state.round,
+      })}`,
+    });
+  }
+
+  if (detail.state.globalVerdict && detail.state.globalVerdict !== 'PASS') {
+    items.push({
+      id: 'global-verdict',
+      reason: format('exceptions.reasons.globalVerdict', {
+        verdict: formatLoopSignal(detail.state.globalVerdict, locale),
+      }),
+      owner: format('exceptions.owners.reviewer'),
+      action: format('exceptions.actions.reviewEvidence'),
+      evidence: `${format('exceptions.round', { round: detail.state.round })} · ${
+        detail.state.specVersion
+      }`,
+    });
+  }
+
+  if (detail.state.costCalls > 0 || detail.state.costTokens > 0 || detail.issue.priority === 'P0') {
+    const evidence = `${format('stats.calls')}: ${detail.state.costCalls} · ${format(
+      'stats.tokens',
+    )}: ${detail.state.costTokens}`;
+    if (detail.issue.priority === 'P0') {
+      items.push({
+        id: 'priority',
+        reason: format('exceptions.reasons.priority', { priority: detail.issue.priority }),
+        owner: format('exceptions.owners.product'),
+        action: format('exceptions.actions.monitorBudget'),
+        evidence,
+      });
+    }
+  }
+
+  return items.map((item) => ({
+    ...item,
+    runtimeEvidence: format('exceptions.runtimeEvidence', {
+      agent: executionStatus.agentLabel,
+      status: executionStatus.agentStatus
+        ? formatLoopStatus(executionStatus.agentStatus, locale)
+        : executionStatus.isRuntimeMatched
+          ? format('execution.liveRuntime')
+          : format('execution.inferredRuntime'),
+    }),
+  }));
+}
+
 export default function LoopIssueDetailPage() {
   const locale = useLocale();
   const t = useTranslations('loops.detail');
@@ -646,8 +781,39 @@ export default function LoopIssueDetailPage() {
   const traceScopeSummary = buildTraceScopeSummary(detail.logs, locale);
   const resumeCheckpoints = buildResumeCheckpoints(detail, t, locale);
   const checkpointDiff = buildCheckpointDiff(detail, t);
-  const artifactWorkspace = buildArtifactWorkspace(evidenceArtifacts);
+  const currentRoundEvidenceArtifacts = filterCurrentRoundArtifacts(
+    evidenceArtifacts,
+    detail.state.round,
+  );
+  const artifactWorkspace = buildArtifactWorkspace(currentRoundEvidenceArtifacts);
+  const historicalArtifactCount = evidenceArtifacts.length - currentRoundEvidenceArtifacts.length;
+  const specDiffReview = buildSpecDiffReview(detail);
   const executionStatus = buildExecutionStatus(detail, agentRuntime);
+  const issueExceptions = buildIssueExceptions(detail, executionStatus, t, locale);
+  const hasDeliveryControls = Boolean(
+    detail.workflowRecipe || detail.reviewGates?.length || detail.releaseGate,
+  );
+  const releaseChecklistEntries = detail.releaseGate
+    ? (Object.entries(detail.releaseGate.checklist) as Array<
+        [keyof typeof detail.releaseGate.checklist, boolean]
+      >)
+    : [];
+  const currentRoundImplementationRecords = filterCurrentRound(
+    detail.implementationRecords,
+    detail.state.round,
+  );
+  const currentRoundReviewRecords = filterCurrentRound(detail.reviewRecords, detail.state.round);
+  const currentRoundTestRecords = filterCurrentRound(detail.testRecords, detail.state.round);
+  const currentRoundGlobalReview =
+    detail.globalReview?.round === detail.state.round ? detail.globalReview : undefined;
+  const historicalEvidenceCount =
+    detail.implementationRecords.length -
+    currentRoundImplementationRecords.length +
+    detail.reviewRecords.length -
+    currentRoundReviewRecords.length +
+    detail.testRecords.length -
+    currentRoundTestRecords.length +
+    (detail.globalReview && detail.globalReview.round !== detail.state.round ? 1 : 0);
   const runStepBlocker = getRunStepBlocker(detail);
   const runnableShard = getRunnableShard(detail);
   const recoverableShard = getRecoverableShard(detail);
@@ -791,6 +957,149 @@ export default function LoopIssueDetailPage() {
           </div>
         </SectionCard>
 
+        {hasDeliveryControls ? (
+          <SectionCard
+            icon={ShieldCheck}
+            meta={t('deliveryControls.meta', {
+              steps: detail.workflowRecipe?.steps.length ?? 0,
+              gates: detail.reviewGates?.length ?? 0,
+            })}
+            title={t('deliveryControls.title')}
+          >
+            <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold">{t('deliveryControls.workflowTitle')}</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {detail.workflowRecipe?.name ?? t('deliveryControls.empty')}
+                    </p>
+                  </div>
+                  {detail.workflowRecipe ? (
+                    <StatusBadge>
+                      {t('deliveryControls.workflowVersion', {
+                        version: detail.workflowRecipe.version,
+                      })}
+                    </StatusBadge>
+                  ) : null}
+                </div>
+                <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-3 2xl:grid-cols-4">
+                  {detail.workflowRecipe?.steps.map((step) => (
+                    <div
+                      className={`rounded-md border p-3 text-xs ${deliveryStatusClass(step.status)}`}
+                      key={step.id}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="line-clamp-2 font-medium">{step.label}</span>
+                        <span className="shrink-0 rounded-md border bg-background/70 px-2 py-0.5">
+                          {formatLoopStatus(step.status, locale)}
+                        </span>
+                      </div>
+                      <p className="mt-2 truncate opacity-80">{formatAgentName(step.owner)}</p>
+                      <p className="mt-1 truncate opacity-80">
+                        {t('deliveryControls.gate', {
+                          gate: formatLoopLabel(step.humanGate, locale),
+                        })}
+                      </p>
+                      <p className="mt-2 truncate font-medium">
+                        {t('deliveryControls.evidenceIds', {
+                          count: step.evidenceIds.length,
+                        })}
+                      </p>
+                      {step.blockedReason ? (
+                        <p className="mt-2 line-clamp-2 rounded-md border bg-background/70 px-2 py-1">
+                          {step.blockedReason}
+                        </p>
+                      ) : null}
+                    </div>
+                  )) ?? (
+                    <p className="text-sm text-muted-foreground">{t('deliveryControls.empty')}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-5">
+                <div>
+                  <h3 className="text-sm font-semibold">{t('deliveryControls.reviewTitle')}</h3>
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-1">
+                    {detail.reviewGates?.map((gate) => (
+                      <div
+                        className={`rounded-md border p-3 text-xs ${deliveryStatusClass(gate.status)}`}
+                        key={gate.id}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium">{formatLoopLabel(gate.kind, locale)}</span>
+                          <span className="rounded-md border bg-background/70 px-2 py-0.5">
+                            {formatLoopStatus(gate.status, locale)}
+                          </span>
+                        </div>
+                        <p className="mt-2 truncate opacity-80">
+                          {t('deliveryControls.reviewer', {
+                            reviewer: formatAgentName(gate.reviewer),
+                          })}
+                        </p>
+                        <p className="mt-1 truncate opacity-80">
+                          {t('deliveryControls.findings', { count: gate.findingsCount })}
+                        </p>
+                        {gate.waiverReason ? (
+                          <p className="mt-2 line-clamp-2 rounded-md border bg-background/70 px-2 py-1">
+                            {gate.waiverReason}
+                          </p>
+                        ) : null}
+                      </div>
+                    )) ?? (
+                      <p className="text-sm text-muted-foreground">{t('deliveryControls.empty')}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="text-sm font-semibold">{t('deliveryControls.releaseTitle')}</h3>
+                    {detail.releaseGate ? (
+                      <StatusBadge className={deliveryStatusClass(detail.releaseGate.status)}>
+                        {formatLoopStatus(detail.releaseGate.status, locale)}
+                      </StatusBadge>
+                    ) : null}
+                  </div>
+                  {detail.releaseGate ? (
+                    <div className="mt-3 rounded-md border bg-muted/20 p-3">
+                      {detail.releaseGate.blocker ? (
+                        <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100">
+                          {detail.releaseGate.blocker}
+                        </p>
+                      ) : null}
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {releaseChecklistEntries.map(([key, passed]) => (
+                          <span
+                            className={`rounded-md border px-2 py-1.5 text-xs ${
+                              passed
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100'
+                                : 'bg-background text-muted-foreground'
+                            }`}
+                            key={key}
+                          >
+                            {t(`deliveryControls.releaseChecklist.${key}`)}
+                          </span>
+                        ))}
+                      </div>
+                      <p className="mt-3 text-xs text-muted-foreground">
+                        {t('deliveryControls.evidenceIds', {
+                          count: detail.releaseGate.evidenceIds.length,
+                        })}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      {t('deliveryControls.empty')}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </SectionCard>
+        ) : null}
+
         <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="flex min-w-0 flex-col gap-5">
             {detail.state.globalVerdict && detail.state.globalVerdict !== 'PASS' ? (
@@ -834,6 +1143,57 @@ export default function LoopIssueDetailPage() {
                   <dt className="text-xs text-muted-foreground">{t('intake.rawPayload')}</dt>
                   <dd className="mt-1 break-all font-medium">{detail.issue.rawPayloadRef}</dd>
                 </div>
+                {detail.intake.ruleSnapshot ? (
+                  <div className="rounded-md border bg-muted/20 p-3 md:col-span-2">
+                    <dt className="text-xs text-muted-foreground">{t('intake.ruleSnapshot')}</dt>
+                    <dd className="mt-2 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusBadge>
+                          {t('intake.ruleSnapshotMeta', {
+                            present: detail.intake.ruleSnapshot.present,
+                            total: detail.intake.ruleSnapshot.total,
+                            status:
+                              detail.intake.ruleSnapshot.enforcement.status === 'enforced'
+                                ? t('intake.agentReadable')
+                                : t('intake.notAgentReadable'),
+                          })}
+                        </StatusBadge>
+                        <span className="text-xs text-muted-foreground">
+                          {t('intake.ruleSnapshotCaptured', {
+                            time: detail.intake.ruleSnapshot.capturedAt,
+                          })}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {detail.intake.ruleSnapshot.rules.map((rule) => (
+                          <span
+                            className={`rounded-md border px-2 py-1 text-xs ${
+                              rule.status === 'present'
+                                ? 'bg-background text-foreground'
+                                : 'text-muted-foreground'
+                            }`}
+                            key={rule.id}
+                            title={rule.summary ?? rule.path}
+                          >
+                            {rule.label} · {rule.status}
+                          </span>
+                        ))}
+                      </div>
+                      {detail.intake.ruleSnapshot.diagnostics?.length ? (
+                        <div className="space-y-1.5">
+                          {detail.intake.ruleSnapshot.diagnostics.slice(0, 3).map((diagnostic) => (
+                            <p
+                              className="rounded-md border bg-background px-2 py-1.5 text-xs text-muted-foreground"
+                              key={diagnostic.id}
+                            >
+                              {diagnostic.message} · {diagnostic.evidence}
+                            </p>
+                          ))}
+                        </div>
+                      ) : null}
+                    </dd>
+                  </div>
+                ) : null}
               </dl>
             </SectionCard>
 
@@ -886,6 +1246,60 @@ export default function LoopIssueDetailPage() {
                     <StatusBadge>{detail.spec.version}</StatusBadge>
                     <StatusBadge>{formatLoopStatus(detail.spec.status, locale)}</StatusBadge>
                   </div>
+                  {specDiffReview ? (
+                    <div className="mt-4 rounded-md border bg-muted/20 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium">{t('specReview.diffTitle')}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {t('specReview.diffMeta', {
+                              from: specDiffReview.fromVersion,
+                              to: specDiffReview.toVersion,
+                            })}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <StatusBadge>
+                            {t('specReview.diffAdded', { count: specDiffReview.added })}
+                          </StatusBadge>
+                          <StatusBadge>
+                            {t('specReview.diffRemoved', { count: specDiffReview.removed })}
+                          </StatusBadge>
+                          <StatusBadge>
+                            {t('specReview.diffUnchanged', { count: specDiffReview.unchanged })}
+                          </StatusBadge>
+                        </div>
+                      </div>
+                      {specDiffReview.addedPreview.length > 0 ? (
+                        <div className="mt-3">
+                          <p className="text-xs font-medium text-muted-foreground">
+                            {t('specReview.diffAddedPreview')}
+                          </p>
+                          <ul className="mt-2 space-y-1 text-sm">
+                            {specDiffReview.addedPreview.map((line) => (
+                              <li className="text-pretty" key={`added-${line}`}>
+                                + {line}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      {specDiffReview.removedPreview.length > 0 ? (
+                        <div className="mt-3">
+                          <p className="text-xs font-medium text-muted-foreground">
+                            {t('specReview.diffRemovedPreview')}
+                          </p>
+                          <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+                            {specDiffReview.removedPreview.map((line) => (
+                              <li className="text-pretty" key={`removed-${line}`}>
+                                - {line}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <pre className="mt-4 max-h-[520px] overflow-auto whitespace-pre-wrap rounded-md border bg-muted/40 p-4 text-sm leading-6">
                     {detail.spec.body}
                   </pre>
@@ -1019,16 +1433,22 @@ export default function LoopIssueDetailPage() {
             </SectionCard>
 
             <SectionCard icon={Archive} title={t('records.implementation')}>
+              <div className="mb-4 rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                {t('records.currentRoundSummary', {
+                  round: detail.state.round,
+                  hidden: historicalEvidenceCount,
+                })}
+              </div>
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
                 <div className="rounded-md border p-4">
                   <h3 className="text-sm font-semibold">{t('records.implementation')}</h3>
                   <div className="mt-3 flex flex-col gap-3">
-                    {detail.implementationRecords.length === 0 ? (
+                    {currentRoundImplementationRecords.length === 0 ? (
                       <p className="text-sm text-muted-foreground">
                         {t('records.noImplementation')}
                       </p>
                     ) : (
-                      detail.implementationRecords.map((record) => (
+                      currentRoundImplementationRecords.map((record) => (
                         <div className="rounded-md bg-muted/30 p-3" key={record.id}>
                           <div className="flex items-center justify-between gap-3">
                             <p className="truncate text-sm font-medium">{record.shardId}</p>
@@ -1051,10 +1471,10 @@ export default function LoopIssueDetailPage() {
                 <div className="rounded-md border p-4">
                   <h3 className="text-sm font-semibold">{t('records.review')}</h3>
                   <div className="mt-3 flex flex-col gap-3">
-                    {detail.reviewRecords.length === 0 ? (
+                    {currentRoundReviewRecords.length === 0 ? (
                       <p className="text-sm text-muted-foreground">{t('records.noReview')}</p>
                     ) : (
-                      detail.reviewRecords.map((record) => (
+                      currentRoundReviewRecords.map((record) => (
                         <div className="rounded-md bg-muted/30 p-3" key={record.id}>
                           <div className="flex items-center justify-between gap-3">
                             <p className="truncate text-sm font-medium">{record.shardId}</p>
@@ -1077,10 +1497,10 @@ export default function LoopIssueDetailPage() {
                 <div className="rounded-md border p-4">
                   <h3 className="text-sm font-semibold">{t('records.test')}</h3>
                   <div className="mt-3 flex flex-col gap-3">
-                    {detail.testRecords.length === 0 ? (
+                    {currentRoundTestRecords.length === 0 ? (
                       <p className="text-sm text-muted-foreground">{t('records.noTest')}</p>
                     ) : (
-                      detail.testRecords.map((record) => (
+                      currentRoundTestRecords.map((record) => (
                         <div className="rounded-md bg-muted/30 p-3" key={record.id}>
                           <div className="flex items-center justify-between gap-3">
                             <p className="truncate text-sm font-medium">{record.shardId}</p>
@@ -1113,18 +1533,18 @@ export default function LoopIssueDetailPage() {
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="text-sm font-semibold">{t('records.globalReview')}</h3>
                     <span className="text-xs text-muted-foreground">
-                      {detail.globalReview?.verdict
-                        ? formatLoopSignal(detail.globalReview.verdict, locale)
+                      {currentRoundGlobalReview?.verdict
+                        ? formatLoopSignal(currentRoundGlobalReview.verdict, locale)
                         : t('records.none')}
                     </span>
                   </div>
-                  {detail.globalReview ? (
+                  {currentRoundGlobalReview ? (
                     <div className="mt-3 text-sm">
-                      <p>{detail.globalReview.summary}</p>
+                      <p>{currentRoundGlobalReview.summary}</p>
                       <p className="mt-2 text-xs text-muted-foreground">
                         {t('records.roundCreated', {
-                          round: detail.globalReview.round,
-                          created: detail.globalReview.created,
+                          round: currentRoundGlobalReview.round,
+                          created: currentRoundGlobalReview.created,
                         })}
                       </p>
                     </div>
@@ -1231,6 +1651,37 @@ export default function LoopIssueDetailPage() {
           </div>
 
           <aside className="flex min-w-0 flex-col gap-5 xl:sticky xl:top-5 xl:self-start">
+            {issueExceptions.length > 0 ? (
+              <SectionCard icon={TriangleAlert} title={t('exceptions.title')}>
+                <div className="flex flex-col gap-3">
+                  {issueExceptions.map((item) => (
+                    <div
+                      className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100"
+                      key={item.id}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-semibold">{item.reason}</p>
+                        <StatusBadge className="border-amber-300 bg-background/60 text-amber-950 dark:border-amber-900 dark:text-amber-100">
+                          {item.owner}
+                        </StatusBadge>
+                      </div>
+                      <p className="mt-2 text-sm">{item.action}</p>
+                      <dl className="mt-3 grid grid-cols-1 gap-2 text-xs">
+                        <div className="rounded-md border bg-background/50 p-2">
+                          <dt className="text-muted-foreground">{t('exceptions.evidence')}</dt>
+                          <dd className="mt-1 font-medium">{item.evidence}</dd>
+                        </div>
+                        <div className="rounded-md border bg-background/50 p-2">
+                          <dt className="text-muted-foreground">{t('exceptions.runtime')}</dt>
+                          <dd className="mt-1 font-medium">{item.runtimeEvidence}</dd>
+                        </div>
+                      </dl>
+                    </div>
+                  ))}
+                </div>
+              </SectionCard>
+            ) : null}
+
             <div className={cn('rounded-lg border p-5', actionToneClass(nextAction.tone))}>
               <div className="flex items-start gap-3">
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background/60">
@@ -1366,11 +1817,18 @@ export default function LoopIssueDetailPage() {
             <SectionCard
               icon={GitPullRequest}
               meta={t('records.present', {
-                present: evidenceArtifacts.filter((item) => item.status === 'present').length,
-                total: evidenceArtifacts.length,
+                present: currentRoundEvidenceArtifacts.filter((item) => item.status === 'present')
+                  .length,
+                total: currentRoundEvidenceArtifacts.length,
               })}
               title={t('records.artifacts')}
             >
+              <div className="mb-4 rounded-md border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+                {t('records.currentRoundArtifactsSummary', {
+                  round: detail.state.round,
+                  hidden: historicalArtifactCount,
+                })}
+              </div>
               <div className="flex flex-col gap-4">
                 {artifactWorkspace.map(({ group, artifacts }) => (
                   <div className="rounded-md border p-3" key={group}>

@@ -36,8 +36,13 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
                 title: 'Fix checkout flow',
                 status: 'IN_LOOP',
                 priority: 'P0',
+                created: '2026-06-20T00:00:00.000Z',
                 targetRepo: '/repo/app',
                 updated: '2026-06-20T00:00:00.000Z',
+                sourceChannel: 'web',
+                sourceKind: 'web_form',
+                submitterId: 'u1',
+                submitterName: 'Ada',
               },
               state: {
                 phase: 'PHASE_4_IMPLEMENT',
@@ -55,8 +60,13 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
                 title: 'Update docs',
                 status: 'OPEN',
                 priority: 'P2',
+                created: '2026-06-19T00:00:00.000Z',
                 targetRepo: '/repo/docs',
                 updated: '2026-06-20T00:00:00.000Z',
+                sourceChannel: 'web',
+                sourceKind: 'web_form',
+                submitterId: 'u2',
+                submitterName: 'Grace',
               },
               state: {
                 phase: 'PHASE_2_REVIEW',
@@ -188,6 +198,20 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
               reason: 'Spec draft is waiting for human review',
               meta: 'Review · round 1',
               updated: '2026-06-20T00:00:00.000Z',
+            },
+          ],
+          runtimes: [
+            {
+              agent: 'codex',
+              preferredMode: 'local-cli',
+              selected: { mode: 'local-cli', status: 'ready', workspaceRequired: false },
+              checks: [],
+            },
+            {
+              agent: 'claude-code',
+              preferredMode: 'docker',
+              selected: { mode: 'docker', status: 'ready', workspaceRequired: true },
+              checks: [],
             },
           ],
         },
@@ -421,6 +445,54 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
               status: 'VALIDATED',
               isDefault: true,
               selected: { codex: 'local-cli', 'claude-code': 'local-cli' },
+              rules: {
+                present: 2,
+                total: 4,
+                diagnostics: [
+                  {
+                    id: 'rules-overlap',
+                    level: 'warning',
+                    message: 'Multiple agent-readable rule sources are present; verify precedence.',
+                    evidence: 'AGENTS.md, CLAUDE.md',
+                  },
+                  {
+                    id: 'missing-cline-rules',
+                    level: 'info',
+                    message: 'Cline rules are not present.',
+                    evidence: '.clinerules',
+                  },
+                ],
+                rules: [
+                  {
+                    id: 'agents',
+                    label: 'AGENTS.md',
+                    path: 'AGENTS.md',
+                    status: 'present',
+                    summary: '# AGENTS.md',
+                    updated: '2026-06-20T00:00:00.000Z',
+                  },
+                  {
+                    id: 'claude',
+                    label: 'CLAUDE.md',
+                    path: 'CLAUDE.md',
+                    status: 'present',
+                    summary: '# CLAUDE.md',
+                    updated: '2026-06-20T00:00:00.000Z',
+                  },
+                  {
+                    id: 'cursor-rules',
+                    label: 'Cursor rules',
+                    path: '.cursor/rules',
+                    status: 'missing',
+                  },
+                  {
+                    id: 'cline-rules',
+                    label: 'Cline rules',
+                    path: '.clinerules',
+                    status: 'missing',
+                  },
+                ],
+              },
             },
           ],
         },
@@ -463,6 +535,20 @@ describe('LoopsPage', () => {
 
     expect(screen.getByText('Agent Delivery Console')).toBeInTheDocument();
     expect(screen.getByText('Needs Attention')).toBeInTheDocument();
+    expect(screen.getByText('Workspace Rules')).toBeInTheDocument();
+    expect(screen.getByText('2/4 present')).toBeInTheDocument();
+    expect(screen.getByText('AGENTS.md · present')).toBeInTheDocument();
+    expect(screen.getByText('CLAUDE.md · present')).toBeInTheDocument();
+    expect(screen.getByText('Cline rules · missing')).toBeInTheDocument();
+    expect(
+      screen.getByText('Multiple agent-readable rule sources are present; verify precedence.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('AGENTS.md, CLAUDE.md')).toBeInTheDocument();
+    expect(screen.getByText('Delivery Guide')).toBeInTheDocument();
+    expect(screen.getByText('Create Loop')).toBeInTheDocument();
+    expect(screen.getByText('Review decisions')).toBeInTheDocument();
+    expect(screen.getByText('Resolve exceptions')).toBeInTheDocument();
+    expect(screen.getByText('Audit evidence')).toBeInTheDocument();
     expect(screen.getByText('Phase Distribution')).toBeInTheDocument();
     expect(screen.getByText('Risk Queue')).toBeInTheDocument();
     expect(screen.getByText('Agent Runtime')).toBeInTheDocument();
@@ -478,18 +564,56 @@ describe('LoopsPage', () => {
     expect(screen.getByText('Backlog')).toBeInTheDocument();
     expect(screen.getByText('Spec Review')).toBeInTheDocument();
     expect(screen.getAllByText('Running').length).toBeGreaterThan(0);
-    expect(screen.getByText('Blocked')).toBeInTheDocument();
+    expect(screen.getAllByText('Blocked').length).toBeGreaterThan(0);
     expect(screen.getByText('Delivered')).toBeInTheDocument();
     expect(screen.getAllByText('Code').length).toBeGreaterThan(0);
     expect(screen.getAllByText('None').length).toBeGreaterThan(0);
     expect(screen.getAllByText('loops/issue-1').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Pending PR').length).toBeGreaterThan(0);
     expect(screen.getByText('1/3 shards')).toBeInTheDocument();
+    expect(screen.getByText('Workflow Recipe')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        '2 loops mapped to Plan → Build → Review → QA → Ship · 1 blocked · 0 release-ready',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Browser QA')).toBeInTheDocument();
+    expect(screen.getByText('Browser QA gate planned')).toBeInTheDocument();
+    expect(screen.getByText('Release gate')).toBeInTheDocument();
+    expect(screen.getByText('Release gate planned')).toBeInTheDocument();
+    expect(screen.getByText('Review Gates')).toBeInTheDocument();
+    expect(screen.getByText('1/4 passed · 2 pending · 1 blocked')).toBeInTheDocument();
+    expect(screen.getByText('Product')).toBeInTheDocument();
+    expect(screen.getByText('Architecture')).toBeInTheDocument();
+    expect(screen.getByText('Security')).toBeInTheDocument();
+    expect(screen.getByText('1 specs need decision')).toBeInTheDocument();
+    expect(screen.getByText('1 blocked by exception')).toBeInTheDocument();
+    expect(screen.getByText('Security review planned')).toBeInTheDocument();
+    expect(screen.getByText('Release Readiness')).toBeInTheDocument();
+    expect(screen.getByText('0 ready · 0 need attention · 0 blocked')).toBeInTheDocument();
+    expect(screen.getByText('No loops are near release yet.')).toBeInTheDocument();
+    expect(screen.getByText('Trigger Portfolio')).toBeInTheDocument();
+    expect(screen.getByText('2 issues from 1 sources across 2 repositories')).toBeInTheDocument();
+    expect(screen.getByText('Sources')).toBeInTheDocument();
+    expect(screen.getAllByText('web/web_form').length).toBeGreaterThan(0);
+    expect(screen.getByText('Ada · 2026-06-20T00:00:00.000Z')).toBeInTheDocument();
+    expect(screen.getByText('Repo Context Map')).toBeInTheDocument();
+    expect(screen.getByText('2 issues across 2 repositories · 1 blocked')).toBeInTheDocument();
+    expect(screen.getAllByText('/repo/app').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('/repo/docs').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Implement · 1').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Review · 1').length).toBeGreaterThan(0);
     expect(screen.getByText('Exception Center')).toBeInTheDocument();
     expect(screen.getByText('1 running · 0 queued · 1 failed · capacity 4')).toBeInTheDocument();
     expect(screen.getByText('Adjust budget or reduce scope')).toBeInTheDocument();
     expect(screen.getByText('Product owner')).toBeInTheDocument();
     expect(screen.getByText('0 calls · 0 tokens remaining')).toBeInTheDocument();
+    expect(
+      screen.getByText('Loop is paused before more agent calls are allowed'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Raise cap or split scope, then continue the loop'),
+    ).toBeInTheDocument();
     expect(screen.getByText('Action Queue')).toBeInTheDocument();
     expect(screen.getByText('Review Inbox')).toBeInTheDocument();
     expect(screen.getByText('1 human decision items')).toBeInTheDocument();
@@ -503,6 +627,24 @@ describe('LoopsPage', () => {
     expect(screen.getByText('Repository Code Editor')).toBeInTheDocument();
     expect(screen.getByText('Compatibility Checks')).toBeInTheDocument();
     expect(screen.getByText('phase-tool-ownership')).toBeInTheDocument();
+    expect(screen.getByText('Permission Profile')).toBeInTheDocument();
+    expect(screen.getByText('2 agents · 2 tools · 2 active tools')).toBeInTheDocument();
+    expect(screen.getByText('Read')).toBeInTheDocument();
+    expect(screen.getByText('Write')).toBeInTheDocument();
+    expect(screen.getByText('Shell/Test')).toBeInTheDocument();
+    expect(screen.getByText('Network')).toBeInTheDocument();
+    expect(screen.getByText('Approval')).toBeInTheDocument();
+    expect(screen.getByText('2 third-party tool compatibilities planned')).toBeInTheDocument();
+    expect(screen.getByText('Provider Profile')).toBeInTheDocument();
+    expect(
+      screen.getByText('2 providers · 2 active agents · 2 planned tool routes'),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText('1/1 active agents · 1 planned tools').length).toBeGreaterThan(0);
+    expect(screen.getByText('Performance Snapshot')).toBeInTheDocument();
+    expect(screen.getByText('Pass rate')).toBeInTheDocument();
+    expect(screen.getByText('Redo rate')).toBeInTheDocument();
+    expect(screen.getByText('Avg calls')).toBeInTheDocument();
+    expect(screen.getByText('Trace events')).toBeInTheDocument();
     expect(screen.getByText('Feishu Integration')).toBeInTheDocument();
     expect(screen.getByText('Aging Queue')).toBeInTheDocument();
     expect(screen.getByText('Warning at 24h stale; critical at 72h stale.')).toBeInTheDocument();

@@ -119,6 +119,11 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
       new DeterministicLoopsClaudeAdapter(),
       createFakeGitAdapter(),
       // persistence intentionally omitted -> file-only mode (CLI equivalent)
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      new LoopsWorkspaceProfileService(),
     );
   });
 
@@ -167,6 +172,41 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(created.intake.submitter.provider).toBe('dev');
   });
 
+  it('captures a per-loop rule snapshot for agent-readable enforcement', async () => {
+    writeFileSync(join(workspace, 'AGENTS.md'), '# Agent rules\nFollow workspace guidance.');
+    const created = await service.createIssue({
+      title: 'Rule snapshot issue',
+      targetRepo: workspace,
+      body: 'Every loop should retain the workspace rules visible when it was created.',
+      priority: 'P1',
+      acceptanceCriteria: ['- intake includes a rule snapshot for agents'],
+    });
+
+    const detail = await service.getIssue(created.issue.id);
+
+    expect(created.intake.ruleSnapshot).toMatchObject({
+      workspaceId: 'default',
+      root: workspace,
+      present: 1,
+      total: 4,
+      enforcement: {
+        policy: 'snapshot-required',
+        status: 'enforced',
+        agentReadable: true,
+        evidence: ['AGENTS.md'],
+      },
+    });
+    expect(detail.intake.ruleSnapshot?.rules).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'agents',
+          status: 'present',
+          summary: '# Agent rules',
+        }),
+      ]),
+    );
+  });
+
   it('returns control-plane metrics for the Loops dashboard', async () => {
     const created = await service.createIssue({
       title: 'Metrics dashboard issue',
@@ -211,6 +251,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
       expect.objectContaining({
         issueId: created.issue.id,
         action: 'generate-spec',
+        nextActionCategory: 'continue',
         label: 'Continue loop',
       }),
     ]);
@@ -353,6 +394,24 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     const queued = await service.list({ page: 1, limit: 20 });
     expect(queued.total).toBe(1);
     expect(queued.list[0].issue.id).toBe(created.issue.id);
+    expect(queued.list[0].workflowRecipe).toMatchObject({
+      id: 'default-feature',
+      source: 'default',
+      steps: expect.arrayContaining([
+        expect.objectContaining({ kind: 'spec_review', owner: 'codex', status: 'current' }),
+        expect.objectContaining({ kind: 'implementation', owner: 'claude-code' }),
+      ]),
+    });
+    expect(queued.list[0].reviewGates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'product', reviewer: 'human', status: 'pending' }),
+        expect.objectContaining({ kind: 'code', reviewer: 'codex', status: 'pending' }),
+      ]),
+    );
+    expect(queued.list[0].releaseGate).toMatchObject({
+      status: 'pending',
+      checklist: expect.objectContaining({ specApproved: false, implementationEvidence: false }),
+    });
     let detail = await service.getIssue(created.issue.id);
     expect(detail.issue.id).toBe(created.issue.id);
     expect(detail.evidenceArtifacts).toEqual(
@@ -383,9 +442,36 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(detail.issue.status).toBe('CLOSED');
     expect(detail.state.phase).toBe('CLOSED');
     expect(detail.state.finalized).toBe(true);
+    expect(detail.workflowRecipe?.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'implementation', owner: 'claude-code', status: 'passed' }),
+        expect.objectContaining({ kind: 'release_gate', owner: 'codex', status: 'passed' }),
+      ]),
+    );
+    expect(detail.reviewGates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'product', status: 'passed' }),
+        expect.objectContaining({ kind: 'code', reviewer: 'codex', status: 'passed' }),
+        expect.objectContaining({ kind: 'security', reviewer: 'codex', status: 'passed' }),
+      ]),
+    );
+    expect(detail.releaseGate).toMatchObject({
+      status: 'shipped',
+      checklist: expect.objectContaining({
+        specApproved: true,
+        implementationEvidence: true,
+        testsPassed: true,
+        requiredReviewsPassed: true,
+        browserQaPassed: true,
+      }),
+    });
     expect(detail.evidenceArtifacts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: 'global-review', status: 'present' }),
+        expect.objectContaining({ kind: 'implementation-record', round: 1 }),
+        expect.objectContaining({ kind: 'test-record', round: 1 }),
+        expect.objectContaining({ kind: 'review-record', round: 1 }),
+        expect.objectContaining({ kind: 'global-review', round: 1 }),
         expect.objectContaining({
           kind: 'convergence-pr',
           status: 'present',
@@ -626,6 +712,9 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
 
     const after = await service.advance(created.issue.id);
     expect(after.spec?.status).toBe('DRAFT');
+    expect(after.specHistory?.map((spec) => spec.version)).toEqual(['v1', 'v2']);
+    expect(after.specHistory?.[0]?.status).toBe('REVISION_REQUESTED');
+    expect(after.specHistory?.[1]?.status).toBe('DRAFT');
   });
 
   it('resumes a paused issue and then stops at the DRAFT spec human gate', async () => {
@@ -759,5 +848,38 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
 
     const fresh = await service.getIssue(created.issue.id);
     expect(fresh.logs.some((entry) => entry.type === 'LOOP_ADVANCE_LIMIT')).toBe(true);
+  });
+
+  it('maps deterministic natural-language commands to safe loop operations', async () => {
+    const created = await service.createIssue({
+      title: 'Natural command issue',
+      targetRepo: workspace,
+      body: 'Natural commands should map to safe deterministic Loops operations.',
+      priority: 'P2',
+      acceptanceCriteria: ['- natural commands are audited and deterministic'],
+    });
+
+    const evidence = await service.naturalCommand(created.issue.id, {
+      actor: 'tester',
+      command: 'show evidence logs',
+    });
+    expect(evidence.intent).toBe('query-evidence');
+    expect(evidence.executed).toBe(false);
+    expect(evidence.logs?.some((entry) => entry.type === 'NATURAL_COMMAND')).toBe(true);
+
+    const unknown = await service.naturalCommand(created.issue.id, {
+      actor: 'tester',
+      command: 'make it beautiful somehow',
+    });
+    expect(unknown.intent).toBe('unknown');
+    expect(unknown.executed).toBe(false);
+
+    const continued = await service.naturalCommand(created.issue.id, {
+      actor: 'tester',
+      command: 'continue the loop',
+    });
+    expect(continued.intent).toBe('continue');
+    expect(continued.executed).toBe(true);
+    expect(continued.detail?.spec?.status).toBe('DRAFT');
   });
 });

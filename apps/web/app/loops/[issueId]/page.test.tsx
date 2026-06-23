@@ -31,6 +31,43 @@ const detail: LoopDetail = {
     rawPayloadRef: '.loops/intakes/intake-1.raw.json',
     status: 'NORMALIZED',
     created: '2026-06-20T00:00:00.000Z',
+    ruleSnapshot: {
+      workspaceId: 'default',
+      root: '/repo/app',
+      capturedAt: '2026-06-20T00:00:00.000Z',
+      present: 1,
+      total: 4,
+      rules: [
+        {
+          id: 'agents',
+          label: 'AGENTS.md',
+          path: 'AGENTS.md',
+          status: 'present',
+          summary: '# Agent rules',
+          updated: '2026-06-20T00:00:00.000Z',
+        },
+        {
+          id: 'cline-rules',
+          label: 'Cline rules',
+          path: '.clinerules',
+          status: 'missing',
+        },
+      ],
+      diagnostics: [
+        {
+          id: 'rules-thin',
+          level: 'info',
+          message: 'Only one workspace rule source is present.',
+          evidence: 'AGENTS.md',
+        },
+      ],
+      enforcement: {
+        policy: 'snapshot-required',
+        status: 'enforced',
+        agentReadable: true,
+        evidence: ['AGENTS.md'],
+      },
+    },
   },
   shards: [
     {
@@ -133,6 +170,91 @@ const detail: LoopDetail = {
       summary: 'Shard tests have not been captured yet.',
     },
   ],
+  workflowRecipe: {
+    id: 'default-feature',
+    name: 'Default Codex / Claude Code delivery',
+    version: 1,
+    appliesTo: ['feature'],
+    capturedAt: '2026-06-20T00:10:00.000Z',
+    source: 'default',
+    steps: [
+      {
+        id: 'issue-1-spec-review',
+        kind: 'spec_review',
+        label: 'Spec Review',
+        required: true,
+        status: 'passed',
+        owner: 'codex',
+        humanGate: 'approval',
+        phase: 'PHASE_2_REVIEW',
+        evidenceTypes: ['spec'],
+        evidenceIds: ['issue-1-spec'],
+      },
+      {
+        id: 'issue-1-implementation',
+        kind: 'implementation',
+        label: 'Implementation',
+        required: true,
+        status: 'current',
+        owner: 'claude-code',
+        humanGate: 'none',
+        phase: 'PHASE_4_IMPLEMENT',
+        evidenceTypes: ['implementation-record'],
+        evidenceIds: [],
+      },
+      {
+        id: 'issue-1-release-gate',
+        kind: 'release_gate',
+        label: 'Release Gate',
+        required: true,
+        status: 'pending',
+        owner: 'codex',
+        humanGate: 'decision',
+        phase: 'PHASE_8_ANNOTATE',
+        evidenceTypes: ['convergence-pr'],
+        evidenceIds: [],
+      },
+    ],
+  },
+  reviewGates: [
+    {
+      id: 'issue-1-gate-product',
+      kind: 'product',
+      status: 'passed',
+      reviewer: 'human',
+      confidence: 0.9,
+      findingsCount: 0,
+      evidenceId: 'issue-1-spec',
+      requiredByStepId: 'issue-1-spec-review',
+      updated: '2026-06-20T00:10:00.000Z',
+    },
+    {
+      id: 'issue-1-gate-code',
+      kind: 'code',
+      status: 'pending',
+      reviewer: 'codex',
+      findingsCount: 1,
+      requiredByStepId: 'issue-1-code-review',
+      updated: '2026-06-20T00:10:00.000Z',
+    },
+  ],
+  releaseGate: {
+    id: 'issue-1-release-gate',
+    status: 'blocked',
+    checklist: {
+      specApproved: true,
+      implementationEvidence: false,
+      testsPassed: false,
+      requiredReviewsPassed: false,
+      browserQaPassed: false,
+      docsUpdated: true,
+      prReady: false,
+      rollbackNote: false,
+    },
+    evidenceIds: ['issue-1-spec'],
+    blocker: 'Loop is paused',
+    updated: '2026-06-20T00:10:00.000Z',
+  },
 };
 
 vi.mock('next/navigation', () => ({
@@ -260,6 +382,12 @@ describe('LoopIssueDetailPage', () => {
     expect(screen.getByText('Checkpoint Diff')).toBeInTheDocument();
     expect(screen.getByText('Spec revision')).toBeInTheDocument();
     expect(screen.getByText('intake to v1 · round 1')).toBeInTheDocument();
+    expect(screen.getByText('Rule Snapshot')).toBeInTheDocument();
+    expect(screen.getByText('1/4 rules · Agent readable')).toBeInTheDocument();
+    expect(screen.getByText('AGENTS.md · present')).toBeInTheDocument();
+    expect(
+      screen.getByText('Only one workspace rule source is present. · AGENTS.md'),
+    ).toBeInTheDocument();
     expect(screen.getByText('Evidence Artifact Workspace')).toBeInTheDocument();
     expect(screen.getAllByText('Review').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Test').length).toBeGreaterThan(0);
@@ -268,6 +396,15 @@ describe('LoopIssueDetailPage', () => {
     expect(
       screen.getByText('2 reviewer annotations captured for requirement coverage.'),
     ).toBeInTheDocument();
+    expect(screen.getByText('Delivery Controls')).toBeInTheDocument();
+    expect(screen.getByText('Default Codex / Claude Code delivery')).toBeInTheDocument();
+    expect(screen.getByText('Workflow Timeline')).toBeInTheDocument();
+    expect(screen.getByText('Review Gates')).toBeInTheDocument();
+    expect(screen.getAllByText('Release Gate').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Implementation').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Product').length).toBeGreaterThan(0);
+    expect(screen.getByText('Loop is paused')).toBeInTheDocument();
+    expect(screen.getByText('Browser QA')).toBeInTheDocument();
   });
 
   it('renders timeline entries with duplicate event identities without React key collisions', () => {
@@ -342,6 +479,130 @@ describe('LoopIssueDetailPage', () => {
     expect(resumeButton).not.toHaveClass('bg-foreground');
   });
 
+  it('surfaces issue-level exceptions with owner, action, and evidence', () => {
+    renderWithIntl(<LoopIssueDetailPage />);
+
+    expect(screen.getByText('Issue Exception')).toBeInTheDocument();
+    expect(screen.getAllByText('Paused').length).toBeGreaterThan(1);
+    expect(screen.getByText('Loop operator')).toBeInTheDocument();
+    expect(screen.getByText('Resume loop or assign recovery')).toBeInTheDocument();
+    expect(screen.getByText('Implement · round 1')).toBeInTheDocument();
+    expect(screen.getByText('Runtime: Claude Code is Running')).toBeInTheDocument();
+  });
+
+  it('defaults evidence records to the current round and summarizes hidden history', () => {
+    const originalRound = detail.state.round;
+    const originalImplementationRecords = detail.implementationRecords;
+    const originalReviewRecords = detail.reviewRecords;
+    const originalTestRecords = detail.testRecords;
+    const originalEvidenceArtifacts = detail.evidenceArtifacts;
+
+    detail.state.round = 2;
+    detail.implementationRecords = [
+      {
+        id: 'impl-current',
+        issueId: 'issue-1',
+        shardId: 'shard-1',
+        round: 2,
+        implementer: 'claude-code',
+        status: 'IMPLEMENTED',
+        summary: 'Current round implementation',
+        changedFiles: ['apps/web/current.tsx'],
+        created: '2026-06-20T00:20:00.000Z',
+      },
+      {
+        id: 'impl-old',
+        issueId: 'issue-1',
+        shardId: 'shard-1',
+        round: 1,
+        implementer: 'claude-code',
+        status: 'NEEDS-WORK',
+        summary: 'Old round implementation',
+        changedFiles: ['apps/web/old.tsx'],
+        created: '2026-06-20T00:10:00.000Z',
+      },
+    ];
+    detail.reviewRecords = [
+      {
+        id: 'review-old',
+        issueId: 'issue-1',
+        shardId: 'shard-1',
+        round: 1,
+        reviewer: 'codex',
+        verdict: 'NEEDS-WORK',
+        issues: [{ severity: 'major', desc: 'Old issue' }],
+        fixInstructions: ['Fix old issue'],
+        summary: 'Old review',
+        created: '2026-06-20T00:11:00.000Z',
+      },
+    ];
+    detail.testRecords = [
+      {
+        id: 'test-current',
+        issueId: 'issue-1',
+        shardId: 'shard-1',
+        round: 2,
+        runner: 'system',
+        reviewer: 'system',
+        status: 'TEST-PASS',
+        commands: [],
+        failedTests: [],
+        fixInstructions: [],
+        created: '2026-06-20T00:21:00.000Z',
+      },
+    ];
+    detail.evidenceArtifacts = [
+      {
+        id: 'artifact-base',
+        label: 'Issue Record',
+        kind: 'issue',
+        path: '.loops/issues/issue-1.json',
+        status: 'present',
+        summary: 'Base issue evidence stays visible.',
+      },
+      {
+        id: 'artifact-current',
+        label: 'Current Round Test Artifact',
+        kind: 'test-record',
+        path: '.loops/tests/issue-1/records/test-current.json',
+        status: 'present',
+        round: 2,
+        summary: 'Current round artifact',
+      },
+      {
+        id: 'artifact-old',
+        label: 'Old Round Implementation Artifact',
+        kind: 'implementation-record',
+        path: '.loops/runs/issue-1/shard-1/1/implementation.json',
+        status: 'present',
+        round: 1,
+        summary: 'Old round artifact',
+      },
+    ];
+
+    try {
+      renderWithIntl(<LoopIssueDetailPage />);
+
+      expect(screen.getByText('Current round implementation')).toBeInTheDocument();
+      expect(screen.queryByText('Old round implementation')).not.toBeInTheDocument();
+      expect(screen.queryByText('Old review')).not.toBeInTheDocument();
+      expect(screen.getByText('Current Round Test Artifact')).toBeInTheDocument();
+      expect(screen.queryByText('Old Round Implementation Artifact')).not.toBeInTheDocument();
+      expect(
+        screen.getByText('Showing round 2 evidence. 2 historical records hidden.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Showing round 2 artifacts. 1 historical artifacts hidden.'),
+      ).toBeInTheDocument();
+    } finally {
+      detail.state.round = originalRound;
+      detail.implementationRecords = originalImplementationRecords;
+      detail.reviewRecords = originalReviewRecords;
+      detail.testRecords = originalTestRecords;
+      detail.evidenceArtifacts = originalEvidenceArtifacts;
+    }
+  });
+
   it('explains that Continue Loop generates the draft when no spec exists yet', () => {
     const originalSpec = detail.spec;
     detail.spec = undefined;
@@ -375,6 +636,54 @@ describe('LoopIssueDetailPage', () => {
       expect(screen.queryByRole('button', { name: 'Regenerate Spec' })).not.toBeInTheDocument();
     } finally {
       detail.spec = originalSpec;
+    }
+  });
+
+  it('shows a lightweight spec diff when previous spec snapshots exist', () => {
+    const originalSpec = detail.spec;
+    const originalSpecHistory = detail.specHistory;
+    detail.spec = {
+      id: 'spec-2',
+      issueId: 'issue-1',
+      version: 'v2',
+      status: 'DRAFT',
+      created: '2026-06-20T00:10:00.000Z',
+      contextBudget: 24000,
+      body: ['# Spec', '- keep trace timeline', '- add current round evidence'].join('\n'),
+    };
+    detail.specHistory = [
+      {
+        id: 'spec-1',
+        issueId: 'issue-1',
+        version: 'v1',
+        status: 'APPROVED',
+        created: '2026-06-20T00:00:00.000Z',
+        approvedBy: 'tester',
+        body: ['# Spec', '- keep trace timeline', '- old artifact filter'].join('\n'),
+      },
+      {
+        id: 'spec-2',
+        issueId: 'issue-1',
+        version: 'v2',
+        status: 'DRAFT',
+        created: '2026-06-20T00:10:00.000Z',
+        body: ['# Spec', '- keep trace timeline', '- add current round evidence'].join('\n'),
+      },
+    ];
+
+    try {
+      renderWithIntl(<LoopIssueDetailPage />);
+
+      expect(screen.getByText('Spec Diff')).toBeInTheDocument();
+      expect(screen.getByText('v1 to v2')).toBeInTheDocument();
+      expect(screen.getByText('1 added')).toBeInTheDocument();
+      expect(screen.getByText('1 removed')).toBeInTheDocument();
+      expect(screen.getByText('2 unchanged')).toBeInTheDocument();
+      expect(screen.getByText('+ - add current round evidence')).toBeInTheDocument();
+      expect(screen.getByText('- - old artifact filter')).toBeInTheDocument();
+    } finally {
+      detail.spec = originalSpec;
+      detail.specHistory = originalSpecHistory;
     }
   });
 

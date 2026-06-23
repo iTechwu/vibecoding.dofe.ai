@@ -18,6 +18,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  Workflow,
 } from 'lucide-react';
 import type {
   LoopAgentRuntimeResponse,
@@ -45,10 +46,19 @@ import {
   AGING_QUEUE_SLA_POLICY,
   aggregateLoops,
   buildAgingQueue,
+  buildDashboardGuide,
   buildExceptionCenter,
   buildLoopBoard,
+  buildPermissionProfile,
+  buildPerformanceSnapshot,
+  buildProviderProfile,
+  buildRepoContextMap,
+  buildReleaseReadiness,
+  buildReviewGatePortfolio,
   buildReviewInbox,
   buildRiskQueue,
+  buildTriggerPortfolio,
+  buildWorkflowRecipe,
   formatPhase,
   type RiskLevel,
 } from './loops-dashboard-model';
@@ -167,6 +177,7 @@ export default function LoopsPage() {
   const metrics = metricsQuery.data?.body.data as LoopMetricsResponse | undefined;
   const logs = logsQuery.data?.body.data as LoopLogsResponse | undefined;
   const notifications = notificationsQuery.data?.body.data as LoopNotificationsResponse | undefined;
+  const currentWorkspace = workspaces.find((ws) => ws.workspaceId === currentWorkspaceId);
   const fallbackSummary = aggregateLoops(data, cost);
   const summary = metrics?.summary ?? fallbackSummary;
   const health = metrics?.health ?? doctor;
@@ -190,13 +201,24 @@ export default function LoopsPage() {
     })) ?? buildRiskQueue(fallbackSummary.items, cost);
   const traceSummary = metrics?.traceSummary;
   const resumeSummary = metrics?.resumeSummary;
+  const performanceSnapshot = buildPerformanceSnapshot(fallbackSummary.items, {
+    cost,
+    traceSummary,
+  });
   const agingQueue = agingNow ? buildAgingQueue(fallbackSummary.items, agingNow) : [];
   const agentToolRegistry = capabilities?.capabilities.find(
     (capability) => capability.id === 'a2a-tool-registry',
   )?.agentToolRegistry;
+  const permissionProfile = buildPermissionProfile(agentToolRegistry);
+  const providerProfile = buildProviderProfile(agentToolRegistry, agentRuntime);
   const actionQueue = metrics?.actionQueue ?? [];
   const reviewInbox = buildReviewInbox(actionQueue, notifications?.notifications, locale);
   const loopBoard = buildLoopBoard(fallbackSummary.items, cost);
+  const workflowRecipe = buildWorkflowRecipe(fallbackSummary.items, cost);
+  const reviewGatePortfolio = buildReviewGatePortfolio(fallbackSummary.items, cost);
+  const releaseReadiness = buildReleaseReadiness(fallbackSummary.items, cost);
+  const triggerPortfolio = buildTriggerPortfolio(fallbackSummary.items);
+  const repoContextMap = buildRepoContextMap(fallbackSummary.items, cost);
   const exceptionCenter = buildExceptionCenter(fallbackSummary.items, {
     cost,
     runtime: agentRuntime,
@@ -208,6 +230,12 @@ export default function LoopsPage() {
           ...health,
         }
       : undefined,
+  });
+  const dashboardGuide = buildDashboardGuide({
+    totalIssues: summary.total,
+    reviewItems: reviewInbox.length,
+    exceptionItems: exceptionCenter.items.length,
+    deliveredItems: loopBoard.find((column) => column.id === 'delivered')?.items.length ?? 0,
   });
   // Distinct error state: previously a failed list/doctor query rendered as
   // perpetual "loading". Surface it as an explicit banner instead.
@@ -288,6 +316,51 @@ export default function LoopsPage() {
               </span>
             </div>
           </div>
+          {currentWorkspace?.rules ? (
+            <div className="min-w-0 rounded-md border bg-muted/20 p-3 text-xs sm:max-w-xl">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-semibold">{t('workspace.rules.title')}</span>
+                <span className="shrink-0 rounded-md border bg-background px-2 py-0.5">
+                  {t('workspace.rules.summary', {
+                    present: currentWorkspace.rules.present,
+                    total: currentWorkspace.rules.total,
+                  })}
+                </span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {currentWorkspace.rules.rules.map((rule) => (
+                  <span
+                    className={`rounded-md border px-2 py-1 ${
+                      rule.status === 'present'
+                        ? 'bg-background text-foreground'
+                        : 'text-muted-foreground'
+                    }`}
+                    key={rule.id}
+                    title={rule.summary ?? rule.path}
+                  >
+                    {rule.label} · {t(`workspace.rules.status.${rule.status}`)}
+                  </span>
+                ))}
+              </div>
+              {currentWorkspace.rules.diagnostics?.length ? (
+                <div className="mt-3 flex flex-col gap-1.5">
+                  {currentWorkspace.rules.diagnostics.slice(0, 3).map((diagnostic) => (
+                    <div
+                      className={`rounded-md border px-2 py-1.5 ${
+                        diagnostic.level === 'warning'
+                          ? 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100'
+                          : 'bg-background text-muted-foreground'
+                      }`}
+                      key={diagnostic.id}
+                    >
+                      <p className="font-medium">{diagnostic.message}</p>
+                      <p className="mt-0.5 truncate opacity-80">{diagnostic.evidence}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </section>
 
         {dataLoadFailed ? (
@@ -298,6 +371,38 @@ export default function LoopsPage() {
             {t('loadError')}
           </div>
         ) : null}
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-sm font-semibold">{t('guide.title')}</h2>
+            <p className="text-sm text-muted-foreground">{t('guide.summary')}</p>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+            {dashboardGuide.map((step) => (
+              <Link
+                className={`rounded-md border p-3 text-sm transition hover:bg-muted/30 ${
+                  step.state === 'active'
+                    ? 'border-foreground bg-muted/30'
+                    : step.state === 'done'
+                      ? 'bg-muted/20'
+                      : 'text-muted-foreground'
+                }`}
+                href={step.href}
+                key={step.id}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">{t(`guide.steps.${step.id}.title`)}</span>
+                  <span className="rounded-md border bg-background px-2 py-0.5 text-xs">
+                    {t(`guide.state.${step.state}`)}
+                  </span>
+                </div>
+                <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+                  {t(`guide.steps.${step.id}.body`)}
+                </p>
+              </Link>
+            ))}
+          </div>
+        </section>
 
         <section className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
           <MetricCard
@@ -337,6 +442,47 @@ export default function LoopsPage() {
             note={t('metrics.closedNote')}
             value={summary.closed}
           />
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-sm font-semibold">{t('performance.title')}</h2>
+            <p className="text-sm text-muted-foreground">{t('performance.summary')}</p>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <MetricCard
+              icon={<CheckCircle2 className="size-4" />}
+              label={t('performance.passRate')}
+              note={t('performance.passRateNote')}
+              value={`${performanceSnapshot.passRate}%`}
+            />
+            <MetricCard
+              icon={<RefreshCw className="size-4" />}
+              label={t('performance.redoRate')}
+              note={t('performance.redoRateNote')}
+              value={`${performanceSnapshot.redoRate}%`}
+            />
+            <MetricCard
+              icon={<CircleDollarSign className="size-4" />}
+              label={t('performance.averageCalls')}
+              note={t('performance.averageCallsNote')}
+              value={performanceSnapshot.averageCalls}
+            />
+            <MetricCard
+              icon={<Activity className="size-4" />}
+              label={t('performance.averageTokens')}
+              note={t('performance.averageTokensNote')}
+              value={performanceSnapshot.averageTokens}
+            />
+            <MetricCard
+              icon={<GitBranch className="size-4" />}
+              label={t('performance.traceEvents')}
+              note={t('performance.traceEventsNote', {
+                recent: performanceSnapshot.recentEvents,
+              })}
+              value={performanceSnapshot.traceEvents}
+            />
+          </div>
         </section>
 
         <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_380px]">
@@ -416,6 +562,140 @@ export default function LoopsPage() {
         <section className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
+              <h2 className="text-sm font-semibold">{t('triggerPortfolio.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('triggerPortfolio.summary', {
+                  total: triggerPortfolio.summary.total,
+                  sources: triggerPortfolio.summary.sources,
+                  repos: triggerPortfolio.summary.repos,
+                })}
+              </p>
+            </div>
+            <Workflow className="size-4 text-muted-foreground" />
+          </div>
+          {!data ? (
+            <EmptyLine>{t('triggerPortfolio.loading')}</EmptyLine>
+          ) : triggerPortfolio.summary.total === 0 ? (
+            <EmptyLine>{t('triggerPortfolio.empty')}</EmptyLine>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-[320px_1fr]">
+              <div className="rounded-md border bg-muted/20 p-3">
+                <h3 className="text-xs font-semibold text-muted-foreground">
+                  {t('triggerPortfolio.sources')}
+                </h3>
+                <div className="mt-2 flex flex-col gap-2">
+                  {triggerPortfolio.sources.map((source) => (
+                    <div
+                      className="flex items-center justify-between gap-3 rounded-md bg-background p-2 text-xs"
+                      key={source.id}
+                    >
+                      <span className="truncate font-medium">{source.id}</span>
+                      <span className="shrink-0 text-muted-foreground">
+                        {t('triggerPortfolio.sourceCount', { count: source.count })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                {triggerPortfolio.recent.map((item) => (
+                  <Link
+                    className="rounded-md border p-3 text-sm transition hover:bg-muted/30"
+                    href={item.href}
+                    key={item.id}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="line-clamp-2 font-medium">{item.title}</span>
+                      <span className="shrink-0 rounded-md bg-muted px-2 py-1 text-xs">
+                        {item.source}
+                      </span>
+                    </div>
+                    <p className="mt-2 truncate text-xs text-muted-foreground">{item.repo}</p>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">
+                      {t('triggerPortfolio.submittedBy', {
+                        user: item.submittedBy,
+                        time: item.created,
+                      })}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">{t('repoContext.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('repoContext.summary', {
+                  repos: repoContextMap.summary.repos,
+                  issues: repoContextMap.summary.issues,
+                  blocked: repoContextMap.summary.blocked,
+                })}
+              </p>
+            </div>
+            <GitBranch className="size-4 text-muted-foreground" />
+          </div>
+          {!data ? (
+            <EmptyLine>{t('repoContext.loading')}</EmptyLine>
+          ) : repoContextMap.repos.length === 0 ? (
+            <EmptyLine>{t('repoContext.empty')}</EmptyLine>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
+              {repoContextMap.repos.slice(0, 6).map((repo) => (
+                <div className="rounded-md border bg-muted/20 p-3 text-sm" key={repo.repo}>
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="min-w-0 truncate font-medium">{repo.repo}</span>
+                    <span className="shrink-0 rounded-md bg-background px-2 py-1 text-xs">
+                      {t('repoContext.issueCount', { count: repo.issues })}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-md bg-background/70 px-2 py-1.5">
+                      <p className="text-muted-foreground">{t('repoContext.blocked')}</p>
+                      <p className="font-medium">{repo.blocked}</p>
+                    </div>
+                    <div className="rounded-md bg-background/70 px-2 py-1.5">
+                      <p className="text-muted-foreground">{t('repoContext.latest')}</p>
+                      <p className="truncate font-medium">{repo.latest}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {repo.phases.map((phase) => (
+                      <span
+                        className="rounded-md bg-background px-2 py-1 text-xs"
+                        key={phase.phase}
+                      >
+                        {phase.phase} · {phase.count}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex flex-col gap-2">
+                    {repo.recent.map((item) => (
+                      <Link
+                        className="rounded-md border bg-background p-2 text-xs transition hover:bg-muted/30"
+                        href={item.href}
+                        key={item.id}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate font-medium">{item.title}</span>
+                          <span className="shrink-0 text-muted-foreground">{item.status}</span>
+                        </div>
+                        <p className="mt-1 text-muted-foreground">{item.phase}</p>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
               <h2 className="text-sm font-semibold">{t('loopBoard.title')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('loopBoard.summary', { count: fallbackSummary.items.length })}
@@ -480,6 +760,144 @@ export default function LoopsPage() {
         <section className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
+              <h2 className="text-sm font-semibold">{t('workflowRecipe.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('workflowRecipe.summary', {
+                  total: workflowRecipe.summary.total,
+                  blocked: workflowRecipe.summary.blocked,
+                  releaseReady: workflowRecipe.summary.releaseReady,
+                })}
+              </p>
+            </div>
+            <Workflow className="size-4 text-muted-foreground" />
+          </div>
+          {!data ? (
+            <EmptyLine>{t('workflowRecipe.loading')}</EmptyLine>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-2 md:grid-cols-7">
+              {workflowRecipe.steps.map((step) => (
+                <div
+                  className={`rounded-md border p-3 text-xs ${
+                    step.state === 'blocked'
+                      ? 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100'
+                      : step.state === 'current'
+                        ? 'border-foreground bg-muted/30'
+                        : step.state === 'done'
+                          ? 'bg-muted/20'
+                          : 'text-muted-foreground'
+                  }`}
+                  key={step.id}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">{t(`workflowRecipe.steps.${step.id}`)}</span>
+                    <span className="rounded-md border bg-background px-2 py-0.5">
+                      {t(`workflowRecipe.state.${step.state}`)}
+                    </span>
+                  </div>
+                  <p className="mt-2 truncate text-muted-foreground">
+                    {t(`workflowRecipe.gate.${step.gate}`)}
+                  </p>
+                  <p className="mt-1 truncate font-medium">{step.evidence}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">{t('reviewGates.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('reviewGates.summary', reviewGatePortfolio.summary)}
+              </p>
+            </div>
+            <ListChecks className="size-4 text-muted-foreground" />
+          </div>
+          {!data ? (
+            <EmptyLine>{t('reviewGates.loading')}</EmptyLine>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+              {reviewGatePortfolio.gates.map((gate) => (
+                <div
+                  className={`rounded-md border p-3 text-xs ${
+                    gate.status === 'blocked' || gate.status === 'needsChanges'
+                      ? 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100'
+                      : gate.status === 'passed'
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100'
+                        : 'bg-muted/20 text-muted-foreground'
+                  }`}
+                  key={gate.kind}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium">{t(`reviewGates.kind.${gate.kind}`)}</span>
+                    <span className="rounded-md border bg-background px-2 py-0.5">
+                      {t(`reviewGates.status.${gate.status}`)}
+                    </span>
+                  </div>
+                  <p className="mt-2 line-clamp-2 text-muted-foreground">{gate.evidence}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">{t('releaseReadiness.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('releaseReadiness.summary', releaseReadiness.summary)}
+              </p>
+            </div>
+            <CheckCircle2 className="size-4 text-muted-foreground" />
+          </div>
+          {!data ? (
+            <EmptyLine>{t('releaseReadiness.loading')}</EmptyLine>
+          ) : releaseReadiness.items.length === 0 ? (
+            <EmptyLine>{t('releaseReadiness.empty')}</EmptyLine>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
+              {releaseReadiness.items.map((item) => (
+                <Link
+                  className={`rounded-md border p-3 text-sm transition hover:opacity-80 ${
+                    item.state === 'blocked'
+                      ? riskClass('critical')
+                      : item.state === 'attention'
+                        ? riskClass('warning')
+                        : 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100'
+                  }`}
+                  href={item.href}
+                  key={item.id}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="line-clamp-2 font-medium">{item.title}</span>
+                    <span className="shrink-0 rounded-md bg-background/70 px-2 py-1 text-xs">
+                      {t(`releaseReadiness.state.${item.state}`)}
+                    </span>
+                  </div>
+                  <p className="mt-2 truncate text-xs opacity-80">{item.evidence}</p>
+                  <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
+                    {(['spec', 'implementation', 'review', 'qa'] as const).map((key) => (
+                      <span
+                        className={`rounded-md border bg-background/60 px-2 py-1 ${
+                          item.checklist[key] ? 'font-medium' : 'opacity-60'
+                        }`}
+                        key={key}
+                      >
+                        {t(`releaseReadiness.checklist.${key}`)}
+                      </span>
+                    ))}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
               <h2 className="text-sm font-semibold">{t('exceptionCenter.title')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('exceptionCenter.summary', {
@@ -513,7 +931,7 @@ export default function LoopsPage() {
                       {item.source}
                     </span>
                   </div>
-                  <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+                  <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2 xl:grid-cols-4">
                     <div className="min-w-0 rounded-md bg-background/60 px-2 py-1.5">
                       <p className="opacity-70">{t('exceptionCenter.owner')}</p>
                       <p className="truncate font-medium">{item.owner}</p>
@@ -525,6 +943,14 @@ export default function LoopsPage() {
                     <div className="min-w-0 rounded-md bg-background/60 px-2 py-1.5">
                       <p className="opacity-70">{t('exceptionCenter.evidence')}</p>
                       <p className="truncate font-medium">{item.evidence}</p>
+                    </div>
+                    <div className="min-w-0 rounded-md bg-background/60 px-2 py-1.5">
+                      <p className="opacity-70">{t('exceptionCenter.impact')}</p>
+                      <p className="truncate font-medium">{item.impact}</p>
+                    </div>
+                    <div className="min-w-0 rounded-md bg-background/60 px-2 py-1.5 sm:col-span-2 xl:col-span-4">
+                      <p className="opacity-70">{t('exceptionCenter.retryAction')}</p>
+                      <p className="truncate font-medium">{item.retryAction}</p>
                     </div>
                   </div>
                 </Link>
@@ -978,6 +1404,69 @@ export default function LoopsPage() {
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+          ) : null}
+          {agentToolRegistry ? (
+            <div className="mt-4 border-t pt-4">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-xs font-semibold text-muted-foreground">
+                  {t('capabilities.permissionProfile.title')}
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  {t('capabilities.permissionProfile.summary', permissionProfile.summary)}
+                </p>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-5">
+                {permissionProfile.modes.map((mode) => (
+                  <div className="rounded-md border bg-muted/20 p-3 text-xs" key={mode.id}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">
+                        {t(`capabilities.permissionProfile.modes.${mode.id}`)}
+                      </span>
+                      <span className="rounded-md border bg-background px-2 py-0.5">
+                        {t(`capabilities.permissionProfile.state.${mode.state}`)}
+                      </span>
+                    </div>
+                    <p className="mt-2 line-clamp-2 text-muted-foreground">{mode.evidence}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {agentToolRegistry ? (
+            <div className="mt-4 border-t pt-4">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-xs font-semibold text-muted-foreground">
+                  {t('capabilities.providerProfile.title')}
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  {t('capabilities.providerProfile.summary', providerProfile.summary)}
+                </p>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                {providerProfile.items.map((provider) => (
+                  <div
+                    className="rounded-md border bg-muted/20 p-3 text-xs"
+                    key={provider.provider}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">
+                        {formatLoopLabel(provider.provider, locale)}
+                      </span>
+                      <span className="rounded-md border bg-background px-2 py-0.5">
+                        {formatLoopLabel(provider.runtimeMode, locale)}
+                      </span>
+                    </div>
+                    <p className="mt-2 line-clamp-2 text-muted-foreground">
+                      {t('capabilities.providerProfile.evidence', {
+                        agents: provider.agents,
+                        active: provider.activeAgents,
+                        planned: provider.plannedTools,
+                      })}
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
           ) : null}

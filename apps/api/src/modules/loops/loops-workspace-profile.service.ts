@@ -4,6 +4,9 @@ import * as path from 'path';
 import type {
   LoopWorkspaceAgentProfile,
   LoopWorkspaceProfile,
+  LoopWorkspaceRule,
+  LoopWorkspaceRuleDiagnostic,
+  LoopWorkspaceRulesSummary,
   LoopWorkspaceStatus,
   LoopWorkspaceSummary,
   LoopWorkspacesResponse,
@@ -23,6 +26,12 @@ import {
 
 const DEFAULT_WORKSPACE_ID = 'default';
 const DEFAULT_CONTAINER_WORKDIR = '/workspace';
+const WORKSPACE_RULE_CANDIDATES: Array<{ id: string; label: string; path: string }> = [
+  { id: 'agents', label: 'AGENTS.md', path: 'AGENTS.md' },
+  { id: 'claude', label: 'CLAUDE.md', path: 'CLAUDE.md' },
+  { id: 'cursor-rules', label: 'Cursor rules', path: '.cursor/rules' },
+  { id: 'cline-rules', label: 'Cline rules', path: '.clinerules' },
+];
 
 interface PersistedAgentProfile {
   mode: LoopRuntimeMode;
@@ -150,6 +159,18 @@ export class LoopsWorkspaceProfileService {
     }
   }
 
+  async scanRules(root: string): Promise<LoopWorkspaceRulesSummary> {
+    const rules = await Promise.all(
+      WORKSPACE_RULE_CANDIDATES.map((candidate) => this.scanRule(root, candidate)),
+    );
+    return {
+      present: rules.filter((rule) => rule.status === 'present').length,
+      total: rules.length,
+      rules,
+      diagnostics: this.buildRuleDiagnostics(rules),
+    };
+  }
+
   /**
    * Pull the Docker fallback image for an agent in a workspace (0622 · B6).
    *
@@ -243,6 +264,7 @@ export class LoopsWorkspaceProfileService {
     const status = await this.validate(ws.root);
     const agents = this.toAgentMap(ws);
     const current = this.resolveCurrentSafe(currentId);
+    const rules = await this.scanRules(ws.root);
     return {
       workspaceId: ws.workspaceId,
       root: ws.root,
@@ -252,6 +274,7 @@ export class LoopsWorkspaceProfileService {
         codex: agents.codex.mode,
         'claude-code': agents['claude-code'].mode,
       },
+      rules,
     };
   }
 
@@ -268,7 +291,92 @@ export class LoopsWorkspaceProfileService {
       status,
       isDefault: ws.workspaceId === DEFAULT_WORKSPACE_ID,
       agents: this.toAgentMap(ws),
+      rules: await this.scanRules(ws.root),
     };
+  }
+
+  private async scanRule(
+    root: string,
+    candidate: { id: string; label: string; path: string },
+  ): Promise<LoopWorkspaceRule> {
+    const absolutePath = path.join(root, candidate.path);
+    try {
+      const stat = await fs.stat(absolutePath);
+      if (stat.isDirectory()) {
+        const entries = await fs.readdir(absolutePath);
+        return {
+          ...candidate,
+          status: entries.length > 0 ? 'present' : 'missing',
+          summary: entries.length > 0 ? `${entries.length} rule files` : undefined,
+          updated: entries.length > 0 ? stat.mtime.toISOString() : undefined,
+        };
+      }
+
+      const content = await fs.readFile(absolutePath, 'utf8');
+      const firstMeaningfulLine =
+        content
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .find((line) => line.length > 0 && !line.startsWith('<!--')) ?? candidate.label;
+      return {
+        ...candidate,
+        status: 'present',
+        summary: firstMeaningfulLine.slice(0, 140),
+        updated: stat.mtime.toISOString(),
+      };
+    } catch {
+      return {
+        ...candidate,
+        status: 'missing',
+      };
+    }
+  }
+
+  private buildRuleDiagnostics(rules: LoopWorkspaceRule[]): LoopWorkspaceRuleDiagnostic[] {
+    const present = rules.filter((rule) => rule.status === 'present');
+    const missing = rules.filter((rule) => rule.status === 'missing');
+    const diagnostics: LoopWorkspaceRuleDiagnostic[] = [];
+
+    if (present.length === 0) {
+      diagnostics.push({
+        id: 'rules-missing',
+        level: 'warning',
+        message: 'No workspace rule files were found.',
+        evidence: rules.map((rule) => rule.path).join(', '),
+      });
+    } else if (present.length === 1) {
+      diagnostics.push({
+        id: 'rules-thin',
+        level: 'info',
+        message: 'Only one workspace rule source is present.',
+        evidence: present[0]?.path ?? 'workspace rules',
+      });
+    }
+
+    const agentReadable = present.filter((rule) =>
+      ['agents', 'claude', 'cline-rules'].includes(rule.id),
+    );
+    if (agentReadable.length > 1) {
+      diagnostics.push({
+        id: 'rules-overlap',
+        level: 'warning',
+        message: 'Multiple agent-readable rule sources are present; verify precedence.',
+        evidence: agentReadable.map((rule) => rule.path).join(', '),
+      });
+    }
+
+    for (const rule of missing) {
+      if (rule.id === 'cursor-rules' || rule.id === 'cline-rules') {
+        diagnostics.push({
+          id: `missing-${rule.id}`,
+          level: 'info',
+          message: `${rule.label} are not present.`,
+          evidence: rule.path,
+        });
+      }
+    }
+
+    return diagnostics;
   }
 
   private toAgentMap(ws: PersistedWorkspace): Record<LoopAgentKind, LoopWorkspaceAgentProfile> {

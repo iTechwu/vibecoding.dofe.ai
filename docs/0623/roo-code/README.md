@@ -63,12 +63,12 @@ DofeAI `/loops/new` 已有 templates，可进一步与 mode 绑定。
 | 优先级 | 建议                             | 验收                                                                       |
 | ------ | -------------------------------- | -------------------------------------------------------------------------- |
 | P1     | 引入 user-facing mode 字段       | 部分实施：Loop Board v1 已派生 Plan / Code / Review / Recovery / Delivered |
-| P1     | Loop template 与 agent mode 绑定 | 创建 issue 后能看到推荐 agent path                                         |
+| P1     | Loop template 与 agent mode 绑定 | 已实施 v1：创建页 preview 展示推荐 agent path                              |
 | P2     | Custom mode 配置                 | 团队可定义合规/性能/安全模式                                               |
 
 ## 实施标注
 
-2026-06-23 已在 dashboard Loop Board v1 中展示 user-facing mode。当前 mode 仍由前端根据 phase/state 派生；后续应沉淀为 contract 字段，并与 Loop template / agent route 绑定。
+2026-06-23 已在 dashboard Loop Board v1 中展示 user-facing mode，并在 `/loops/new` preview 中按 template 展示推荐 agent path。当前 mode / path 仍由前端解释层派生；后续应沉淀为 contract 字段，并与真实 agent route / permission mode 绑定。
 
 ## 结论
 

@@ -80,10 +80,15 @@ export class LoopsPersistenceService {
     }
     const latestIntake = dbDetail.intakes.at(-1);
 
+    const intake = latestIntake ? this.toContractIntake(latestIntake) : detail.intake;
+
     return {
       ...detail,
       issue: this.toContractIssue(dbDetail.issue),
-      intake: latestIntake ? this.toContractIntake(latestIntake) : detail.intake,
+      intake: {
+        ...intake,
+        ruleSnapshot: detail.intake.ruleSnapshot,
+      },
       state: this.toContractState(dbDetail.state),
     };
   }

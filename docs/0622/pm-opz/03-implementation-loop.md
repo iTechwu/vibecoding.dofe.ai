@@ -61,16 +61,17 @@ pnpm --filter @repo/web exec vitest run app/loops/loops-dashboard-model.test.ts 
 
 仍存在有价值但不适合本轮继续实施的后续项：
 
-| 项目                                              | 状态      | 不在本轮实施原因                             |
-| ------------------------------------------------- | --------- | -------------------------------------------- |
-| `LoopMetricsActionItem` 增加 user-facing category | 后续 Epic | 需要 contract 变更和 API/Web 联动迁移        |
-| 队列化后台 worker                                 | 后续 Epic | 涉及 BullMQ/锁/worker 重启恢复/SSE，范围较大 |
-| 异常决策中心                                      | 后续 Epic | 需要新 contract 与统一异常分类               |
-| Spec diff review                                  | 后续 Epic | 需要 spec snapshot/diff 数据结构             |
-| Round-aware evidence view                         | 后续 Epic | 需要 artifact round 元数据和 UI 过滤         |
-| GitHub/Linear/Slack 触发                          | 后续 Epic | 需要外部 OAuth/webhook/权限设计              |
+| 项目                                              | 状态      | 不在本轮实施原因                                                                   |
+| ------------------------------------------------- | --------- | ---------------------------------------------------------------------------------- |
+| `LoopMetricsActionItem` 增加 user-facing category | 已实施 v1 | 0623 UIUX 已增加 `nextActionCategory` 并前端优先使用                               |
+| 队列化后台 worker                                 | 后续 Epic | 涉及 BullMQ/锁/worker 重启恢复/SSE，范围较大                                       |
+| 异常决策中心                                      | 已实施 v2 | 0623 UIUX 已补齐 reason/owner/action/impact/retry/evidence                         |
+| Spec diff review                                  | 已实施 v1 | 0623 UIUX 已基于 spec snapshot 暴露轻量 diff 摘要                                  |
+| Round-aware evidence view                         | 已实施 v2 | 0623 UIUX 已补齐 artifact round 并默认过滤当前轮                                   |
+| 自然语言控制                                      | 已实施 v1 | 0623 UIUX/API 已新增 deterministic command endpoint、audit 和安全 unknown fallback |
+| GitHub/Linear/Slack 触发                          | 后续 Epic | 需要外部 OAuth/webhook/权限设计                                                    |
 
-结论：当前文档中的剩余内容均已准确标注为后续 Epic，不存在应在本轮继续实施的未闭合 P0。
+结论：当前仍保留的后续 Epic 为队列化后台 worker 与 GitHub/Linear/Slack 外部触发；`LoopMetricsActionItem` category、异常决策中心、Spec diff review、Round-aware evidence view、自然语言控制已在 0623 UIUX 循环闭合到 v1/v2。
 
 ## 回归检测记录
 

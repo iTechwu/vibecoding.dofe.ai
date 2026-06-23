@@ -31,6 +31,7 @@
 - request 是唯一主输入；
 - workspace/template 被压缩为辅助配置；
 - preview 使用共享 normalise 逻辑，降低“创建后才知道系统理解错了”的风险；
+- preview 已展示推荐 Agent 路径与建议测试策略，让用户在创建前理解系统将如何交付与验证；
 - advanced settings 默认折叠，符合渐进披露。
 
 主要断点：
@@ -46,12 +47,15 @@
 - Action Queue 与 Review Inbox 已按 0622 P0 调整，不再把自动 resume/finalize 误呈现为人工接管；
 - runtime detection、risk queue、aging queue、trace summary 已形成运维视角；
 - metric cards 能快速回答活跃数、执行中、注意项、成本余量。
+- Delivery Guide v1 已提供创建、审阅、异常、证据四步阅读路径；
+- Performance Snapshot v1 已把通过率、返工率、平均调用、平均 tokens、trace 事件做成可扫描指标；
+- Permission Profile v1 已把 agent/tool 权限压缩为 read/write/shell/network/approval 五类状态。
 
 主要断点：
 
-- Dashboard 信息密度高，对新用户来说“下一步该点哪一个”仍需要扫描多个区块；
+- Dashboard 已有新手引导 v1；后续仍可根据真实用户行为优化排序与个性化提示；
 - `Resume Interrupted` 是全局动作，和每个 Loop 的 `Continue loop` 心智仍有轻微差异；
-- risk queue 和 review inbox 的边界已变清晰，Exception Center v1 已统一基础异常卡片；impact、retry action、evidence links 等更细字段仍属于后续 contract 增强。
+- risk queue 和 review inbox 的边界已变清晰，Exception Center v2 已统一异常卡片，并补齐 impact、retry action、evidence link 级阅读字段。
 
 ### 3. Detail
 
@@ -64,16 +68,20 @@
 
 主要断点：
 
-- 证据内容很完整，但 current round 默认过滤仍依赖后续数据结构；
-- re-loop 后 Spec diff 缺失，用户仍要重新阅读完整 Spec；
-- blocking exception 的 reason/owner/retry action 尚未统一建模。
+- implementation/test/review/global review 记录已默认过滤到 current round；artifact workspace 已通过 artifact round 元数据默认过滤到当前轮；
+- re-loop 后 Spec diff 已有 v1 摘要，用户可先查看当前版相对上一版的新增、删除、不变行数与示例行；
+- Detail 页已提供单 issue 异常卡片 v1；Dashboard Exception Center 已补齐 impact、retry action、evidence link 级阅读字段。
 
 ## UIUX 优先问题分级
 
 | 优先级 | 问题                                      | 影响                           | 本轮状态  |
 | ------ | ----------------------------------------- | ------------------------------ | --------- |
 | P0     | `/loops/new` 关键提交按钮禁用原因不够显性 | 新用户可能不知道为什么不能创建 | 已实施    |
+| P0     | `/loops/new` 预览缺少交付与验证解释       | 用户无法在创建前判断执行路径   | 已实施    |
 | P1     | Dashboard 缺少统一 exception card         | 阻塞原因、责任人与恢复动作分散 | 已实施 v1 |
-| P1     | Spec diff review 缺失                     | re-loop 后审阅成本高           | 后续 Epic |
-| P1     | Evidence 缺少 current round 默认过滤      | 多轮后旧证据可能误导           | 后续 Epic |
-| P2     | Dashboard 新手引导弱                      | 信息密度高，首次使用成本偏高   | 后续优化  |
+| P1     | Dashboard 缺少性能快照                    | 难以快速判断交付健康度         | 已实施 v1 |
+| P1     | Dashboard 缺少权限画像                    | agent/tool 权限不够可扫描      | 已实施 v1 |
+| P1     | Detail 缺少单 issue 异常卡片              | 用户进入详情后难以快速定位阻塞 | 已实施 v1 |
+| P1     | Spec diff review 缺失                     | re-loop 后审阅成本高           | 已实施 v1 |
+| P1     | Evidence 缺少 current round 默认过滤      | 多轮后旧证据可能误导           | 已实施 v1 |
+| P2     | Dashboard 新手引导弱                      | 信息密度高，首次使用成本偏高   | 已实施 v1 |

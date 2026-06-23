@@ -154,6 +154,24 @@ describe('SimpleLoopIssueForm (0622 · B5 simple-mode intake)', () => {
     // options; both derive from the same shared normalisation.
     expect(screen.getAllByText('P1').length).toBeGreaterThan(0);
     expect(screen.getByText('Primary happy path is implemented end to end')).toBeInTheDocument();
+    expect(screen.getByText('Recommended agent path')).toBeInTheDocument();
+    expect(screen.getByText('Planner → Implementer → Reviewer')).toBeInTheDocument();
+    expect(screen.getByText('Suggested test policy')).toBeInTheDocument();
+    expect(screen.getByText('unit + type-check + focused UI regression')).toBeInTheDocument();
+  });
+
+  it('binds bugfix templates to recovery mode and regression policy in preview', async () => {
+    const user = userEvent.setup();
+    renderWithIntl(<SimpleLoopIssueForm defaultTargetRepo="/repo/vibecoding" />);
+
+    await user.type(
+      screen.getByPlaceholderText(/Add a Docker fallback/i),
+      'Fix checkout crash after payment callback',
+    );
+
+    expect(screen.getAllByText('P0').length).toBeGreaterThan(0);
+    expect(screen.getByText('Recovery Agent → Implementer → Reviewer')).toBeInTheDocument();
+    expect(screen.getByText('reproduction + regression test + type-check')).toBeInTheDocument();
   });
 
   it('submits the normalised payload and navigates to the new issue', async () => {
@@ -175,6 +193,41 @@ describe('SimpleLoopIssueForm (0622 · B5 simple-mode intake)', () => {
       }),
     });
     expect(push).toHaveBeenCalledWith('/loops/issue-simple-1');
+  });
+
+  it('uses the current workspace from the workspace query when submitting', async () => {
+    workspacesQuery = {
+      data: {
+        body: {
+          data: {
+            workspaces: [
+              { workspaceId: 'archive', root: '/repo/archive' },
+              { workspaceId: 'vibecoding', root: '/repo/vibecoding' },
+            ],
+            current: 'vibecoding',
+          },
+        },
+      },
+      isLoading: false,
+    };
+    mutateAsync.mockResolvedValueOnce({ body: { data: { issue: { id: 'issue-simple-2' } } } });
+    const user = userEvent.setup();
+    renderWithIntl(<SimpleLoopIssueForm defaultTargetRepo="/repo/default" />);
+
+    await user.type(
+      screen.getByPlaceholderText(/Add a Docker fallback/i),
+      'Add a summary card to the loops dashboard',
+    );
+
+    expect(screen.getByText('/repo/vibecoding')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Create Issue' }));
+
+    expect(mutateAsync).toHaveBeenCalledWith({
+      body: expect.objectContaining({
+        workspaceId: 'vibecoding',
+      }),
+    });
   });
 
   it('lets advanced settings override the generated title in the preview', async () => {

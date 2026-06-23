@@ -17,6 +17,8 @@ import {
   LoopLogsQuerySchema,
   LoopLogsResponseSchema,
   LoopMetricsResponseSchema,
+  LoopNaturalCommandRequestSchema,
+  LoopNaturalCommandResponseSchema,
   LoopNotificationsQuerySchema,
   LoopNotificationsResponseSchema,
   LoopRecordShardImplementationRequestSchema,
@@ -213,6 +215,18 @@ export const loopsContract = c.router(
         200: ApiResponseSchema(LoopReloopResponseSchema),
       },
       summary: 'Phase 7→1: re-loop by bumping spec version after a non-PASS global review',
+    },
+    naturalCommand: {
+      method: 'POST',
+      path: '/issues/:issueId/natural-command',
+      pathParams: z.object({
+        issueId: z.string(),
+      }),
+      body: LoopNaturalCommandRequestSchema,
+      responses: {
+        200: ApiResponseSchema(LoopNaturalCommandResponseSchema),
+      },
+      summary: 'Map a deterministic natural-language command to a safe Loops operation',
     },
     finalize: {
       method: 'POST',

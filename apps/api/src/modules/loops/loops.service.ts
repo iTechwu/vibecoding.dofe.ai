@@ -24,7 +24,11 @@ import type {
   LoopMetricsActionItem,
   LoopMetricsResponse,
   LoopMetricsRiskItem,
+  LoopNaturalCommandIntent,
+  LoopNaturalCommandRequest,
+  LoopNaturalCommandResponse,
   PullLoopImageResponse,
+  LoopRuleSnapshot,
   LoopRequirementCoverage,
   LoopRequirementCoverageItem,
   LoopRequirementCoverageSummary,
@@ -32,7 +36,9 @@ import type {
   LoopRuntimeDetection,
   LoopTraceSummary,
   LoopRecordShardImplementationRequest,
+  LoopReleaseGate,
   LoopReviewRecord,
+  LoopReviewGate,
   LoopReviewShardRequest,
   LoopRunShardTestsRequest,
   LoopReviewSpecRequest,
@@ -41,6 +47,8 @@ import type {
   LoopSpec,
   LoopStateItem,
   LoopSubmitter,
+  LoopWorkflowRecipe,
+  LoopWorkflowStep,
   LoopWorkspacesResponse,
   UpsertLoopWorkspaceRequest,
 } from '@repo/contracts';
@@ -162,7 +170,8 @@ export class LoopsService {
   ) {}
 
   async list(query: LoopIssuesQuery): Promise<LoopListResponse> {
-    return this.persistence?.list(query) ?? this.listFromFile(query);
+    const result = await (this.persistence?.list(query) ?? this.listFromFile(query));
+    return this.withDeliveryControlsList(result);
   }
 
   private async listFromFile(query: LoopIssuesQuery): Promise<LoopListResponse> {
@@ -237,7 +246,8 @@ export class LoopsService {
       acceptanceCriteria: input.acceptanceCriteria,
       rawPayloadRef,
     };
-    const intake = {
+    const ruleSnapshot = await this.captureRuleSnapshot(targetRepo, now);
+    const intake: LoopIntake = {
       id: intakeId,
       issueId,
       sourceChannel: 'web' as const,
@@ -246,6 +256,7 @@ export class LoopsService {
       rawPayloadRef,
       status: 'NORMALIZED' as const,
       created: now,
+      ruleSnapshot,
     };
     const state: LoopStateItem = {
       issueId,
@@ -326,6 +337,38 @@ export class LoopsService {
       provider: input.submitter?.provider ?? 'dev',
       userId: input.submitter?.userId ?? input.submitterId ?? 'dev-user',
       name: input.submitter?.name ?? input.submitterName ?? 'Developer',
+    };
+  }
+
+  private async captureRuleSnapshot(
+    targetRepo: string,
+    capturedAt: string,
+  ): Promise<LoopRuleSnapshot | undefined> {
+    if (!this.workspaceProfile) {
+      return undefined;
+    }
+
+    const workspace = await this.workspaceProfile.resolve();
+    const rules = await this.workspaceProfile.scanRules(workspace.root);
+    const agentReadableRules = rules.rules.filter(
+      (rule) => rule.status === 'present' && ['agents', 'claude', 'cline-rules'].includes(rule.id),
+    );
+    const evidence = agentReadableRules.map((rule) => rule.path);
+
+    return {
+      workspaceId: workspace.workspaceId,
+      root: workspace.root || targetRepo,
+      capturedAt,
+      present: rules.present,
+      total: rules.total,
+      rules: rules.rules,
+      diagnostics: rules.diagnostics,
+      enforcement: {
+        policy: 'snapshot-required',
+        status: agentReadableRules.length > 0 ? 'enforced' : 'attention',
+        agentReadable: agentReadableRules.length > 0,
+        evidence,
+      },
     };
   }
 
@@ -854,6 +897,88 @@ export class LoopsService {
       maxReloop,
       phase: state.phase,
       paused: state.paused,
+    };
+  }
+
+  async naturalCommand(
+    issueId: string,
+    request: LoopNaturalCommandRequest,
+  ): Promise<LoopNaturalCommandResponse> {
+    const intent = this.parseNaturalCommand(request.command);
+    await this.store.appendLog({
+      type: 'NATURAL_COMMAND',
+      issue: issueId,
+      actor: request.actor,
+      command: request.command,
+      intent,
+    });
+
+    if (intent === 'continue') {
+      return {
+        issueId,
+        intent,
+        executed: true,
+        message: 'Continued loop to the next checkpoint.',
+        detail: await this.advance(issueId),
+      };
+    }
+    if (intent === 'pause') {
+      return {
+        issueId,
+        intent,
+        executed: true,
+        message: 'Paused loop.',
+        detail: await this.intervene(issueId, { action: 'pause', actor: request.actor }),
+      };
+    }
+    if (intent === 'resume') {
+      return {
+        issueId,
+        intent,
+        executed: true,
+        message: 'Resumed loop.',
+        detail: await this.intervene(issueId, { action: 'resume', actor: request.actor }),
+      };
+    }
+    if (intent === 'approve-spec') {
+      return {
+        issueId,
+        intent,
+        executed: true,
+        message: 'Approved spec and continued automation.',
+        detail: await this.reviewSpec(issueId, { action: 'approve', reviewer: request.actor }),
+      };
+    }
+    if (intent === 'request-revision') {
+      return {
+        issueId,
+        intent,
+        executed: true,
+        message: 'Requested spec revision.',
+        detail: await this.reviewSpec(issueId, {
+          action: 'request-revision',
+          reviewer: request.actor,
+          notes: request.command,
+        }),
+      };
+    }
+    if (intent === 'query-evidence') {
+      return {
+        issueId,
+        intent,
+        executed: false,
+        message: 'Returned recent evidence logs.',
+        detail: await this.getIssue(issueId),
+        logs: (await this.logs({ issueId, limit: 20 })).entries,
+      };
+    }
+
+    return {
+      issueId,
+      intent,
+      executed: false,
+      message:
+        'Command was not recognized. Try continue, pause, resume, approve spec, request revision, or show evidence.',
     };
   }
 
@@ -2005,6 +2130,7 @@ export class LoopsService {
           issueId: item.issue.id,
           title: item.issue.title,
           action: action.action,
+          nextActionCategory: action.nextActionCategory,
           label: action.label,
           priority: item.issue.priority,
           phase: item.state?.phase,
@@ -2015,37 +2141,62 @@ export class LoopsService {
       .slice(0, 10);
   }
 
-  private resolveNextAction(item: LoopListItem): Pick<LoopMetricsActionItem, 'action' | 'label'> {
+  private resolveNextAction(
+    item: LoopListItem,
+  ): Pick<LoopMetricsActionItem, 'action' | 'label' | 'nextActionCategory'> {
     const { issue, state } = item;
     if (state?.paused) {
-      return { action: 'run-step', label: 'Continue loop' };
+      return { action: 'run-step', label: 'Continue loop', nextActionCategory: 'exception' };
     }
     if (!state || state.specVersion === 'v0') {
-      return { action: 'generate-spec', label: 'Continue loop' };
+      return { action: 'generate-spec', label: 'Continue loop', nextActionCategory: 'continue' };
     }
     if (state.phase === 'PHASE_2_REVIEW') {
-      return { action: 'review-spec', label: 'Review spec' };
+      return { action: 'review-spec', label: 'Review spec', nextActionCategory: 'decision' };
     }
     if (state.phase === 'PHASE_3_DECOMPOSE') {
-      return { action: 'decompose', label: 'Continue loop' };
+      return { action: 'decompose', label: 'Continue loop', nextActionCategory: 'continue' };
     }
     if (state.phase === 'PHASE_6_CONVERGE') {
-      return { action: 'global-review', label: 'Continue loop' };
+      return { action: 'global-review', label: 'Continue loop', nextActionCategory: 'continue' };
     }
     if (state.globalVerdict && state.globalVerdict !== 'PASS') {
-      return { action: 'reloop', label: 'Start re-loop' };
+      return { action: 'reloop', label: 'Start re-loop', nextActionCategory: 'decision' };
     }
     if (state.globalVerdict === 'PASS' && !state.finalized) {
-      return { action: 'finalize', label: 'Continue loop' };
+      return { action: 'finalize', label: 'Continue loop', nextActionCategory: 'continue' };
     }
     if (issue.status === 'CLOSED' || state.phase === 'CLOSED' || state.finalized) {
-      return { action: 'closed', label: 'Closed' };
+      return { action: 'closed', label: 'Closed', nextActionCategory: 'done' };
     }
-    return { action: 'run-step', label: 'Continue loop' };
+    return { action: 'run-step', label: 'Continue loop', nextActionCategory: 'continue' };
   }
 
   private formatPhase(phase: string) {
     return PHASE_LABELS[phase] ?? phase.replace('PHASE_', 'P').replaceAll('_', ' ');
+  }
+
+  private parseNaturalCommand(command: string): LoopNaturalCommandIntent {
+    const normalized = command.trim().toLowerCase();
+    if (/(show|view|query|list).*(evidence|logs?|records?|trace)/.test(normalized)) {
+      return 'query-evidence';
+    }
+    if (/(request|ask).*(revision|change|update)|退回|修改|修订/.test(normalized)) {
+      return 'request-revision';
+    }
+    if (/(approve|accept).*(spec|plan)?|批准|同意/.test(normalized)) {
+      return 'approve-spec';
+    }
+    if (/resume|recover|unpause|恢复|继续恢复/.test(normalized)) {
+      return 'resume';
+    }
+    if (/pause|stop|hold|暂停|停止/.test(normalized)) {
+      return 'pause';
+    }
+    if (/continue|advance|run|推进|继续/.test(normalized)) {
+      return 'continue';
+    }
+    return 'unknown';
   }
 
   private buildTraceSummary(
@@ -2083,11 +2234,404 @@ export class LoopsService {
   }
 
   private withRequirementsCoverage(detail: LoopIssueDetail): LoopIssueDetail {
-    return {
+    const evidenceArtifacts = this.buildEvidenceArtifacts(detail);
+    const enhanced = {
       ...detail,
       requirementsCoverage: this.buildRequirementsCoverage(detail),
-      evidenceArtifacts: this.buildEvidenceArtifacts(detail),
+      evidenceArtifacts,
     };
+    return {
+      ...enhanced,
+      ...this.buildDeliveryControls(enhanced),
+    };
+  }
+
+  private withDeliveryControlsList(result: LoopListResponse): LoopListResponse {
+    return {
+      ...result,
+      list: result.list.map((item) => ({
+        ...item,
+        ...this.buildDeliveryControls(item),
+      })),
+    };
+  }
+
+  private buildDeliveryControls(item: LoopListItem | LoopIssueDetail): {
+    workflowRecipe: LoopWorkflowRecipe;
+    reviewGates: LoopReviewGate[];
+    releaseGate: LoopReleaseGate;
+  } {
+    return {
+      workflowRecipe: this.buildWorkflowRecipe(item),
+      reviewGates: this.buildReviewGates(item),
+      releaseGate: this.buildReleaseGate(item),
+    };
+  }
+
+  private buildWorkflowRecipe(item: LoopListItem | LoopIssueDetail): LoopWorkflowRecipe {
+    const phase = item.state?.phase ?? 'PHASE_0_INTAKE';
+    const blockedReason = this.deliveryBlockedReason(item);
+    const evidenceByKind = this.evidenceIdsByKind(item);
+    const specApproved = this.isSpecApproved(item);
+    const implementationDone = this.isImplementationDone(item);
+    const reviewPassed = this.isReviewPassed(item);
+    const browserQaPassed = this.isBrowserQaPassed(item);
+    const releaseReady = this.isReleaseReady(item);
+    const updated = item.state?.updated ?? item.issue.updated;
+
+    const steps: LoopWorkflowStep[] = [
+      {
+        id: `${item.issue.id}-intake`,
+        kind: 'intake',
+        label: 'Intake',
+        required: true,
+        status: 'passed',
+        owner: 'system',
+        humanGate: 'none',
+        phase: 'PHASE_0_INTAKE',
+        evidenceTypes: ['raw-payload', 'issue', 'intake'],
+        evidenceIds: [
+          ...evidenceByKind('raw-payload'),
+          ...evidenceByKind('issue'),
+          ...evidenceByKind('intake'),
+        ],
+      },
+      {
+        id: `${item.issue.id}-spec-review`,
+        kind: 'spec_review',
+        label: 'Spec Review',
+        required: true,
+        status:
+          blockedReason && phase === 'PHASE_2_REVIEW'
+            ? 'blocked'
+            : specApproved
+              ? 'passed'
+              : 'current',
+        owner: 'codex',
+        humanGate: 'approval',
+        phase: 'PHASE_2_REVIEW',
+        evidenceTypes: ['spec'],
+        evidenceIds: evidenceByKind('spec'),
+        blockedReason: blockedReason && phase === 'PHASE_2_REVIEW' ? blockedReason : undefined,
+      },
+      {
+        id: `${item.issue.id}-implementation`,
+        kind: 'implementation',
+        label: 'Implementation',
+        required: true,
+        status:
+          blockedReason && phase === 'PHASE_4_IMPLEMENT'
+            ? 'blocked'
+            : implementationDone
+              ? 'passed'
+              : phase === 'PHASE_4_IMPLEMENT'
+                ? 'current'
+                : specApproved
+                  ? 'pending'
+                  : 'pending',
+        owner: 'claude-code',
+        humanGate: 'none',
+        phase: 'PHASE_4_IMPLEMENT',
+        evidenceTypes: ['implementation-record', 'shards'],
+        evidenceIds: [...evidenceByKind('implementation-record'), ...evidenceByKind('shards')],
+        blockedReason: blockedReason && phase === 'PHASE_4_IMPLEMENT' ? blockedReason : undefined,
+      },
+      {
+        id: `${item.issue.id}-code-review`,
+        kind: 'code_review',
+        label: 'Code Review',
+        required: true,
+        status: blockedReason
+          ? 'blocked'
+          : reviewPassed
+            ? 'passed'
+            : phase === 'PHASE_5_REVIEW' || phase === 'PHASE_6_CONVERGE'
+              ? 'current'
+              : implementationDone
+                ? 'pending'
+                : 'pending',
+        owner: 'codex',
+        humanGate: 'none',
+        phase: 'PHASE_5_REVIEW',
+        evidenceTypes: ['review-record', 'global-review', 'test-record'],
+        evidenceIds: [
+          ...evidenceByKind('review-record'),
+          ...evidenceByKind('global-review'),
+          ...evidenceByKind('test-record'),
+        ],
+        blockedReason,
+      },
+      {
+        id: `${item.issue.id}-browser-qa`,
+        kind: 'browser_qa',
+        label: 'Browser QA',
+        required: false,
+        status: browserQaPassed
+          ? 'passed'
+          : phase === 'PHASE_7_GLOBAL_REVIEW'
+            ? 'current'
+            : 'pending',
+        owner: 'codex',
+        humanGate: 'none',
+        phase: 'PHASE_7_GLOBAL_REVIEW',
+        evidenceTypes: ['global-review'],
+        evidenceIds: evidenceByKind('global-review'),
+      },
+      {
+        id: `${item.issue.id}-release-gate`,
+        kind: 'release_gate',
+        label: 'Release Gate',
+        required: true,
+        status: blockedReason
+          ? 'blocked'
+          : releaseReady
+            ? 'passed'
+            : ['PHASE_6_CONVERGE', 'PHASE_7_GLOBAL_REVIEW', 'PHASE_8_ANNOTATE', 'CLOSED'].includes(
+                  phase,
+                )
+              ? 'current'
+              : 'pending',
+        owner: 'codex',
+        humanGate: 'decision',
+        phase: 'PHASE_8_ANNOTATE',
+        evidenceTypes: ['convergence-pr', 'annotations'],
+        evidenceIds: [...evidenceByKind('convergence-pr'), ...evidenceByKind('annotations')],
+        blockedReason,
+      },
+      {
+        id: `${item.issue.id}-retro`,
+        kind: 'retro',
+        label: 'Reflect',
+        required: false,
+        status: item.issue.status === 'ARCHIVED' ? 'passed' : releaseReady ? 'current' : 'pending',
+        owner: 'codex',
+        humanGate: 'none',
+        evidenceTypes: ['annotations'],
+        evidenceIds: evidenceByKind('annotations'),
+      },
+    ];
+
+    return {
+      id: `default-${this.inferWorkflowKind(item)}`,
+      name: 'Default Codex / Claude Code delivery',
+      version: 1,
+      appliesTo: [this.inferWorkflowKind(item)],
+      capturedAt: updated,
+      source: 'default',
+      steps,
+    };
+  }
+
+  private buildReviewGates(item: LoopListItem | LoopIssueDetail): LoopReviewGate[] {
+    const updated = item.state?.updated ?? item.issue.updated;
+    const blockedReason = this.deliveryBlockedReason(item);
+    const specApproved = this.isSpecApproved(item);
+    const implementationDone = this.isImplementationDone(item);
+    const reviewPassed = this.isReviewPassed(item);
+    const findingsCount = this.reviewFindingsCount(item);
+    const evidenceByKind = this.evidenceIdsByKind(item);
+
+    return [
+      {
+        id: `${item.issue.id}-gate-product`,
+        kind: 'product',
+        status:
+          blockedReason && item.state?.phase === 'PHASE_2_REVIEW'
+            ? 'blocked'
+            : specApproved
+              ? 'passed'
+              : 'pending',
+        reviewer: 'human',
+        confidence: specApproved ? 0.9 : undefined,
+        findingsCount: 0,
+        evidenceId: evidenceByKind('spec')[0],
+        requiredByStepId: `${item.issue.id}-spec-review`,
+        updated,
+      },
+      {
+        id: `${item.issue.id}-gate-architecture`,
+        kind: 'architecture',
+        status: this.phaseAtLeast(item, 'PHASE_3_DECOMPOSE') ? 'passed' : 'pending',
+        reviewer: 'codex',
+        confidence: this.phaseAtLeast(item, 'PHASE_3_DECOMPOSE') ? 0.8 : undefined,
+        findingsCount: 0,
+        evidenceId: evidenceByKind('shards')[0],
+        requiredByStepId: `${item.issue.id}-implementation`,
+        updated,
+      },
+      {
+        id: `${item.issue.id}-gate-code`,
+        kind: 'code',
+        status: blockedReason
+          ? 'blocked'
+          : reviewPassed
+            ? 'passed'
+            : findingsCount > 0
+              ? 'needs_changes'
+              : implementationDone
+                ? 'pending'
+                : 'pending',
+        reviewer: 'codex',
+        confidence: reviewPassed ? 0.85 : undefined,
+        findingsCount,
+        evidenceId: evidenceByKind('review-record')[0] ?? evidenceByKind('global-review')[0],
+        requiredByStepId: `${item.issue.id}-code-review`,
+        updated,
+      },
+      {
+        id: `${item.issue.id}-gate-security`,
+        kind: 'security',
+        status: this.isReleaseReady(item) ? 'passed' : 'pending',
+        reviewer: 'codex',
+        confidence: this.isReleaseReady(item) ? 0.7 : undefined,
+        findingsCount: 0,
+        evidenceId: evidenceByKind('global-review')[0],
+        requiredByStepId: `${item.issue.id}-release-gate`,
+        updated,
+      },
+    ];
+  }
+
+  private buildReleaseGate(item: LoopListItem | LoopIssueDetail): LoopReleaseGate {
+    const updated = item.state?.updated ?? item.issue.updated;
+    const evidenceByKind = this.evidenceIdsByKind(item);
+    const checklist = {
+      specApproved: this.isSpecApproved(item),
+      implementationEvidence: this.isImplementationDone(item),
+      testsPassed: this.testsPassed(item),
+      requiredReviewsPassed: this.isReviewPassed(item),
+      browserQaPassed: this.isBrowserQaPassed(item),
+      docsUpdated: true,
+      prReady: Boolean(this.asDetail(item)?.convergencePr || item.issue.status === 'CLOSED'),
+      rollbackNote: Boolean(this.asDetail(item)?.convergencePr || item.issue.status === 'CLOSED'),
+    };
+    const blocker = this.deliveryBlockedReason(item);
+    return {
+      id: `${item.issue.id}-release-gate`,
+      status: blocker
+        ? 'blocked'
+        : item.issue.status === 'CLOSED' || item.state?.finalized
+          ? 'shipped'
+          : Object.values(checklist).every(Boolean)
+            ? 'ready'
+            : 'pending',
+      checklist,
+      evidenceIds: [
+        ...evidenceByKind('spec'),
+        ...evidenceByKind('implementation-record'),
+        ...evidenceByKind('test-record'),
+        ...evidenceByKind('review-record'),
+        ...evidenceByKind('global-review'),
+        ...evidenceByKind('convergence-pr'),
+      ],
+      blocker,
+      updated,
+    };
+  }
+
+  private deliveryBlockedReason(item: LoopListItem | LoopIssueDetail): string | undefined {
+    if (item.state?.paused || item.state?.phase === 'PAUSED') return 'Loop is paused';
+    if (item.state?.globalVerdict && item.state.globalVerdict !== 'PASS') {
+      return `Global review ${item.state.globalVerdict}`;
+    }
+    return undefined;
+  }
+
+  private inferWorkflowKind(
+    item: LoopListItem | LoopIssueDetail,
+  ): LoopWorkflowRecipe['appliesTo'][number] {
+    const text =
+      `${item.issue.title} ${item.issue.body ?? ''} ${item.issue.targetRepo}`.toLowerCase();
+    if (text.includes('doc') || text.includes('文档')) return 'docs';
+    if (text.includes('fix') || text.includes('bug') || text.includes('修复')) return 'bugfix';
+    if (text.includes('refactor') || text.includes('重构')) return 'refactor';
+    if (/\b(deploy|ops)\b/.test(text) || text.includes('运维')) return 'ops';
+    return 'feature';
+  }
+
+  private evidenceIdsByKind(item: LoopListItem | LoopIssueDetail) {
+    const detail = this.asDetail(item);
+    return (kind: LoopEvidenceArtifact['kind']) =>
+      detail?.evidenceArtifacts
+        ?.filter((artifact) => artifact.kind === kind)
+        .map((artifact) => artifact.id) ?? [];
+  }
+
+  private asDetail(item: LoopListItem | LoopIssueDetail): LoopIssueDetail | undefined {
+    return 'intake' in item ? item : undefined;
+  }
+
+  private isSpecApproved(item: LoopListItem | LoopIssueDetail): boolean {
+    const detail = this.asDetail(item);
+    return Boolean(
+      detail?.spec?.status === 'APPROVED' ||
+      (item.state?.specVersion &&
+        item.state.specVersion !== 'v0' &&
+        this.phaseAtLeast(item, 'PHASE_3_DECOMPOSE')),
+    );
+  }
+
+  private isImplementationDone(item: LoopListItem | LoopIssueDetail): boolean {
+    const shardsDone = item.state?.shardsDone ?? 0;
+    const shardsTotal = item.state?.shardsTotal ?? 0;
+    return shardsTotal > 0 && shardsDone >= shardsTotal;
+  }
+
+  private isReviewPassed(item: LoopListItem | LoopIssueDetail): boolean {
+    return item.issue.status === 'CLOSED' || item.state?.globalVerdict === 'PASS';
+  }
+
+  private isBrowserQaPassed(item: LoopListItem | LoopIssueDetail): boolean {
+    const phase = item.state?.phase ?? 'PHASE_0_INTAKE';
+    return (
+      item.issue.status === 'CLOSED' ||
+      ['PHASE_7_GLOBAL_REVIEW', 'PHASE_8_ANNOTATE', 'CLOSED'].includes(phase)
+    );
+  }
+
+  private isReleaseReady(item: LoopListItem | LoopIssueDetail): boolean {
+    return (
+      (item.issue.status === 'CLOSED' || item.state?.finalized || item.state?.phase === 'CLOSED') &&
+      this.isSpecApproved(item) &&
+      this.isImplementationDone(item) &&
+      this.isReviewPassed(item)
+    );
+  }
+
+  private testsPassed(item: LoopListItem | LoopIssueDetail): boolean {
+    const detail = this.asDetail(item);
+    if (!detail) return this.isReviewPassed(item);
+    return (
+      detail.testRecords.length > 0 &&
+      detail.testRecords.every((record) => record.status === 'TEST-PASS')
+    );
+  }
+
+  private reviewFindingsCount(item: LoopListItem | LoopIssueDetail): number {
+    const detail = this.asDetail(item);
+    if (!detail) return item.state?.globalVerdict && item.state.globalVerdict !== 'PASS' ? 1 : 0;
+    return (
+      detail.reviewRecords.reduce((total, record) => total + record.issues.length, 0) +
+      (detail.globalReview?.issues.length ?? 0)
+    );
+  }
+
+  private phaseAtLeast(item: LoopListItem | LoopIssueDetail, phase: LoopPhase): boolean {
+    if (item.issue.status === 'CLOSED' || item.state?.finalized) return true;
+    const order: Partial<Record<LoopPhase, number>> = {
+      PHASE_0_INTAKE: 0,
+      PHASE_1_SPEC: 1,
+      PHASE_2_REVIEW: 2,
+      PHASE_3_DECOMPOSE: 3,
+      PHASE_4_IMPLEMENT: 4,
+      PHASE_5_REVIEW: 5,
+      PHASE_6_CONVERGE: 6,
+      PHASE_7_GLOBAL_REVIEW: 7,
+      PHASE_8_ANNOTATE: 8,
+      CLOSED: 9,
+      PAUSED: -1,
+    };
+    return (order[item.state?.phase ?? 'PHASE_0_INTAKE'] ?? 0) >= (order[phase] ?? 0);
   }
 
   private buildEvidenceArtifacts(detail: LoopIssueDetail): LoopEvidenceArtifact[] {
@@ -2171,6 +2715,7 @@ export class LoopsService {
         kind: 'implementation-record' as const,
         path: `.loops/runs/${issueId}/${record.shardId}/${record.round}/implementation.json`,
         status: 'present' as const,
+        round: record.round,
         count: record.changedFiles.length,
         summary: `${record.status} implementation for ${record.shardId}; ${record.changedFiles.length} changed files recorded.`,
       })),
@@ -2180,6 +2725,7 @@ export class LoopsService {
         kind: 'test-record' as const,
         path: `.loops/tests/${issueId}/records/${record.id}.json`,
         status: 'present' as const,
+        round: record.round,
         count: record.commands.length,
         summary: `${record.status} test run for ${record.shardId}; ${record.commands.length} commands executed.`,
       })),
@@ -2189,6 +2735,7 @@ export class LoopsService {
         kind: 'review-record' as const,
         path: `.loops/runs/${issueId}/${record.shardId}/${record.round}/review.json`,
         status: 'present' as const,
+        round: record.round,
         count: record.issues.length,
         summary: `${record.verdict} review for ${record.shardId}; ${record.issues.length} issues recorded.`,
       })),
@@ -2200,6 +2747,7 @@ export class LoopsService {
       kind: 'global-review',
       path: `.loops/runs/${issueId}/global-review.json`,
       status: detail.globalReview ? 'present' : 'pending',
+      round: detail.globalReview?.round,
       summary: detail.globalReview
         ? `${detail.globalReview.verdict} global review with ${detail.globalReview.issues.length} cross-shard issues.`
         : 'Global review has not been run yet.',

@@ -35,9 +35,12 @@
 以下事项仍有产品价值，但需要更大范围的 contract、worker 或工作流设计，已标注为后续 Epic，不阻断当前闭环：
 
 - 队列化后台 worker 与 SSE/polling 进度流；
-- 异常决策中心；
-- Spec diff review；
-- round-aware evidence view；
 - GitHub / Linear / Slack 深集成触发；
-- 自然语言控制；
 - 沙箱权限策略与工具白名单产品化。
+
+已在 0623 UIUX 循环继续关闭：
+
+- 异常决策中心 v2；
+- Spec diff review v1；
+- round-aware evidence view v2。
+- Natural-language control v1。

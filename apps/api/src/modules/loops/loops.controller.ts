@@ -242,6 +242,19 @@ export class LoopsController {
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.naturalCommand)
+  async naturalCommand(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.naturalCommand, async ({ params, body }) => {
+      const result = await this.loopsService.naturalCommand(params.issueId, body);
+      await this.auditLoopUpdate(req, params.issueId, 'naturalCommand', {
+        intent: result.intent,
+        executed: result.executed,
+      });
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.intervene)
   async intervene(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.intervene, async ({ params, body }) => {

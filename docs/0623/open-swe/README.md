@@ -69,17 +69,17 @@ DofeAI 的 `.loops` 证据是优势，但工程团队最终仍需要 PR。
 
 ## 对本项目的优化建议
 
-| 优先级 | 建议                    | 验收                                                               |
-| ------ | ----------------------- | ------------------------------------------------------------------ |
-| P0     | 队列化 `advance` worker | 后续 Epic：需要 BullMQ/锁/worker 重启恢复/SSE 设计                 |
-| P0     | Spec diff review        | 后续 Epic：需要 spec snapshot/diff 数据结构                        |
-| P1     | GitHub issue intake     | issue label/comment 可创建 Loop                                    |
-| P1     | PR evidence comment     | 后续 Epic：当前已有 convergence PR evidence，尚未自动写 PR comment |
-| P1     | Worker progress stream  | detail 页显示实时事件流                                            |
+| 优先级 | 建议                    | 验收                                                                              |
+| ------ | ----------------------- | --------------------------------------------------------------------------------- |
+| P0     | 队列化 `advance` worker | 后续 Epic：需要 BullMQ/锁/worker 重启恢复/SSE 设计                                |
+| P0     | Spec diff review        | 已实施 v1：detail 页轻量 diff 摘要；结构化审批与完整上下文后续 Epic               |
+| P1     | GitHub issue intake     | issue label/comment 可创建 Loop                                                   |
+| P1     | PR evidence comment     | 后续 Epic：当前已有 convergence PR evidence，尚未自动写 PR comment                |
+| P1     | Worker progress stream  | 已实施 v1：detail 页 Trace Timeline / Event Log 展示事件进度；SSE 实时流后续 Epic |
 
 ## 实施标注
 
-2026-06-23 本轮未实施 worker / Spec diff，因为它们需要跨后端队列、状态机、contract 和前端流式进度的成套设计。已先实施 Loop Board v1，补强团队协作视图；异步 worker、Spec diff review、GitHub issue intake 和 PR evidence comment 均标注为后续 Epic。
+2026-06-23 本轮已复核 detail 页进度可视化：`apps/web/app/loops/[issueId]/page.tsx` 已通过 Trace Timeline、Scope Summary 与 Event Log 展示现有 loop logs，`apps/web/app/loops/[issueId]/page.test.tsx` 已覆盖事件流渲染与重复事件 key 防护。因此 Worker progress stream 已闭合为文件态事件流 v1。另已确认 Spec diff review v1 基于现有 spec snapshots 展示当前版相对上一版的新增、删除、不变摘要和示例行；结构化 acceptance criteria diff、审批版本绑定与完整上下文展开属于后续增强。真正的异步 worker、SSE live stream、GitHub issue intake 和 PR evidence comment 仍需要跨后端队列、状态机、contract、git integration 的成套设计，标注为后续 Epic。
 
 ## 结论
 

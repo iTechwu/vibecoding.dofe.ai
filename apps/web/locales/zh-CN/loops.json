@@ -19,6 +19,20 @@
       "closed": "已关闭",
       "closedNote": "已完成交付闭环"
     },
+    "performance": {
+      "title": "性能快照",
+      "summary": "基于当前 Loop 状态、成本和 trace 证据的早期评测信号。",
+      "passRate": "通过率",
+      "passRateNote": "已关闭或审阅 PASS",
+      "redoRate": "重做率",
+      "redoRateNote": "发生返工的 Loop",
+      "averageCalls": "平均调用",
+      "averageCallsNote": "每个有成本记录的 Loop",
+      "averageTokens": "平均 tokens",
+      "averageTokensNote": "每个有成本记录的 Loop",
+      "traceEvents": "Trace 事件",
+      "traceEventsNote": "近期 {recent} 条"
+    },
     "health": {
       "title": "运行健康度",
       "ok": "文件状态与数据库索引当前一致。",
@@ -30,6 +44,33 @@
       "loops": "Loops",
       "issues": "Issues",
       "problems": "问题"
+    },
+    "guide": {
+      "title": "交付引导",
+      "summary": "先按这些检查点阅读 dashboard，不必一开始理解每个面板。",
+      "state": {
+        "done": "已完成",
+        "active": "当前",
+        "pending": "下一步"
+      },
+      "steps": {
+        "create": {
+          "title": "创建 Loop",
+          "body": "从一句简单需求开始，由 issue 预览选择模板。"
+        },
+        "review": {
+          "title": "审阅决策",
+          "body": "先处理规格审阅、re-loop 请求和人工关卡，再继续推进。"
+        },
+        "exceptions": {
+          "title": "处理异常",
+          "body": "通过负责人、动作和证据卡片解除暂停或保护状态。"
+        },
+        "evidence": {
+          "title": "审计证据",
+          "body": "交付前检查实现、测试、审阅和收敛记录。"
+        }
+      }
     },
     "riskQueue": {
       "title": "风险队列",
@@ -49,6 +90,84 @@
         "delivered": "已交付"
       }
     },
+    "workflowRecipe": {
+      "title": "工作流配方",
+      "summary": "{total} 个 Loop 映射到规划 → 构建 → 审阅 → QA → 发布 · {blocked} 个阻塞 · {releaseReady} 个可发布",
+      "loading": "正在加载工作流配方。",
+      "state": {
+        "done": "已完成",
+        "current": "当前",
+        "waiting": "下一步",
+        "blocked": "阻塞"
+      },
+      "gate": {
+        "none": "无关卡",
+        "human": "人工关卡",
+        "agent": "Agent 关卡",
+        "release": "发布关卡"
+      },
+      "steps": {
+        "intake": "录入",
+        "plan": "规划",
+        "build": "构建",
+        "codeReview": "审阅",
+        "browserQa": "浏览器 QA",
+        "release": "发布",
+        "reflect": "复盘"
+      }
+    },
+    "reviewGates": {
+      "title": "审阅关卡",
+      "summary": "{passed}/{total} 已通过 · {pending} 个待处理 · {blocked} 个阻塞",
+      "loading": "正在加载审阅关卡。",
+      "kind": {
+        "product": "产品",
+        "architecture": "架构",
+        "code": "代码",
+        "security": "安全"
+      },
+      "status": {
+        "passed": "已通过",
+        "pending": "待处理",
+        "needsChanges": "需修改",
+        "blocked": "阻塞"
+      }
+    },
+    "releaseReadiness": {
+      "title": "发布就绪度",
+      "summary": "{ready} 个可发布 · {attention} 个需关注 · {blocked} 个阻塞",
+      "loading": "正在加载发布就绪度。",
+      "empty": "暂无接近发布的 Loop。",
+      "state": {
+        "ready": "可发布",
+        "attention": "需关注",
+        "blocked": "阻塞"
+      },
+      "checklist": {
+        "spec": "规格",
+        "implementation": "实现",
+        "review": "审阅",
+        "qa": "QA"
+      }
+    },
+    "triggerPortfolio": {
+      "title": "触发来源组合",
+      "summary": "{total} 个 issue 来自 {sources} 类来源，覆盖 {repos} 个仓库",
+      "loading": "正在加载触发来源。",
+      "empty": "暂无触发来源。",
+      "sources": "来源",
+      "sourceCount": "{count} 个 issue",
+      "submittedBy": "{user} · {time}"
+    },
+    "repoContext": {
+      "title": "仓库上下文地图",
+      "summary": "{issues} 个 issue 覆盖 {repos} 个仓库 · {blocked} 个阻塞",
+      "loading": "正在加载仓库上下文。",
+      "empty": "暂无仓库上下文。",
+      "issueCount": "{count} 个 issue",
+      "blocked": "阻塞",
+      "latest": "最近更新"
+    },
     "exceptionCenter": {
       "title": "异常决策中心",
       "summary": "{running} 个运行中 · {queued} 个排队中 · {failed} 个失败 · 容量 {capacity}",
@@ -56,7 +175,9 @@
       "empty": "暂无需要决策的异常。",
       "owner": "负责人",
       "action": "动作",
-      "evidence": "证据"
+      "evidence": "证据",
+      "impact": "影响",
+      "retryAction": "重试"
     },
     "agentRuntime": {
       "title": "Agent 运行态",
@@ -101,7 +222,15 @@
       "title": "Workspace",
       "loading": "正在加载 workspace。",
       "current": "{id}（当前）",
-      "runtimeSummary": "运行时：Codex {codex} · Claude {claude}"
+      "runtimeSummary": "运行时：Codex {codex} · Claude {claude}",
+      "rules": {
+        "title": "Workspace 规则",
+        "summary": "{present}/{total} 已存在",
+        "status": {
+          "present": "已存在",
+          "missing": "缺失"
+        }
+      }
     },
     "actionQueue": {
       "title": "动作队列",
@@ -144,7 +273,28 @@
       "toolRegistry": "工具注册表",
       "compatibilityChecks": "兼容性检查",
       "tools": "{count} 个工具",
-      "owners": "{count} 个负责人"
+      "owners": "{count} 个负责人",
+      "permissionProfile": {
+        "title": "权限画像",
+        "summary": "{agents} 个 agent · {tools} 个工具 · {activeTools} 个活跃工具",
+        "state": {
+          "enabled": "已启用",
+          "restricted": "受限",
+          "planned": "计划中"
+        },
+        "modes": {
+          "read": "读取",
+          "write": "写入",
+          "shell": "Shell/测试",
+          "network": "网络",
+          "approval": "审批"
+        }
+      },
+      "providerProfile": {
+        "title": "Provider 画像",
+        "summary": "{providers} 个 provider · {activeAgents} 个活跃 agent · {plannedTools} 个计划中工具路由",
+        "evidence": "{active}/{agents} 个活跃 agent · {planned} 个计划中工具"
+      }
     },
     "agingQueue": {
       "title": "滞留队列",
@@ -235,6 +385,24 @@
       "previewPriorityLabel": "优先级",
       "previewCriteriaLabel": "验收标准",
       "previewTargetRepoLabel": "目标仓库",
+      "previewAgentPathLabel": "推荐 Agent 路径",
+      "previewTestPolicyLabel": "建议测试策略",
+      "agentPath": {
+        "feature": "规划 Agent → 实现 Agent → 审阅 Agent",
+        "bugfix": "恢复 Agent → 实现 Agent → 审阅 Agent",
+        "refactor": "规划 Agent → 实现 Agent → 审阅 Agent",
+        "docs": "规划 Agent → 文档审阅 Agent",
+        "integration": "规划 Agent → 集成 Agent → 审阅 Agent",
+        "flow": "规划 Agent → 工作流 Agent → 审阅 Agent"
+      },
+      "testPolicy": {
+        "feature": "单元测试 + 类型检查 + 聚焦 UI 回归",
+        "bugfix": "复现用例 + 回归测试 + 类型检查",
+        "refactor": "单元测试 + 合约兼容检查 + 类型检查",
+        "docs": "链接/示例 smoke check + 文档审阅",
+        "integration": "客户端边界测试 + 失败路径 smoke check",
+        "flow": "状态转换测试 + 恢复路径回归"
+      },
       "advancedSummary": "高级设置",
       "advancedTitle": "覆盖标题",
       "advancedPriority": "优先级",
@@ -359,6 +527,51 @@
       "noShard": "尚未拆分 Shard",
       "noEvents": "暂无事件"
     },
+    "deliveryControls": {
+      "title": "交付控制",
+      "meta": "{steps} 个工作流步骤 · {gates} 个审阅关卡",
+      "workflowTitle": "工作流时间线",
+      "workflowVersion": "v{version}",
+      "reviewTitle": "审阅关卡",
+      "releaseTitle": "发布关卡",
+      "empty": "暂无交付控制数据。",
+      "gate": "关卡：{gate}",
+      "reviewer": "审阅者：{reviewer}",
+      "findings": "{count} 个发现",
+      "evidenceIds": "{count} 条证据链接",
+      "releaseChecklist": {
+        "specApproved": "规格已批准",
+        "implementationEvidence": "实现证据",
+        "testsPassed": "测试",
+        "requiredReviewsPassed": "审阅",
+        "browserQaPassed": "Browser QA",
+        "docsUpdated": "文档",
+        "prReady": "PR",
+        "rollbackNote": "回滚"
+      }
+    },
+    "exceptions": {
+      "title": "Issue 异常",
+      "evidence": "证据",
+      "runtime": "运行态",
+      "round": "第 {round} 轮",
+      "runtimeEvidence": "运行态：{agent} 为 {status}",
+      "reasons": {
+        "paused": "已暂停",
+        "globalVerdict": "全局结论 {verdict}",
+        "priority": "{priority} 优先级"
+      },
+      "owners": {
+        "operator": "Loop 操作人",
+        "reviewer": "审阅人",
+        "product": "产品负责人"
+      },
+      "actions": {
+        "resume": "恢复 loop 或分配恢复处理",
+        "reviewEvidence": "审阅失败证据并启动 re-loop",
+        "monitorBudget": "监控预算；如触发保护则缩短范围"
+      }
+    },
     "nextAction": {
       "title": "下一步动作",
       "resume": {
@@ -430,7 +643,12 @@
       "submitter": "提交人",
       "targetRepo": "目标仓库",
       "rawPayload": "原始载荷",
-      "source": "来源"
+      "source": "来源",
+      "ruleSnapshot": "规则快照",
+      "ruleSnapshotMeta": "{present}/{total} 条规则 · {status}",
+      "ruleSnapshotCaptured": "捕获于 {time}",
+      "agentReadable": "Agent 可读",
+      "notAgentReadable": "需要规则"
     },
     "requirements": {
       "title": "初始需求覆盖",
@@ -448,7 +666,14 @@
       "generate": "生成规格",
       "regenerate": "重新生成规格",
       "revisionNote": "已要求修改。使用继续推进产出下一版草稿供审阅。",
-      "approvedNote": "规格已批准。引擎正在自动推进——此处无需其他操作。"
+      "approvedNote": "规格已批准。引擎正在自动推进——此处无需其他操作。",
+      "diffTitle": "规格差异",
+      "diffMeta": "{from} 到 {to}",
+      "diffAdded": "新增 {count}",
+      "diffRemoved": "移除 {count}",
+      "diffUnchanged": "不变 {count}",
+      "diffAddedPreview": "新增行",
+      "diffRemovedPreview": "移除行"
     },
     "shards": {
       "title": "Shards",
@@ -491,6 +716,8 @@
     },
     "records": {
       "implementation": "实现记录",
+      "currentRoundSummary": "当前展示第 {round} 轮证据，已隐藏 {hidden} 条历史记录。",
+      "currentRoundArtifactsSummary": "当前展示第 {round} 轮工件，已隐藏 {hidden} 个历史工件。",
       "noImplementation": "暂无实现记录。",
       "filesRound": "{files} 个文件 · 第 {round} 轮",
       "artifacts": "证据工件工作区",

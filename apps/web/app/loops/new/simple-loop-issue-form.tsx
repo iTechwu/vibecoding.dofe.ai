@@ -18,6 +18,9 @@ const TEMPLATE_OPTIONS: Array<{ id: LoopSimpleIssueTemplate; labelKey: string }>
 ];
 
 const PRIORITIES: LoopPriority[] = ['P0', 'P1', 'P2', 'P3'];
+const EMPTY_WORKSPACES: NonNullable<
+  ReturnType<typeof useLoopsWorkspaces>['data']
+>['body']['data']['workspaces'] = [];
 
 interface SimpleLoopIssueFormProps {
   /** Server-resolved workspace root; used as the default target repo display. */
@@ -42,11 +45,11 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
   const workspacesQuery = useLoopsWorkspaces();
   const createIssue = useCreateSimpleLoopIssue();
 
-  const workspaces = workspacesQuery.data?.body?.data?.workspaces ?? [];
+  const workspaces = workspacesQuery.data?.body?.data?.workspaces ?? EMPTY_WORKSPACES;
   const currentWorkspace = workspacesQuery.data?.body?.data?.current;
 
   const [request, setRequest] = useState('');
-  const [workspaceId, setWorkspaceId] = useState('');
+  const [workspaceId, setWorkspaceId] = useState(currentWorkspace ?? '');
   const [template, setTemplate] = useState<LoopSimpleIssueTemplate>('auto');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   // Advanced overrides (empty = use auto-generated).
@@ -56,12 +59,7 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
   const [targetRepoOverride, setTargetRepoOverride] = useState('');
   const [requestError, setRequestError] = useState<string | null>(null);
 
-  // Default to the active workspace once workspaces load.
-  useEffect(() => {
-    if (!workspaceId && currentWorkspace) {
-      setWorkspaceId(currentWorkspace);
-    }
-  }, [workspaceId, currentWorkspace]);
+  const effectiveWorkspaceId = workspaceId || currentWorkspace;
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -70,8 +68,8 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
   }, [isLoading, isAuthenticated, router]);
 
   const selectedWorkspace = useMemo(
-    () => workspaces.find((ws) => ws.workspaceId === workspaceId) ?? workspaces[0],
-    [workspaces, workspaceId],
+    () => workspaces.find((ws) => ws.workspaceId === effectiveWorkspaceId) ?? workspaces[0],
+    [workspaces, effectiveWorkspaceId],
   );
 
   const effectiveTargetRepo =
@@ -94,6 +92,11 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
       targetRepo: effectiveTargetRepo,
     });
   }, [request, template, titleOverride, priorityOverride, criteriaOverride, effectiveTargetRepo]);
+
+  const previewTemplate = useMemo(
+    () => (preview ? LOOP_ISSUE_TEMPLATES.find((item) => item.id === preview.template) : undefined),
+    [preview],
+  );
 
   if (!isAuthenticated) {
     return <p className="text-sm text-muted-foreground">{t('simple.redirecting')}</p>;
@@ -222,6 +225,22 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
               </dt>
               <dd className="break-all text-xs text-muted-foreground">{preview.targetRepo}</dd>
             </div>
+            {previewTemplate ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="flex flex-col gap-1 rounded-md border bg-background px-3 py-2">
+                  <dt className="text-xs text-muted-foreground">
+                    {t('simple.previewAgentPathLabel')}
+                  </dt>
+                  <dd className="text-xs font-medium">{t(previewTemplate.agentPathKey)}</dd>
+                </div>
+                <div className="flex flex-col gap-1 rounded-md border bg-background px-3 py-2">
+                  <dt className="text-xs text-muted-foreground">
+                    {t('simple.previewTestPolicyLabel')}
+                  </dt>
+                  <dd className="text-xs font-medium">{t(previewTemplate.testPolicyKey)}</dd>
+                </div>
+              </div>
+            ) : null}
             <div className="flex flex-col gap-1">
               <dt className="text-xs text-muted-foreground">{t('simple.previewCriteriaLabel')}</dt>
               <dd>

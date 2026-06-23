@@ -54,12 +54,12 @@ Continue 作为先驱项目进入只读状态，说明：
 | 优先级 | 建议                     | 验收                                                                                 |
 | ------ | ------------------------ | ------------------------------------------------------------------------------------ |
 | P0     | 明确非 IDE 插件定位      | 已实施：0622/0623 文档和 `/loops` dashboard 均表达 control plane / delivery workflow |
-| P1     | 数据资产沉淀             | evidence、metrics、repo map 可跨 agent 复用                                          |
+| P1     | 数据资产沉淀             | 已实施 v1：evidence、metrics、Repo Context Map 在 dashboard 可复用；真实代码地图后续 |
 | P2     | IDE 插件作为入口而非核心 | 插件只创建/查看 Loop，不承载状态机                                                   |
 
 ## 实施标注
 
-2026-06-23 已完成非 IDE 插件定位标注：DofeAI 的默认产品面是 Loops Control Plane / Agent Delivery Console，而不是编辑器插件。Loop Board v1 进一步强化了团队交付控制面的心智。repo map、IDE 入口等属于后续扩展。
+2026-06-23 已完成非 IDE 插件定位标注：DofeAI 的默认产品面是 Loops Control Plane / Agent Delivery Console，而不是编辑器插件。Loop Board v1 进一步强化了团队交付控制面的心智。本轮新增 Repo Context Map v1，让 evidence、metrics 与仓库覆盖可在 dashboard 中形成可复用上下文。真实代码地图、IDE 入口等属于后续扩展。
 
 ## 结论
 

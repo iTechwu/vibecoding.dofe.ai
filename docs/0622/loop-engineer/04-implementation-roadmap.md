@@ -128,7 +128,7 @@
 
 ### P1 · 异常决策中心
 
-状态：后续 Epic，不阻断当前闭环。
+状态：已实施 v2（0623 UIUX 循环）。
 
 目标：把异常从散落的日志/提示变成用户可处理的 action card。
 
@@ -160,7 +160,7 @@
 
 ### P1 · Round-aware evidence view
 
-状态：后续 Epic，不阻断当前闭环。
+状态：已实施 v2（0623 UIUX 循环）。
 
 目标：re-loop 后默认聚焦当前 round，旧轮证据归档可查但不污染判断。
 
@@ -178,7 +178,7 @@
 
 ### P1 · Spec diff review
 
-状态：后续 Epic，不阻断当前闭环。
+状态：已实施 v1（0623 UIUX 循环）。
 
 目标：让人工审阅从“读整篇 Spec”升级为“看变化和风险”。
 
@@ -198,7 +198,7 @@
 
 ### P2 · Natural-language control
 
-状态：后续 Epic，不阻断当前闭环。
+状态：已实施 v1（0623 UIUX/API 循环）。
 
 目标：支持用户用自然语言操作 Loop。
 
@@ -212,15 +212,23 @@
 
 建议实现：
 
-- intent parser 将自然语言映射到 `advance` / reviewSpec / intervene / query evidence；
-- 高风险操作仍显示确认；
-- 所有自然语言操作写 audit log。
+- 已新增 `POST /loops/issues/:issueId/natural-command`；
+- deterministic intent parser 已将常见命令映射到 `advance` / `reviewSpec` / `intervene` / query evidence；
+- 所有自然语言操作写 `NATURAL_COMMAND` log，并在 controller 侧写 audit；
+- 未识别命令默认不执行，返回可尝试的安全命令。
+
+后续增强：
+
+- 前端命令栏或聊天式入口；
+- LLM intent parser 与置信度解释；
+- 高风险操作的二次确认 UI；
+- 更完整的“解释为什么停住了 / 给我看本轮失败测试”证据查询体验。
 
 验收：
 
-- 常见 10 个操作意图可识别；
+- `continue` / `pause` / `resume` / `approve-spec` / `request-revision` / `query-evidence` / `unknown` 已有 schema 与 service 测试；
 - 误识别时不执行破坏性动作；
-- 用户能从聊天式入口完成 happy path。
+- happy path 可通过 API 入口完成，前端命令栏归入后续增强。
 
 ## 设计验收清单
 
@@ -292,10 +300,10 @@ pnpm --filter @repo/api exec tsc -p tsconfig.type-check.json --noEmit
 | P0 细粒度端点终态幂等        | 已实施，CLOSED 后 granular endpoints 不会倒退状态                |
 | P1a 同步自动推进             | 已实施，`reviewSpec(approve)` 自动唤醒引擎并推进                 |
 | P1b 队列化后台 worker        | 后续 Epic，不阻断当前闭环                                        |
-| P1 异常决策中心              | 后续 Epic，不阻断当前闭环                                        |
-| P1 Round-aware evidence view | 后续 Epic，不阻断当前闭环                                        |
-| P1 Spec diff review          | 后续 Epic，不阻断当前闭环                                        |
-| P2 Natural-language control  | 后续 Epic，不阻断当前闭环                                        |
+| P1 异常决策中心              | 已实施 v2（0623 UIUX）                                           |
+| P1 Round-aware evidence view | 已实施 v2（0623 UIUX）                                           |
+| P1 Spec diff review          | 已实施 v1（0623 UIUX）                                           |
+| P2 Natural-language control  | 已实施 v1（deterministic command endpoint）；UI/LLM 增强后续     |
 
 本轮（2026-06-22）额外关闭的阻断项：
 
@@ -304,5 +312,5 @@ pnpm --filter @repo/api exec tsc -p tsconfig.type-check.json --noEmit
 - **P0 Spec 审阅四态**：已实施。无 Spec→说明使用 Continue Loop 生成、Draft→批准/请求修改、Revision requested→说明使用 Continue Loop 重新生成、Approved→只读提示自动推进，全部按 02-user-journey.md 落地，并有前端渲染测试。
 - **P0 Detail 页操作层收敛**：已实施。`use-loop-operations.ts` 不再为默认页面绑定 `generateSpec` / `decompose` / `runLoop` / `reviewGlobal` / `finalize` 细粒度 mutations；普通用户推进路径只保留 `advanceLoop`，细粒度 hooks 继续作为兼容/管理员入口保留在 hook 层。
 - **P0 advance 决策表回归**：已实施。覆盖 CLOSED 幂等、REVISION_REQUESTED 重生成、paused 自动恢复、非 APPROVED 拒绝、PHASE_6_CONVERGE 全局审阅+finalize、非 PASS 停留、`LOOP_ADVANCE_LIMIT` 最大步数保护，以及 dashboard action queue 用户语义标签。
-- **已知保留偏差（不阻断闭环）**：前端保留 `getRunnableShard` / `getRecoverableShard` 等纯展示用调度谓词（仅用于提示文案与 Resume Checkpoint 高亮，不驱动推进）。彻底消除需在 `LoopDetail` 上由后端 `resolveNextAction` 暴露 `nextAction` / `activeShardId`，属 contract 变更，归入「自然语言控制」Epic。
+- **已知保留偏差（不阻断闭环）**：前端保留 `getRunnableShard` / `getRecoverableShard` 等纯展示用调度谓词（仅用于提示文案与 Resume Checkpoint 高亮，不驱动推进）。彻底消除需在 `LoopDetail` 上由后端 `resolveNextAction` 暴露 `nextAction` / `activeShardId`，属后续 contract 增强。
 - **已知保留偏差（不阻断闭环）**：细粒度兼容端点的 contract summary、hook 名称/注释和后端内部异常仍保留 implementation evidence / scheduler endpoint / No runnable shard 等内部工程语义；这些入口面向 CLI、管理员、兼容调用方或错误诊断，不属于普通用户默认路径。

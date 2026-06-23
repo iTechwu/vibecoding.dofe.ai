@@ -62,15 +62,15 @@ DofeAI 可引入 researcher agent，用于：
 
 ## 对本项目的优化建议
 
-| 优先级 | 建议                          | 验收                                                  |
-| ------ | ----------------------------- | ----------------------------------------------------- |
-| P1     | Agent permission mode         | 后续 Epic；本轮仅在 Loop Board v1 中展示用户语义 mode |
-| P1     | Planner read-only enforcement | Spec/decompose 前无代码写入                           |
-| P2     | Researcher subagent           | 支持文档/竞品/代码搜索任务                            |
+| 优先级 | 建议                          | 验收                                                                           |
+| ------ | ----------------------------- | ------------------------------------------------------------------------------ |
+| P1     | Agent permission mode         | 已实施 v1：Capability Registry 展示 read/write/shell/network/approval 权限画像 |
+| P1     | Planner read-only enforcement | Spec/decompose 前无代码写入                                                    |
+| P2     | Researcher subagent           | 支持文档/竞品/代码搜索任务                                                     |
 
 ## 实施标注
 
-2026-06-23 已实施 Loop Board v1 的 user-facing mode，但尚未实现 read-only/write/shell/network 权限模式。权限模式需要后端 runtime/adapter contract 支持，归入后续 Epic。
+2026-06-23 已实施 Loop Board v1 的 user-facing mode，并在 Capability Registry 中新增 Permission Profile v1，按现有 agent/tool registry 展示 read/write/shell/network/approval 的状态和证据。真正的运行时强制权限、read-only/write/shell/network adapter contract 仍需后端 runtime/adapter 支持，归入后续 Epic。
 
 ## 结论
 

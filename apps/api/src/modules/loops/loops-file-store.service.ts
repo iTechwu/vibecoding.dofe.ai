@@ -19,6 +19,7 @@ import type {
   LoopReviewRecord,
   LoopShard,
   LoopSpec,
+  LoopSpecHistoryItem,
   LoopStateItem,
   LoopTestMatrix,
   LoopTestRecord,
@@ -115,6 +116,7 @@ export class LoopsFileStoreService {
       state.specVersion === 'v0'
         ? undefined
         : await this.readOptionalJson<LoopSpec>(`specs/${issueId}/spec.${state.specVersion}.json`);
+    const specHistory = await this.readSpecHistory(issueId);
     const shards =
       state.shardsTotal > 0
         ? await this.readOptionalJson<LoopShard[]>(`shards/${issueId}/shards.json`)
@@ -151,6 +153,7 @@ export class LoopsFileStoreService {
       issue,
       intake,
       spec,
+      specHistory,
       shards: shards ?? [],
       testMatrix,
       annotations: annotations ?? [],
@@ -982,6 +985,47 @@ export class LoopsFileStoreService {
   private async readJson<T>(relativePath: string): Promise<T> {
     const content = await fs.readFile(path.join(this.root, relativePath), 'utf8');
     return JSON.parse(content) as T;
+  }
+
+  private async readSpecHistory(issueId: string): Promise<LoopSpecHistoryItem[]> {
+    const specDir = path.join(this.root, 'specs', issueId);
+    const entries = await fs.readdir(specDir).catch((error) => {
+      const code = (error as NodeJS.ErrnoException)?.code;
+      if (code !== 'ENOENT') {
+        this.log('warn', `[Loops] unable to read spec history directory: ${issueId}`, {
+          issueId,
+          code,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return [];
+    });
+    const jsonFiles = entries.filter((entry) => /^spec\.[^.]+\.json$/.test(entry));
+    const specs = await Promise.all(
+      jsonFiles.map((entry) => this.readOptionalJson<LoopSpec>(`specs/${issueId}/${entry}`)),
+    );
+
+    return specs
+      .filter((spec): spec is LoopSpec => Boolean(spec))
+      .map((spec) => ({
+        id: spec.id,
+        issueId: spec.issueId,
+        version: spec.version,
+        status: spec.status,
+        created: spec.created,
+        approvedBy: spec.approvedBy,
+        body: spec.body,
+      }))
+      .sort((a, b) => this.compareSpecVersions(a.version, b.version));
+  }
+
+  private compareSpecVersions(a: string, b: string) {
+    const aNumber = /^v(\d+)$/.exec(a)?.[1];
+    const bNumber = /^v(\d+)$/.exec(b)?.[1];
+    if (aNumber && bNumber) {
+      return Number(aNumber) - Number(bNumber);
+    }
+    return a.localeCompare(b);
   }
 
   private parseLogLine(line: string): LoopLogEntry | undefined {

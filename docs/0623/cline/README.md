@@ -76,17 +76,17 @@ Cline 连接 Slack/Linear/Discord 等。DofeAI 应优先做 GitHub + Slack + Lin
 
 ## 对本项目的优化建议
 
-| 优先级 | 建议                        | 验收                                                                           |
-| ------ | --------------------------- | ------------------------------------------------------------------------------ |
-| P0     | Loop Board 视图设计         | 已实施 v1：issue 卡片显示 human gate、mode、evidence、blocker、branch、PR 状态 |
-| P1     | 独立 worktree/branch 可视化 | 部分实施：v1 展示派生 branch；真实 worktree/commit 仍为后续 Epic               |
-| P1     | Workspace rules panel       | AGENTS/CLAUDE/rules 被扫描并展示状态                                           |
-| P1     | Slack/Linear intake         | 外部消息可创建或评论 Loop                                                      |
-| P2     | SDK/plugin boundary         | 第三方工具可注册 Loop capability                                               |
+| 优先级 | 建议                        | 验收                                                                              |
+| ------ | --------------------------- | --------------------------------------------------------------------------------- |
+| P0     | Loop Board 视图设计         | 已实施 v1：issue 卡片显示 human gate、mode、evidence、blocker、branch、PR 状态    |
+| P1     | 独立 worktree/branch 可视化 | 部分实施：v1 展示派生 branch 与仓库上下文；真实 worktree/commit 仍为后续 Epic     |
+| P1     | Workspace rules panel       | 已实施 v1：规则扫描、diagnostics、per-loop snapshot 与 agent-readable enforcement |
+| P1     | Slack/Linear intake         | 外部消息可创建或评论 Loop                                                         |
+| P2     | SDK/plugin boundary         | 第三方工具可注册 Loop capability                                                  |
 
 ## 实施标注
 
-2026-06-23 已完成 Loop Board v1，回应 Cline Kanban / Plan-Act 心智：dashboard 现在能以任务板方式展示多个 Loop 的阶段、模式、人工关卡和交付信号。Exception Center v1 已把成本、暂停、全局审阅、runtime diagnostic 和 doctor problem 统一为可决策卡片。Rules panel、Slack/Linear intake、SDK/plugin boundary 仍是后续 Epic。
+2026-06-23 已完成 Loop Board v1，回应 Cline Kanban / Plan-Act 心智：dashboard 现在能以任务板方式展示多个 Loop 的阶段、模式、人工关卡和交付信号。Exception Center v1 已把成本、暂停、全局审阅、runtime diagnostic 和 doctor problem 统一为可决策卡片。本轮新增 Workspace Rules Panel v1：`GET /loops/workspaces` 返回 `AGENTS.md`、`CLAUDE.md`、`.cursor/rules`、`.clinerules` 的存在状态、摘要、更新时间和 rule diagnostics，dashboard workspace switcher 展示规则健康度与可能的规则重叠/缺失。Repo Context Map v1 进一步展示仓库覆盖、阶段分布和阻塞仓库。Per-loop rule snapshot / agent-readable enforcement v1 已落地：创建 Loop 时固化规则快照，详情页 Intake 区展示 `snapshot-required` enforcement 状态与 agent-readable 证据。规则优先级配置、规则内容结构化解析、agent adapter 执行前硬阻断、真实 worktree/commit、Slack/Linear intake、SDK/plugin boundary 仍是后续 Epic。
 
 ## 结论
 

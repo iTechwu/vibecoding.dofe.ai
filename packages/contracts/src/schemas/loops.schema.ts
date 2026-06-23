@@ -21,6 +21,40 @@ export const LoopSubmitterSchema = z.object({
   name: z.string(),
 });
 
+export const LoopRuleSnapshotRuleSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  path: z.string(),
+  status: z.enum(['present', 'missing']),
+  summary: z.string().optional(),
+  updated: z.string().optional(),
+});
+
+export const LoopRuleSnapshotDiagnosticSchema = z.object({
+  id: z.string(),
+  level: z.enum(['info', 'warning']),
+  message: z.string(),
+  evidence: z.string(),
+});
+
+export const LoopRuleSnapshotEnforcementSchema = z.object({
+  policy: z.literal('snapshot-required'),
+  status: z.enum(['enforced', 'attention']),
+  agentReadable: z.boolean(),
+  evidence: z.array(z.string()),
+});
+
+export const LoopRuleSnapshotSchema = z.object({
+  workspaceId: z.string(),
+  root: z.string(),
+  capturedAt: z.string(),
+  present: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+  rules: z.array(LoopRuleSnapshotRuleSchema),
+  diagnostics: z.array(LoopRuleSnapshotDiagnosticSchema).optional(),
+  enforcement: LoopRuleSnapshotEnforcementSchema,
+});
+
 export const LoopPhaseSchema = z.enum([
   'PHASE_0_INTAKE',
   'PHASE_1_SPEC',
@@ -99,6 +133,7 @@ export const LoopIntakeSchema = z.object({
   rawPayloadRef: z.string(),
   status: z.enum(['RECEIVED', 'NEEDS-CLARIFICATION', 'NORMALIZED', 'REJECTED']),
   created: z.string(),
+  ruleSnapshot: LoopRuleSnapshotSchema.optional(),
 });
 
 export const LoopSpecSchema = z.object({
@@ -110,6 +145,16 @@ export const LoopSpecSchema = z.object({
   approvedBy: z.string().optional(),
   contextBudget: z.number(),
   body: z.string(),
+});
+
+export const LoopSpecHistoryItemSchema = LoopSpecSchema.pick({
+  id: true,
+  issueId: true,
+  version: true,
+  status: true,
+  created: true,
+  approvedBy: true,
+  body: true,
 });
 
 export const LoopShardSchema = z.object({
@@ -295,6 +340,30 @@ export const LoopReloopResponseSchema = z.object({
   paused: z.boolean(),
 });
 
+export const LoopNaturalCommandIntentSchema = z.enum([
+  'continue',
+  'pause',
+  'resume',
+  'approve-spec',
+  'request-revision',
+  'query-evidence',
+  'unknown',
+]);
+
+export const LoopNaturalCommandRequestSchema = z.object({
+  command: z.string().trim().min(2).max(500),
+  actor: z.string().trim().min(1).default('human'),
+});
+
+export const LoopNaturalCommandResponseSchema = z.object({
+  issueId: z.string(),
+  intent: LoopNaturalCommandIntentSchema,
+  executed: z.boolean(),
+  message: z.string(),
+  detail: z.lazy(() => LoopDetailSchema).optional(),
+  logs: z.array(z.lazy(() => LoopLogEntrySchema)).optional(),
+});
+
 // M4 · commit-per-shard + 收敛 PR（GitAdapter，见 ADR-008）
 export const LoopConvergencePrSchema = z.object({
   id: z.string(),
@@ -433,6 +502,7 @@ export const LoopMetricsActionItemSchema = z.object({
     'resume',
     'closed',
   ]),
+  nextActionCategory: z.enum(['continue', 'decision', 'exception', 'done']).optional(),
   label: z.string(),
   priority: LoopPrioritySchema,
   phase: LoopPhaseSchema.optional(),
@@ -485,6 +555,7 @@ export const LoopEvidenceArtifactSchema = z.object({
   ]),
   path: z.string(),
   status: z.enum(['present', 'pending']),
+  round: z.number().int().positive().optional(),
   count: z.number().int().nonnegative().optional(),
   summary: z.string().optional(),
 });
@@ -504,6 +575,102 @@ export const LoopTraceSummarySchema = z.object({
 export const LoopResumeSummarySchema = z.object({
   resumableShards: z.number().int().nonnegative(),
   affectedIssues: z.number().int().nonnegative(),
+});
+
+// ============================================================================
+// gstack-inspired delivery control contracts (0623). These are optional on list
+// and detail payloads so existing file-backed Loops records remain compatible.
+// Runtime ownership is intentionally limited to this product's two foundations:
+// Codex CLI for planning/review and Claude Code CLI for implementation.
+// ============================================================================
+export const LoopWorkflowRuntimeOwnerSchema = z.enum(['codex', 'claude-code', 'human', 'system']);
+
+export const LoopWorkflowStepKindSchema = z.enum([
+  'intake',
+  'product_review',
+  'spec_review',
+  'architecture_review',
+  'implementation',
+  'code_review',
+  'security_review',
+  'browser_qa',
+  'test_gate',
+  'release_gate',
+  'retro',
+]);
+
+export const LoopWorkflowGateSchema = z.enum(['none', 'approval', 'decision', 'override']);
+
+export const LoopWorkflowStepSchema = z.object({
+  id: z.string(),
+  kind: LoopWorkflowStepKindSchema,
+  label: z.string(),
+  required: z.boolean(),
+  status: z.enum(['pending', 'current', 'passed', 'blocked', 'skipped']),
+  owner: LoopWorkflowRuntimeOwnerSchema,
+  humanGate: LoopWorkflowGateSchema.default('none'),
+  phase: LoopPhaseSchema.optional(),
+  evidenceTypes: z.array(z.string()).default([]),
+  evidenceIds: z.array(z.string()).default([]),
+  blockedReason: z.string().optional(),
+});
+
+export const LoopWorkflowRecipeSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  version: z.number().int().positive(),
+  appliesTo: z.array(z.enum(['feature', 'bugfix', 'refactor', 'docs', 'ops'])),
+  capturedAt: z.string(),
+  source: z.enum(['default', 'workspace', 'loop-snapshot']),
+  steps: z.array(LoopWorkflowStepSchema),
+});
+
+export const LoopReviewGateKindSchema = z.enum([
+  'product',
+  'architecture',
+  'design',
+  'devex',
+  'security',
+  'code',
+]);
+
+export const LoopReviewGateStatusSchema = z.enum([
+  'pending',
+  'passed',
+  'needs_changes',
+  'blocked',
+  'waived',
+]);
+
+export const LoopReviewGateSchema = z.object({
+  id: z.string(),
+  kind: LoopReviewGateKindSchema,
+  status: LoopReviewGateStatusSchema,
+  reviewer: LoopWorkflowRuntimeOwnerSchema,
+  confidence: z.number().min(0).max(1).optional(),
+  findingsCount: z.number().int().nonnegative().default(0),
+  evidenceId: z.string().optional(),
+  requiredByStepId: z.string(),
+  waiverReason: z.string().optional(),
+  updated: z.string(),
+});
+
+export const LoopReleaseGateSchema = z.object({
+  id: z.string(),
+  status: z.enum(['pending', 'ready', 'blocked', 'shipped']),
+  checklist: z.object({
+    specApproved: z.boolean(),
+    implementationEvidence: z.boolean(),
+    testsPassed: z.boolean(),
+    requiredReviewsPassed: z.boolean(),
+    browserQaPassed: z.boolean(),
+    docsUpdated: z.boolean(),
+    prReady: z.boolean(),
+    rollbackNote: z.boolean(),
+  }),
+  evidenceIds: z.array(z.string()).default([]),
+  blocker: z.string().optional(),
+  updated: z.string(),
 });
 
 // ============================================================================
@@ -635,6 +802,7 @@ export const LoopDetailSchema = z.object({
   issue: LoopIssueSchema,
   intake: LoopIntakeSchema,
   spec: LoopSpecSchema.optional(),
+  specHistory: z.array(LoopSpecHistoryItemSchema).optional(),
   shards: z.array(LoopShardSchema),
   testMatrix: LoopTestMatrixSchema.optional(),
   annotations: z.array(LoopAnnotationSchema),
@@ -648,6 +816,9 @@ export const LoopDetailSchema = z.object({
   convergencePr: LoopConvergencePrSchema.optional(),
   requirementsCoverage: LoopRequirementCoverageSchema.optional(),
   evidenceArtifacts: z.array(LoopEvidenceArtifactSchema).optional(),
+  workflowRecipe: LoopWorkflowRecipeSchema.optional(),
+  reviewGates: z.array(LoopReviewGateSchema).optional(),
+  releaseGate: LoopReleaseGateSchema.optional(),
 });
 
 export const LoopIssuesQuerySchema = PaginationQuerySchema.extend({
@@ -660,6 +831,9 @@ export const LoopIssuesQuerySchema = PaginationQuerySchema.extend({
 export const LoopIssueListItemSchema = z.object({
   issue: LoopIssueSchema,
   state: LoopStateItemSchema.optional(),
+  workflowRecipe: LoopWorkflowRecipeSchema.optional(),
+  reviewGates: z.array(LoopReviewGateSchema).optional(),
+  releaseGate: LoopReleaseGateSchema.optional(),
 });
 
 export const LoopListResponseSchema = PaginatedResponseSchema(LoopIssueListItemSchema);
@@ -808,6 +982,33 @@ export const LoopWorkspaceAgentProfileSchema = z.object({
   dockerImage: z.string(),
 });
 
+export const LoopWorkspaceRuleStatusSchema = z.enum(['present', 'missing']);
+
+export const LoopWorkspaceRuleSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  path: z.string(),
+  status: LoopWorkspaceRuleStatusSchema,
+  summary: z.string().optional(),
+  updated: z.string().optional(),
+});
+
+export const LoopWorkspaceRuleDiagnosticLevelSchema = z.enum(['info', 'warning']);
+
+export const LoopWorkspaceRuleDiagnosticSchema = z.object({
+  id: z.string(),
+  level: LoopWorkspaceRuleDiagnosticLevelSchema,
+  message: z.string(),
+  evidence: z.string(),
+});
+
+export const LoopWorkspaceRulesSummarySchema = z.object({
+  present: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+  rules: z.array(LoopWorkspaceRuleSchema),
+  diagnostics: z.array(LoopWorkspaceRuleDiagnosticSchema).optional(),
+});
+
 export const LoopWorkspaceProfileSchema = z.object({
   workspaceId: z.string(),
   root: z.string(),
@@ -818,6 +1019,7 @@ export const LoopWorkspaceProfileSchema = z.object({
     codex: LoopWorkspaceAgentProfileSchema,
     'claude-code': LoopWorkspaceAgentProfileSchema,
   }),
+  rules: LoopWorkspaceRulesSummarySchema.optional(),
 });
 
 /** Lightweight workspace entry for the dashboard switcher. */
@@ -830,6 +1032,7 @@ export const LoopWorkspaceSummarySchema = z.object({
     codex: LoopRuntimeModeSchema,
     'claude-code': LoopRuntimeModeSchema,
   }),
+  rules: LoopWorkspaceRulesSummarySchema.optional(),
 });
 
 export const LoopWorkspacesResponseSchema = z.object({
@@ -908,10 +1111,15 @@ export type CreateLoopIssueRequest = z.infer<typeof CreateLoopIssueRequestSchema
 export type LoopPriority = z.infer<typeof LoopPrioritySchema>;
 export type LoopSubmitterProvider = z.infer<typeof LoopSubmitterProviderSchema>;
 export type LoopSubmitter = z.infer<typeof LoopSubmitterSchema>;
+export type LoopRuleSnapshotRule = z.infer<typeof LoopRuleSnapshotRuleSchema>;
+export type LoopRuleSnapshotDiagnostic = z.infer<typeof LoopRuleSnapshotDiagnosticSchema>;
+export type LoopRuleSnapshotEnforcement = z.infer<typeof LoopRuleSnapshotEnforcementSchema>;
+export type LoopRuleSnapshot = z.infer<typeof LoopRuleSnapshotSchema>;
 export type LoopPhase = z.infer<typeof LoopPhaseSchema>;
 export type LoopIssue = z.infer<typeof LoopIssueSchema>;
 export type LoopIntake = z.infer<typeof LoopIntakeSchema>;
 export type LoopSpec = z.infer<typeof LoopSpecSchema>;
+export type LoopSpecHistoryItem = z.infer<typeof LoopSpecHistoryItemSchema>;
 export type LoopShard = z.infer<typeof LoopShardSchema>;
 export type LoopAnnotation = z.infer<typeof LoopAnnotationSchema>;
 export type LoopTestMatrix = z.infer<typeof LoopTestMatrixSchema>;
@@ -942,6 +1150,15 @@ export type LoopRequirementCoverage = z.infer<typeof LoopRequirementCoverageSche
 export type LoopEvidenceArtifact = z.infer<typeof LoopEvidenceArtifactSchema>;
 export type LoopTraceSummary = z.infer<typeof LoopTraceSummarySchema>;
 export type LoopResumeSummary = z.infer<typeof LoopResumeSummarySchema>;
+export type LoopWorkflowRuntimeOwner = z.infer<typeof LoopWorkflowRuntimeOwnerSchema>;
+export type LoopWorkflowStepKind = z.infer<typeof LoopWorkflowStepKindSchema>;
+export type LoopWorkflowGate = z.infer<typeof LoopWorkflowGateSchema>;
+export type LoopWorkflowStep = z.infer<typeof LoopWorkflowStepSchema>;
+export type LoopWorkflowRecipe = z.infer<typeof LoopWorkflowRecipeSchema>;
+export type LoopReviewGateKind = z.infer<typeof LoopReviewGateKindSchema>;
+export type LoopReviewGateStatus = z.infer<typeof LoopReviewGateStatusSchema>;
+export type LoopReviewGate = z.infer<typeof LoopReviewGateSchema>;
+export type LoopReleaseGate = z.infer<typeof LoopReleaseGateSchema>;
 export type LoopAgentRuntimeStatus = z.infer<typeof LoopAgentRuntimeStatusSchema>;
 export type LoopAgentRuntimeItem = z.infer<typeof LoopAgentRuntimeItemSchema>;
 export type LoopAgentRuntimeDiagnostic = z.infer<typeof LoopAgentRuntimeDiagnosticSchema>;
@@ -969,6 +1186,9 @@ export type LoopGlobalVerdict = z.infer<typeof LoopGlobalVerdictSchema>;
 export type LoopGlobalReviewRecord = z.infer<typeof LoopGlobalReviewRecordSchema>;
 export type LoopReloopRequest = z.infer<typeof LoopReloopRequestSchema>;
 export type LoopReloopResponse = z.infer<typeof LoopReloopResponseSchema>;
+export type LoopNaturalCommandIntent = z.infer<typeof LoopNaturalCommandIntentSchema>;
+export type LoopNaturalCommandRequest = z.infer<typeof LoopNaturalCommandRequestSchema>;
+export type LoopNaturalCommandResponse = z.infer<typeof LoopNaturalCommandResponseSchema>;
 export type LoopConvergencePr = z.infer<typeof LoopConvergencePrSchema>;
 // 0622 · Agent runtime detection / workspace / simple issue
 export type LoopAgentKind = z.infer<typeof LoopAgentKindSchema>;
@@ -979,6 +1199,13 @@ export type LoopRuntimeCheck = z.infer<typeof LoopRuntimeCheckSchema>;
 export type LoopRuntimeCandidate = z.infer<typeof LoopRuntimeCandidateSchema>;
 export type LoopRuntimeDetection = z.infer<typeof LoopRuntimeDetectionSchema>;
 export type LoopWorkspaceStatus = z.infer<typeof LoopWorkspaceStatusSchema>;
+export type LoopWorkspaceRuleStatus = z.infer<typeof LoopWorkspaceRuleStatusSchema>;
+export type LoopWorkspaceRule = z.infer<typeof LoopWorkspaceRuleSchema>;
+export type LoopWorkspaceRuleDiagnosticLevel = z.infer<
+  typeof LoopWorkspaceRuleDiagnosticLevelSchema
+>;
+export type LoopWorkspaceRuleDiagnostic = z.infer<typeof LoopWorkspaceRuleDiagnosticSchema>;
+export type LoopWorkspaceRulesSummary = z.infer<typeof LoopWorkspaceRulesSummarySchema>;
 export type LoopWorkspaceAgentProfile = z.infer<typeof LoopWorkspaceAgentProfileSchema>;
 export type LoopWorkspaceProfile = z.infer<typeof LoopWorkspaceProfileSchema>;
 export type LoopWorkspaceSummary = z.infer<typeof LoopWorkspaceSummarySchema>;

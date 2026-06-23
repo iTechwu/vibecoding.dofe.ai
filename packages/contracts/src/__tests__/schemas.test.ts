@@ -173,6 +173,7 @@ describe('Schemas', () => {
               issueId: 'issue-1',
               title: 'Create spec',
               action: 'generate-spec',
+              nextActionCategory: 'continue',
               label: 'Generate spec',
               priority: 'P2',
               phase: 'PHASE_1_SPEC',
@@ -199,6 +200,51 @@ describe('Schemas', () => {
             resumableShards: 0,
             affectedIssues: 0,
           },
+        });
+
+        expect(result.success).toBe(true);
+      });
+
+      it('should validate workspace rules summaries', () => {
+        const result = schemas.LoopWorkspacesResponseSchema.safeParse({
+          current: 'default',
+          workspaces: [
+            {
+              workspaceId: 'default',
+              root: '/repo',
+              status: 'VALIDATED',
+              isDefault: true,
+              selected: { codex: 'local-cli', 'claude-code': 'docker' },
+              rules: {
+                present: 2,
+                total: 4,
+                rules: [
+                  {
+                    id: 'agents',
+                    label: 'AGENTS.md',
+                    path: 'AGENTS.md',
+                    status: 'present',
+                    summary: '# AGENTS.md',
+                    updated: '2026-06-20T00:00:00.000Z',
+                  },
+                  {
+                    id: 'cline-rules',
+                    label: 'Cline rules',
+                    path: '.clinerules',
+                    status: 'missing',
+                  },
+                ],
+                diagnostics: [
+                  {
+                    id: 'missing-cursor-rules',
+                    level: 'info',
+                    message: 'Cursor rules are not present.',
+                    evidence: '.cursor/rules',
+                  },
+                ],
+              },
+            },
+          ],
         });
 
         expect(result.success).toBe(true);
@@ -231,6 +277,37 @@ describe('Schemas', () => {
             rawPayloadRef: '.loops/intakes/intake-1.raw.json',
             status: 'NORMALIZED',
             created: '2026-06-20T00:00:00.000Z',
+            ruleSnapshot: {
+              workspaceId: 'default',
+              root: '/repo',
+              capturedAt: '2026-06-20T00:00:00.000Z',
+              present: 2,
+              total: 4,
+              rules: [
+                {
+                  id: 'agents',
+                  label: 'AGENTS.md',
+                  path: 'AGENTS.md',
+                  status: 'present',
+                  summary: '# AGENTS.md',
+                  updated: '2026-06-20T00:00:00.000Z',
+                },
+              ],
+              diagnostics: [
+                {
+                  id: 'rules-overlap',
+                  level: 'warning',
+                  message: 'Multiple agent-readable rule sources are present; verify precedence.',
+                  evidence: 'AGENTS.md, CLAUDE.md',
+                },
+              ],
+              enforcement: {
+                policy: 'snapshot-required',
+                status: 'enforced',
+                agentReadable: true,
+                evidence: ['AGENTS.md', 'CLAUDE.md'],
+              },
+            },
           },
           shards: [],
           annotations: [],
@@ -260,7 +337,184 @@ describe('Schemas', () => {
               kind: 'raw-payload',
               path: '.loops/intakes/intake-1.raw.json',
               status: 'present',
+              round: 1,
               summary: 'Original intake payload captured for audit.',
+            },
+          ],
+        });
+
+        expect(result.success).toBe(true);
+      });
+
+      it('should validate workflow, review, and release gate contracts with Codex and Claude Code owners', () => {
+        const workflow = schemas.LoopWorkflowRecipeSchema.safeParse({
+          id: 'default-feature',
+          name: 'Feature delivery',
+          version: 1,
+          appliesTo: ['feature'],
+          capturedAt: '2026-06-23T00:00:00.000Z',
+          source: 'loop-snapshot',
+          steps: [
+            {
+              id: 'spec-review',
+              kind: 'spec_review',
+              label: 'Spec Review',
+              required: true,
+              status: 'current',
+              owner: 'codex',
+              humanGate: 'approval',
+              phase: 'PHASE_2_REVIEW',
+              evidenceTypes: ['spec'],
+              evidenceIds: ['spec-v1'],
+            },
+            {
+              id: 'implementation',
+              kind: 'implementation',
+              label: 'Implementation',
+              required: true,
+              status: 'pending',
+              owner: 'claude-code',
+              evidenceTypes: ['implementation-record'],
+              evidenceIds: [],
+            },
+          ],
+        });
+        const reviewGate = schemas.LoopReviewGateSchema.safeParse({
+          id: 'gate-code',
+          kind: 'code',
+          status: 'pending',
+          reviewer: 'codex',
+          findingsCount: 0,
+          requiredByStepId: 'code-review',
+          updated: '2026-06-23T00:00:00.000Z',
+        });
+        const releaseGate = schemas.LoopReleaseGateSchema.safeParse({
+          id: 'release-issue-1',
+          status: 'ready',
+          checklist: {
+            specApproved: true,
+            implementationEvidence: true,
+            testsPassed: true,
+            requiredReviewsPassed: true,
+            browserQaPassed: false,
+            docsUpdated: true,
+            prReady: true,
+            rollbackNote: false,
+          },
+          evidenceIds: ['global-review-1'],
+          updated: '2026-06-23T00:00:00.000Z',
+        });
+
+        expect(workflow.success).toBe(true);
+        expect(reviewGate.success).toBe(true);
+        expect(releaseGate.success).toBe(true);
+        expect(
+          schemas.LoopWorkflowStepSchema.safeParse({
+            id: 'bad-host',
+            kind: 'implementation',
+            label: 'Bad host',
+            required: true,
+            status: 'pending',
+            owner: 'openclaw',
+          }).success,
+        ).toBe(false);
+      });
+
+      it('should validate detail spec history snapshots', () => {
+        const result = schemas.LoopDetailSchema.safeParse({
+          issue: {
+            id: 'issue-1',
+            title: 'Spec diff issue',
+            status: 'OPEN',
+            priority: 'P1',
+            created: '2026-06-20T00:00:00.000Z',
+            updated: '2026-06-20T00:00:00.000Z',
+            sourceChannel: 'web',
+            sourceKind: 'web_form',
+            submitterId: 'dev-user',
+            submitterName: 'Developer',
+            targetRepo: '/repo',
+            body: 'Review spec changes between loop rounds.',
+            acceptanceCriteria: ['Spec changes are visible'],
+            rawPayloadRef: '.loops/intakes/intake-1.raw.json',
+          },
+          intake: {
+            id: 'intake-1',
+            issueId: 'issue-1',
+            sourceChannel: 'web',
+            sourceKind: 'web_form',
+            submitter: { provider: 'dev', userId: 'dev-user', name: 'Developer' },
+            rawPayloadRef: '.loops/intakes/intake-1.raw.json',
+            status: 'NORMALIZED',
+            created: '2026-06-20T00:00:00.000Z',
+          },
+          spec: {
+            id: 'spec-2',
+            issueId: 'issue-1',
+            version: 'v2',
+            status: 'DRAFT',
+            created: '2026-06-20T00:10:00.000Z',
+            contextBudget: 24000,
+            body: 'Draft v2 body',
+          },
+          specHistory: [
+            {
+              id: 'spec-1',
+              issueId: 'issue-1',
+              version: 'v1',
+              status: 'APPROVED',
+              created: '2026-06-20T00:00:00.000Z',
+              approvedBy: 'reviewer',
+              body: 'Approved v1 body',
+            },
+            {
+              id: 'spec-2',
+              issueId: 'issue-1',
+              version: 'v2',
+              status: 'DRAFT',
+              created: '2026-06-20T00:10:00.000Z',
+              body: 'Draft v2 body',
+            },
+          ],
+          shards: [],
+          annotations: [],
+          implementationRecords: [],
+          reviewRecords: [],
+          testRecords: [],
+          logs: [],
+          notifications: [],
+          state: {
+            issueId: 'issue-1',
+            phase: 'PHASE_2_REVIEW',
+            round: 2,
+            specVersion: 'v2',
+            shardsTotal: 0,
+            shardsDone: 0,
+            shardsInProgress: 0,
+            reloopCount: 1,
+            costTokens: 0,
+            costCalls: 0,
+            updated: '2026-06-20T00:10:00.000Z',
+            paused: false,
+          },
+        });
+
+        expect(result.success).toBe(true);
+      });
+
+      it('should validate deterministic natural command responses', () => {
+        const result = schemas.LoopNaturalCommandResponseSchema.safeParse({
+          issueId: 'issue-1',
+          intent: 'query-evidence',
+          executed: false,
+          message: 'Returned recent evidence logs.',
+          logs: [
+            {
+              ts: '2026-06-20T00:00:00.000Z',
+              type: 'NATURAL_COMMAND',
+              issue: 'issue-1',
+              action: 'query-evidence',
+              payload: { command: 'show evidence' },
             },
           ],
         });

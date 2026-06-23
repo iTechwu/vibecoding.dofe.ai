@@ -13,6 +13,8 @@ describe('LoopsWorkspaceProfileService (0622 · B2)', () => {
     workspace = mkdtempSync(join(tmpdir(), 'loops-ws-profile-'));
     writeFileSync(join(workspace, 'package.json'), '{"name":"ws"}');
     writeFileSync(join(workspace, 'turbo.json'), '{"pipeline":{}}');
+    writeFileSync(join(workspace, 'AGENTS.md'), '# Agent rules\nFollow project guidance.');
+    writeFileSync(join(workspace, 'CLAUDE.md'), '# Claude rules\nUse service boundaries.');
     previousEnv.LOOPS_WORKSPACE_ROOT = process.env.LOOPS_WORKSPACE_ROOT;
     process.env.LOOPS_WORKSPACE_ROOT = workspace;
     service = new LoopsWorkspaceProfileService();
@@ -38,7 +40,39 @@ describe('LoopsWorkspaceProfileService (0622 · B2)', () => {
         status: 'VALIDATED',
         isDefault: true,
         selected: { codex: 'local-cli', 'claude-code': 'local-cli' },
+        rules: expect.objectContaining({
+          present: 2,
+          total: 4,
+          diagnostics: expect.arrayContaining([
+            expect.objectContaining({
+              id: 'rules-overlap',
+              level: 'warning',
+            }),
+            expect.objectContaining({
+              id: 'missing-cline-rules',
+              level: 'info',
+            }),
+          ]),
+        }),
       }),
+    );
+    expect(result.workspaces[0]?.rules?.rules).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'agents',
+          status: 'present',
+          summary: '# Agent rules',
+        }),
+        expect.objectContaining({
+          id: 'claude',
+          status: 'present',
+          summary: '# Claude rules',
+        }),
+        expect.objectContaining({
+          id: 'cline-rules',
+          status: 'missing',
+        }),
+      ]),
     );
   });
 
