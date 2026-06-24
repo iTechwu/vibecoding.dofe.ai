@@ -33,6 +33,10 @@ import { LoopsDockerSandboxService } from './loops-docker-sandbox.service';
 import { LoopsLearningGovernanceService } from './loops-learning-governance.service';
 import { LoopsEvalAggregationWorkerService } from './loops-eval-aggregation-worker.service';
 import { LoopsEvalAggregationProcessor } from './loops-eval-aggregation.processor';
+import { LoopsRemoteRunnerProcessor } from './loops-remote-runner.processor';
+import { LoopsTriggerSchedulerProcessor } from './loops-trigger-scheduler.processor';
+import { LoopsCrossTenantArchiveService } from './loops-cross-tenant-archive.service';
+import { LoopsMcpClientService } from './loops-mcp-client.service';
 
 @Module({
   // HttpModule provides HttpService to LoopsNotificationSender and
@@ -44,9 +48,11 @@ import { LoopsEvalAggregationProcessor } from './loops-eval-aggregation.processo
     LoopEvalAggregationModule,
     AuditLogModule,
     // R33+: BullMQ queue for periodic cross-tenant Eval aggregation.
-    // The queue is consumed by LoopsEvalAggregationProcessor.
-    // Repeatable jobs are scheduled via addRepeatableJob on module init.
     BullModule.registerQueue({ name: 'loops-eval-aggregation' }),
+    // R34a: BullMQ queue for Remote Runner distributed job execution.
+    BullModule.registerQueue({ name: 'loops-remote-runner' }),
+    // R34b: BullMQ queue for trigger auto-execution scheduler.
+    BullModule.registerQueue({ name: 'loops-trigger-scheduler' }),
   ],
   controllers: [LoopsController],
   providers: [
@@ -73,6 +79,11 @@ import { LoopsEvalAggregationProcessor } from './loops-eval-aggregation.processo
     LoopsLearningGovernanceService,
     LoopsEvalAggregationWorkerService,
     LoopsEvalAggregationProcessor,
+    LoopsRemoteRunnerProcessor,
+    LoopsTriggerSchedulerProcessor,
+    LoopsCrossTenantArchiveService,
+    LoopsMcpClientService,
+    LoopsDockerSandboxService,
     LoopsWorkLockService,
     // Work-lock backend: in-memory by default (single-process, unchanged
     // behaviour). Swap to RedisLoopsLockBackend (bound to @dofe/infra-redis

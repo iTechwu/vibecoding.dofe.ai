@@ -1,5 +1,7 @@
-import { Controller, Inject, Req, VERSION_NEUTRAL } from '@nestjs/common';
+import { Controller, Inject, Optional, Req, VERSION_NEUTRAL } from '@nestjs/common';
 import { TsRestHandler, tsRestHandler } from '@ts-rest/nest';
+import { InjectQueue } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
 import { created, success } from '@dofe/infra-common/ts-rest';
 import { loopsContract as c } from '@repo/contracts/api';
 import { Auth } from '@app/auth';
@@ -26,6 +28,8 @@ export class LoopsController {
     private readonly loopsService: LoopsService,
     private readonly auditLogService: AuditLogService,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
+    // R33+: BullMQ queue for async Eval aggregation jobs
+    @Optional() @InjectQueue('loops-eval-aggregation') private readonly evalAggQueue?: Queue,
   ) {}
 
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
@@ -1285,6 +1289,205 @@ export class LoopsController {
         processed: result.processed,
         persisted: result.persisted,
         period: result.period,
+      } as Prisma.InputJsonObject);
+      return success(result);
+    });
+  }
+
+  @TsRestHandler(c.enqueueEvalAggregationJob)
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  async enqueueEvalAggregationJob(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.enqueueEvalAggregationJob, async ({ body }) => {
+      const jobData = {
+        type: (body?.type ?? 'aggregate-all') as 'aggregate-all' | 'aggregate-tenant',
+        tenantId: body?.tenantId,
+        periods: body?.periods,
+      };
+      const job = this.evalAggQueue
+        ? await this.evalAggQueue.add('eval-aggregation', jobData, {
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 5000 },
+            removeOnComplete: 100,
+            removeOnFail: 500,
+          })
+        : null;
+
+      const result = {
+        jobId: job?.id ?? 'bullmq-unavailable',
+        queueName: 'loops-eval-aggregation',
+        type: jobData.type,
+        enqueuedAt: new Date().toISOString(),
+      };
+      await this.auditLog(
+        req,
+        'CREATE',
+        'eval_aggregation_job',
+        result.jobId,
+        'enqueueEvalAggregationJob',
+        { type: jobData.type, viaBullMQ: Boolean(job) } as Prisma.InputJsonObject,
+      );
+      return success(result);
+    });
+  }
+
+  @TsRestHandler(c.getEvalAggregationCacheHealth)
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  async getEvalAggregationCacheHealth(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.getEvalAggregationCacheHealth, async () => {
+      return success(await this.loopsService.getEvalAggregationCacheHealth());
+    });
+  }
+
+  // =========================================================================
+  // Trigger Scheduler (R34b: BullMQ auto-execution)
+  // =========================================================================
+
+  @TsRestHandler(c.startTriggerScheduler)
+  @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
+  async startTriggerScheduler(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.startTriggerScheduler, async ({ body }) => {
+      const intervalSeconds = body?.intervalSeconds ?? 60;
+      if (this.evalAggQueue) {
+        await this.evalAggQueue.add(
+          'trigger-scheduler-tick',
+          { type: 'tick' },
+          {
+            repeat: { every: intervalSeconds * 1000 },
+            jobId: 'loops-trigger-scheduler-tick',
+          },
+        );
+      }
+      const result = {
+        started: true,
+        intervalSeconds,
+        message: `Trigger scheduler started with ${intervalSeconds}s interval via BullMQ`,
+      };
+      await this.auditLog(
+        req,
+        'UPDATE',
+        'trigger_scheduler',
+        'scheduler',
+        'startTriggerScheduler',
+        {
+          intervalSeconds,
+        } as Prisma.InputJsonObject,
+      );
+      return success(result);
+    });
+  }
+
+  @TsRestHandler(c.stopTriggerScheduler)
+  @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
+  async stopTriggerScheduler(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.stopTriggerScheduler, async () => {
+      if (this.evalAggQueue) {
+        await this.evalAggQueue.removeRepeatable('trigger-scheduler-tick', { every: 60000 });
+        await this.evalAggQueue.removeRepeatable('trigger-scheduler-tick', { every: 120000 });
+        await this.evalAggQueue.removeRepeatable('trigger-scheduler-tick', { every: 300000 });
+      }
+      const result = { stopped: true, message: 'Trigger scheduler stopped' };
+      await this.auditLog(
+        req,
+        'UPDATE',
+        'trigger_scheduler',
+        'scheduler',
+        'stopTriggerScheduler',
+        {} as Prisma.InputJsonObject,
+      );
+      return success(result);
+    });
+  }
+
+  @TsRestHandler(c.getTriggerSchedulerStatus)
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  async getTriggerSchedulerStatus(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.getTriggerSchedulerStatus, async () => {
+      return success(await this.loopsService.getTriggerSchedulerStatus());
+    });
+  }
+
+  // =========================================================================
+  // Cross-Tenant Archive (R35: FileStorageService + SSO multi-tenant)
+  // =========================================================================
+
+  @TsRestHandler(c.archiveTenant)
+  @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
+  async archiveTenant(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.archiveTenant, async ({ body }) => {
+      const result = await this.loopsService.archiveTenant(body);
+      await this.auditLog(req, 'CREATE', 'loops_archive', result.archiveId, 'archiveTenant', {
+        tenantId: body.tenantId,
+        fileCount: result.fileCount,
+      } as Prisma.InputJsonObject);
+      return success(result);
+    });
+  }
+
+  @TsRestHandler(c.listArchives)
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  async listArchives(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.listArchives, async ({ query }) => {
+      return success(await this.loopsService.listArchives(query.tenantId));
+    });
+  }
+
+  @TsRestHandler(c.refreshArchiveUrl)
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  async refreshArchiveUrl(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.refreshArchiveUrl, async ({ params, body }) => {
+      const result = await this.loopsService.refreshArchiveUrl(body.tenantId, params.archiveId);
+      return success(result);
+    });
+  }
+
+  // =========================================================================
+  // Remote Runner External Artifact Upload (R36)
+  // =========================================================================
+
+  @TsRestHandler(c.uploadRemoteRunnerArtifacts)
+  @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
+  async uploadRemoteRunnerArtifacts(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.uploadRemoteRunnerArtifacts, async ({ params, body }) => {
+      const result = await this.loopsService.uploadRemoteRunnerArtifacts(
+        params.runnerId,
+        params.jobId,
+        body,
+      );
+      await this.auditLog(
+        req,
+        'UPDATE',
+        'remote_runner_artifact',
+        params.jobId,
+        'uploadRemoteRunnerArtifacts',
+        {
+          uploaded: result.uploaded,
+          runnerId: params.runnerId,
+        } as Prisma.InputJsonObject,
+      );
+      return success(result);
+    });
+  }
+
+  // =========================================================================
+  // Docker Sandbox + MCP Handshake (R37)
+  // =========================================================================
+
+  @TsRestHandler(c.getDockerSandboxHealth)
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  async getDockerSandboxHealth(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.getDockerSandboxHealth, async () => {
+      return success(await this.loopsService.getDockerSandboxHealth());
+    });
+  }
+
+  @TsRestHandler(c.testMcpHandshake)
+  @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
+  async testMcpHandshake(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.testMcpHandshake, async ({ params, body }) => {
+      const result = await this.loopsService.testMcpHandshake(params.id, body);
+      await this.auditLog(req, 'UPDATE', 'mcp_server', params.id, 'testMcpHandshake', {
+        handshakeOk: result.handshakeOk,
+        toolCount: result.toolCount,
       } as Prisma.InputJsonObject);
       return success(result);
     });

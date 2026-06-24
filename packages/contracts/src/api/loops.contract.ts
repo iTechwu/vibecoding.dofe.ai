@@ -496,6 +496,195 @@ export const loopsContract = c.router(
       },
       summary: 'Check Redis cache health for Eval aggregation (R33+)',
     },
+    // R34b: Trigger scheduler lifecycle management
+    startTriggerScheduler: {
+      method: 'POST',
+      path: '/triggers/scheduler/start',
+      body: z
+        .object({
+          intervalSeconds: z.number().int().min(10).max(3600).default(60),
+        })
+        .optional(),
+      responses: {
+        200: ApiResponseSchema(
+          z.object({
+            started: z.boolean(),
+            intervalSeconds: z.number(),
+            message: z.string(),
+          }),
+        ),
+      },
+      summary: 'Start the BullMQ trigger auto-execution scheduler (R34b)',
+    },
+    stopTriggerScheduler: {
+      method: 'POST',
+      path: '/triggers/scheduler/stop',
+      body: z.object({}).optional(),
+      responses: {
+        200: ApiResponseSchema(
+          z.object({
+            stopped: z.boolean(),
+            message: z.string(),
+          }),
+        ),
+      },
+      summary: 'Stop the BullMQ trigger auto-execution scheduler (R34b)',
+    },
+    getTriggerSchedulerStatus: {
+      method: 'GET',
+      path: '/triggers/scheduler/status',
+      responses: {
+        200: ApiResponseSchema(
+          z.object({
+            running: z.boolean(),
+            intervalSeconds: z.number().optional(),
+            lastTickAt: z.string().optional(),
+            activeTriggers: z.number(),
+            totalFired: z.number(),
+            totalErrors: z.number(),
+          }),
+        ),
+      },
+      summary: 'Get the trigger scheduler status and stats (R34b)',
+    },
+    // =========================================================================
+    // Cross-Tenant Archive (R35: FileStorageService + SSO multi-tenant)
+    // =========================================================================
+    archiveTenant: {
+      method: 'POST',
+      path: '/archives',
+      body: z.object({
+        tenantId: z.string().trim().min(1),
+        includeClosed: z.boolean().default(false),
+        period: z.enum(['7d', '30d', '90d', 'all']).default('all'),
+      }),
+      responses: {
+        200: ApiResponseSchema(
+          z.object({
+            archiveId: z.string(),
+            tenantId: z.string(),
+            fileCount: z.number(),
+            totalSizeBytes: z.number(),
+            storageKey: z.string(),
+            downloadUrl: z.string().optional(),
+            archivedAt: z.string(),
+          }),
+        ),
+      },
+      summary:
+        'Archive all Loops artifacts for a tenant to object storage (R35: FileStorageService + SSO)',
+    },
+    listArchives: {
+      method: 'GET',
+      path: '/archives',
+      query: z.object({ tenantId: z.string().trim().min(1) }),
+      responses: {
+        200: ApiResponseSchema(
+          z.object({
+            archives: z.array(
+              z.object({
+                archiveId: z.string(),
+                tenantId: z.string(),
+                storageKey: z.string(),
+                downloadUrl: z.string().optional(),
+                fileCount: z.number(),
+                totalSizeBytes: z.number(),
+                archivedAt: z.string(),
+              }),
+            ),
+          }),
+        ),
+      },
+      summary: 'List all archives for a tenant (R35)',
+    },
+    refreshArchiveUrl: {
+      method: 'POST',
+      path: '/archives/:archiveId/refresh-url',
+      pathParams: z.object({ archiveId: z.string() }),
+      body: z.object({ tenantId: z.string().trim().min(1) }),
+      responses: {
+        200: ApiResponseSchema(
+          z.object({
+            archiveId: z.string(),
+            downloadUrl: z.string().optional(),
+            message: z.string(),
+          }),
+        ),
+      },
+      summary: 'Refresh the presigned download URL for an archive (URLs expire after 7 days) (R35)',
+    },
+    // R36: Remote Runner external artifact upload
+    uploadRemoteRunnerArtifacts: {
+      method: 'POST',
+      path: '/remote-runners/:runnerId/jobs/:jobId/upload-artifacts',
+      pathParams: z.object({ runnerId: z.string(), jobId: z.string() }),
+      body: z
+        .object({
+          vendor: z.string().optional(),
+          bucket: z.string().optional(),
+        })
+        .optional(),
+      responses: {
+        200: ApiResponseSchema(
+          z.object({
+            jobId: z.string(),
+            uploaded: z.number(),
+            artifacts: z.array(
+              z.object({
+                kind: z.string(),
+                storageKey: z.string(),
+                uploadUrl: z.string().optional(),
+              }),
+            ),
+            message: z.string(),
+          }),
+        ),
+      },
+      summary: 'Upload Remote Runner job artifacts to external object storage (R36)',
+    },
+    // R37: Docker sandbox health
+    getDockerSandboxHealth: {
+      method: 'GET',
+      path: '/docker-sandbox/health',
+      responses: {
+        200: ApiResponseSchema(
+          z.object({
+            available: z.boolean(),
+            version: z.string().optional(),
+            message: z.string(),
+          }),
+        ),
+      },
+      summary: 'Check Docker availability for OS-level sandbox execution (R37)',
+    },
+    // R37: Real MCP handshake test
+    testMcpHandshake: {
+      method: 'POST',
+      path: '/mcp-servers/:id/handshake',
+      pathParams: z.object({ id: z.string() }),
+      body: z
+        .object({
+          command: z.string().trim().min(1).optional(),
+          args: z.array(z.string()).optional(),
+          reason: z.string().optional(),
+        })
+        .optional(),
+      responses: {
+        200: ApiResponseSchema(
+          z.object({
+            serverId: z.string(),
+            handshakeOk: z.boolean(),
+            serverInfo: z.object({ name: z.string(), version: z.string() }).optional(),
+            protocolVersion: z.string().optional(),
+            toolCount: z.number().optional(),
+            tools: z.array(z.object({ name: z.string() })).optional(),
+            durationMs: z.number().optional(),
+            error: z.string().optional(),
+          }),
+        ),
+      },
+      summary: 'Perform real MCP protocol handshake with a registered MCP server (R37)',
+    },
     runLoopBenchTrendWorker: {
       method: 'POST',
       path: '/loop-bench/trend-worker',

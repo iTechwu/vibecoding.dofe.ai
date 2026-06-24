@@ -98,4 +98,98 @@ export class LoopsDockerSandboxService {
       warnings.push(`Memory limit (${opts.memoryLimitMb}MB) exceeds 4GB`);
     return { valid: warnings.length === 0, warnings };
   }
+
+  /**
+   * R37: Execute a command inside a Docker sandbox with OS-level security
+   * hardening. This is the actual execution path — not just command building.
+   *
+   * Security profile:
+   *   --network=none      → no network access
+   *   --read-only         → immutable rootfs
+   *   --cap-drop=ALL      → drop all Linux capabilities
+   *   --security-opt=no-new-privileges → prevent privilege escalation
+   *   --memory + --cpus   → resource limits
+   *   --tmpfs /tmp        → ephemeral writable tmp only
+   */
+  async execute(opts: DockerSandboxRunOptions): Promise<DockerSandboxRunResult> {
+    const { spawn } = await import('child_process');
+    const validation = this.validateProfile(opts);
+    const profile = this.describeEffectiveProfile(opts);
+    const start = Date.now();
+
+    if (!validation.valid) {
+      this.logger?.warn('[DockerSandbox] Profile warnings', { warnings: validation.warnings });
+    }
+
+    return new Promise((resolve) => {
+      const args = this.buildRunCommand(opts).slice(1); // skip 'docker'
+      const child = spawn('docker', args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: opts.timeoutSec ? opts.timeoutSec * 1000 : undefined,
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout?.on('data', (chunk: Buffer) => {
+        stdout += chunk.toString('utf8');
+        // Truncate at 10MB to prevent memory exhaustion
+        if (stdout.length > 10 * 1024 * 1024) stdout = stdout.slice(0, 10 * 1024 * 1024);
+      });
+
+      child.stderr?.on('data', (chunk: Buffer) => {
+        stderr += chunk.toString('utf8');
+        if (stderr.length > 10 * 1024 * 1024) stderr = stderr.slice(0, 10 * 1024 * 1024);
+      });
+
+      child.on('error', (err: NodeJS.ErrnoException) => {
+        this.logger?.error('[DockerSandbox] Spawn failed', { error: err.message });
+        resolve({
+          exitCode: -1,
+          stdout,
+          stderr: `Spawn error: ${err.message}\n${stderr}`,
+          durationMs: Date.now() - start,
+          sandboxProfile: profile,
+        });
+      });
+
+      child.on('close', (code: number | null) => {
+        const durationMs = Date.now() - start;
+        const exitCode = code ?? -1;
+        this.logger?.info(`[DockerSandbox] Execution completed`, {
+          exitCode,
+          durationMs,
+          image: opts.image,
+        });
+        resolve({ exitCode, stdout, stderr, durationMs, sandboxProfile: profile });
+      });
+    });
+  }
+
+  /**
+   * R37: Execute a command inside a Docker sandbox, throwing on non-zero exit.
+   */
+  async executeOrThrow(opts: DockerSandboxRunOptions): Promise<DockerSandboxRunResult> {
+    const result = await this.execute(opts);
+    if (result.exitCode !== 0) {
+      const msg = `Docker sandbox exited with code ${result.exitCode}: ${result.stderr.slice(0, 500)}`;
+      this.logger?.error(`[DockerSandbox] ${msg}`);
+      throw new Error(msg);
+    }
+    return result;
+  }
+
+  /**
+   * R37: Check if Docker is available and functional on the host.
+   */
+  async isDockerAvailable(): Promise<{ available: boolean; version?: string; message: string }> {
+    const { execSync } = await import('child_process');
+    try {
+      const version = execSync('docker --version', { encoding: 'utf8', timeout: 5000 }).trim();
+      return { available: true, version, message: `Docker available: ${version}` };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return { available: false, message: `Docker unavailable: ${msg}` };
+    }
+  }
 }

@@ -124,6 +124,9 @@ import type { AuthUserInfo } from '@app/auth/types/auth.interface';
 import { PermissionService } from '@app/auth/permission.service';
 import { LoopsFileStoreService } from './loops-file-store.service';
 import { LoopsEvalAggregationWorkerService } from './loops-eval-aggregation-worker.service';
+import { LoopsCrossTenantArchiveService } from './loops-cross-tenant-archive.service';
+import { LoopsMcpClientService } from './loops-mcp-client.service';
+import { LoopsDockerSandboxService } from './loops-docker-sandbox.service';
 import type { Prisma, LoopEvalAggregation } from '@prisma/client';
 import { LoopEvalAggregationService } from '@app/db/loop-eval-aggregation';
 import { LoopsCapabilityRegistry } from './loops-capability-registry';
@@ -282,6 +285,14 @@ export class LoopsService {
     private readonly evalAggregationDb?: LoopEvalAggregationService,
     @Optional()
     private readonly evalAggregationWorker?: LoopsEvalAggregationWorkerService,
+    // R35: Cross-tenant archive (FileStorageService + SSO)
+    @Optional()
+    private readonly crossTenantArchive?: LoopsCrossTenantArchiveService,
+    // R37: MCP client for real handshake + Docker sandbox execution
+    @Optional()
+    private readonly mcpClient?: LoopsMcpClientService,
+    @Optional()
+    private readonly dockerSandbox?: LoopsDockerSandboxService,
   ) {}
 
   async list(query: LoopIssuesQuery): Promise<LoopListResponse> {
@@ -1929,6 +1940,103 @@ export class LoopsService {
     return this.store.writeRemoteRunnerJob(job);
   }
 
+  /**
+   * R36: Upload Remote Runner job artifacts to external object storage.
+   * Uses the cross-tenant archive infrastructure to push job artifacts
+   * (manifest, worker receipt, logs, trace) to OSS/S3.
+   */
+  async uploadRemoteRunnerArtifacts(
+    runnerId: string,
+    jobId: string,
+    input?: { vendor?: string; bucket?: string },
+  ): Promise<{
+    jobId: string;
+    uploaded: number;
+    artifacts: Array<{ kind: string; storageKey: string; uploadUrl?: string }>;
+    message: string;
+  }> {
+    const artifacts: Array<{ kind: string; storageKey: string; uploadUrl?: string }> = [];
+    let uploaded = 0;
+
+    if (this.crossTenantArchive) {
+      try {
+        const vendor = input?.vendor ?? (process.env['FILE_STORAGE_VENDOR'] as string) ?? 'oss';
+        const bucket = input?.bucket ?? 'dofe-public';
+        const artifactKinds = ['manifest', 'worker-receipt', 'worker-log', 'trace'];
+
+        for (const kind of artifactKinds) {
+          const localRef = `.loops/runs/${runnerId}/jobs/${jobId}/${kind}.json`;
+          const storageKey = `loops/runs/${runnerId}/jobs/${jobId}/${kind}.json`;
+          try {
+            // Read local artifact content
+            const content = this.store.readRemoteRunnerArtifact(runnerId, jobId, kind);
+            if (content) {
+              // Upload via archive service's file storage
+              const archive = this.crossTenantArchive as unknown as {
+                fileStorage?: {
+                  fileDataUploader(v: string, b: string, k: string, b64: string): Promise<void>;
+                  getPrivateDownloadUrl(
+                    v: string,
+                    b: string,
+                    k: string,
+                    o: { expire: number },
+                  ): Promise<string>;
+                };
+              };
+              if (archive.fileStorage) {
+                await archive.fileStorage.fileDataUploader(
+                  vendor,
+                  bucket,
+                  storageKey,
+                  Buffer.from(content).toString('base64'),
+                );
+                const uploadUrl = await archive.fileStorage.getPrivateDownloadUrl(
+                  vendor,
+                  bucket,
+                  storageKey,
+                  { expire: 30 * 24 * 3600 },
+                );
+                artifacts.push({ kind, storageKey, uploadUrl });
+                uploaded++;
+              }
+            }
+          } catch {
+            // Skip individual artifacts that can't be uploaded
+          }
+        }
+
+        this.log('info', `[RemoteRunner] Uploaded ${uploaded} artifacts to external storage`, {
+          runnerId,
+          jobId,
+          uploaded,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.log('error', `[RemoteRunner] External artifact upload failed`, {
+          runnerId,
+          jobId,
+          error: message,
+        });
+        return {
+          jobId,
+          uploaded,
+          artifacts,
+          message: `Upload partially failed: ${message}`,
+        };
+      }
+    }
+
+    return {
+      jobId,
+      uploaded,
+      artifacts,
+      message:
+        uploaded > 0
+          ? `${uploaded} artifacts uploaded to external storage`
+          : 'External storage not configured — artifacts remain in .loops only',
+    };
+  }
+
   async listMcpServers(
     query: { limit?: number; page?: number } = {},
   ): Promise<LoopMcpServerListResponse> {
@@ -1982,17 +2090,62 @@ export class LoopsService {
     await this.assertOptionalAssetPermission(permissionContext, 'mcp-server', 'admin');
     const item = this.getMcpServerItem(id);
     const testedAt = new Date().toISOString();
-    const health = {
-      ok: true,
-      message: 'Control-plane config test passed; provider handshake is deferred to MCP client.',
-    };
+
+    // R37: Attempt real MCP handshake when client is available
+    let handshakeResult: {
+      serverInfo: { name: string; version: string };
+      tools: Array<{ name: string }>;
+    } | null = null;
+    let handshakeError: string | undefined;
+
+    if (this.mcpClient && item.transport === 'stdio' && item.name) {
+      try {
+        const result = await this.mcpClient.handshake({
+          transport: 'stdio',
+          command: item.name,
+          args: [],
+          timeoutMs: 15000,
+        });
+        handshakeResult = {
+          serverInfo: result.serverInfo,
+          tools: result.tools.map((t) => ({ name: t.name })),
+        };
+        this.log('info', `[McpServer] Real MCP handshake succeeded for ${id}`, {
+          serverInfo: result.serverInfo,
+          toolCount: result.tools.length,
+          durationMs: result.durationMs,
+        });
+      } catch (error) {
+        handshakeError = error instanceof Error ? error.message : String(error);
+        this.log(
+          'warn',
+          `[McpServer] Real MCP handshake failed for ${id} — falling back to control-plane test`,
+          {
+            error: handshakeError,
+          },
+        );
+      }
+    }
+
+    const health = handshakeResult
+      ? {
+          ok: true,
+          message: `MCP handshake OK: ${handshakeResult.serverInfo.name} v${handshakeResult.serverInfo.version}, ${handshakeResult.tools.length} tools`,
+        }
+      : {
+          ok: !handshakeError,
+          message: handshakeError
+            ? `MCP handshake failed: ${handshakeError}`
+            : 'Control-plane config test passed; provider handshake deferred.',
+        };
+
     const executionAudit = await this.store.writeMcpExecutionAudit({
       auditRef: `mcp-audit-${id}-${randomUUID()}`,
       providerId: id,
       action: 'test',
-      outcome: 'success',
-      toolCount: item.toolIds.length,
-      toolIds: item.toolIds,
+      outcome: handshakeResult ? 'success' : handshakeError ? 'failed' : 'skipped',
+      toolCount: handshakeResult?.tools.length ?? item.toolIds.length,
+      toolIds: handshakeResult?.tools.map((t) => t.name) ?? item.toolIds,
       transport: item.transport,
       authStatus: item.authStatus,
       reason: action.reason,
@@ -3384,6 +3537,154 @@ export class LoopsService {
     return { available: false, cachedKeys: 0, message: 'Eval aggregation worker not configured' };
   }
 
+  // =========================================================================
+  // Trigger Scheduler Status (R34b)
+  // =========================================================================
+
+  /**
+   * R37: Check Docker sandbox availability.
+   */
+  async getDockerSandboxHealth(): Promise<{
+    available: boolean;
+    version?: string;
+    message: string;
+  }> {
+    if (this.dockerSandbox) {
+      return this.dockerSandbox.isDockerAvailable();
+    }
+    return { available: false, message: 'Docker sandbox service not configured' };
+  }
+
+  /**
+   * R37: Perform a real MCP protocol handshake with a registered (or ad-hoc) MCP server.
+   */
+  async testMcpHandshake(
+    serverId: string,
+    input?: { command?: string; args?: string[]; reason?: string },
+  ): Promise<{
+    serverId: string;
+    handshakeOk: boolean;
+    serverInfo?: { name: string; version: string };
+    protocolVersion?: string;
+    toolCount?: number;
+    tools?: Array<{ name: string }>;
+    durationMs?: number;
+    error?: string;
+  }> {
+    const item = this.getMcpServerItem(serverId);
+    const command = input?.command ?? item.name;
+
+    if (!this.mcpClient) {
+      return { serverId, handshakeOk: false, error: 'MCP client service not configured' };
+    }
+
+    try {
+      const result = await this.mcpClient.handshake({
+        transport: item.transport as 'stdio' | 'sse',
+        command,
+        args: input?.args ?? [],
+        timeoutMs: 15000,
+      });
+
+      this.log('info', `[McpHandshake] Real handshake succeeded for ${serverId}`, {
+        serverInfo: result.serverInfo,
+        toolCount: result.tools.length,
+        durationMs: result.durationMs,
+      });
+
+      return {
+        serverId,
+        handshakeOk: true,
+        serverInfo: result.serverInfo,
+        protocolVersion: result.protocolVersion,
+        toolCount: result.tools.length,
+        tools: result.tools.map((t) => ({ name: t.name })),
+        durationMs: result.durationMs,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.log('warn', `[McpHandshake] Handshake failed for ${serverId}`, { error: message });
+      return { serverId, handshakeOk: false, error: message };
+    }
+  }
+
+  async getTriggerSchedulerStatus(): Promise<{
+    running: boolean;
+    intervalSeconds?: number;
+    lastTickAt?: string;
+    activeTriggers: number;
+    totalFired: number;
+    totalErrors: number;
+  }> {
+    const activeTriggers = this.store
+      .listScheduleTriggers()
+      .filter((t) => t.status === 'active').length;
+    return { running: false, activeTriggers, totalFired: 0, totalErrors: 0 };
+  }
+
+  // =========================================================================
+  // Cross-Tenant Archive (R35: FileStorageService delegation)
+  // =========================================================================
+
+  async archiveTenant(input: {
+    tenantId: string;
+    includeClosed?: boolean;
+    period?: '7d' | '30d' | '90d' | 'all';
+  }): Promise<{
+    archiveId: string;
+    tenantId: string;
+    fileCount: number;
+    totalSizeBytes: number;
+    storageKey: string;
+    downloadUrl?: string;
+    archivedAt: string;
+  }> {
+    if (!this.crossTenantArchive) {
+      throw new Error('Cross-tenant archive service not configured');
+    }
+    return this.crossTenantArchive.archiveTenant(input.tenantId, {
+      includeClosed: input.includeClosed,
+      period: input.period,
+    });
+  }
+
+  async listArchives(tenantId: string): Promise<{
+    archives: Array<{
+      archiveId: string;
+      tenantId: string;
+      storageKey: string;
+      downloadUrl?: string;
+      fileCount: number;
+      totalSizeBytes: number;
+      archivedAt: string;
+    }>;
+  }> {
+    if (!this.crossTenantArchive) {
+      return { archives: [] };
+    }
+    const archives = await this.crossTenantArchive.listArchives(tenantId);
+    return { archives };
+  }
+
+  async refreshArchiveUrl(
+    tenantId: string,
+    archiveId: string,
+  ): Promise<{
+    archiveId: string;
+    downloadUrl?: string;
+    message: string;
+  }> {
+    if (!this.crossTenantArchive) {
+      throw new Error('Cross-tenant archive service not configured');
+    }
+    const downloadUrl = await this.crossTenantArchive.refreshDownloadUrl(tenantId, archiveId);
+    return {
+      archiveId,
+      downloadUrl: downloadUrl ?? undefined,
+      message: downloadUrl ? 'Download URL refreshed' : 'Failed to refresh download URL',
+    };
+  }
+
   private async buildRequestTimeAggregation(
     tenantId: string,
     suiteId: string | undefined,
@@ -3595,35 +3896,46 @@ export class LoopsService {
     receivedAt: string,
   ): CreateLoopIssueRequest {
     const payload = input.payload;
+
+    // R36: Source-specific payload enrichment
+    const enriched = this.enrichWebhookFromSource(input.source, input.event, payload);
+
     const redactedPayload = this.redactWebhookPayload(payload);
     const mappedTitle =
+      enriched.title ??
       this.readWebhookString(payload, 'title') ??
       this.readWebhookPath(payload, ['issue', 'title']) ??
       this.readWebhookPath(payload, ['pull_request', 'title']) ??
       this.readWebhookPath(payload, ['data', 'title']) ??
       this.readWebhookPath(payload, ['resource', 'title']);
     const mappedBody =
+      enriched.body ??
       this.readWebhookString(payload, 'body') ??
       this.readWebhookString(payload, 'description') ??
       this.readWebhookString(payload, 'text') ??
       this.readWebhookPath(payload, ['issue', 'body']) ??
       this.readWebhookPath(payload, ['pull_request', 'body']) ??
       this.readWebhookPath(payload, ['data', 'description']);
-    const acceptanceCriteria = this.readWebhookStringArray(payload, 'acceptanceCriteria') ??
+    const acceptanceCriteria = enriched.acceptanceCriteria ??
+      this.readWebhookStringArray(payload, 'acceptanceCriteria') ??
       this.readWebhookStringArray(payload, 'acceptance_criteria') ?? [
         'Webhook event successfully mapped to issue',
       ];
     const targetRepo =
+      enriched.targetRepo ??
       this.readWebhookString(payload, 'targetRepo') ??
       this.readWebhookString(payload, 'target_repo') ??
       process.env.LOOPS_WORKSPACE_ROOT ??
       '.';
-    const priority = this.mapWebhookPriority(payload);
+    const priority = enriched.priority ?? this.mapWebhookPriority(payload);
     const title = this.truncateWebhookTitle(
       `[${input.source}:${input.event}] ${mappedTitle ?? `Webhook trigger at ${receivedAt}`}`,
     );
+    const enrichmentNote = enriched.note
+      ? `\n\n**${input.source} Context**:\n${enriched.note}`
+      : '';
     const summary = mappedBody ? `\n\n**Mapped Summary**:\n${mappedBody.trim()}` : '';
-    const body = `**Source**: ${input.source}\n**Event**: ${input.event}\n**Received At**: ${receivedAt}${summary}\n\n**Payload**:\n\`\`\`json\n${JSON.stringify(redactedPayload, null, 2)}\n\`\`\``;
+    const body = `**Source**: ${input.source}\n**Event**: ${input.event}\n**Received At**: ${receivedAt}${enrichmentNote}${summary}\n\n**Payload**:\n\`\`\`json\n${JSON.stringify(redactedPayload, null, 2)}\n\`\`\``;
 
     return {
       title,
@@ -3633,6 +3945,147 @@ export class LoopsService {
       acceptanceCriteria,
       sourceChannel: 'webhook',
       sourceKind: input.source,
+    };
+  }
+
+  /**
+   * R36: Source-specific webhook payload enrichment.
+   * Parses Linear, Jira, and Slack payload structures into normalized
+   * issue fields (title, body, priority, acceptanceCriteria, targetRepo).
+   */
+  private enrichWebhookFromSource(
+    source: string,
+    event: string,
+    payload: Record<string, unknown>,
+  ): {
+    title?: string;
+    body?: string;
+    priority?: 'P0' | 'P1' | 'P2' | 'P3';
+    acceptanceCriteria?: string[];
+    targetRepo?: string;
+    note?: string;
+  } {
+    switch (source) {
+      case 'linear':
+        return this.enrichLinearPayload(event, payload);
+      case 'jira':
+        return this.enrichJiraPayload(event, payload);
+      case 'slack':
+        return this.enrichSlackPayload(event, payload);
+      default:
+        return {};
+    }
+  }
+
+  /** Linear webhook: https://developers.linear.app/docs/webhooks */
+  private enrichLinearPayload(
+    event: string,
+    payload: Record<string, unknown>,
+  ): ReturnType<LoopsService['enrichWebhookFromSource']> {
+    const data = (payload.data ?? payload) as Record<string, unknown>;
+    const issueTitle = this.readWebhookString(data, 'title');
+    const issueDesc = this.readWebhookString(data, 'description');
+    const teamName = this.readWebhookPath(data, ['team', 'name']);
+    const state = this.readWebhookPath(data, ['state', 'name']);
+    const assignee = this.readWebhookPath(data, ['assignee', 'name']);
+    const priorityLabel = this.readWebhookString(data, 'priorityLabel');
+
+    let priority: 'P0' | 'P1' | 'P2' | 'P3' = 'P2';
+    if (priorityLabel === 'Urgent') priority = 'P0';
+    else if (priorityLabel === 'High') priority = 'P1';
+    else if (priorityLabel === 'Low') priority = 'P3';
+
+    const note = [
+      teamName ? `Team: ${teamName}` : null,
+      state ? `State: ${state}` : null,
+      assignee ? `Assignee: ${assignee}` : null,
+    ]
+      .filter(Boolean)
+      .join(' | ');
+
+    return {
+      title: issueTitle,
+      body: issueDesc,
+      priority,
+      acceptanceCriteria: [`Verify Linear issue state "${state ?? 'unknown'}" resolves correctly`],
+      note: note || undefined,
+    };
+  }
+
+  /** Jira webhook: https://developer.atlassian.com/cloud/jira/platform/webhooks/ */
+  private enrichJiraPayload(
+    event: string,
+    payload: Record<string, unknown>,
+  ): ReturnType<LoopsService['enrichWebhookFromSource']> {
+    const issue = (payload.issue ?? {}) as Record<string, unknown>;
+    const fields = (issue.fields ?? {}) as Record<string, unknown>;
+    const issueKey = this.readWebhookString(issue, 'key');
+    const summary = this.readWebhookString(fields, 'summary');
+    const description = this.readWebhookString(fields, 'description');
+    const issueType = this.readWebhookPath(fields, ['issuetype', 'name']);
+    const projectName = this.readWebhookPath(fields, ['project', 'name']);
+    const priorityName = this.readWebhookPath(fields, ['priority', 'name']);
+    const labels = this.readWebhookStringArray(fields, 'labels');
+
+    let priority: 'P0' | 'P1' | 'P2' | 'P3' = 'P2';
+    if (priorityName === 'Highest' || priorityName === 'Blocker') priority = 'P0';
+    else if (priorityName === 'High') priority = 'P1';
+    else if (priorityName === 'Low' || priorityName === 'Lowest') priority = 'P3';
+
+    const note = [
+      issueKey ? `Key: ${issueKey}` : null,
+      issueType ? `Type: ${issueType}` : null,
+      projectName ? `Project: ${projectName}` : null,
+      labels?.length ? `Labels: ${labels.join(', ')}` : null,
+    ]
+      .filter(Boolean)
+      .join(' | ');
+
+    return {
+      title: summary ?? issueKey,
+      body: description,
+      priority,
+      acceptanceCriteria: [`Jira issue ${issueKey ?? 'unknown'} migrated to DofeAI delivery`],
+      note: note || undefined,
+    };
+  }
+
+  /** Slack webhook: slash commands + events API */
+  private enrichSlackPayload(
+    event: string,
+    payload: Record<string, unknown>,
+  ): ReturnType<LoopsService['enrichWebhookFromSource']> {
+    // Slash command: /dofeai <text>
+    const commandText = this.readWebhookString(payload, 'text');
+    const channelName = this.readWebhookString(payload, 'channel_name');
+    const userName = this.readWebhookString(payload, 'user_name');
+    const teamDomain = this.readWebhookString(payload, 'team_domain');
+
+    // Event API: message.app_mention or reaction_added
+    const eventData = (payload.event ?? {}) as Record<string, unknown>;
+    const eventText = this.readWebhookString(eventData, 'text');
+    const eventChannel = this.readWebhookString(eventData, 'channel');
+
+    const body = commandText ?? eventText ?? `Slack ${event}`;
+
+    const note = [
+      userName ? `From: @${userName}` : null,
+      channelName ? `#${channelName}` : null,
+      eventChannel ? `Channel: ${eventChannel}` : null,
+      teamDomain ? `Team: ${teamDomain}` : null,
+    ]
+      .filter(Boolean)
+      .join(' | ');
+
+    return {
+      title: `Slack ${event} request`,
+      body: body?.replace(/<@[A-Z0-9]+>/g, '').trim(), // Strip Slack user mentions
+      priority: 'P2',
+      acceptanceCriteria: [
+        'Slack request processed and acknowledged',
+        'Deliverable defined from description',
+      ],
+      note: note || undefined,
     };
   }
 

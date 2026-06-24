@@ -2692,6 +2692,26 @@ export class LoopsFileStoreService {
     return this.listBlueprints().length + 1;
   }
 
+  // =========================================================================
+  // Remote Runner Artifact Read (R36)
+  // =========================================================================
+
+  readRemoteRunnerArtifact(runnerId: string, jobId: string, kind: string): string | null {
+    const artifactKinds: Record<string, string> = {
+      manifest: `runs/${runnerId}/jobs/${jobId}/manifest.json`,
+      'worker-receipt': `runs/${runnerId}/jobs/${jobId}/worker-receipt.json`,
+      'worker-log': `runs/${runnerId}/jobs/${jobId}/worker.log`,
+      trace: `runs/${runnerId}/jobs/${jobId}/trace.json`,
+    };
+    const relativePath = artifactKinds[kind];
+    if (!relativePath) return null;
+    try {
+      return readFileSync(path.join(this.root, relativePath), 'utf8');
+    } catch {
+      return null;
+    }
+  }
+
   /** gstack P2: Resolve a Browser QA artifact file path for serving inline preview. */
   resolveArtifactPath(issueId: string, artifactSubPath: string): string {
     return path.join(this.root, 'runs', issueId, 'browser-qa', artifactSubPath);
@@ -2856,6 +2876,75 @@ export class LoopsFileStoreService {
         );
     } catch {
       return [];
+    }
+  }
+
+  // =========================================================================
+  // Cross-Tenant Archive Index (R35)
+  // =========================================================================
+
+  writeArchiveIndex(
+    tenantId: string,
+    entry: {
+      archiveId: string;
+      tenantId: string;
+      storageKey: string;
+      downloadUrl?: string;
+      fileCount: number;
+      totalSizeBytes: number;
+      archivedAt: string;
+    },
+  ): void {
+    const dir = path.join(this.root, 'archives', tenantId);
+    mkdirSync(dir, { recursive: true });
+    // Update the per-archive entry
+    const file = path.join(dir, `${entry.archiveId}.json`);
+    writeFileSync(file, `${JSON.stringify(entry, null, 2)}\n`, 'utf8');
+    // Update the tenant index
+    const index = this.listArchiveIndex(tenantId);
+    const updated = index.filter((e) => e.archiveId !== entry.archiveId);
+    updated.push(entry);
+    updated.sort((a, b) => b.archivedAt.localeCompare(a.archivedAt));
+    const indexFile = path.join(dir, 'index.json');
+    writeFileSync(indexFile, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
+  }
+
+  listArchiveIndex(tenantId: string): Array<{
+    archiveId: string;
+    tenantId: string;
+    storageKey: string;
+    downloadUrl?: string;
+    fileCount: number;
+    totalSizeBytes: number;
+    archivedAt: string;
+  }> {
+    const file = path.join(this.root, 'archives', tenantId, 'index.json');
+    try {
+      return JSON.parse(readFileSync(file, 'utf8'));
+    } catch {
+      return [];
+    }
+  }
+
+  readArchiveIndex(
+    tenantId: string,
+    archiveId: string,
+  ):
+    | {
+        archiveId: string;
+        tenantId: string;
+        storageKey: string;
+        downloadUrl?: string;
+        fileCount: number;
+        totalSizeBytes: number;
+        archivedAt: string;
+      }
+    | undefined {
+    const file = path.join(this.root, 'archives', tenantId, `${archiveId}.json`);
+    try {
+      return JSON.parse(readFileSync(file, 'utf8'));
+    } catch {
+      return undefined;
     }
   }
 }
