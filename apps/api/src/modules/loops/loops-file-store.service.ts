@@ -2712,6 +2712,16 @@ export class LoopsFileStoreService {
     }
   }
 
+  /**
+   * Write a Remote Runner job artifact by relative path.
+   * Creates parent directories as needed.
+   */
+  writeRemoteRunnerArtifact(relativePath: string, content: string): void {
+    const filePath = path.join(this.root, relativePath);
+    mkdirSync(path.dirname(filePath), { recursive: true });
+    writeFileSync(filePath, content, 'utf8');
+  }
+
   /** gstack P2: Resolve a Browser QA artifact file path for serving inline preview. */
   resolveArtifactPath(issueId: string, artifactSubPath: string): string {
     return path.join(this.root, 'runs', issueId, 'browser-qa', artifactSubPath);

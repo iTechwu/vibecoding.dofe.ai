@@ -13,11 +13,15 @@ import { LoopsService } from './loops.service';
  * Replaces the control-plane-only lease system with real BullMQ-based job
  * distribution. Each job represents a Remote Runner work item that is picked
  * up by an available worker, executed via the Codex/Claude CLI adapter layer,
- * and tracked with durable status in Redis + DB.
+ * and tracked with durable status in Redis + file store.
  *
  * Job lifecycle:
- *   enqueued → active → completed/failed
+ *   enqueued → active → executing shard job → completed/failed
  *   failed jobs retry 3× with exponential backoff (5s → 25s → 125s)
+ *
+ * The actual CLI execution is delegated to LoopsService.executeRemoteShardJob,
+ * which routes to the appropriate adapter (Claude/Codex CLI, Docker sandbox)
+ * based on runtimeBackend and workerKind.
  */
 @Processor('loops-remote-runner', {
   concurrency: 2, // Allow 2 concurrent runner jobs per worker
@@ -58,8 +62,17 @@ export class LoopsRemoteRunnerProcessor extends WorkerHost {
     status: string;
     artifacts: Array<{ kind: string; ref: string; sha256?: string; sizeBytes?: number }>;
   }> {
-    const { runnerId, leaseId, issueId, shardId, runtimeBackend, workerKind, artifactRoot } =
-      job.data;
+    const {
+      runnerId,
+      leaseId,
+      issueId,
+      shardId,
+      runtimeBackend,
+      workerKind,
+      command,
+      artifactRoot,
+      sandboxProfile,
+    } = job.data;
 
     this.logger.info(
       `[RemoteRunner] Processing job ${job.id}: ${workerKind} on ${runtimeBackend}`,
@@ -80,66 +93,61 @@ export class LoopsRemoteRunnerProcessor extends WorkerHost {
       attempt: job.attemptsMade + 1,
     });
 
-    const artifacts: Array<{ kind: string; ref: string; sha256?: string; sizeBytes?: number }> = [];
+    const artifacts: Array<{
+      kind: string;
+      ref: string;
+      sha256?: string;
+      sizeBytes?: number;
+    }> = [];
 
     try {
-      // Delegate to the LoopsService which routes to the appropriate CLI adapter
-      // based on runtimeBackend. This is the same execution path as the
-      // synchronous runLoop/runShardTests/reviewShard endpoints, but now
-      // decoupled from the HTTP request lifecycle via BullMQ.
-      switch (workerKind) {
-        case 'implement': {
-          // Enqueue shard implementation
-          artifacts.push({
-            kind: 'handoff',
-            ref: `.loops/runs/${runnerId}/jobs/${job.id}/handoff.json`,
-          });
-          break;
-        }
-        case 'test': {
-          artifacts.push({
-            kind: 'test-evidence',
-            ref: `.loops/runs/${runnerId}/jobs/${job.id}/test-results.json`,
-          });
-          break;
-        }
-        case 'review': {
-          artifacts.push({
-            kind: 'review-evidence',
-            ref: `.loops/runs/${runnerId}/jobs/${job.id}/review-verdict.json`,
-          });
-          break;
-        }
-        default: {
-          artifacts.push({
-            kind: 'execution-log',
-            ref: `.loops/runs/${runnerId}/jobs/${job.id}/worker.log`,
-          });
-        }
+      if (!shardId) {
+        throw new Error('shardId is required for Remote Runner job execution');
       }
 
-      // Write job manifest artifact (already handled by LoopsFileStoreService
-      // via the existing runRemoteRunnerJob path — this processor adds queue
-      // distribution on top without changing the artifact format).
-      const status = 'completed';
-
-      await this.updateRedisStatus(leaseId, status, {
-        jobId: job.id!,
-        completedAt: new Date().toISOString(),
-        artifacts: artifacts.map((a) => a.ref),
+      // Delegate execution to LoopsService which routes to the appropriate
+      // CLI adapter (Claude/Codex), Docker sandbox, or agent adapter based
+      // on workerKind and runtimeBackend.
+      const result = await this.loopsService.executeRemoteShardJob({
+        issueId,
+        shardId,
+        workerKind: workerKind === 'custom' ? 'implement' : workerKind,
+        runtimeBackend,
+        artifactRoot,
+        command,
+        sandboxProfile,
       });
 
-      this.logger.info(`[RemoteRunner] Job ${job.id} completed: ${workerKind}`, {
-        jobId: job.id,
-        artifactCount: artifacts.length,
-      });
+      artifacts.push(...result.artifacts);
 
-      return { status, artifacts };
+      if (result.status === 'completed') {
+        await this.updateRedisStatus(leaseId, 'completed', {
+          jobId: job.id!,
+          completedAt: new Date().toISOString(),
+          artifacts: artifacts.map((a) => a.ref),
+          summary: result.summary,
+          durationMs: result.durationMs,
+        });
+
+        this.logger.info(`[RemoteRunner] Job ${job.id} completed: ${workerKind} on ${shardId}`, {
+          jobId: job.id,
+          shardId,
+          artifactCount: artifacts.length,
+          durationMs: result.durationMs,
+        });
+
+        return { status: 'completed', artifacts };
+      }
+
+      // Execution returned "failed" status — throw to trigger BullMQ retry
+      throw new Error(result.error ?? 'Remote shard job execution failed');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`[RemoteRunner] Job ${job.id} failed: ${message}`, {
         jobId: job.id,
         runnerId,
+        issueId,
+        shardId,
         error: message,
         attempt: job.attemptsMade + 1,
       });
@@ -176,7 +184,9 @@ export class LoopsRemoteRunnerProcessor extends WorkerHost {
 
   @OnWorkerEvent('completed')
   onCompleted(job: Job): void {
-    this.logger.info(`[RemoteRunner] Job ${job.id} completed`);
+    this.logger.info(`[RemoteRunner] Job ${job.id} completed and acknowledged`, {
+      jobId: job.id,
+    });
   }
 
   @OnWorkerEvent('failed')
@@ -189,6 +199,9 @@ export class LoopsRemoteRunnerProcessor extends WorkerHost {
 
   @OnWorkerEvent('active')
   onActive(job: Job): void {
-    this.logger.info(`[RemoteRunner] Job ${job.id} active — worker picked up`);
+    this.logger.info(`[RemoteRunner] Job ${job.id} active — worker picked up`, {
+      jobId: job.id,
+      data: job.data,
+    });
   }
 }

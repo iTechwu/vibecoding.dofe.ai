@@ -37,6 +37,7 @@ import { LoopsRemoteRunnerProcessor } from './loops-remote-runner.processor';
 import { LoopsTriggerSchedulerProcessor } from './loops-trigger-scheduler.processor';
 import { LoopsCrossTenantArchiveService } from './loops-cross-tenant-archive.service';
 import { LoopsMcpClientService } from './loops-mcp-client.service';
+import { LoopsMcpSecretService } from './loops-mcp-secret.service';
 
 @Module({
   // HttpModule provides HttpService to LoopsNotificationSender and
@@ -83,6 +84,7 @@ import { LoopsMcpClientService } from './loops-mcp-client.service';
     LoopsTriggerSchedulerProcessor,
     LoopsCrossTenantArchiveService,
     LoopsMcpClientService,
+    LoopsMcpSecretService,
     LoopsWorkLockService,
     // Work-lock backend: in-memory by default (single-process, unchanged
     // behaviour). Swap to RedisLoopsLockBackend (bound to @dofe/infra-redis

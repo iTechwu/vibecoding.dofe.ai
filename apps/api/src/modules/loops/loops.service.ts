@@ -6,7 +6,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import type {
   CreateLoopIssueRequest,
   CreateLoopIssueSimpleRequest,
@@ -126,6 +126,7 @@ import { LoopsFileStoreService } from './loops-file-store.service';
 import { LoopsEvalAggregationWorkerService } from './loops-eval-aggregation-worker.service';
 import { LoopsCrossTenantArchiveService } from './loops-cross-tenant-archive.service';
 import { LoopsMcpClientService } from './loops-mcp-client.service';
+import { LoopsMcpSecretService } from './loops-mcp-secret.service';
 import { LoopsDockerSandboxService } from './loops-docker-sandbox.service';
 import type { Prisma, LoopEvalAggregation } from '@prisma/client';
 import { LoopEvalAggregationService } from '@app/db/loop-eval-aggregation';
@@ -293,6 +294,9 @@ export class LoopsService {
     private readonly mcpClient?: LoopsMcpClientService,
     @Optional()
     private readonly dockerSandbox?: LoopsDockerSandboxService,
+    // R38: MCP secret management
+    @Optional()
+    private readonly mcpSecret?: LoopsMcpSecretService,
   ) {}
 
   async list(query: LoopIssuesQuery): Promise<LoopListResponse> {
@@ -3574,6 +3578,11 @@ export class LoopsService {
     const item = this.getMcpServerItem(serverId);
     const command = input?.command ?? item.name;
 
+    // R38: Resolve secrets for MCP authentication
+    const env = this.mcpSecret?.buildEnv(
+      item.secretRef ? { MCP_SECRET: item.secretRef } : undefined,
+    );
+
     if (!this.mcpClient) {
       return { serverId, handshakeOk: false, error: 'MCP client service not configured' };
     }
@@ -3583,6 +3592,7 @@ export class LoopsService {
         transport: item.transport as 'stdio' | 'sse',
         command,
         args: input?.args ?? [],
+        env,
         timeoutMs: 15000,
       });
 
@@ -3634,6 +3644,422 @@ export class LoopsService {
     // liveness is checked via the queue health endpoint.
     const running = activeTriggers > 0;
     return { running, activeTriggers, totalFired, totalErrors, lastTickAt };
+  }
+
+  // =========================================================================
+  // Remote Runner Shard Execution (R34a: CLI adapter dispatch)
+  // =========================================================================
+
+  /**
+   * Execute a single Remote Runner shard job via the appropriate CLI adapter
+   * or runner service. This is the async execution path called by
+   * LoopsRemoteRunnerProcessor, decoupled from the HTTP request lifecycle.
+   *
+   * Worker kinds:
+   *   - implement: Run Claude/Codex adapter to implement a shard, persist record
+   *   - test:      Run test commands via LoopsRunnerService, persist test record
+   *   - review:    Run AI review via agent adapter, persist review verdict
+   */
+  async executeRemoteShardJob(job: {
+    issueId: string;
+    shardId: string;
+    workerKind: 'implement' | 'test' | 'review';
+    runtimeBackend: 'codex-cli' | 'claude-code-cli' | 'docker';
+    artifactRoot: string;
+    command?: string;
+    sandboxProfile?: string;
+  }): Promise<{
+    status: 'completed' | 'failed';
+    artifacts: Array<{
+      kind: string;
+      ref: string;
+      sha256?: string;
+      sizeBytes?: number;
+    }>;
+    error?: string;
+    summary?: string;
+    durationMs: number;
+  }> {
+    const start = Date.now();
+    const { issueId, shardId, workerKind, runtimeBackend, artifactRoot, command, sandboxProfile } =
+      job;
+    const artifacts: Array<{
+      kind: string;
+      ref: string;
+      sha256?: string;
+      sizeBytes?: number;
+    }> = [];
+
+    try {
+      const detail = await this.getIssue(issueId);
+      const shard = detail.shards.find((s) => s.id === shardId);
+      if (!shard) {
+        return {
+          status: 'failed',
+          artifacts,
+          error: `Shard ${shardId} not found in issue ${issueId}`,
+          durationMs: Date.now() - start,
+        };
+      }
+
+      switch (workerKind) {
+        case 'implement': {
+          // -------------------------------------------------------------------
+          // PHASE 4: Run CLI adapter to implement the shard
+          // -------------------------------------------------------------------
+          this.log(
+            'info',
+            `[RemoteRunner] Starting implementation: ${shardId} on ${runtimeBackend}`,
+            {
+              issueId,
+              shardId,
+              runtimeBackend,
+            },
+          );
+
+          // Mark shard IN_PROGRESS
+          const inProgressShards = detail.shards.map((item) =>
+            item.id === shardId ? { ...item, status: 'IN_PROGRESS' as const } : item,
+          );
+          await this.store.writeShardProgress({
+            issueId,
+            from: shard.status,
+            to: 'IN_PROGRESS',
+            actor: `remote-runner:${runtimeBackend}`,
+            shardId,
+            state: {
+              ...detail.state,
+              phase: 'PHASE_4_IMPLEMENT',
+              shardsInProgress: 1,
+              updated: new Date().toISOString(),
+            },
+            shards: inProgressShards,
+          });
+
+          // Execute via the appropriate runtime backend
+          let record: LoopImplementationRecord;
+          if (runtimeBackend === 'docker' && this.dockerSandbox) {
+            // Docker sandbox execution: wrap command in sandbox profile
+            const dockerResult = await this.dockerSandbox.executeOrThrow({
+              image: sandboxProfile ?? 'dofe-ai/sandbox:latest',
+              command: command ?? `codex implement --shard ${shardId} --issue ${issueId}`,
+              workdir: detail.issue.targetRepo,
+              mountPath: detail.issue.targetRepo,
+              networkMode: 'none',
+              readonlyRootfs: false,
+              capDrop: ['ALL'],
+              capAdd: [],
+              timeoutSec: 600,
+              memoryLimitMb: 2048,
+            });
+            // Build implementation record from Docker output
+            record = {
+              id: `impl-record-${shardId}-r${detail.state.round}-${Date.now()}`,
+              issueId,
+              shardId,
+              round: detail.state.round,
+              implementer: `remote-runner:docker`,
+              status: dockerResult.exitCode === 0 ? 'IMPLEMENTED' : 'NEEDS-WORK',
+              summary: `Docker sandbox execution: exit ${dockerResult.exitCode}`,
+              changedFiles: [],
+              notes: dockerResult.stdout.slice(0, 2000),
+              tokens: 0,
+              created: new Date().toISOString(),
+            };
+            const logArtifact = this.writeArtifact(artifactRoot, 'worker.log', dockerResult.stdout);
+            artifacts.push(logArtifact);
+          } else {
+            // Direct CLI adapter execution (Codex or Claude Code)
+            const result = await this.claudeAdapter.run({
+              issue: detail.issue,
+              shard,
+              round: detail.state.round,
+              cwd: detail.issue.targetRepo,
+            });
+            record = {
+              ...result.record,
+              implementer: `remote-runner:${runtimeBackend}`,
+            };
+          }
+
+          // Persist implementation record
+          await this.persistImplementationRecord(issueId, shardId, record);
+
+          // Write handoff artifact
+          const handoff = this.writeArtifact(
+            artifactRoot,
+            'handoff.json',
+            JSON.stringify(
+              {
+                shardId,
+                runtimeBackend,
+                implementationId: record.id,
+                status: record.status,
+                summary: record.summary,
+                changedFiles: record.changedFiles,
+                executedAt: new Date().toISOString(),
+              },
+              null,
+              2,
+            ),
+          );
+          artifacts.push(handoff);
+
+          this.log('info', `[RemoteRunner] Implementation completed: ${shardId}`, {
+            issueId,
+            shardId,
+            runtimeBackend,
+            status: record.status,
+          });
+
+          return {
+            status: 'completed',
+            artifacts,
+            summary: record.summary,
+            durationMs: Date.now() - start,
+          };
+        }
+
+        case 'test': {
+          // -------------------------------------------------------------------
+          // Run test commands via LoopsRunnerService
+          // -------------------------------------------------------------------
+          this.log('info', `[RemoteRunner] Starting tests: ${shardId}`, {
+            issueId,
+            shardId,
+            runtimeBackend,
+          });
+
+          const testRecord = await this.runner.runShardTests({
+            issueId,
+            shardId,
+            round: detail.state.round,
+            cwd: detail.issue.targetRepo,
+            request: {
+              commands: command ? [command] : undefined,
+              runner: `remote-runner:${runtimeBackend}`,
+            },
+            sandboxProfile:
+              runtimeBackend === 'docker'
+                ? {
+                    network: sandboxProfile === 'strict' ? 'deny' : 'allowlist',
+                    writeScope: 'repo',
+                    shellEnforcement: 'allowlist',
+                    secretMode: 'redacted',
+                  }
+                : undefined,
+          });
+
+          // Persist test record and update annotations/shards/state
+          const testStatus: LoopAnnotation['testStatus'] =
+            testRecord.status === 'TEST-PASS' ? 'pass' : 'fail';
+          const testVerdict: LoopAnnotation['verdict'] =
+            testRecord.status === 'TEST-PASS' ? 'unreviewed' : 'needs-work';
+          const nextAnnotations = detail.annotations.map((a) =>
+            a.target === shardId
+              ? {
+                  ...a,
+                  testStatus,
+                  verdict: testVerdict,
+                  notes:
+                    testRecord.failedTests.length > 0
+                      ? `Test failures: ${testRecord.failedTests.map((f) => f.name).join(', ')}`
+                      : 'Tests passed — awaiting review.',
+                }
+              : a,
+          );
+          const nextShards = detail.shards.map((item) =>
+            item.id === shardId && testRecord.status === 'TEST-FAIL'
+              ? { ...item, status: 'NEEDS-WORK' as const }
+              : item,
+          );
+          await this.store.writeTestRecord({
+            issueId,
+            shardId,
+            record: testRecord,
+            annotations: nextAnnotations,
+            shards: nextShards,
+            state: {
+              ...detail.state,
+              phase: 'PHASE_5_REVIEW',
+              updated: new Date().toISOString(),
+            },
+          });
+
+          // Write test evidence artifact
+          const testArtifact = this.writeArtifact(
+            artifactRoot,
+            'test-results.json',
+            JSON.stringify(
+              {
+                shardId,
+                runtimeBackend,
+                testRecordId: testRecord.id,
+                status: testRecord.status,
+                commandCount: testRecord.commands.length,
+                failedTests: testRecord.failedTests,
+                coverage: testRecord.coverage,
+                executedAt: new Date().toISOString(),
+              },
+              null,
+              2,
+            ),
+          );
+          artifacts.push(testArtifact);
+
+          this.log('info', `[RemoteRunner] Tests ${testRecord.status}: ${shardId}`, {
+            issueId,
+            shardId,
+            status: testRecord.status,
+          });
+
+          return {
+            status: 'completed',
+            artifacts,
+            summary: `Tests ${testRecord.status}: ${testRecord.failedTests.length} failures`,
+            durationMs: Date.now() - start,
+          };
+        }
+
+        case 'review': {
+          // -------------------------------------------------------------------
+          // Run AI review via agent adapter
+          // -------------------------------------------------------------------
+          this.log('info', `[RemoteRunner] Starting review: ${shardId}`, {
+            issueId,
+            shardId,
+            runtimeBackend,
+          });
+
+          const implRecord = detail.implementationRecords.find(
+            (r) => r.shardId === shardId && r.round === detail.state.round,
+          );
+          if (!implRecord) {
+            return {
+              status: 'failed',
+              artifacts,
+              error: `No implementation record found for shard ${shardId} at round ${detail.state.round}`,
+              durationMs: Date.now() - start,
+            };
+          }
+
+          const testRecord = detail.testRecords.find(
+            (r) => r.shardId === shardId && r.round === detail.state.round,
+          );
+
+          // Run agent review
+          const review = await this.agentAdapter.review({
+            shard,
+            implementationRecord: implRecord,
+            testRecord,
+          });
+
+          // Write review verdict artifact BEFORE applying state (preserve for evidence)
+          const reviewArtifact = this.writeArtifact(
+            artifactRoot,
+            'review-verdict.json',
+            JSON.stringify(
+              {
+                shardId,
+                runtimeBackend,
+                verdict: review.verdict,
+                issues: review.issues,
+                fixInstructions: review.fixInstructions,
+                summary: review.summary,
+                reviewedAt: new Date().toISOString(),
+              },
+              null,
+              2,
+            ),
+          );
+          artifacts.push(reviewArtifact);
+
+          // Apply review verdict via reviewShard (handles NEEDS-WORK redo limit, etc.)
+          await this.reviewShard(issueId, shardId, {
+            reviewer: `remote-runner:${runtimeBackend}`,
+            verdict: review.verdict,
+            summary: review.summary,
+            issues: review.issues,
+            fixInstructions: review.fixInstructions,
+          });
+
+          this.log('info', `[RemoteRunner] Review ${review.verdict}: ${shardId}`, {
+            issueId,
+            shardId,
+            verdict: review.verdict,
+          });
+
+          return {
+            status: 'completed',
+            artifacts,
+            summary: `Review ${review.verdict}: ${review.summary}`,
+            durationMs: Date.now() - start,
+          };
+        }
+
+        default:
+          return {
+            status: 'failed',
+            artifacts,
+            error: `Unknown workerKind: ${workerKind}`,
+            durationMs: Date.now() - start,
+          };
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.log('error', `[RemoteRunner] Job failed: ${workerKind} on ${shardId}`, {
+        issueId: job.issueId,
+        shardId: job.shardId,
+        workerKind,
+        error: message,
+      });
+
+      // Write error log artifact
+      try {
+        const errArtifact = this.writeArtifact(
+          artifactRoot,
+          'worker.log',
+          `ERROR [${new Date().toISOString()}] ${workerKind} on ${job.shardId}: ${message}\n${error instanceof Error ? error.stack : ''}`,
+        );
+        artifacts.push(errArtifact);
+      } catch {
+        // Best effort
+      }
+
+      return {
+        status: 'failed',
+        artifacts,
+        error: message,
+        summary: `Execution failed: ${message.slice(0, 200)}`,
+        durationMs: Date.now() - start,
+      };
+    }
+  }
+
+  /**
+   * Write a job artifact to the file store and return its metadata.
+   */
+  private writeArtifact(
+    artifactRoot: string,
+    filename: string,
+    content: string,
+  ): {
+    kind: string;
+    ref: string;
+    sha256?: string;
+    sizeBytes?: number;
+  } {
+    const ref = `${artifactRoot}/${filename}`;
+    const sha256 = createHash('sha256').update(content).digest('hex');
+    const sizeBytes = Buffer.byteLength(content, 'utf8');
+    try {
+      this.store.writeRemoteRunnerArtifact(ref, content);
+    } catch (err) {
+      this.log('warn', `[RemoteRunner] Failed to write artifact: ${ref}`, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return { kind: filename.replace(/\.\w+$/, ''), ref, sha256, sizeBytes };
   }
 
   // =========================================================================

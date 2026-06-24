@@ -2119,6 +2119,7 @@ export const LoopMcpServerSchema = z.object({
   toolIds: z.array(z.string()).default([]),
   permissionProfile: z.string(),
   authStatus: z.enum(['configured', 'missing', 'not-required']),
+  secretRef: z.string().trim().min(1).optional(),
   lastTestedAt: z.string().optional(),
   health: z.object({
     ok: z.boolean(),
