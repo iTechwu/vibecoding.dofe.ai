@@ -1,6 +1,6 @@
 import * as React from 'react';
 
-import { cn } from '@repo/utils';
+import { cn } from '@dofe/infra-web-runtime/cn';
 
 function Textarea({ className, ...props }: React.ComponentProps<'textarea'>) {
   return (

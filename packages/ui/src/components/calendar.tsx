@@ -4,17 +4,12 @@ import * as React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { DayPicker } from 'react-day-picker';
 
-import { cn } from '@repo/utils';
+import { cn } from '@dofe/infra-web-runtime/cn';
 import { buttonVariants } from './button';
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
 
-function Calendar({
-  className,
-  classNames,
-  showOutsideDays = true,
-  ...props
-}: CalendarProps) {
+function Calendar({ className, classNames, showOutsideDays = true, ...props }: CalendarProps) {
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
@@ -49,8 +44,7 @@ function Calendar({
         day_outside:
           'day-outside text-muted-foreground/40 opacity-50 aria-selected:bg-accent/50 aria-selected:text-muted-foreground/40',
         day_disabled: 'text-muted-foreground opacity-50 cursor-not-allowed',
-        day_range_middle:
-          'aria-selected:bg-accent aria-selected:text-accent-foreground',
+        day_range_middle: 'aria-selected:bg-accent aria-selected:text-accent-foreground',
         day_hidden: 'invisible',
         ...classNames,
       }}

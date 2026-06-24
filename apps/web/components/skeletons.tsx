@@ -7,7 +7,7 @@
  */
 
 import { Skeleton } from '@repo/ui';
-import { cn } from '@repo/utils';
+import { cn } from '@dofe/infra-web-runtime/cn';
 
 /**
  * 卡片骨架屏
@@ -41,13 +41,7 @@ export function ListItemSkeleton({ className }: { className?: string }) {
 /**
  * 列表骨架屏
  */
-export function ListSkeleton({
-  count = 5,
-  className,
-}: {
-  count?: number;
-  className?: string;
-}) {
+export function ListSkeleton({ count = 5, className }: { count?: number; className?: string }) {
   return (
     <div className={cn('divide-y', className)}>
       {Array.from({ length: count }).map((_, i) => (
@@ -92,13 +86,7 @@ export function TableSkeleton({
 /**
  * 表单骨架屏
  */
-export function FormSkeleton({
-  fields = 4,
-  className,
-}: {
-  fields?: number;
-  className?: string;
-}) {
+export function FormSkeleton({ fields = 4, className }: { fields?: number; className?: string }) {
   return (
     <div className={cn('space-y-6', className)}>
       {Array.from({ length: fields }).map((_, i) => (
@@ -157,9 +145,7 @@ export function AvatarSkeleton({
     lg: 'h-16 w-16',
   };
 
-  return (
-    <Skeleton className={cn('rounded-full', sizeClasses[size], className)} />
-  );
+  return <Skeleton className={cn('rounded-full', sizeClasses[size], className)} />;
 }
 
 /**

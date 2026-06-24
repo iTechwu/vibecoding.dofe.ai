@@ -7,7 +7,7 @@
  * 示例: 2025.03.18-abcdef-g42
  */
 
-import { API_VERSION_DEFAULT } from '@repo/constants';
+import { API_VERSION_DEFAULT } from '@dofe/infra-contracts';
 
 // ============================================================================
 // Version Configuration

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { cn } from '@repo/utils';
+import { cn } from '@dofe/infra-web-runtime/cn';
 import { cva, type VariantProps } from 'class-variance-authority';
 import {
   checkPasswordStrength,
@@ -12,22 +12,19 @@ import {
 /**
  * Password strength bar variants
  */
-const strengthBarVariants = cva(
-  'h-1.5 rounded-full transition-all duration-300',
-  {
-    variants: {
-      level: {
-        weak: 'bg-red-500',
-        medium: 'bg-yellow-500',
-        strong: 'bg-green-500',
-        very_strong: 'bg-emerald-600',
-      },
-    },
-    defaultVariants: {
-      level: 'weak',
+const strengthBarVariants = cva('h-1.5 rounded-full transition-all duration-300', {
+  variants: {
+    level: {
+      weak: 'bg-red-500',
+      medium: 'bg-yellow-500',
+      strong: 'bg-green-500',
+      very_strong: 'bg-emerald-600',
     },
   },
-);
+  defaultVariants: {
+    level: 'weak',
+  },
+});
 
 /**
  * Password strength text variants
@@ -49,10 +46,7 @@ const strengthTextVariants = cva('text-xs font-medium', {
 /**
  * Strength level labels (internationalization-ready)
  */
-const strengthLabels: Record<
-  PasswordStrengthLevel,
-  { en: string; zh: string }
-> = {
+const strengthLabels: Record<PasswordStrengthLevel, { en: string; zh: string }> = {
   weak: { en: 'Weak', zh: '弱' },
   medium: { en: 'Medium', zh: '中' },
   strong: { en: 'Strong', zh: '强' },
@@ -60,9 +54,7 @@ const strengthLabels: Record<
 };
 
 export interface PasswordStrengthProps
-  extends
-    React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof strengthBarVariants> {
+  extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof strengthBarVariants> {
   /** Password to evaluate */
   password: string;
   /** Show suggestions for improvement */
@@ -110,9 +102,7 @@ function PasswordStrength({
   onStrengthChange,
   ...props
 }: PasswordStrengthProps) {
-  const [result, setResult] = React.useState<PasswordStrengthResult | null>(
-    null,
-  );
+  const [result, setResult] = React.useState<PasswordStrengthResult | null>(null);
 
   React.useEffect(() => {
     if (password && password.length >= minLengthToShow) {
@@ -134,19 +124,12 @@ function PasswordStrength({
   const strengthLabel = strengthLabels[result.level][locale];
 
   return (
-    <div
-      className={cn('space-y-2', containerClassName)}
-      data-slot="password-strength"
-      {...props}
-    >
+    <div className={cn('space-y-2', containerClassName)} data-slot="password-strength" {...props}>
       {/* Strength bar container */}
       <div className={cn('space-y-1', className)}>
         {/* Progress track */}
         <div
-          className={cn(
-            'h-1.5 w-full rounded-full bg-gray-200 dark:bg-gray-700',
-            trackClassName,
-          )}
+          className={cn('h-1.5 w-full rounded-full bg-gray-200 dark:bg-gray-700', trackClassName)}
         >
           {/* Progress bar */}
           <div
@@ -162,23 +145,14 @@ function PasswordStrength({
 
         {/* Strength label */}
         <div className="flex items-center justify-between">
-          <span className={strengthTextVariants({ level: result.level })}>
-            {strengthLabel}
-          </span>
-          <span className="text-xs text-muted-foreground">
-            {result.score}/7
-          </span>
+          <span className={strengthTextVariants({ level: result.level })}>{strengthLabel}</span>
+          <span className="text-xs text-muted-foreground">{result.score}/7</span>
         </div>
       </div>
 
       {/* Suggestions */}
       {showSuggestions && result.suggestions.length > 0 && (
-        <ul
-          className={cn(
-            'space-y-0.5 text-xs text-muted-foreground',
-            suggestionsClassName,
-          )}
-        >
+        <ul className={cn('space-y-0.5 text-xs text-muted-foreground', suggestionsClassName)}>
           {result.suggestions.map((suggestion, index) => (
             <li key={index} className="flex items-center gap-1.5">
               <span className="text-yellow-500">•</span>
@@ -202,9 +176,7 @@ function PasswordStrength({
  * ```
  */
 function usePasswordStrength(password: string, minLength = 1) {
-  const [result, setResult] = React.useState<PasswordStrengthResult | null>(
-    null,
-  );
+  const [result, setResult] = React.useState<PasswordStrengthResult | null>(null);
 
   React.useEffect(() => {
     if (password && password.length >= minLength) {
@@ -234,12 +206,7 @@ function usePasswordStrength(password: string, minLength = 1) {
     /** Check if password meets a minimum level */
     meetsLevel: (minLevel: PasswordStrengthLevel) => {
       if (!result) return false;
-      const levels: PasswordStrengthLevel[] = [
-        'weak',
-        'medium',
-        'strong',
-        'very_strong',
-      ];
+      const levels: PasswordStrengthLevel[] = ['weak', 'medium', 'strong', 'very_strong'];
       return levels.indexOf(result.level) >= levels.indexOf(minLevel);
     },
   };

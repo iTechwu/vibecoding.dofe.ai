@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { DbOperationType, HandlePrismaError } from '@dofe/infra-common';
 import { PrismaService } from '@dofe/infra-prisma';
 import { TransactionalServiceBase } from '@dofe/infra-shared-db';
-import { PAGINATION } from '@repo/constants';
+import { PAGINATION } from '@dofe/infra-contracts';
 import type {
   LoopIntake,
   LoopIssue,

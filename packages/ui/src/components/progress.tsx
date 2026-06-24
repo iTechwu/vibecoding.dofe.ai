@@ -1,10 +1,9 @@
 'use client';
 
 import * as React from 'react';
-import { cn } from '@repo/utils';
+import { cn } from '@dofe/infra-web-runtime/cn';
 
-export interface ProgressProps
-  extends React.HTMLAttributes<HTMLDivElement> {
+export interface ProgressProps extends React.HTMLAttributes<HTMLDivElement> {
   value?: number;
   max?: number;
 }
@@ -16,10 +15,7 @@ const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
     return (
       <div
         ref={ref}
-        className={cn(
-          'relative h-4 w-full overflow-hidden rounded-full bg-secondary',
-          className,
-        )}
+        className={cn('relative h-4 w-full overflow-hidden rounded-full bg-secondary', className)}
         {...props}
       >
         <div

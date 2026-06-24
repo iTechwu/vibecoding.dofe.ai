@@ -8,6 +8,7 @@
  */
 
 import { toast } from 'sonner';
+import { VERSION_HEADERS, isVersionMismatchStatus } from '@dofe/infra-web-runtime/version';
 import { logger } from '@/lib/logger';
 
 // ============================================================================
@@ -123,26 +124,16 @@ function showUpdateModal(options: UpdateModalOptions): void {
 // ============================================================================
 
 /**
- * 检查响应是否为版本不兼容错误
- *
- * @param status HTTP 状态码
- * @returns 是否为 426 Upgrade Required
- */
-export function isVersionMismatchStatus(status: number): boolean {
-  return status === 426;
-}
-
-/**
  * 从响应中提取最低兼容版本
  *
  * @param headers 响应头
  * @returns 最低兼容的构建版本
  */
-export function getMinBuildFromHeaders(
-  headers: Headers | Record<string, string>,
-): string | null {
+export function getMinBuildFromHeaders(headers: Headers | Record<string, string>): string | null {
   if (headers instanceof Headers) {
-    return headers.get('x-min-app-build');
+    return headers.get(VERSION_HEADERS.MIN_APP_BUILD);
   }
-  return headers['x-min-app-build'] || null;
+  return headers[VERSION_HEADERS.MIN_APP_BUILD] || null;
 }
+
+export { isVersionMismatchStatus };

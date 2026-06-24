@@ -6,7 +6,7 @@ import {
   OS_HEADER,
   DEVICE_ID_HEADER,
   MPTRAIL_HEADER,
-} from '@repo/constants';
+} from '@dofe/infra-contracts';
 
 export interface HeaderData {
   platform: string;

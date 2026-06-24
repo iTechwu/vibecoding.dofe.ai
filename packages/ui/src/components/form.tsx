@@ -12,7 +12,7 @@ import {
   type FieldValues,
 } from 'react-hook-form';
 
-import { cn } from '@repo/utils';
+import { cn } from '@dofe/infra-web-runtime/cn';
 
 const Form = FormProvider;
 

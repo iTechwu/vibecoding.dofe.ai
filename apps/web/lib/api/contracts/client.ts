@@ -16,7 +16,7 @@ import {
   oidcAuthContract,
 } from '@repo/contracts';
 import { getHeaders } from '@repo/utils/headers';
-import { API_VERSION_HEADER, APP_BUILD_HEADER } from '@repo/constants';
+import { VERSION_HEADERS } from '@dofe/infra-web-runtime/version';
 import { API_CONFIG } from '@/config';
 import { getToken, ensureValidToken, clearToken, refreshToken } from '../../token-manager';
 import { APP_VERSION } from '@/lib/version';
@@ -129,8 +129,8 @@ const baseFetch = async (
   const headers: Record<string, string> = {
     ...standardHeaders,
     // Version control headers
-    [API_VERSION_HEADER]: APP_VERSION.apiVersion,
-    [APP_BUILD_HEADER]: APP_VERSION.appBuild,
+    [VERSION_HEADERS.API_VERSION]: APP_VERSION.apiVersion,
+    [VERSION_HEADERS.APP_BUILD]: APP_VERSION.appBuild,
   };
 
   // Merge ts-rest headers, but handle Content-Type specially to avoid duplicates

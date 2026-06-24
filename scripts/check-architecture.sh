@@ -89,6 +89,34 @@ check_no_matches \
   --glob '!**/*.test.ts' \
   --glob '!**/__tests__/**'
 
+section "Package infra constants boundary"
+check_no_matches \
+  "migrated packages must not reintroduce @repo/constants; shared constants should come from @dofe/infra-contracts or stay in the owning app/domain" \
+  "@repo/constants" \
+  packages/ui packages/utils packages/contracts \
+  --glob '*.{ts,tsx,js,mjs,json}'
+
+section "UI infra utils boundary"
+check_no_matches \
+  "packages/ui must not reintroduce @repo/utils; use @dofe/infra-web-runtime/cn for shared UI className helpers" \
+  "@repo/utils" \
+  packages/ui \
+  --glob '*.{ts,tsx,js,mjs,json}'
+
+section "Web infra utils root boundary"
+check_no_matches \
+  "Frontend code must not import from @dofe/infra-utils root export; use browser-safe subpaths only" \
+  "from ['\"]@dofe/infra-utils['\"]|import\\(['\"]@dofe/infra-utils['\"]\\)" \
+  apps/web \
+  --glob '*.{ts,tsx}'
+
+section "Web repo utils narrow boundary"
+check_no_matches \
+  "Frontend code may only keep @repo/utils/headers until GAP-007 is resolved" \
+  "from ['\"]@repo/utils['\"]|from ['\"]@repo/utils/(?!headers['\"])|import\\(['\"]@repo/utils(/(?!headers['\"])[^'\"]*)?['\"]\\)" \
+  apps/web \
+  --glob '*.{ts,tsx}'
+
 if [ "$failures" -gt 0 ]; then
   printf '\nArchitecture check failed with %s failing section(s).\n' "$failures"
   exit 1

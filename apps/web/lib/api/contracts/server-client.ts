@@ -15,7 +15,7 @@ import {
   OS_HEADER,
   DEVICE_ID_HEADER,
   MPTRAIL_HEADER,
-} from '@repo/constants';
+} from '@dofe/infra-contracts';
 import { API_CONFIG } from '@/config';
 import { APP_VERSION } from '../../version';
 

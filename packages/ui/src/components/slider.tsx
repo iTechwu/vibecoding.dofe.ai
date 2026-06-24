@@ -1,13 +1,12 @@
 'use client';
 
 import * as React from 'react';
-import { cn } from '@repo/utils';
+import { cn } from '@dofe/infra-web-runtime/cn';
 
-export interface SliderProps
-  extends Omit<
-    React.InputHTMLAttributes<HTMLInputElement>,
-    'type' | 'value' | 'defaultValue' | 'onChange'
-  > {
+export interface SliderProps extends Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  'type' | 'value' | 'defaultValue' | 'onChange'
+> {
   value?: number[];
   defaultValue?: number[];
   onValueChange?: (value: number[]) => void;

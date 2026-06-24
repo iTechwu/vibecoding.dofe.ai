@@ -12,7 +12,7 @@ import {
   DEPRECATION_HEADER,
   DEPRECATION_MESSAGE_HEADER,
   SUNSET_HEADER,
-} from '@repo/constants';
+} from '@dofe/infra-contracts';
 
 // ============================================================================
 // Types
@@ -61,10 +61,7 @@ function markWarningShown(path: string): void {
   try {
     const shown = getShownWarnings();
     shown.add(path);
-    sessionStorage.setItem(
-      DEPRECATION_SHOWN_KEY,
-      JSON.stringify(Array.from(shown)),
-    );
+    sessionStorage.setItem(DEPRECATION_SHOWN_KEY, JSON.stringify(Array.from(shown)));
   } catch {
     // Ignore storage errors
   }

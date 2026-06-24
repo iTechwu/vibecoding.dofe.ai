@@ -9,7 +9,7 @@ import { Loader2 } from 'lucide-react';
 import { Button } from '@repo/ui';
 import type { ReactNode } from 'react';
 import { useTranslations } from 'next-intl';
-import { cn } from '@repo/utils';
+import { cn } from '@dofe/infra-web-runtime/cn';
 
 // ============================================================================
 // Loading Spinner
@@ -33,13 +33,8 @@ const sizeMap = {
 /**
  * 统一的加载状态组件
  */
-export function LoadingSpinner({
-  className,
-  size = 'md',
-  minHeight = 400,
-}: LoadingSpinnerProps) {
-  const minHeightStyle =
-    typeof minHeight === 'number' ? `${minHeight}px` : minHeight;
+export function LoadingSpinner({ className, size = 'md', minHeight = 400 }: LoadingSpinnerProps) {
+  const minHeightStyle = typeof minHeight === 'number' ? `${minHeight}px` : minHeight;
 
   return (
     <div
@@ -81,15 +76,11 @@ export function ErrorState({
   const t = useTranslations('common');
   const displayMessage = message ?? t('messages.loadFailed');
   const displayRetry = retryText ?? t('actions.retry');
-  const minHeightStyle =
-    typeof minHeight === 'number' ? `${minHeight}px` : minHeight;
+  const minHeightStyle = typeof minHeight === 'number' ? `${minHeight}px` : minHeight;
 
   return (
     <div
-      className={cn(
-        'flex flex-col items-center justify-center gap-4',
-        className,
-      )}
+      className={cn('flex flex-col items-center justify-center gap-4', className)}
       style={{ minHeight: minHeightStyle }}
     >
       <p className="text-destructive">{displayMessage}</p>
@@ -134,23 +125,17 @@ export function EmptyState({
 }: EmptyStateProps) {
   const t = useTranslations('common');
   const displayTitle = title ?? t('messages.noData');
-  const minHeightStyle =
-    typeof minHeight === 'number' ? `${minHeight}px` : minHeight;
+  const minHeightStyle = typeof minHeight === 'number' ? `${minHeight}px` : minHeight;
 
   return (
     <div
-      className={cn(
-        'flex flex-col items-center justify-center gap-4',
-        className,
-      )}
+      className={cn('flex flex-col items-center justify-center gap-4', className)}
       style={{ minHeight: minHeightStyle }}
     >
       {icon}
       <div className="text-center">
         <p className="text-muted-foreground">{displayTitle}</p>
-        {description && (
-          <p className="text-sm text-muted-foreground/60 mt-1">{description}</p>
-        )}
+        {description && <p className="text-sm text-muted-foreground/60 mt-1">{description}</p>}
       </div>
       {action}
     </div>
@@ -171,12 +156,7 @@ interface PageLoadingProps {
  */
 export function PageLoading({ className }: PageLoadingProps) {
   return (
-    <div
-      className={cn(
-        'p-6 flex items-center justify-center min-h-[400px]',
-        className,
-      )}
-    >
+    <div className={cn('p-6 flex items-center justify-center min-h-[400px]', className)}>
       <Loader2 className="size-8 animate-spin text-primary" />
     </div>
   );

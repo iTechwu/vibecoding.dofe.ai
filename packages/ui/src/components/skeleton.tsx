@@ -1,4 +1,4 @@
-import { cn } from '@repo/utils';
+import { cn } from '@dofe/infra-web-runtime/cn';
 
 function Skeleton({ className, ...props }: React.ComponentProps<'div'>) {
   return (

@@ -68,7 +68,7 @@
     "@repo/config": "workspace:*",
     "eslint": "^10.5.0",
     "husky": "^9.1.7",
-    "lint-staged": "^17.0.7",
+    "lint-staged": "^17.0.8",
     "prettier": "^3.8.4",
     "turbo": "^2.9.18",
     "typescript": "^6.0.3"
@@ -85,17 +85,17 @@
       "rimraf": "^6.0.1",
       "rxjs": "7.8.2",
       "punycode": "^2.3.1",
-      "@dofe/infra-common": "^0.1.56",
-      "@dofe/infra-contracts": "^0.1.56",
-      "@dofe/infra-utils": "^0.1.56",
-      "@dofe/infra-redis": "^0.1.56",
-      "@dofe/infra-prisma": "^0.1.56",
-      "@dofe/infra-clients": "^0.1.56",
-      "@dofe/infra-rabbitmq": "^0.1.56",
-      "@dofe/infra-shared-services": "^0.1.56",
-      "@dofe/infra-jwt": "^0.1.56",
-      "@dofe/infra-shared-db": "^0.1.56",
-      "@dofe/infra-i18n": "^0.1.56"
+      "@dofe/infra-common": "0.1.71",
+      "@dofe/infra-contracts": "0.1.71",
+      "@dofe/infra-utils": "0.1.71",
+      "@dofe/infra-redis": "0.1.71",
+      "@dofe/infra-prisma": "0.1.71",
+      "@dofe/infra-clients": "0.1.71",
+      "@dofe/infra-rabbitmq": "0.1.71",
+      "@dofe/infra-shared-services": "0.1.71",
+      "@dofe/infra-jwt": "0.1.71",
+      "@dofe/infra-shared-db": "0.1.71",
+      "@dofe/infra-i18n": "0.1.71"
     },
     "patchedDependencies": {
       "eslint-plugin-react@7.37.5": "patches/eslint-plugin-react@7.37.5.patch"
@@ -150,7 +150,7 @@
     ]
   },
   "dependencies": {
-    "@swc/core": "^1.15.41",
+    "@swc/core": "^1.15.43",
     "zod": "^4.4.3"
   }
 }

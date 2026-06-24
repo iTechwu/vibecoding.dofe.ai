@@ -1,6 +1,6 @@
 'use client';
 
-import { cn } from '@repo/utils';
+import { cn } from '@dofe/infra-web-runtime/cn';
 
 interface DecorativeGlowProps {
   position?: 'bottom-right' | 'top-left' | 'top-right' | 'bottom-left' | 'center';
@@ -76,9 +76,7 @@ export function PageTitle({ children, actions, description }: PageTitleProps) {
     <div className="flex items-center justify-between">
       <div>
         <h1 className="text-2xl font-bold text-primary">{children}</h1>
-        {description && (
-          <p className="text-muted-foreground/60 mt-1 text-sm">{description}</p>
-        )}
+        {description && <p className="text-muted-foreground/60 mt-1 text-sm">{description}</p>}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
     </div>

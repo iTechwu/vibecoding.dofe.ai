@@ -21,7 +21,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import { Link } from '@/i18n/navigation';
-import { cn } from '@repo/utils';
+import { cn } from '@dofe/infra-web-runtime/cn';
 import type {
   LoopAgentRuntimeResponse,
   LoopDetail,

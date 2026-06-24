@@ -1,6 +1,6 @@
 import type { NextConfig } from 'next';
 import { execSync } from 'child_process';
-import { API_GENERATION } from '@repo/constants';
+import { API_GENERATION } from '@dofe/infra-contracts';
 import createNextIntlPlugin from 'next-intl/plugin';
 
 // ============================================================================
