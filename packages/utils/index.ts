@@ -1,5 +1,4 @@
 // Export all utilities
-export { cn } from './cn';
 export * from './file';
 export * from './encrypt';
 export * from './fetch';
