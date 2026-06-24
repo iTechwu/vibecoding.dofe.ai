@@ -285,7 +285,7 @@ export class LoopsService {
     private readonly evalAggregationDb?: LoopEvalAggregationService,
     @Optional()
     private readonly evalAggregationWorker?: LoopsEvalAggregationWorkerService,
-    // R35: Cross-tenant archive (FileStorageService + SSO)
+    // R35: Cross-tenant archive (object storage + SSO)
     @Optional()
     private readonly crossTenantArchive?: LoopsCrossTenantArchiveService,
     // R37: MCP client for real handshake + Docker sandbox execution
@@ -3616,14 +3616,28 @@ export class LoopsService {
     totalFired: number;
     totalErrors: number;
   }> {
-    const activeTriggers = this.store
-      .listScheduleTriggers()
-      .filter((t) => t.status === 'active').length;
-    return { running: false, activeTriggers, totalFired: 0, totalErrors: 0 };
+    const triggers = this.store.listScheduleTriggers();
+    const activeTriggers = triggers.filter((t) => t.status === 'active').length;
+    // Derive realistic metrics from trigger state:
+    // - totalFired: triggers that have been executed at least once
+    // - totalErrors: triggers that have non-zero failureCount
+    // - lastTickAt: most recent lastRunAt across all triggers
+    const totalFired = triggers.filter((t) => t.lastRunAt != null).length;
+    const totalErrors = triggers.filter((t) => (t.failureCount ?? 0) > 0).length;
+    const lastTickAt = triggers
+      .filter((t) => t.lastRunAt != null)
+      .map((t) => t.lastRunAt!)
+      .sort()
+      .reverse()[0];
+    // Whether the scheduler is "running" is determined by whether there are
+    // active triggers that a worker could pick up. The actual BullMQ worker
+    // liveness is checked via the queue health endpoint.
+    const running = activeTriggers > 0;
+    return { running, activeTriggers, totalFired, totalErrors, lastTickAt };
   }
 
   // =========================================================================
-  // Cross-Tenant Archive (R35: FileStorageService delegation)
+  // Cross-Tenant Archive (R35: object storage delegation)
   // =========================================================================
 
   async archiveTenant(input: {

@@ -61,8 +61,6 @@ interface JsonRpcResponse {
 
 @Injectable()
 export class LoopsMcpClientService {
-  private requestId = 0;
-
   constructor(@Optional() @Inject(WINSTON_MODULE_PROVIDER) private readonly logger?: Logger) {}
 
   /**
@@ -115,8 +113,10 @@ export class LoopsMcpClientService {
     });
 
     const result = await this.withProcessTimeout(child, timeoutMs, async (send, receive) => {
+      let reqId = 0;
       // 1. initialize
       const initResp = await this.sendRequest(
+        ++reqId,
         send,
         receive,
         'initialize',
@@ -143,7 +143,7 @@ export class LoopsMcpClientService {
       send(this.buildNotification('notifications/initialized', {}));
 
       // 3. tools/list
-      const toolsResp = await this.sendRequest(send, receive, 'tools/list', {}, timeoutMs);
+      const toolsResp = await this.sendRequest(++reqId, send, receive, 'tools/list', {}, timeoutMs);
       const tools = (toolsResp.result as { tools?: McpTool[] })?.tools ?? [];
 
       return { serverInfo, protocolVersion, capabilities, tools };
@@ -166,8 +166,10 @@ export class LoopsMcpClientService {
     });
 
     const result = await this.withProcessTimeout(child, timeoutMs, async (send, receive) => {
+      let reqId = 0;
       // Initialize first
       await this.sendRequest(
+        ++reqId,
         send,
         receive,
         'initialize',
@@ -182,13 +184,11 @@ export class LoopsMcpClientService {
 
       // Call the tool
       const callResp = await this.sendRequest(
+        ++reqId,
         send,
         receive,
         'tools/call',
-        {
-          name: toolName,
-          arguments: toolInput ?? {},
-        },
+        { name: toolName, arguments: toolInput ?? {} },
         timeoutMs,
       );
 
@@ -202,8 +202,7 @@ export class LoopsMcpClientService {
   // JSON-RPC helpers
   // =========================================================================
 
-  private buildRequest(method: string, params: Record<string, unknown>): string {
-    const id = ++this.requestId;
+  private buildRequest(id: number, method: string, params: Record<string, unknown>): string {
     const req: JsonRpcRequest = { jsonrpc: '2.0', id, method, params };
     return JSON.stringify(req) + '\n';
   }
@@ -214,30 +213,27 @@ export class LoopsMcpClientService {
   }
 
   private async sendRequest(
+    id: number,
     send: (data: string) => void,
     receive: () => AsyncIterable<string>,
     method: string,
     params: Record<string, unknown>,
     timeoutMs: number,
   ): Promise<JsonRpcResponse> {
-    const requestStr = this.buildRequest(method, params);
+    const requestStr = this.buildRequest(id, method, params);
     send(requestStr);
 
-    const deadline = Date.now() + timeoutMs;
     for await (const line of receive()) {
-      if (Date.now() > deadline) {
-        throw new Error(`MCP request "${method}" timed out after ${timeoutMs}ms`);
-      }
       try {
         const response: JsonRpcResponse = JSON.parse(line);
-        if (response.id === this.requestId) {
+        if (response.id === id) {
           if (response.error) {
             throw new Error(`MCP error ${response.error.code}: ${response.error.message}`);
           }
           return response;
         }
       } catch (e) {
-        if (e instanceof SyntaxError) continue; // skip non-JSON lines
+        if (e instanceof SyntaxError) continue;
         throw e;
       }
     }
@@ -253,8 +249,6 @@ export class LoopsMcpClientService {
     timeoutMs: number,
     fn: (send: (data: string) => void, receive: () => AsyncIterable<string>) => Promise<T>,
   ): Promise<T> {
-    const deadline = Date.now() + timeoutMs;
-
     // Async generator that reads stdout lines
     const stdoutLines: string[] = [];
     let stdoutDone = false;
@@ -273,17 +267,19 @@ export class LoopsMcpClientService {
 
     async function* receiveLines(): AsyncIterable<string> {
       let idx = 0;
+      let lastDataMs = Date.now();
       while (!stdoutDone) {
         if (idx < stdoutLines.length) {
           const line = stdoutLines[idx++];
+          lastDataMs = Date.now();
           if (line.trim()) yield line;
         } else {
-          // Check deadline
-          if (Date.now() > deadline) {
-            throw new Error('MCP operation timed out');
+          // Check if we've been idle too long (no new stdout data)
+          if (Date.now() - lastDataMs > timeoutMs) {
+            throw new Error(`MCP operation timed out after ${timeoutMs}ms idle`);
           }
           // Small delay to let more data arrive
-          await new Promise((r) => setTimeout(r, 10));
+          await new Promise((r) => setTimeout(r, 5));
         }
       }
       // Yield remaining lines

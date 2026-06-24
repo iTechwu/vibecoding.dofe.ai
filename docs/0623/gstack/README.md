@@ -74,6 +74,8 @@ Think -> Plan -> Build -> Review -> Test -> Ship -> Reflect
 
 **全部 P0/P1/P2 产品空白已通过 R7+R8 实施闭合。** 🎉
 
+2026-06-24 当前代码复审补注：R8 之后又补齐了与 gstack 启发相关的基础设施落点，包括 Remote Runner BullMQ processor（R34a）、Schedule Trigger BullMQ scheduler（R34b）、Cross-tenant archive（R35）、Remote Runner external artifact upload（R36）、MCP real handshake 与 Docker sandbox health endpoint（R37）。因此本文中的“已闭合”应理解为控制面与关键 worker/证据路径已有码；真实 CLI adapter 分布式执行、取消/续跑、per-tenant sandbox logs、tool invocation runtime 和长期归档治理仍属于后续生产化增强。
+
 | 优先级 | 空白                                           | 状态      | 实施轮次 |
 | ------ | ---------------------------------------------- | --------- | -------- |
 | ~~P0~~ | ~~OS/container 级 network/write sandbox~~      | ✅ 已实施 | R7       |

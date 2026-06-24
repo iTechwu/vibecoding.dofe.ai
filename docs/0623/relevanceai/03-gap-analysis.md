@@ -310,16 +310,16 @@ Capability Registry 已有：
 
 ## 差距优先级
 
-| 优先级 | 差距                             | 当前状态                                                                  | 原因                    |
-| ------ | -------------------------------- | ------------------------------------------------------------------------- | ----------------------- |
-| P0     | Software Delivery Workforce 抽象 | 已部分闭合：Workforce Overview + Delivery Flow                            | 直接影响定位和用户理解  |
-| P0     | Runtime Backend Registry         | 已部分闭合：contract/API/dashboard v1                                     | Codex/Claude CLI 是底座 |
-| P0     | Eval Suite                       | 已部分闭合：Eval Plan + derived EvalSuite/EvalRun API v1，未持久化/版本化 | 直接影响生产可信度      |
-| P1     | Trigger Contract                 | 已部分闭合：Trigger Portfolio/Lifecycle + signed webhook intake v1        | 直接影响自动化平台属性  |
-| P1     | Blueprint Marketplace            | 已部分闭合：dashboard catalog/new preview                                 | 直接影响复用和获客      |
-| P1     | Tool Registry v2                 | 已部分闭合：capability/permission 展示                                    | 直接影响生态扩展        |
-| P2     | Enterprise Governance Center     | 已部分闭合：release gate/governance controls                              | 影响大客户成交          |
-| P2     | OTEL Event Streaming             | 未实施                                                                    | 企业深水区能力，可后置  |
+| 优先级 | 差距                             | 当前状态                                                                                          | 原因                    |
+| ------ | -------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------- |
+| P0     | Software Delivery Workforce 抽象 | 已闭合 v1：Workforce Overview + Delivery Flow + handoff timeline                                  | 直接影响定位和用户理解  |
+| P0     | Runtime Backend Registry         | 已闭合 v2：contract/API/dashboard + file/DB policy persistence + health                           | Codex/Claude CLI 是底座 |
+| P0     | Eval Suite                       | 已闭合 v2：EvalSuite/EvalRun API + evidence aggregation + trend baseline worker                   | 直接影响生产可信度      |
+| P1     | Trigger Contract                 | 已闭合 v2：signed webhook + schedule CRUD/manual fire + BullMQ scheduler + retry/replay/DLQ       | 直接影响自动化平台属性  |
+| P1     | Blueprint Marketplace            | 已闭合 v1：backend CRUD + default seed + version rollback/history                                 | 直接影响复用和获客      |
+| P1     | Tool Registry v2                 | 已闭合 v1：backend CRUD + lifecycle/auth/health/test 控制面                                       | 直接影响生态扩展        |
+| P2     | Enterprise Governance Center     | 已部分闭合：release gate/governance controls、Rules Center enforcement、cross-tenant archive code | 影响大客户成交          |
+| P2     | OTEL Event Streaming             | 未实施                                                                                            | 企业深水区能力，可后置  |
 
 ## 2026-06-24 实施审查标注
 
@@ -329,13 +329,15 @@ Capability Registry 已有：
 - `Software Delivery Workforce`：已存在 Workforce Overview、Agent Handoff Timeline 和本轮新增的 Delivery Flow Pipeline，将 Loops 状态机映射为用户可理解的交付流程。
 - `Invent Delivery Preview`：`/loops/new` 已展示 Workforce / Runtime / Eval / Risk-Gate preview。
 - `Release Governance`：已存在 delivery governance、review gate override、second opinion policy、release canary。本轮补齐 `rollbackNote` 持久化、表单提交和 release gate checklist，使首次 finalize 能在 PR 创建前通过显式回滚说明满足门禁。
-- `Eval`：已有 derived Eval Plan、测试/审阅/coverage 证据、release gate checks，以及 `EvalSuite`/`EvalRun` contract/API/service v1；仍缺持久化、版本化、runner 与跨 blueprint 趋势。
-- `Trigger`：已有 Trigger Portfolio/Lifecycle 视图，以及 signed webhook intake v1（配置 secret 时强制 HMAC-SHA256，基础 payload mapping，敏感字段脱敏，payload size guard，in-process rate guard，保留 webhook/sourceKind）；仍缺 schedule、GitHub/Slack/Linear worker、payload replay、retry/dead-letter、分布式限流和 trigger object 管理。
+- `Eval`：已有 derived Eval Plan、测试/审阅/coverage 证据、release gate checks、`EvalSuite`/`EvalRun` contract/API/service、historical baseline/trend worker 与 cache health；仍缺跨租户长期归档和队列化实时聚合。
+- `Trigger`：已有 Trigger Portfolio/Lifecycle 视图、signed webhook intake v1、schedule trigger CRUD、manual fire、BullMQ scheduler、retry/replay/dead-letter；仍缺 Slack/Linear/Jira 专用 mapping、CI fail→Loop、外部告警和分布式限流。
+- `Tool Registry`：已有 `list/get/register/update/health-check/test` backend contract/API/service 与 file-backed persistence；真实 provider invocation runtime 仍是后续。
+- `Blueprint Marketplace`：已有 backend CRUD、8 个 default blueprint seed、version rollback/history；clone、跨租户共享和审批队列仍是后续。
 
 仍需实施或优化的内容进入后续 Epic，不宜在本轮继续强行扩展：
 
-1. 将当前派生 `EvalSuite` / `EvalRun` 升级为持久化、版本化、可趋势分析，并将 finalized Loop 强制关联 eval result。
-2. Trigger Platform：manual trigger object、schedule worker、integration worker、retry/dead-letter、payload replay、分布式 rate limit/cost policy，并将 signed webhook intake + basic payload mapping + evidence redaction + payload size guard + in-process rate guard v1 纳入统一 trigger run。
-3. Tool & Integration Registry v2：tool schema、授权连接、测试用例、版本和回滚。
-4. Blueprint Marketplace 持久化与 clone/config 流程。
+1. Eval Platform：跨租户长期归档、队列化实时聚合、Eval result 与 finalized Loop 的可查询关联。
+2. Trigger Platform：Slack/Linear/Jira/CI 专用 mapping、payload replay UX、分布式 rate limit/cost policy、外部告警。
+3. Tool & Integration Runtime：真实 provider invocation、tool invocation audit replay、provider secret bootstrap。
+4. Blueprint Marketplace 产品化：clone/config、跨租户共享、审批队列、评分和使用分析。
 5. Enterprise Governance Center：Audit Explorer、quota/concurrency、OTEL event streaming、data retention。

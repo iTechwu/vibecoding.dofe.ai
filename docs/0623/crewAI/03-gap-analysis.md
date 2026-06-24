@@ -70,7 +70,7 @@ CrewAI 用 Crews / Agents / Automations 让用户理解“谁在做什么”。D
 
 R12 已补齐 Remote Runner pool/lease 控制面：`GET /loops/remote-runners`、acquire/release lease，写操作复用 SSO `remote-runner` admin asset permission。R21 已新增 `POST /loops/remote-runners/:id/jobs`，可在 SSO admin 门禁后生成 Remote Runner job、写入 `.loops/runs/{runnerId}/jobs/{jobId}.json` 索引，并落地 `.loops/runs/{runnerId}/jobs/{jobId}/manifest.json` artifact manifest（含 sha256/size metadata），作为后续 BullMQ/sandbox worker 的真实 artifact provider v1。
 
-仍未闭合：fallback 自动执行策略、分布式 queue worker、取消/续跑、真实 sandbox worker 与组织级 quota。
+仍未闭合：fallback 自动执行策略、真实 CLI adapter 执行编排、取消/续跑、真实 sandbox worker 深度日志与组织级 quota。R34a 已有 Remote Runner BullMQ processor，不能再把“队列 worker”整体标为未实施。
 
 ### 当前状态
 

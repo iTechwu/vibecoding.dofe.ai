@@ -83,7 +83,6 @@ import { LoopsMcpClientService } from './loops-mcp-client.service';
     LoopsTriggerSchedulerProcessor,
     LoopsCrossTenantArchiveService,
     LoopsMcpClientService,
-    LoopsDockerSandboxService,
     LoopsWorkLockService,
     // Work-lock backend: in-memory by default (single-process, unchanged
     // behaviour). Swap to RedisLoopsLockBackend (bound to @dofe/infra-redis

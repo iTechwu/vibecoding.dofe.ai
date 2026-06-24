@@ -311,6 +311,97 @@
 - history 按 archivedAt 降序排列
 - 所有 rollback 操作进入 audit log
 
+### 60. Trigger Scheduler BullMQ Worker v1（R34b，当前代码已有 · P1-3）
+
+落点：
+
+- `apps/api/src/modules/loops/loops-trigger-scheduler.processor.ts` — `loops-trigger-scheduler` BullMQ processor
+- `apps/api/src/modules/loops/loops.module.ts` — processor provider 注册
+- `packages/contracts/src/api/loops.contract.ts` — scheduler status / start / stop 相关 contract 已存在
+
+能力：
+
+- 每 60 秒扫描 active schedule triggers，按 `nextRunAt` 自动调用 `fireScheduleTrigger()`
+- Redis distributed lock 防止多实例重复 fire
+- 成功/失败写 Winston log，并更新 trigger `lastRunAt` / `failureCount` / `nextRunAt`
+
+边界：
+
+- 当前 processor 只覆盖 schedule trigger 自动执行；Slack/Linear/Jira/CI 专用 integration worker 仍是后续。
+- `getTriggerSchedulerStatus()` service 当前仍返回静态状态，运行时 stats 与 processor 真实计数尚未完全打通。
+
+### 61. Remote Runner BullMQ Processor v1（R34a，当前代码已有 · P2-3）
+
+落点：
+
+- `apps/api/src/modules/loops/loops-remote-runner.processor.ts` — `loops-remote-runner` BullMQ processor
+- `apps/api/src/modules/loops/loops.module.ts` — processor provider 注册
+- `packages/contracts/src/api/loops.contract.ts` — Remote Runner pool/lease/job/upload-artifacts endpoints
+
+能力：
+
+- 支持 implement/test/review/custom job kind 的队列化处理入口
+- 通过 Redis 记录 lease/job active/completed/failed 状态，供 dashboard 或后续 worker 查询
+- 输出 handoff/test/review/log artifact refs，与现有 Remote Runner job artifact manifest 格式兼容
+
+边界：
+
+- 当前 processor 主要完成队列分发与状态记录；真实 CLI adapter 执行、取消/续跑、org quota、worker sandbox logs 聚合仍需后续。
+
+### 62. Cross-tenant Archive + External Artifact Upload v1（R35/R36，当前代码已有 · P2）
+
+落点：
+
+- `apps/api/src/modules/loops/loops-cross-tenant-archive.service.ts` — tenant artifact manifest、object storage upload、archive index
+- `apps/api/src/modules/loops/loops.service.ts` — `archiveTenant()`、`refreshArchiveUrl()`、`uploadRemoteRunnerArtifacts()`
+- `packages/contracts/src/api/loops.contract.ts` — `/loops/archives` 与 `/remote-runners/:runnerId/jobs/:jobId/upload-artifacts`
+
+能力：
+
+- 可按 tenant/period 收集 Loops artifacts，生成 archive manifest 并上传到配置的 object storage
+- 维护 `.loops/archives/{tenantId}/index.json`，支持 archive 查询与 download URL refresh
+- Remote Runner job artifact 支持上传 manifest、worker receipt、worker log、trace 到外部存储
+
+边界：
+
+- 依赖 FileStorageService / OSS/S3 配置；未配置时仍退回 `.loops` 本地 artifact。
+- 长期 data retention、跨租户搜索、归档权限细粒度策略仍是后续治理工作。
+
+### 63. Real MCP Handshake v1（R37，当前代码已有 · P1-2）
+
+落点：
+
+- `apps/api/src/modules/loops/loops-mcp-client.service.ts` — stdio/SSE MCP handshake client
+- `apps/api/src/modules/loops/loops.service.ts` — `testMcpHandshake()`
+- `packages/contracts/src/api/loops.contract.ts` — `POST /loops/mcp-servers/:id/handshake`
+
+能力：
+
+- 可对已注册或 ad-hoc MCP server 发起 initialize + tools/list handshake
+- 返回 serverInfo、protocolVersion、toolCount、tool names、durationMs 或错误信息
+- 继续通过 Winston logger 记录成功/失败结果
+
+边界：
+
+- 已从纯控制面 test 前进到真实 protocol handshake；但仍不等于 tool invocation runtime、secret bootstrap、invocation replay 已完成。
+
+### 64. Docker Sandbox Health v1（R37，当前代码已有 · P0-1）
+
+落点：
+
+- `packages/contracts/src/api/loops.contract.ts` — `GET /loops/docker-sandbox/health`
+- `apps/api/src/modules/loops/loops.service.ts` — `getDockerSandboxHealth()`
+- `apps/api/src/modules/loops/loops-docker-sandbox.service.ts` — Docker availability / sandbox command builder
+
+能力：
+
+- API 可返回本机 Docker availability、version 和可用性消息
+- 与既有 Docker sandbox command builder / strict allowlist 执行路径形成可审计运行时健康检查
+
+边界：
+
+- Docker 是否可用取决于部署环境；细粒度 per-tenant sandbox profile、override approval 和 sandbox logs 仍需持续增强。
+
 ## 复审结论（R32）
 
 三十二轮迭代覆盖了 CrewAI gap analysis + gstack/0 + 产品迭代建议中的全部 P0/P1/P2 级控制面 v1 可实现项。R32 补齐了 Rules Center 硬门禁、GitHub label→blueprint 自动映射、Schedule trigger 手动触发与 Blueprint version rollback 四个基础设施 Epic。
@@ -396,7 +487,7 @@ R31.1 为回归复审与质量门禁补正：`pnpm quality:gate` 首次复跑发
 
 边界：
 
-- 当前 MCP 仍为控制面 v1：R18 已补齐 test 响应的 execution audit metadata，但不直接执行真实 MCP handshake / tool invocation。
+- R10/R18 阶段 MCP 仍为控制面 v1：test 响应已有 execution audit metadata，但当时不直接执行真实 MCP handshake / tool invocation；R37 已补齐真实 MCP handshake endpoint，tool invocation runtime 仍后续。
 - R17/R23 已接入 GitHub Checks API check-run 发布与 publication artifact；provider secret 管理、GitHub App installation、MCP client bootstrap 与真实 tool invocation 仍是后续 provider/client 层 Epic。
 
 ### 25. Runtime Backend Policy Persistence v1（R11，新增 · P0-2）
@@ -562,7 +653,7 @@ R31.1 为回归复审与质量门禁补正：`pnpm quality:gate` 首次复跑发
 
 边界：
 
-- 真实 MCP handshake、tool invocation、provider secret bootstrap 尚未接入。
+- R18 当时尚未接入真实 MCP handshake；R37 已补齐 handshake endpoint。tool invocation、provider secret bootstrap 仍未完成。
 
 ### 43. MCP Provider Durable Execution Audit Artifact v1（R22，新增 · P1-2）
 
@@ -582,7 +673,7 @@ R31.1 为回归复审与质量门禁补正：`pnpm quality:gate` 首次复跑发
 
 边界：
 
-- R22 仍不启动真实 MCP handshake/tool invocation；provider secret bootstrap 与真实 MCP client runtime 仍为后续。
+- R22 当时仍不启动真实 MCP handshake/tool invocation；R37 已补齐 handshake endpoint。provider secret bootstrap、tool invocation runtime 仍为后续。
 
 ### 48. MCP Provider Lifecycle Execution Audit v1（R27，新增 · P1-2）
 
@@ -600,8 +691,8 @@ R31.1 为回归复审与质量门禁补正：`pnpm quality:gate` 首次复跑发
 
 边界：
 
-- R27 仍是 control-plane lifecycle audit，不启动真实 MCP handshake/tool invocation。
-- provider secret bootstrap、真实 MCP client runtime、tool invocation replay 仍待后续实现。
+- R27 仍是 control-plane lifecycle audit，不启动真实 MCP handshake/tool invocation；R37 已补齐 handshake endpoint。
+- provider secret bootstrap、tool invocation runtime、tool invocation replay 仍待后续实现。
 
 ### 26. Remote Runner Pool / Lease v1（R12，新增 · P2-3）
 
@@ -964,15 +1055,15 @@ R31.1 为回归复审与质量门禁补正：`pnpm quality:gate` 首次复跑发
 
 以下项目需要 Queue/DB/外部系统集成等更深层基础设施：
 
-- P2-3 Remote Runner / Execution Pool（R21 已完成 job/artifact manifest provider v1；R26 已完成 worker receipt/log/trace artifact bundle；分布式队列、取消/续跑、sandbox worker 后续）
-- Remote Runner external artifact upload / object storage（R21/R26 已完成 `.loops` artifact bundle；外部 upload 后续）
-- MCP provider 真实 handshake / tool invocation（R18/R22/R27 已完成 execution audit metadata + durable lifecycle artifact；真实 provider 调用仍待接入）
+- P2-3 Remote Runner / Execution Pool（R21/R26 已完成 job/artifact manifest 与 worker artifact bundle；R34a 已有 BullMQ processor；真实 CLI adapter 执行、取消/续跑、sandbox worker、org quota 后续）
+- Remote Runner external artifact upload / object storage（R36 已有 upload endpoint 与 FileStorage delegation；生产配置、权限和长期归档治理后续）
+- MCP provider 真实 handshake / tool invocation（R37 已有真实 MCP handshake；tool invocation runtime、provider secret bootstrap、invocation replay 后续）
 - Runtime Backend policy DB 持久化（R16 已完成；`.loops` 保留 standalone fallback）
 - Eval Suite / Eval Run 历史趋势、跨 blueprint baseline version 与后台实时聚合（R19 已完成 file-backed historical baseline/trend worker；跨租户长期归档和队列化调度仍待推进）
 - PR status GitHub CI check 集成（R17/R23 已支持 GitHub Checks API check-run 发布 + publication artifact；R28 已完成 per-integration publication history index；R29 已完成 Work Package→commit 映射、evidence 反向链接与 GitHub App installation token exchange v1；R29.1 已完成公开 history API/UI；后续为导出、搜索过滤和跨租户归档）
 - Recipe admin UI 多租户管理面板（R20 已完成 SSO 权限来源可视化；R24 已完成 action readiness；R25 已完成真实 action request artifact；完整 CRUD 状态机、版本回滚执行器、审批流持久化仍待推进）
-- Schedule Trigger 执行引擎（R30c 已完成 cron-based trigger CRUD + file persistence；实际 cron 调度执行需外部 scheduler/cron-job 轮询；复杂 cron 表达式解析、分布式锁、multi-node 协调仍待推进）
-- Trigger Lifecycle 自动执行（R30c 已完成 retry/replay/dead-letter 控制面；pending execution 自动重试、分布式 queue worker、外部告警集成仍待推进）
+- Schedule Trigger 执行引擎（R30c 已完成 CRUD；R32 已完成 manual fire；R34b 已有 BullMQ scheduler + Redis lock；复杂 cron、专用 integration worker、运行时 stats UI 后续）
+- Trigger Lifecycle 自动执行（R30c 已完成 retry/replay/dead-letter 控制面；pending execution 自动重试、外部告警集成和跨系统 mapping 仍待推进）
 
 ## 已验证（R31.1 当前复审）
 

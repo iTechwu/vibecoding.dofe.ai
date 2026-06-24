@@ -212,7 +212,7 @@ gstack/0 文档的竞品分析目标已完全实现：
 - ✅ 从 "概念验证" → 可审计交付控制面（Loop Bench + PR evidence + 18 项 dashboard panels）
 - ✅ 2026-06-24 追加：per-loop required review gates 已进入 contract/API/UI，Release Gate 按当前 loop required gates 判断 review checklist。
 
-2026-06-24 复审边界：仍不能把 OS/container 级 network/write 强隔离、真实 Browser QA authenticated session profile、Browser QA ignore/mask/embedded screenshot-trace-diff viewer、CI/CD 环境健康检查/自动 rollback、Learning DB-backed/global index 标记为完全完成；当前已完成的是可审计控制面、file-backed worker evidence、命令策略执行、可选 Docker sandbox 构建能力、逐 viewport Browser QA visual artifact + changedPixels evidence + detail artifact 摘要、Release Canary 环境 owner/rollback note 阻断，以及 Learning approve/reject/deprecate/supersede + aging worker + file-backed cross-workspace index worker 最小闭环。
+2026-06-24 复审边界：R34-R37 已进一步补齐 Remote Runner BullMQ processor、Schedule Trigger BullMQ scheduler、Cross-tenant archive、Remote Runner external artifact upload、MCP real handshake 与 Docker sandbox health endpoint。因此不能再把“分布式队列入口 / schedule worker / MCP handshake / 外部 artifact upload”整体标为未实施。仍不能标为完全完成的是：真实 CLI adapter 分布式执行、取消/续跑、per-tenant sandbox logs、tool invocation runtime、复杂 trigger integration mapping、长期归档治理、CI/CD 自动 rollback。当前已完成的是可审计控制面、file-backed worker evidence、命令策略执行、可选 Docker sandbox 构建能力、逐 viewport Browser QA visual artifact + changedPixels evidence + detail artifact 摘要、Release Canary 环境 owner/rollback note 阻断，以及 Learning approve/reject/deprecate/supersede + aging worker + file-backed cross-workspace index worker 最小闭环。
 
 ## 已验证（R6）
 

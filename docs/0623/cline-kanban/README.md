@@ -83,17 +83,17 @@ DofeAI 的 evidence 适合审计，但不够实时。
 
 ## 对本项目的优化建议
 
-| 优先级 | 建议                         | 验收                                                                                               |
-| ------ | ---------------------------- | -------------------------------------------------------------------------------------------------- |
-| P0     | 设计 Loop Board 信息架构     | 已实施 v1：dashboard 按 Backlog / Spec Review / Running / Blocked / Delivered 分组                 |
-| P1     | Card 展示 worktree/branch/PR | 部分实施：v1 展示派生 branch、PR 状态与仓库上下文；真实 worktree path 仍为后续 Epic                |
-| P1     | Shard dependency graph       | blocked 原因已在 Loop Board / Exception Center v1 可读；dependsOn 图后续 Epic                      |
-| P1     | Live progress stream         | 部分实施：detail Trace Timeline / Event Log 展示事件进度；卡片级 latest diff/test 与 SSE 后续 Epic |
-| P2     | 自动创建 PR 策略             | PASS 后按策略自动 PR 或等待人工确认                                                                |
+| 优先级 | 建议                         | 验收                                                                                                                                       |
+| ------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| P0     | 设计 Loop Board 信息架构     | 已实施 v1：dashboard 按 Backlog / Spec Review / Running / Blocked / Delivered 分组                                                         |
+| P1     | Card 展示 worktree/branch/PR | 部分实施：v1 展示派生 branch、PR 状态与仓库上下文；PR evidence/commit map 已有，真实 worktree path 仍为后续 Epic                           |
+| P1     | Shard dependency graph       | blocked 原因已在 Loop Board / Exception Center v1 可读；dependsOn 图后续 Epic                                                              |
+| P1     | Live progress stream         | 部分实施：detail Trace Timeline / Event Log + Remote Runner BullMQ processor/Redis status 已有码；卡片级 latest diff/test 与 SSE 后续 Epic |
+| P2     | 自动创建 PR 策略             | PASS 后按策略自动 PR 或等待人工确认                                                                                                        |
 
 ## 实施标注
 
-2026-06-23 已完成 Loop Board v1：`/loops` dashboard 新增团队任务板，卡片包含 mode、human gate、evidence、branch、PR 状态与 blocker。Exception Center v1 进一步把 blocker 汇总为 owner/action/evidence。本轮新增 Repo Context Map v1，按仓库展示 Loop 覆盖、阶段分布、阻塞数和最近条目。已复核 detail 页 Trace Timeline / Event Log，可展示现有 loop logs 的事件进度；尚未实施独立 worktree 真实路径、dependsOn 图、卡片级实时 diff/test、SSE live stream 和自动 PR 策略，这些需要后端 git/runtime contract 支持，归入后续 Epic。
+2026-06-24 复审：`/loops` dashboard 已有团队任务板，卡片包含 mode、human gate、evidence、branch、PR 状态与 blocker。Exception Center v1 进一步把 blocker 汇总为 owner/action/evidence；Repo Context Map v1 按仓库展示 Loop 覆盖、阶段分布、阻塞数和最近条目。Detail 页 Trace Timeline / Event Log 可展示现有 loop logs 的事件进度；Remote Runner BullMQ processor 已有码，可记录 queued/active/completed/failed 状态。尚未实施独立 worktree 真实路径、dependsOn 图、卡片级实时 diff/test 与 SSE live stream，这些仍需后端 git/runtime contract 和前端实时通道支持。
 
 ## 结论
 

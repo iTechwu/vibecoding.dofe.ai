@@ -41,21 +41,21 @@ DofeAI 的借鉴重点：
 
 ## 对本项目的优先优化建议
 
-| 优先级 | 建议                                                                                    | 当前状态                                                                                                   |
-| ------ | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| P0     | Loop Board v1：按交付阶段展示 issue、mode、human gate、branch、PR、evidence             | 已实施于 `/loops` dashboard                                                                                |
-| P0     | 异步化 Loop Engine：从同步 `advance` 迁移到队列 worker                                  | 后续 Epic                                                                                                  |
-| P0     | 计划审阅升级为 Spec Diff Review                                                         | 已实施 v1：轻量 diff 摘要；结构化审批后续 Epic                                                             |
-| P1     | 异常决策中心：runtime、成本、暂停、全局审阅、doctor problem 统一成 action cards         | 已实施 v1；权限/测试失败/re-loop limit 结构化后续 Epic                                                     |
-| P1     | Agent backend abstraction：local CLI、Docker、remote worker、cloud worker               | 后续 Epic                                                                                                  |
-| P1     | Evidence-first delivery：implementation/test/review/global review/convergence artifacts | 已有基础，持续增强                                                                                         |
-| P1     | 入口集成扩展：GitHub Issues/PR、Linear、Slack                                           | 已实施 v2：webhook trigger (R7) + schedule trigger CRUD (R30c) + trigger lifecycle retry/replay/DLQ (R30c) |
-| P1     | 模式分工：Planner、Implementer、Reviewer、Recovery Agent                                | 已实施 v1：看板 mode + 创建页推荐 agent path                                                               |
-| P1     | Repo map / context map                                                                  | 已实施 v1：按现有 Loops 聚合仓库上下文；真实 repo graph 后续                                               |
-| P1     | Workspace rules panel                                                                   | 已实施 v1：规则扫描、diagnostics、per-loop snapshot 与 agent-readable enforcement 可见                     |
-| P1     | 沙箱与权限产品化                                                                        | 已实施 v1：权限画像可见；运行时强制策略后续 Epic                                                           |
-| P1     | Provider profile                                                                        | 已实施 v1：provider/runtime mode/active agents 可见                                                        |
-| P1     | Agent performance metrics                                                               | 已实施 v1：pass/redo/cost/trace 快照；benchmark 后续                                                       |
+| 优先级 | 建议                                                                                    | 当前状态                                                                                                                             |
+| ------ | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| P0     | Loop Board v1：按交付阶段展示 issue、mode、human gate、branch、PR、evidence             | 已实施于 `/loops` dashboard                                                                                                          |
+| P0     | 异步化 Loop Engine：从同步 `advance` 迁移到队列 worker                                  | 代码已有 v1：Remote Runner BullMQ processor 与 Trigger Scheduler processor 已接入；全量 Loop state worker 仍为后续                   |
+| P0     | 计划审阅升级为 Spec Diff Review                                                         | 已实施 v1：轻量 diff 摘要；结构化审批后续 Epic                                                                                       |
+| P1     | 异常决策中心：runtime、成本、暂停、全局审阅、doctor problem 统一成 action cards         | 已实施 v1；权限/测试失败/re-loop limit 结构化后续 Epic                                                                               |
+| P1     | Agent backend abstraction：local CLI、Docker、remote worker、cloud worker               | 已部分实施：Codex/Claude CLI + Docker sandbox + Remote Runner pool/lease/job/processor；cloud worker 后续                            |
+| P1     | Evidence-first delivery：implementation/test/review/global review/convergence artifacts | 已有基础，持续增强                                                                                                                   |
+| P1     | 入口集成扩展：GitHub Issues/PR、Linear、Slack                                           | 已实施 v3：signed webhook + schedule CRUD/manual fire + BullMQ scheduler + trigger lifecycle retry/replay/DLQ；Linear/Slack 映射后续 |
+| P1     | 模式分工：Planner、Implementer、Reviewer、Recovery Agent                                | 已实施 v1：看板 mode + 创建页推荐 agent path                                                                                         |
+| P1     | Repo map / context map                                                                  | 已实施 v1：按现有 Loops 聚合仓库上下文；真实 repo graph 后续                                                                         |
+| P1     | Workspace rules panel                                                                   | 已实施 v1：规则扫描、diagnostics、per-loop snapshot 与 agent-readable enforcement 可见                                               |
+| P1     | 沙箱与权限产品化                                                                        | 已实施 v2：权限画像、SSO asset permission、command policy、Docker sandbox health/执行层均有代码；细粒度审批后续                      |
+| P1     | Provider profile                                                                        | 已实施 v2：provider/runtime mode/active agents 可见；MCP registry lifecycle + real handshake endpoint 已有代码                       |
+| P1     | Agent performance metrics                                                               | 已实施 v1：pass/redo/cost/trace 快照；benchmark 后续                                                                                 |
 
 ## 实施闭环状态
 
@@ -122,7 +122,7 @@ DofeAI 的借鉴重点：
 - `apps/web/locales/{en,zh-CN}/loops.json`：新增权限画像文案。
 - `apps/web/app/loops/loops-dashboard-model.test.ts` 与 `apps/web/app/loops/page.test.tsx`：覆盖权限画像派生和页面渲染。
 
-再审查结论：OpenCode 文档中的“Agent permission mode”已闭合到可视化 v1；Goose 文档中的 MCP/extension/provider profile 也已闭合第一层可见性。真正的运行时权限强制、MCP/ACP extension 管理面、provider/model/cost profile contract 仍需后端 contract 和管理员 UI，标注为后续 Epic。
+再审查结论：OpenCode 文档中的“Agent permission mode”已从可视化 v1 推进到 SSO asset permission、command policy 与 Docker sandbox health/执行层。Goose 文档中的 MCP/extension/provider profile 已有 MCP Server Registry lifecycle audit 和真实 MCP handshake endpoint。后续 Epic 是 tool invocation runtime、细粒度审批、provider secret bootstrap、model/cost profile contract 与企业预设分发。
 
 ### 循环 6 · Performance Snapshot v1
 
@@ -215,19 +215,34 @@ DofeAI 的借鉴重点：
 
 再审查结论：Cline 文档中点名的 `per-loop rule snapshot` 与 `agent-readable rules enforcement` 已闭合为 v1：每个新 Loop 都会固化创建时规则上下文；若存在 `AGENTS.md` / `CLAUDE.md` / `.clinerules` 等 agent-readable 来源，则 enforcement 标记为 `enforced` 并提供证据路径；否则标记为 `attention`。当前 enforcement 是可审计的执行上下文约束，不是运行时硬阻断。规则优先级配置、规则内容结构化解析和 agent adapter 执行前硬阻断仍归入后续 Epic。
 
-### 循环 13 · Schedule Trigger + Trigger Lifecycle v1（R30c，2026-06-24）
+### 循环 13 · Schedule Trigger + Trigger Lifecycle v1（R30c，2026-06-24；R32/R34 复审）
 
 状态：已实施。
 
 落点：
 
 - `packages/contracts/src/schemas/loops.schema.ts`：新增 schedule trigger schemas（CRUD + cron）+ trigger execution/retry/replay/dead-letter schemas。
-- `packages/contracts/src/api/loops.contract.ts`：新增 9 个 endpoint（schedule trigger CRUD 5 个 + trigger lifecycle 4 个）。
-- `apps/api/src/modules/loops/loops.service.ts`：新增 schedule trigger CRUD + cron 解析 + 指数退避 + trigger execution 管理方法。
+- `packages/contracts/src/api/loops.contract.ts`：新增 schedule trigger CRUD、manual fire、trigger lifecycle、scheduler status 等 endpoint。
+- `apps/api/src/modules/loops/loops.service.ts`：新增 schedule trigger CRUD + manual fire + cron 解析 + 指数退避 + trigger execution 管理方法。
 - `apps/api/src/modules/loops/loops.controller.ts`：新增 9 个 handler（含 audit log）。
 - `apps/api/src/modules/loops/loops-file-store.service.ts`：新增 file-backed trigger persistence（`.loops/triggers/`）。
+- `apps/api/src/modules/loops/loops-trigger-scheduler.processor.ts`：新增 BullMQ repeatable scheduler processor，按 `nextRunAt` 自动 fire active schedule triggers，并用 Redis lock 避免多实例重复执行。
 
-再审查结论：CrewAI 文档中的 "Trigger Contract v2" 与 Relevance AI 的 "Trigger system" 已闭合 v1。Schedule trigger 支持 cron-based 定时创建 Loop；Trigger lifecycle 支持 retry（指数退避）、replay、dead-letter queue。真实 cron 执行引擎（外部 scheduler 轮询）、复杂 cron 表达式、分布式锁、cross-system trigger mapping 仍需后续 Epic。
+再审查结论：CrewAI 文档中的 "Trigger Contract v2" 与 Relevance AI 的 "Trigger system" 已闭合 v2。Schedule trigger 支持 cron-based 定时创建 Loop、手动 fire 与 BullMQ scheduler 自动执行；Trigger lifecycle 支持 retry（指数退避）、replay、dead-letter queue。复杂 cron 表达式、Slack/Linear/Jira 专用 payload mapping、跨系统失败告警仍需后续 Epic。
+
+### 循环 14 · 2026-06-24 当前代码复审标注（R31-R37）
+
+状态：代码已有实现，需按测试结果继续校准。
+
+落点：
+
+- `packages/contracts/src/api/loops.contract.ts`：已包含 Tool Registry CRUD/test/health、Blueprint CRUD/rollback、Remote Runner pool/lease/job/artifact upload、MCP lifecycle/handshake、Cross-tenant archive、Docker sandbox health 等端点。
+- `apps/api/src/modules/loops/loops.service.ts`：已实现上述控制面 service 方法，并通过 file-backed/DB-backed 路径保留 evidence、artifact、history 或 archive metadata。
+- `apps/api/src/modules/loops/loops-remote-runner.processor.ts`：已提供 BullMQ `loops-remote-runner` processor，用于远端 worker job 分发和 Redis 状态更新。
+- `apps/api/src/modules/loops/loops-mcp-client.service.ts`：已提供 MCP stdio/SSE handshake client，用于真实 MCP protocol handshake 测试。
+- `apps/api/src/modules/loops/loops-cross-tenant-archive.service.ts`：已提供 tenant artifact manifest、object storage upload 和 archive index。
+
+复审边界：这些实现已经不能再标为“未实施”。但其中 Remote Runner 仍偏 job/artifact/control-plane worker，cloud worker 编排、取消/续跑、org quota 仍需后续；MCP 已有真实 handshake，不等于 tool invocation runtime 已完成；Cross-tenant archive 依赖外部 FileStorage 配置；Docker sandbox health/执行层需要本机 Docker 可用。本文档后续标注均按此边界解释。
 
 ## 来源
 

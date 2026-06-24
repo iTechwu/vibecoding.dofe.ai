@@ -548,7 +548,7 @@ export const loopsContract = c.router(
       summary: 'Get the trigger scheduler status and stats (R34b)',
     },
     // =========================================================================
-    // Cross-Tenant Archive (R35: FileStorageService + SSO multi-tenant)
+    // Cross-Tenant Archive (R35: object storage + SSO multi-tenant)
     // =========================================================================
     archiveTenant: {
       method: 'POST',
@@ -572,7 +572,7 @@ export const loopsContract = c.router(
         ),
       },
       summary:
-        'Archive all Loops artifacts for a tenant to object storage (R35: FileStorageService + SSO)',
+        'Archive all Loops artifacts for a tenant to object storage (R35: object storage + SSO)',
     },
     listArchives: {
       method: 'GET',

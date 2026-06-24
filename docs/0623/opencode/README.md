@@ -62,15 +62,15 @@ DofeAI 可引入 researcher agent，用于：
 
 ## 对本项目的优化建议
 
-| 优先级 | 建议                          | 验收                                                                           |
-| ------ | ----------------------------- | ------------------------------------------------------------------------------ |
-| P1     | Agent permission mode         | 已实施 v1：Capability Registry 展示 read/write/shell/network/approval 权限画像 |
-| P1     | Planner read-only enforcement | Spec/decompose 前无代码写入                                                    |
-| P2     | Researcher subagent           | 支持文档/竞品/代码搜索任务                                                     |
+| 优先级 | 建议                          | 验收                                                                                                       |
+| ------ | ----------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| P1     | Agent permission mode         | 已实施 v2：权限画像 + SSO asset permission + command policy + Docker sandbox health/执行层；细粒度审批后续 |
+| P1     | Planner read-only enforcement | Spec/decompose 前无代码写入                                                                                |
+| P2     | Researcher subagent           | 支持文档/竞品/代码搜索任务                                                                                 |
 
 ## 实施标注
 
-2026-06-23 已实施 Loop Board v1 的 user-facing mode，并在 Capability Registry 中新增 Permission Profile v1，按现有 agent/tool registry 展示 read/write/shell/network/approval 的状态和证据。真正的运行时强制权限、read-only/write/shell/network adapter contract 仍需后端 runtime/adapter 支持，归入后续 Epic。
+2026-06-24 复审：已实施 Loop Board v1 的 user-facing mode，并在 Capability Registry 中新增 Permission Profile v1，按现有 agent/tool registry 展示 read/write/shell/network/approval 的状态和证据。当前代码还已有 SSO asset permission、runner command policy、Docker sandbox command builder/health endpoint 与 strict allowlist 执行路径。后续 Epic 是更细粒度的 per-tool 审批、override 工作流、adapter 级统一强制和审计回放。
 
 ## 结论
 

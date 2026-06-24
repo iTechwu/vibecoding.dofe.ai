@@ -1407,7 +1407,7 @@ export class LoopsController {
   }
 
   // =========================================================================
-  // Cross-Tenant Archive (R35: FileStorageService + SSO multi-tenant)
+  // Cross-Tenant Archive (R35: object storage + SSO multi-tenant)
   // =========================================================================
 
   @TsRestHandler(c.archiveTenant)

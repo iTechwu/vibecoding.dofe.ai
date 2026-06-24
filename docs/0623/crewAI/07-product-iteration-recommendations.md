@@ -67,7 +67,7 @@ crewAI 已有官方 Claude Code skills plugin（4 个 skill），让 coding agen
 
 **问题诊断：**
 
-crewAI 的企业 API 提供了完整的外部系统触发和异步执行状态追踪。DofeAI R7 已补齐 `POST /loops/triggers/webhook`，R30c 已补齐 Schedule Trigger CRUD 与 Trigger Lifecycle retry/replay/dead-letter 控制面。当前差距不再是“没有接收端”，而是跨系统自动映射、签名 provider 策略、分布式 queue worker、外部告警和长期 execution archive。
+crewAI 的企业 API 提供了完整的外部系统触发和异步执行状态追踪。DofeAI R7 已补齐 `POST /loops/triggers/webhook`，R30c 已补齐 Schedule Trigger CRUD 与 Trigger Lifecycle retry/replay/dead-letter 控制面，R32 已补齐 manual fire，R34b 已有 BullMQ schedule trigger processor。当前差距不再是“没有接收端/没有调度 worker”，而是跨系统自动映射、签名 provider 策略、GitHub/Slack/Linear/CI 专用 worker、外部告警和长期 execution archive。
 
 **建议实现：**
 

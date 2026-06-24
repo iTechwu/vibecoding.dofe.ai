@@ -62,16 +62,16 @@ DofeAI 的底层执行运行时不是自研通用 agent 引擎，而是以 Codex
 
 ## 最大产品缺口
 
-- Workforce/team 抽象已部分补齐，但仍需要继续减少 Loop/phase/shard 等内部术语暴露。
-- 从模板开始的业务入口已部分补齐，但 blueprint clone/config 仍未闭环。
-- 生产评测体系已具备 derived checks/test/review/evidence，并已有只读 EvalSuite/EvalRun API v1；但还不是持久化、可版本化、可趋势分析的 eval suite。
-- 触发器生命周期已有 source/portfolio/lifecycle 展示，并已有 signed webhook intake + basic payload mapping + evidence redaction + payload size guard + in-process rate guard v1；但 schedule、replay/dead-letter、integration trigger worker 仍未闭环。
-- 集成市场与权限配置 UI 仍偏展示，capability registry 还未升级为完整 Tool & Integration Registry。
+- Workforce/team 抽象已补齐控制面 v1，但仍需要继续减少 Loop/phase/shard 等内部术语暴露。
+- 从模板开始的业务入口已补齐 Blueprint CRUD/rollback v1；clone、跨租户共享和审批流仍是后续产品化。
+- 生产评测体系已具备 derived checks/test/review/evidence、EvalSuite/EvalRun API、historical baseline/trend worker；跨租户长期归档和队列化聚合仍是后续。
+- 触发器生命周期已有 signed webhook intake、schedule CRUD/manual fire、BullMQ scheduler、retry/replay/dead-letter；Slack/Linear/Jira 专用 mapping 和 CI fail→Loop 仍未闭环。
+- 集成市场与权限配置已从展示升级到 Tool Registry backend CRUD/test/health、MCP/CI registry 和 SSO asset permission；真实 tool invocation runtime 仍是后续。
 
 ## 2026-06-24 最新实施状态
 
-- 已实施/部分实施：Runtime Backend Registry、Software Delivery Workforce、Delivery Flow Pipeline、Invent Delivery Preview、Release Governance、rollback note release gate、Runtime Backends dashboard、derived EvalSuite/EvalRun API v1、signed Webhook Trigger intake + basic payload mapping + evidence redaction + payload size guard + in-process rate guard v1。
-- 后续仍需实施：持久化/可版本化 Eval Suite 与 Eval Run、Trigger worker/replay/schedule/integration platform、Tool Registry v2、Blueprint clone/config、Enterprise Governance Center、OTEL event streaming。
+- 已实施/部分实施：Runtime Backend Registry、Software Delivery Workforce、Delivery Flow Pipeline、Invent Delivery Preview、Release Governance、rollback note release gate、Runtime Backends dashboard、derived EvalSuite/EvalRun API + historical trend worker、signed Webhook Trigger、schedule/manual fire/BullMQ scheduler、trigger retry/replay/DLQ、Tool Registry backend CRUD/test/health、Blueprint Marketplace CRUD/rollback、MCP lifecycle + handshake。
+- 后续仍需实施：跨租户长期 Eval 归档、CI fail→Loop 与 Slack/Linear/Jira mapping、真实 tool invocation runtime、Blueprint clone/跨租户共享、Enterprise Governance Center、OTEL event streaming。
 
 ## 建议的北极星
 

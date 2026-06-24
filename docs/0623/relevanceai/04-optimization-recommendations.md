@@ -314,6 +314,6 @@ DB 访问必须通过 DB Service，不在 controller/service 直接访问 Prisma
 
 - 将当前 derived Eval Suite / Eval Run 升级为持久化、版本化、可趋势分析，并与 finalize gating 绑定；
 - 将当前 signed webhook intake + basic payload mapping + evidence redaction + payload size guard + in-process rate guard v1 升级为完整 Trigger Platform：trigger object、schedule、GitHub/Slack/Linear worker、payload replay、retry/dead-letter、分布式 rate limit/cost policy；
-- Tool Registry v2 与 OAuth/secret connection；
-- Blueprint clone/config；
+- Tool invocation runtime 与 OAuth/secret connection（Tool Registry CRUD/health/test 已有码）；
+- Blueprint clone/config、跨租户共享与审批队列（Blueprint CRUD/rollback 已有码）；
 - OTEL event streaming 与 Audit Explorer。

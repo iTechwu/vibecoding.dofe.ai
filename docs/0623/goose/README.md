@@ -64,16 +64,16 @@ Goose custom distributions 提示：企业用户希望预配置 provider、exten
 
 ## 对本项目的优化建议
 
-| 优先级 | 建议                          | 验收                                                                                                          |
-| ------ | ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| P1     | MCP extension registry        | 已实施 v1：Capability Registry 展示工具、owner、兼容性与权限画像；管理面后续 Epic                             |
-| P1     | Provider profile              | 已实施 v1：Provider Profile 展示 provider、runtime mode、active agents；model/cost profile contract 后续 Epic |
-| P2     | ACP backend exploration       | 可接 ACP-compatible agent                                                                                     |
-| P2     | Enterprise workspace template | 新 workspace 可套用预设                                                                                       |
+| 优先级 | 建议                          | 验收                                                                                                                          |
+| ------ | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| P1     | MCP extension registry        | 已实施 v2：Capability Registry + MCP Server Registry lifecycle + durable audit + real handshake；tool invocation runtime 后续 |
+| P1     | Provider profile              | 已实施 v2：Provider Profile 展示 provider/runtime mode/active agents；MCP handshake 已有码，model/cost profile 细化后续       |
+| P2     | ACP backend exploration       | 可接 ACP-compatible agent                                                                                                     |
+| P2     | Enterprise workspace template | 新 workspace 可套用预设                                                                                                       |
 
 ## 实施标注
 
-2026-06-23 再审查确认：当前代码已有 capability registry、agent provider、tool owner、compatibility checks 和 runtime diagnostics。此前新增 Permission Profile v1，将 permissions 汇总为 read/write/shell/network/approval 的用户态画像。本轮新增 Provider Profile v1，基于 agent registry 与 runtime detection 在 dashboard 展示 provider 分布、runtime mode、active agents 和 planned tool routes。真正的 MCP/ACP extension 管理面、model/cost profile contract 和企业预设分发仍需要后端 contract 与管理员 UI，归入后续 Epic。
+2026-06-24 再审查确认：当前代码已有 capability registry、agent provider、tool owner、compatibility checks、runtime diagnostics、Permission Profile、Provider Profile、MCP Server Registry lifecycle audit，以及 `POST /loops/mcp-servers/:id/handshake` 真实 MCP handshake。后续 Epic 不再是“是否有 MCP 管理面”，而是 tool invocation runtime、provider secret bootstrap、model/cost profile 细化和企业预设分发。
 
 ## 结论
 

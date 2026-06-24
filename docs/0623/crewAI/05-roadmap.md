@@ -155,14 +155,14 @@
 
 ## 后续 90 天之后
 
-| 方向                 | 内容                                                                                                            |
-| -------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Remote Runner        | Pool/lease/job + artifact manifest provider v1 已完成；后续接分布式 queue、sandbox worker、外部 artifact upload |
-| Enterprise RBAC      | SSO Asset Permissions v1 已完成；runtime backend/MCP/CI/Remote Runner 写操作已接硬门禁                          |
-| Skills Ecosystem     | DofeAI Loops skills for Codex/Claude/Cursor                                                                     |
-| Marketplace          | 内部 blueprint 分享、评分、版本、回滚                                                                           |
-| Release Intelligence | merge 后质量、回滚、incident 关联                                                                               |
-| Multi-repo Delivery  | 跨 repo spec、依赖图、PR 编排                                                                                   |
+| 方向                 | 内容                                                                                                                                                                        |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Remote Runner        | Pool/lease/job + artifact manifest provider v1、BullMQ processor、external artifact upload endpoint 已有码；后续接真实 CLI adapter 执行、取消/续跑、sandbox worker 深度日志 |
+| Enterprise RBAC      | SSO Asset Permissions v1 已完成；runtime backend/MCP/CI/Remote Runner 写操作已接硬门禁                                                                                      |
+| Skills Ecosystem     | DofeAI Loops skills for Codex/Claude/Cursor                                                                                                                                 |
+| Marketplace          | Blueprint CRUD + rollback/history 已有码；后续补内部分享、评分、clone、跨租户审批                                                                                           |
+| Release Intelligence | merge 后质量、回滚、incident 关联                                                                                                                                           |
+| Multi-repo Delivery  | 跨 repo spec、依赖图、PR 编排                                                                                                                                               |
 
 ## 风险和缓解
 

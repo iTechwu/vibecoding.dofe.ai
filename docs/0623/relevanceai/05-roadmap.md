@@ -60,7 +60,7 @@
 - 每个 trigger 有 rate limit 和 cost policy；
 - eval 未通过不自动 finalize。
 
-## 61-90 天：Blueprint Marketplace + Tool Registry v2 + Enterprise Packaging
+## 61-90 天：Blueprint Marketplace 产品化 + Tool Invocation Runtime + Enterprise Packaging
 
 ### 目标
 
@@ -70,8 +70,8 @@
 
 | 项                       | 内容                                                  | 验收                            |
 | ------------------------ | ----------------------------------------------------- | ------------------------------- |
-| Blueprint Marketplace v1 | 8 个软件交付蓝图，可 clone/configure                  | 新建页可从 blueprint 开始       |
-| Tool Registry v2         | tool schema、permission、owner、health、tests         | 用户能查看工具风险与可用性      |
+| Blueprint Marketplace v1 | 后端 CRUD/rollback 已有码；补 clone/configure/共享    | 新建页可从 blueprint 开始       |
+| Tool Registry v2         | 后端 CRUD/health/test 已有码；补真实 tool invocation  | 用户能查看工具风险与可用性      |
 | GitHub Trigger           | issue label/comment、PR check failed                  | GitHub 事件可进入 Delivery Loop |
 | Slack Command beta       | 从 Slack 创建/查询 Loop                               | 内部团队可试用                  |
 | Delivery Intelligence v1 | lead time、human wait、reloop rate、cost per delivery | 管理者能看交付趋势              |
@@ -199,15 +199,15 @@
 仍应作为下一轮主线：
 
 - Eval Suite v1：在当前 derived API v1 基础上补持久化 schema、runner、result UI、trend metrics；
-- Trigger Contract v2：在当前 signed webhook intake + basic payload mapping + evidence redaction + payload size guard + in-process rate guard v1 基础上补 manual trigger object、schedule、audit、replay、retry/dead-letter、distributed rate limit/cost policy 和 integration worker；
+- Trigger Contract v2：当前已有 signed webhook、schedule/manual fire、BullMQ scheduler、retry/replay/dead-letter；后续补 GitHub/Slack/Linear/CI 专用 worker、payload replay UX、distributed rate limit/cost policy 和外部告警；
 - Built-in Delivery Checks：将当前 derived checks 固化为可版本化 check catalog。
 
 ### 61-90 天范围
 
 仍应作为中期主线：
 
-- Blueprint Marketplace clone/config；
-- Tool Registry v2；
+- Blueprint Marketplace clone/config、跨租户共享与审批队列；
+- Tool invocation runtime、OAuth/secret connection；
 - GitHub/Slack/Linear integrations；
 - Governance Center alpha；
 - OTEL event streaming。

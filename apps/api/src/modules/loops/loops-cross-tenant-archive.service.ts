@@ -8,7 +8,7 @@ import { LoopsService } from './loops.service';
 // ---------------------------------------------------------------------------
 // Minimal interface for file storage operations needed by the archive service.
 // The concrete binding is wired in LoopsModule via a factory that picks up
-// FileStorageService from @dofe/infra-shared-services when it's available in
+// the object-storage provider from the SSO infra layer when it's available in
 // the NestJS DI container, and falls back to undefined otherwise.
 // ---------------------------------------------------------------------------
 export interface ArchiveFileStorage {
@@ -29,7 +29,7 @@ export const ARCHIVE_FILE_STORAGE = 'ARCHIVE_FILE_STORAGE';
  *
  * Architecture:
  * - Object storage via the injected ARCHIVE_FILE_STORAGE token
- *   (backed by @dofe/infra-shared-services FileStorageService when available)
+ *   (backed by the SSO-side object-storage provider when available)
  * - Multi-tenant scoping via SSO identity (tenantId is the partition key)
  * - Key pattern: `loops/archives/{tenantId}/{date}/{archiveId}.json`
  * - Local index: `.loops/archives/{tenantId}/index.json`
