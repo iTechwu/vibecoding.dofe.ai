@@ -36,6 +36,10 @@
     "loopBench": {
       "title": "交付质量基准",
       "summary": "从交付证据、运行时安全和学习复用中推导的质量信号。",
+      "runTrendWorker": "运行趋势 worker",
+      "trendTitle": "趋势快照",
+      "trendHistory": "{count} 个快照",
+      "trendSummary": "{loops} 个 Loop · 首次通过 {firstPass}% · canary {canary}% · 首次通过变化 {delta} 点",
       "firstPassRate": "首次通过率",
       "firstPassRateDesc": "PASS 且无重做的 Loop 占比",
       "browserQaRegression": "QA 回归率",
@@ -46,9 +50,28 @@
       "releaseBlockerDesc": "发布前被阻断的 Loop 占比",
       "runtimeViolation": "运行时违规率",
       "runtimeViolationDesc": "每个 Loop 的安全异常占比",
+      "canaryPass": "Canary 通过率",
+      "canaryPassDesc": "发布 canary 通过占比",
       "learningReuse": "知识复用率",
-      "learningReuseDesc": "召回并带来正向结果的占比（规划中）",
-      "planned": "规划中"
+      "learningReuseDesc": "被召回并再次复用的 learning 占比",
+      "planned": "规划中",
+      "filterWorkspace": "按工作区筛选",
+      "allWorkspaces": "全部工作区",
+      "period7d": "最近 7 天",
+      "period30d": "最近 30 天",
+      "period90d": "最近 90 天",
+      "periodAll": "全部时间",
+      "drilldownHint": "选择筛选条件以深入查看按工作区/仓库维度的质量趋势",
+      "drilldownLoading": "正在加载钻取指标。",
+      "drilldownEmpty": "暂无钻取指标。",
+      "drilldownDelta": "变化 {delta} 点"
+    },
+    "workspaceRecipeAdmin": {
+      "title": "工作区配方默认配置",
+      "hint": "配置每种 Loop 类型创建时默认应用的 Workflow Recipe。",
+      "loading": "正在加载工作区配方。",
+      "empty": "暂无工作区默认配方记录。",
+      "recipeMeta": "{kind} · {steps} 步 · 使用 {usage} 次"
     },
     "workforce": {
       "title": "软件交付工作力",
@@ -172,6 +195,22 @@
       "summary": "{kinds} 类配方 · {loops} 个活跃 Loop · {blocked} 个阻断",
       "loading": "加载配方指标中。",
       "empty": "无活跃 Loop 可分析。",
+      "tenantScope": "租户范围",
+      "permission": "权限",
+      "source": "SSO 来源",
+      "granted": "已授权",
+      "blocked": "已阻断",
+      "requestAction": "请求",
+      "requesting": "请求中",
+      "action": {
+        "createVersion": "创建版本",
+        "reviewApproval": "审批复核",
+        "rollbackVersion": "回滚版本"
+      },
+      "actionState": {
+        "ready": "就绪",
+        "blocked": "阻断"
+      },
       "blockerRate": "阻断率",
       "avgShards": "平均 Shard",
       "kind": {
@@ -201,6 +240,9 @@
       "runtimeReady": "运行时就绪",
       "releaseReady": "发布就绪",
       "repos": "仓库"
+    },
+    "deliveryFlow": {
+      "title": "交付流程管道"
     },
     "rulesCenter": {
       "title": "规则中心",
@@ -289,7 +331,16 @@
       "noStale": "暂无待复用 learning。",
       "dismiss": "忽略",
       "merge": "合并",
+      "supersede": "替换",
+      "pendingApprovals": "待审批合并",
+      "approve": "批准",
+      "reject": "拒绝",
+      "mergeTarget": "目标：{target}",
       "runAutoMerge": "运行合并 worker",
+      "runIndexWorker": "运行索引 worker",
+      "indexTitle": "跨 workspace 索引",
+      "indexGenerated": "生成于 {value}",
+      "indexSummary": "{total} 条 learning · {workspaces} 个 workspace · {repos} 个 repo · {duplicates} 个重复指纹 · {reusable} 条可复用",
       "similar": "{count} 条相似建议",
       "confidence": "{value}%",
       "kind": {
@@ -316,6 +367,25 @@
         "implementation": "实现",
         "review": "审阅",
         "qa": "QA"
+      }
+    },
+    "ciEvidence": {
+      "title": "CI Evidence 发布记录",
+      "summary": "{total} 次发布 · 最新状态：{status}",
+      "loading": "正在加载 CI evidence 发布记录。",
+      "empty": "尚未记录 CI evidence 发布。",
+      "defaultCheck": "DofeAI 交付证据",
+      "noHeadSha": "未记录 head SHA",
+      "artifact": "产物",
+      "checkRun": "GitHub Check Run",
+      "evidence": "Evidence 反向链接",
+      "workPackages": "Work Package commit 映射",
+      "noCommits": "尚未附加 Work Package commit。",
+      "noBranch": "未记录分支",
+      "files": "{count} 个文件",
+      "outcome": {
+        "published": "已发布",
+        "failed": "失败"
       }
     },
     "releaseGatePanel": {
@@ -489,6 +559,7 @@
         "exception": "异常门禁"
       },
       "conflictAction": "未解决的冲突：",
+      "slaMeta": "{owner} · 已等待 {age}h · SLA {sla}h",
       "resolveConflict": "解决 →"
     },
     "traceSummary": {
@@ -518,6 +589,13 @@
       "compatibilityChecks": "兼容性检查",
       "tools": "{count} 个工具",
       "owners": "{count} 个负责人",
+      "assetPermissions": {
+        "title": "SSO 资产权限",
+        "summary": "{granted} 个已授权 · {blocked} 个阻断 · 来源：SSO",
+        "loading": "正在加载 SSO 资产权限。",
+        "granted": "已授权",
+        "blocked": "阻断"
+      },
       "permissionProfile": {
         "title": "权限画像",
         "summary": "{agents} 个 agent · {tools} 个工具 · {activeTools} 个活跃工具",
@@ -849,6 +927,7 @@
       "meta": "{steps} 个工作流步骤 · {gates} 个审阅关卡",
       "workflowTitle": "工作流时间线",
       "workflowVersion": "v{version}",
+      "baselineTitle": "基线证据",
       "actionsTitle": "交付操作",
       "reviewTitle": "审阅关卡",
       "secondOpinionTitle": "二次审查",
@@ -871,7 +950,11 @@
         "require": "设为发布前必需",
         "acceptPrimary": "采纳主审（Codex）",
         "acceptSecondary": "采纳复审（Claude Code）",
-        "waive": "豁免冲突"
+        "waive": "豁免冲突",
+        "conflictDrilldown": "冲突指纹",
+        "acceptPrimaryBatch": "批量采纳主审冲突",
+        "acceptSecondaryBatch": "批量采纳复审冲突",
+        "waiveBatch": "批量豁免冲突"
       },
       "browserQa": {
         "title": "Browser QA",
@@ -888,13 +971,28 @@
         "sessionPolicy": "会话策略",
         "authMode": "登录模式",
         "testAccountRef": "测试账号引用",
-        "saveSessionPolicy": "保存会话策略"
+        "saveSessionPolicy": "保存会话策略",
+        "artifactsTitle": "最新 QA 产物",
+        "screenshots": "截图",
+        "traces": "Trace",
+        "handoffs": "Handoff",
+        "visualDiffs": "视觉差异",
+        "handoffTitle": "浏览器接手",
+        "changedPixels": "{count} 个变化像素",
+        "viewportUnknown": "未上报视口"
+      },
+      "requiredReviewGates": {
+        "title": "必需审阅关卡",
+        "save": "保存必需关卡"
       },
       "releaseCanary": {
         "title": "发布 canary",
         "status": "状态",
         "targetUrl": "目标 URL",
+        "environment": "环境",
+        "environmentOwner": "环境负责人",
         "reason": "原因",
+        "rollbackNote": "回滚说明",
         "record": "记录 canary"
       },
       "runtimeOverride": {

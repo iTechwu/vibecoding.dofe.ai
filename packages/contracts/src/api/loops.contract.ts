@@ -6,7 +6,9 @@ import {
   CreateLoopIssueSimpleRequestSchema,
   DetectLoopRuntimeResponseSchema,
   LoopBrowserQaRequestSchema,
+  LoopBenchTrendWorkerResponseSchema,
   LoopCapabilitiesResponseSchema,
+  LoopAssetPermissionsResponseSchema,
   LoopAgentRuntimeResponseSchema,
   LoopCostResponseSchema,
   LoopDeliveryEvidenceSchema,
@@ -18,8 +20,13 @@ import {
   EvalSuiteListResponseSchema,
   EvalRunListResponseSchema,
   EvalRunSchema,
+  EvalTrendWorkerResponseSchema,
   LoopDetailSchema,
   LoopInterventionRequestSchema,
+  LoopCiCheckActionSchema,
+  LoopCiCheckIntegrationListResponseSchema,
+  LoopCiCheckIntegrationSchema,
+  LoopCiCheckPublicationHistorySchema,
   LoopImplementationRecordSchema,
   LoopIssueCreatedResponseSchema,
   LoopIssuesQuerySchema,
@@ -28,6 +35,9 @@ import {
   LoopLogsQuerySchema,
   LoopLogsResponseSchema,
   LoopMetricsResponseSchema,
+  LoopMcpServerActionSchema,
+  LoopMcpServerListResponseSchema,
+  LoopMcpServerSchema,
   LoopNaturalCommandRequestSchema,
   LoopNaturalCommandResponseSchema,
   LoopNotificationsQuerySchema,
@@ -35,6 +45,14 @@ import {
   LoopRecordShardImplementationRequestSchema,
   LoopReloopResponseSchema,
   LoopReloopRequestSchema,
+  LoopRemoteRunnerLeaseRequestSchema,
+  LoopRemoteRunnerLeaseSchema,
+  LoopRemoteRunnerListResponseSchema,
+  LoopRemoteRunnerJobRequestSchema,
+  LoopRemoteRunnerJobSchema,
+  LoopRemoteRunnerReleaseRequestSchema,
+  LoopRecipeAdminActionRequestSchema,
+  LoopRecipeAdminActionResponseSchema,
   LoopResolveSecondOpinionSchema,
   LoopReviewRecordSchema,
   LoopReviewShardRequestSchema,
@@ -49,6 +67,25 @@ import {
   LoopWorkspacesResponseSchema,
   LoopWebhookTriggerSchema,
   LoopWebhookTriggerResponseSchema,
+  CreateScheduleTriggerRequestSchema,
+  LoopScheduleTriggerListResponseSchema,
+  LoopScheduleTriggerSchema,
+  UpdateScheduleTriggerRequestSchema,
+  LoopTriggerExecutionListResponseSchema,
+  LoopTriggerExecutionSchema,
+  LoopTriggerRetryRequestSchema,
+  LoopTriggerReplayRequestSchema,
+  LoopTriggerDeadLetterListResponseSchema,
+  LoopToolSchema,
+  RegisterToolRequestSchema,
+  UpdateToolRequestSchema,
+  LoopToolListResponseSchema,
+  ToolHealthCheckResponseSchema,
+  ToolTestResponseSchema,
+  LoopBlueprintSchema,
+  CreateBlueprintRequestSchema,
+  UpdateBlueprintRequestSchema,
+  LoopBlueprintListResponseSchema,
 } from '../schemas/loops.schema';
 
 const c = initContract();
@@ -117,6 +154,15 @@ export const loopsContract = c.router(
       },
       summary: 'Get a derived, PR-ready delivery evidence summary for a Loops issue (P0-4)',
     },
+    assetPermissions: {
+      method: 'GET',
+      path: '/asset-permissions',
+      responses: {
+        200: ApiResponseSchema(LoopAssetPermissionsResponseSchema),
+      },
+      summary:
+        'Get SSO-derived Loops asset permissions for workspace, runtime, tools, eval, triggers, MCP, remote runner, and CI checks',
+    },
     // --- Runtime Backend Registry (P0-2) ---
     listRuntimeBackends: {
       method: 'GET',
@@ -157,6 +203,148 @@ export const loopsContract = c.router(
       },
       summary: 'Update fallback/cost/permission policy for a runtime backend',
     },
+    // --- Remote Runner Pool (P2-3) ---
+    listRemoteRunners: {
+      method: 'GET',
+      path: '/remote-runners',
+      query: PaginationQuerySchema,
+      responses: {
+        200: ApiResponseSchema(LoopRemoteRunnerListResponseSchema),
+      },
+      summary: 'List remote runner pool capacity, lease posture, and artifact roots',
+    },
+    acquireRemoteRunnerLease: {
+      method: 'POST',
+      path: '/remote-runners/:id/leases',
+      pathParams: z.object({ id: z.string() }),
+      body: LoopRemoteRunnerLeaseRequestSchema,
+      responses: {
+        200: ApiResponseSchema(LoopRemoteRunnerLeaseSchema),
+      },
+      summary:
+        'Acquire a control-plane lease for a remote runner slot after SSO asset permission checks',
+    },
+    releaseRemoteRunnerLease: {
+      method: 'POST',
+      path: '/remote-runners/:id/leases/release',
+      pathParams: z.object({ id: z.string() }),
+      body: LoopRemoteRunnerReleaseRequestSchema,
+      responses: {
+        200: ApiResponseSchema(LoopRemoteRunnerLeaseSchema),
+      },
+      summary: 'Release a control-plane remote runner lease after SSO asset permission checks',
+    },
+    runRemoteRunnerJob: {
+      method: 'POST',
+      path: '/remote-runners/:id/jobs',
+      pathParams: z.object({ id: z.string() }),
+      body: LoopRemoteRunnerJobRequestSchema,
+      responses: {
+        200: ApiResponseSchema(LoopRemoteRunnerJobSchema),
+      },
+      summary:
+        'Run a remote runner worker job and persist artifact metadata after SSO admin checks',
+    },
+    // --- MCP Server Registry (P1-2) ---
+    listMcpServers: {
+      method: 'GET',
+      path: '/mcp-servers',
+      query: PaginationQuerySchema,
+      responses: {
+        200: ApiResponseSchema(LoopMcpServerListResponseSchema),
+      },
+      summary: 'List SSO-governed MCP server configurations and compatibility posture',
+    },
+    connectMcpServer: {
+      method: 'POST',
+      path: '/mcp-servers/:id/connect',
+      pathParams: z.object({ id: z.string() }),
+      body: LoopMcpServerActionSchema.optional(),
+      responses: {
+        200: ApiResponseSchema(LoopMcpServerSchema),
+      },
+      summary: 'Connect an MCP server configuration after SSO asset permission checks',
+    },
+    disconnectMcpServer: {
+      method: 'POST',
+      path: '/mcp-servers/:id/disconnect',
+      pathParams: z.object({ id: z.string() }),
+      body: LoopMcpServerActionSchema.optional(),
+      responses: {
+        200: ApiResponseSchema(LoopMcpServerSchema),
+      },
+      summary: 'Disconnect an MCP server configuration after SSO asset permission checks',
+    },
+    testMcpServer: {
+      method: 'POST',
+      path: '/mcp-servers/:id/test',
+      pathParams: z.object({ id: z.string() }),
+      body: LoopMcpServerActionSchema.optional(),
+      responses: {
+        200: ApiResponseSchema(LoopMcpServerSchema),
+      },
+      summary: 'Run a control-plane MCP server configuration test',
+    },
+    // --- CI Check Registry (P2-3) ---
+    listCiChecks: {
+      method: 'GET',
+      path: '/ci-checks',
+      query: PaginationQuerySchema,
+      responses: {
+        200: ApiResponseSchema(LoopCiCheckIntegrationListResponseSchema),
+      },
+      summary: 'List CI check integrations that can publish release evidence',
+    },
+    connectCiCheck: {
+      method: 'POST',
+      path: '/ci-checks/:id/connect',
+      pathParams: z.object({ id: z.string() }),
+      body: LoopCiCheckActionSchema.optional(),
+      responses: {
+        200: ApiResponseSchema(LoopCiCheckIntegrationSchema),
+      },
+      summary: 'Connect a CI check integration after SSO asset permission checks',
+    },
+    disconnectCiCheck: {
+      method: 'POST',
+      path: '/ci-checks/:id/disconnect',
+      pathParams: z.object({ id: z.string() }),
+      body: LoopCiCheckActionSchema.optional(),
+      responses: {
+        200: ApiResponseSchema(LoopCiCheckIntegrationSchema),
+      },
+      summary: 'Disconnect a CI check integration after SSO asset permission checks',
+    },
+    testCiCheck: {
+      method: 'POST',
+      path: '/ci-checks/:id/test',
+      pathParams: z.object({ id: z.string() }),
+      body: LoopCiCheckActionSchema.optional(),
+      responses: {
+        200: ApiResponseSchema(LoopCiCheckIntegrationSchema),
+      },
+      summary: 'Run a control-plane CI check integration test',
+    },
+    listCiCheckPublications: {
+      method: 'GET',
+      path: '/ci-checks/:id/publications',
+      pathParams: z.object({ id: z.string() }),
+      responses: {
+        200: ApiResponseSchema(LoopCiCheckPublicationHistorySchema),
+      },
+      summary: 'List durable CI check publication history for evidence review',
+    },
+    // --- Multi-tenant Recipe Admin (P2) ---
+    requestRecipeAdminAction: {
+      method: 'POST',
+      path: '/recipe-admin/actions',
+      body: LoopRecipeAdminActionRequestSchema,
+      responses: {
+        200: ApiResponseSchema(LoopRecipeAdminActionResponseSchema),
+      },
+      summary:
+        'Request a tenant-scoped recipe admin action and persist an auditable artifact after SSO blueprint permission checks',
+    },
     // --- Eval Suite / Eval Run (P0-3) ---
     listEvalSuites: {
       method: 'GET',
@@ -196,6 +384,24 @@ export const loopsContract = c.router(
         200: ApiResponseSchema(EvalRunSchema),
       },
       summary: 'Get a single eval run with per-check results and trend delta',
+    },
+    runEvalTrendWorker: {
+      method: 'POST',
+      path: '/eval-runs/historical-baseline-worker',
+      body: z.object({}).optional(),
+      responses: {
+        200: ApiResponseSchema(EvalTrendWorkerResponseSchema),
+      },
+      summary: 'Materialize cross-blueprint eval historical baseline snapshots and trend deltas',
+    },
+    runLoopBenchTrendWorker: {
+      method: 'POST',
+      path: '/loop-bench/trend-worker',
+      body: z.object({}).optional(),
+      responses: {
+        200: ApiResponseSchema(LoopBenchTrendWorkerResponseSchema),
+      },
+      summary: 'Materialize file-backed Loop Bench quality trend snapshots',
     },
     generateSpec: {
       method: 'POST',
@@ -391,6 +597,8 @@ export const loopsContract = c.router(
       body: z.object({
         targetUrl: z.string().url(),
         riskLevel: z.enum(['low', 'medium', 'high']).default('medium'),
+        environment: z.string().trim().min(1).optional(),
+        environmentOwner: z.string().trim().min(1).optional(),
         rollbackNote: z.string().trim().min(1).optional(),
       }),
       responses: {
@@ -493,6 +701,15 @@ export const loopsContract = c.router(
       },
       summary: 'Promote learning similarity suggestions into pending auto-merge approvals',
     },
+    runLearningIndexWorker: {
+      method: 'POST',
+      path: '/learnings/index-worker',
+      body: z.object({}).optional(),
+      responses: {
+        200: ApiResponseSchema(LoopWorkspacesResponseSchema),
+      },
+      summary: 'Materialize a file-backed cross-workspace learning index',
+    },
     upsertWorkspace: {
       method: 'POST',
       path: '/workspaces',
@@ -554,6 +771,232 @@ export const loopsContract = c.router(
       summary:
         'Receive an external webhook (GitHub/Linear/Jira/Slack/generic) and create a Loop issue from it (P0-2, R7)',
     },
+    // =========================================================================
+    // Schedule Triggers (P1-3, R30c)
+    // =========================================================================
+    listScheduleTriggers: {
+      method: 'GET',
+      path: '/triggers/schedules',
+      query: PaginationQuerySchema,
+      responses: {
+        200: ApiResponseSchema(LoopScheduleTriggerListResponseSchema),
+      },
+      summary: 'List all schedule triggers with lifecycle status',
+    },
+    getScheduleTrigger: {
+      method: 'GET',
+      path: '/triggers/schedules/:triggerId',
+      pathParams: z.object({ triggerId: z.string() }),
+      responses: {
+        200: ApiResponseSchema(LoopScheduleTriggerSchema),
+      },
+      summary: 'Get a single schedule trigger by ID',
+    },
+    createScheduleTrigger: {
+      method: 'POST',
+      path: '/triggers/schedules',
+      body: CreateScheduleTriggerRequestSchema,
+      responses: {
+        200: ApiResponseSchema(LoopScheduleTriggerSchema),
+      },
+      summary: 'Create a cron-based schedule trigger for recurring Loop creation',
+    },
+    updateScheduleTrigger: {
+      method: 'PATCH',
+      path: '/triggers/schedules/:triggerId',
+      pathParams: z.object({ triggerId: z.string() }),
+      body: UpdateScheduleTriggerRequestSchema,
+      responses: {
+        200: ApiResponseSchema(LoopScheduleTriggerSchema),
+      },
+      summary: 'Update a schedule trigger (cron, status, template)',
+    },
+    deleteScheduleTrigger: {
+      method: 'DELETE',
+      path: '/triggers/schedules/:triggerId',
+      pathParams: z.object({ triggerId: z.string() }),
+      body: z.object({}).optional(),
+      responses: {
+        200: ApiResponseSchema(z.object({ deleted: z.boolean(), triggerId: z.string() })),
+      },
+      summary: 'Delete a schedule trigger',
+    },
+    fireScheduleTrigger: {
+      method: 'POST',
+      path: '/triggers/schedules/:triggerId/fire',
+      pathParams: z.object({ triggerId: z.string() }),
+      body: z
+        .object({
+          reason: z.string().trim().min(1).optional(),
+        })
+        .optional(),
+      responses: {
+        200: ApiResponseSchema(LoopWebhookTriggerResponseSchema),
+      },
+      summary: 'Manually fire a schedule trigger to create a Loop issue immediately (R32a)',
+    },
+    // =========================================================================
+    // Trigger Lifecycle Management (P1-3, R30c)
+    // =========================================================================
+    listTriggerExecutions: {
+      method: 'GET',
+      path: '/triggers/:triggerId/executions',
+      pathParams: z.object({ triggerId: z.string() }),
+      query: PaginationQuerySchema,
+      responses: {
+        200: ApiResponseSchema(LoopTriggerExecutionListResponseSchema),
+      },
+      summary: 'List execution history for a trigger with retry/dead-letter status',
+    },
+    retryTriggerExecution: {
+      method: 'POST',
+      path: '/triggers/executions/:executionId/retry',
+      pathParams: z.object({ executionId: z.string() }),
+      body: LoopTriggerRetryRequestSchema,
+      responses: {
+        200: ApiResponseSchema(LoopTriggerExecutionSchema),
+      },
+      summary: 'Retry a failed trigger execution',
+    },
+    replayTriggerExecution: {
+      method: 'POST',
+      path: '/triggers/executions/:executionId/replay',
+      pathParams: z.object({ executionId: z.string() }),
+      body: LoopTriggerReplayRequestSchema,
+      responses: {
+        200: ApiResponseSchema(LoopTriggerExecutionSchema),
+      },
+      summary: 'Replay a completed trigger execution with the same input payload',
+    },
+    listDeadLetters: {
+      method: 'GET',
+      path: '/triggers/dead-letters',
+      query: PaginationQuerySchema,
+      responses: {
+        200: ApiResponseSchema(LoopTriggerDeadLetterListResponseSchema),
+      },
+      summary: 'List dead-lettered trigger executions for inspection and replay',
+    },
+    // =========================================================================
+    // Tool Registry (P1-4, R31a)
+    // =========================================================================
+    listTools: {
+      method: 'GET',
+      path: '/tools',
+      query: PaginationQuerySchema,
+      responses: {
+        200: ApiResponseSchema(LoopToolListResponseSchema),
+      },
+      summary: 'List all registered tools with lifecycle, auth, health, and compatibility status',
+    },
+    getTool: {
+      method: 'GET',
+      path: '/tools/:toolId',
+      pathParams: z.object({ toolId: z.string() }),
+      responses: {
+        200: ApiResponseSchema(LoopToolSchema),
+      },
+      summary: 'Get a single tool detail',
+    },
+    registerTool: {
+      method: 'POST',
+      path: '/tools',
+      body: RegisterToolRequestSchema,
+      responses: {
+        200: ApiResponseSchema(LoopToolSchema),
+      },
+      summary: 'Register a new tool in the governed tool registry',
+    },
+    updateTool: {
+      method: 'PATCH',
+      path: '/tools/:toolId',
+      pathParams: z.object({ toolId: z.string() }),
+      body: UpdateToolRequestSchema,
+      responses: {
+        200: ApiResponseSchema(LoopToolSchema),
+      },
+      summary: 'Update tool lifecycle status, permissions, or compatibility',
+    },
+    toolHealthCheck: {
+      method: 'POST',
+      path: '/tools/:toolId/health-check',
+      pathParams: z.object({ toolId: z.string() }),
+      body: z.object({}).optional(),
+      responses: {
+        200: ApiResponseSchema(ToolHealthCheckResponseSchema),
+      },
+      summary: 'Trigger a health check for a registered tool',
+    },
+    testTool: {
+      method: 'POST',
+      path: '/tools/:toolId/test',
+      pathParams: z.object({ toolId: z.string() }),
+      body: z
+        .object({
+          input: z.record(z.string(), z.unknown()).optional(),
+        })
+        .optional(),
+      responses: {
+        200: ApiResponseSchema(ToolTestResponseSchema),
+      },
+      summary: 'Run a smoke test against a registered tool and record the result',
+    },
+    // =========================================================================
+    // Delivery Blueprint Marketplace (P1-2, R31b)
+    // =========================================================================
+    listBlueprints: {
+      method: 'GET',
+      path: '/blueprints',
+      query: PaginationQuerySchema,
+      responses: {
+        200: ApiResponseSchema(LoopBlueprintListResponseSchema),
+      },
+      summary:
+        'List all delivery blueprints with version, persona sequence, gates, and usage stats',
+    },
+    getBlueprint: {
+      method: 'GET',
+      path: '/blueprints/:blueprintId',
+      pathParams: z.object({ blueprintId: z.string() }),
+      responses: {
+        200: ApiResponseSchema(LoopBlueprintSchema),
+      },
+      summary: 'Get a single delivery blueprint detail',
+    },
+    createBlueprint: {
+      method: 'POST',
+      path: '/blueprints',
+      body: CreateBlueprintRequestSchema,
+      responses: {
+        200: ApiResponseSchema(LoopBlueprintSchema),
+      },
+      summary: 'Create a new versioned delivery blueprint',
+    },
+    updateBlueprint: {
+      method: 'PATCH',
+      path: '/blueprints/:blueprintId',
+      pathParams: z.object({ blueprintId: z.string() }),
+      body: UpdateBlueprintRequestSchema,
+      responses: {
+        200: ApiResponseSchema(LoopBlueprintSchema),
+      },
+      summary: 'Update blueprint version, persona sequence, gates, or runtime policy',
+    },
+    rollbackBlueprint: {
+      method: 'POST',
+      path: '/blueprints/:blueprintId/rollback',
+      pathParams: z.object({ blueprintId: z.string() }),
+      body: z
+        .object({
+          targetVersion: z.string().trim().min(1).optional(),
+          reason: z.string().trim().min(1).optional(),
+        })
+        .optional(),
+      responses: {
+        200: ApiResponseSchema(LoopBlueprintSchema),
+      },
+      summary: 'Rollback a blueprint to a previous version from history (R32a)',
+    },
     resume: {
       method: 'POST',
       path: '/resume',
@@ -562,6 +1005,87 @@ export const loopsContract = c.router(
         200: ApiResponseSchema(LoopsResumeResponseSchema),
       },
       summary: 'Recover interrupted Loops shards',
+    },
+    // gstack P2: Serve Browser QA artifact files for embedded preview.
+    getBrowserQaArtifact: {
+      method: 'GET',
+      path: '/:issueId/browser-qa/artifact/*',
+      pathParams: z.object({ issueId: z.string() }),
+      responses: {
+        200: z.any(),
+      },
+      summary: 'Serve a Browser QA artifact file (screenshot, trace, diff) for inline preview',
+    },
+    // gstack P2: Workspace recipe admin — list all workspace-level recipe configurations.
+    listWorkspaceRecipes: {
+      method: 'GET',
+      path: '/workspace-recipes',
+      query: PaginationQuerySchema,
+      responses: {
+        200: ApiResponseSchema(
+          z.object({
+            list: z.array(
+              z.object({
+                id: z.string(),
+                name: z.string(),
+                version: z.string(),
+                loopKind: z.string(),
+                isDefault: z.boolean(),
+                stepCount: z.number(),
+                usageCount: z.number(),
+                blockerRate: z.number().optional(),
+                updatedAt: z.string(),
+              }),
+            ),
+            total: z.number(),
+            page: z.number(),
+            limit: z.number(),
+          }),
+        ),
+      },
+      summary: 'List workspace-level workflow recipe configurations for admin',
+    },
+    // gstack P2: Loop Bench drilldown — workspace/repo/recipe dimension metrics.
+    getLoopBenchDrilldown: {
+      method: 'GET',
+      path: '/bench/drilldown',
+      query: z.object({
+        workspaceId: z.string().optional(),
+        repo: z.string().optional(),
+        recipeId: z.string().optional(),
+        period: z.enum(['7d', '30d', '90d', 'all']).optional().default('30d'),
+      }),
+      responses: {
+        200: ApiResponseSchema(
+          z.object({
+            metrics: z.array(
+              z.object({
+                key: z.string(),
+                label: z.string(),
+                value: z.number(),
+                previousValue: z.number().optional(),
+                delta: z.number().optional(),
+                breakdown: z
+                  .array(
+                    z.object({
+                      dimension: z.string(),
+                      dimensionValue: z.string(),
+                      value: z.number(),
+                    }),
+                  )
+                  .optional(),
+              }),
+            ),
+            period: z.string(),
+            filters: z.object({
+              workspaceId: z.string().optional(),
+              repo: z.string().optional(),
+              recipeId: z.string().optional(),
+            }),
+          }),
+        ),
+      },
+      summary: 'Get Loop Bench quality metrics with workspace/repo/recipe drilldown',
     },
   },
   {

@@ -11,6 +11,12 @@ import type { Prisma } from '@prisma/client';
 import { LOOPS_PERMISSION, RequireLoopsPermission } from './loops-rbac.decorator';
 import { LoopsService } from './loops.service';
 
+type BrowserQaArtifactRequest = AuthenticatedRequest & {
+  params?: {
+    '0'?: string;
+  };
+};
+
 @Auth('api')
 @Controller({
   version: VERSION_NEUTRAL,
@@ -104,6 +110,21 @@ export class LoopsController {
     });
   }
 
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.assetPermissions)
+  async assetPermissions(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.assetPermissions, async () => {
+      return success(
+        await this.loopsService.assetPermissions({
+          userId: req.userId,
+          isAdmin: req.isAdmin,
+          teamId: req.teamId,
+          tenantId: req.tenantId,
+        }),
+      );
+    });
+  }
+
   // --- Runtime Backend Registry (P0-2) ---
 
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
@@ -124,9 +145,16 @@ export class LoopsController {
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.runtimeBackendHealthCheck)
-  async runtimeBackendHealthCheck() {
+  async runtimeBackendHealthCheck(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.runtimeBackendHealthCheck, async ({ params }) => {
-      return success(await this.loopsService.runtimeBackendHealthCheck(params.id));
+      return success(
+        await this.loopsService.runtimeBackendHealthCheck(params.id, {
+          userId: req.userId,
+          isAdmin: req.isAdmin,
+          teamId: req.teamId,
+          tenantId: req.tenantId,
+        }),
+      );
     });
   }
 
@@ -134,12 +162,268 @@ export class LoopsController {
   @TsRestHandler(c.updateRuntimeBackendPolicy)
   async updateRuntimeBackendPolicy(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.updateRuntimeBackendPolicy, async ({ params, body }) => {
-      const result = await this.loopsService.updateRuntimeBackendPolicy(params.id, body);
+      const result = await this.loopsService.updateRuntimeBackendPolicy(params.id, body, {
+        userId: req.userId,
+        isAdmin: req.isAdmin,
+        teamId: req.teamId,
+        tenantId: req.tenantId,
+      });
       await this.auditLog(req, 'UPDATE', 'loop_runtime_backend', params.id, 'updatePolicy', {
         fallbackPolicy: body.fallbackPolicy,
         costPolicy: body.costPolicy,
         permissionProfile: body.permissionProfile,
       });
+      return success(result);
+    });
+  }
+
+  // --- Remote Runner Pool (P2-3) ---
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.listRemoteRunners)
+  async listRemoteRunners() {
+    return tsRestHandler(c.listRemoteRunners, async ({ query }) => {
+      return success(await this.loopsService.listRemoteRunners(query));
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
+  @TsRestHandler(c.acquireRemoteRunnerLease)
+  async acquireRemoteRunnerLease(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.acquireRemoteRunnerLease, async ({ params, body }) => {
+      const result = await this.loopsService.acquireRemoteRunnerLease(params.id, body, {
+        userId: req.userId,
+        isAdmin: req.isAdmin,
+        teamId: req.teamId,
+        tenantId: req.tenantId,
+      });
+      await this.auditLog(
+        req,
+        'UPDATE',
+        'loop_remote_runner',
+        params.id,
+        'acquireRemoteRunnerLease',
+        {
+          leaseId: result.id,
+          issueId: body.issueId,
+          shardId: body.shardId,
+          runtimeBackend: body.runtimeBackend,
+        },
+      );
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
+  @TsRestHandler(c.releaseRemoteRunnerLease)
+  async releaseRemoteRunnerLease(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.releaseRemoteRunnerLease, async ({ params, body }) => {
+      const result = await this.loopsService.releaseRemoteRunnerLease(params.id, body, {
+        userId: req.userId,
+        isAdmin: req.isAdmin,
+        teamId: req.teamId,
+        tenantId: req.tenantId,
+      });
+      await this.auditLog(
+        req,
+        'UPDATE',
+        'loop_remote_runner',
+        params.id,
+        'releaseRemoteRunnerLease',
+        {
+          leaseId: body.leaseId,
+          reason: body.reason,
+        },
+      );
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
+  @TsRestHandler(c.runRemoteRunnerJob)
+  async runRemoteRunnerJob(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.runRemoteRunnerJob, async ({ params, body }) => {
+      const result = await this.loopsService.runRemoteRunnerJob(params.id, body, {
+        userId: req.userId,
+        isAdmin: req.isAdmin,
+        teamId: req.teamId,
+        tenantId: req.tenantId,
+      });
+      await this.auditLog(req, 'UPDATE', 'loop_remote_runner', params.id, 'runRemoteRunnerJob', {
+        jobId: result.id,
+        leaseId: body.leaseId,
+        issueId: body.issueId,
+        shardId: body.shardId,
+        runtimeBackend: body.runtimeBackend,
+        workerKind: body.workerKind,
+        artifactRoot: result.artifactRoot,
+      });
+      return success(result);
+    });
+  }
+
+  // --- MCP Server Registry (P1-2) ---
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.listMcpServers)
+  async listMcpServers() {
+    return tsRestHandler(c.listMcpServers, async ({ query }) => {
+      return success(await this.loopsService.listMcpServers(query));
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
+  @TsRestHandler(c.connectMcpServer)
+  async connectMcpServer(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.connectMcpServer, async ({ params, body }) => {
+      const result = await this.loopsService.connectMcpServer(params.id, body, {
+        userId: req.userId,
+        isAdmin: req.isAdmin,
+        teamId: req.teamId,
+        tenantId: req.tenantId,
+      });
+      await this.auditLog(req, 'UPDATE', 'loop_mcp_server', params.id, 'connectMcpServer', {
+        reason: body?.reason,
+        status: result.status,
+      });
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
+  @TsRestHandler(c.disconnectMcpServer)
+  async disconnectMcpServer(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.disconnectMcpServer, async ({ params, body }) => {
+      const result = await this.loopsService.disconnectMcpServer(params.id, body, {
+        userId: req.userId,
+        isAdmin: req.isAdmin,
+        teamId: req.teamId,
+        tenantId: req.tenantId,
+      });
+      await this.auditLog(req, 'UPDATE', 'loop_mcp_server', params.id, 'disconnectMcpServer', {
+        reason: body?.reason,
+        status: result.status,
+      });
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
+  @TsRestHandler(c.testMcpServer)
+  async testMcpServer(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.testMcpServer, async ({ params, body }) => {
+      const result = await this.loopsService.testMcpServer(params.id, body, {
+        userId: req.userId,
+        isAdmin: req.isAdmin,
+        teamId: req.teamId,
+        tenantId: req.tenantId,
+      });
+      await this.auditLog(req, 'UPDATE', 'loop_mcp_server', params.id, 'testMcpServer', {
+        reason: body?.reason,
+        ok: result.health.ok,
+      });
+      return success(result);
+    });
+  }
+
+  // --- CI Check Registry (P2-3) ---
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.listCiChecks)
+  async listCiChecks() {
+    return tsRestHandler(c.listCiChecks, async ({ query }) => {
+      return success(await this.loopsService.listCiChecks(query));
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.listCiCheckPublications)
+  async listCiCheckPublications() {
+    return tsRestHandler(c.listCiCheckPublications, async ({ params }) => {
+      return success(await this.loopsService.listCiCheckPublications(params.id));
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.connectCiCheck)
+  async connectCiCheck(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.connectCiCheck, async ({ params, body }) => {
+      const result = await this.loopsService.connectCiCheck(params.id, body, {
+        userId: req.userId,
+        isAdmin: req.isAdmin,
+        teamId: req.teamId,
+        tenantId: req.tenantId,
+      });
+      await this.auditLog(req, 'UPDATE', 'loop_ci_check', params.id, 'connectCiCheck', {
+        reason: body?.reason,
+        status: result.status,
+      });
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.disconnectCiCheck)
+  async disconnectCiCheck(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.disconnectCiCheck, async ({ params, body }) => {
+      const result = await this.loopsService.disconnectCiCheck(params.id, body, {
+        userId: req.userId,
+        isAdmin: req.isAdmin,
+        teamId: req.teamId,
+        tenantId: req.tenantId,
+      });
+      await this.auditLog(req, 'UPDATE', 'loop_ci_check', params.id, 'disconnectCiCheck', {
+        reason: body?.reason,
+        status: result.status,
+      });
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.testCiCheck)
+  async testCiCheck(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.testCiCheck, async ({ params, body }) => {
+      const result = await this.loopsService.testCiCheck(params.id, body, {
+        userId: req.userId,
+        isAdmin: req.isAdmin,
+        teamId: req.teamId,
+        tenantId: req.tenantId,
+      });
+      await this.auditLog(req, 'UPDATE', 'loop_ci_check', params.id, 'testCiCheck', {
+        reason: body?.reason,
+        ok: result.health.ok,
+      });
+      return success(result);
+    });
+  }
+
+  // --- Multi-tenant Recipe Admin (P2) ---
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.CREATE)
+  @TsRestHandler(c.requestRecipeAdminAction)
+  async requestRecipeAdminAction(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.requestRecipeAdminAction, async ({ body }) => {
+      const result = await this.loopsService.requestRecipeAdminAction(body, {
+        userId: req.userId,
+        isAdmin: req.isAdmin,
+        teamId: req.teamId,
+        tenantId: req.tenantId,
+      });
+      await this.auditLog(
+        req,
+        'CREATE',
+        'loop_recipe_admin_action',
+        result.id,
+        'requestRecipeAdminAction',
+        {
+          actionId: result.actionId,
+          blueprintId: result.blueprintId,
+          recipeKind: result.recipeKind,
+          targetVersion: result.targetVersion,
+          artifactRef: result.artifactRef,
+        },
+      );
       return success(result);
     });
   }
@@ -175,6 +459,47 @@ export class LoopsController {
   async getEvalRun() {
     return tsRestHandler(c.getEvalRun, async ({ params }) => {
       return success(await this.loopsService.getEvalRun(params.id));
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.runEvalTrendWorker)
+  async runEvalTrendWorker(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.runEvalTrendWorker, async () => {
+      const result = await this.loopsService.runEvalTrendWorker();
+      await this.auditLog(
+        req,
+        'UPDATE',
+        'loop_eval_trend',
+        'historical-baseline-worker',
+        'runEvalTrendWorker',
+        {
+          snapshotCount: result.snapshotCount,
+          generatedAt: result.generatedAt,
+        },
+      );
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.runLoopBenchTrendWorker)
+  async runLoopBenchTrendWorker(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.runLoopBenchTrendWorker, async () => {
+      const result = await this.loopsService.runLoopBenchTrendWorker();
+      await this.auditLog(
+        req,
+        'UPDATE',
+        'loop_bench_trend',
+        result.snapshot.id,
+        'runLoopBenchTrendWorker',
+        {
+          historyCount: result.historyCount,
+          loopCount: result.snapshot.loopCount,
+          artifactRef: result.snapshot.artifactRef,
+        },
+      );
+      return success(result);
     });
   }
 
@@ -514,6 +839,27 @@ export class LoopsController {
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @TsRestHandler(c.runLearningIndexWorker)
+  async runLearningIndexWorker(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.runLearningIndexWorker, async () => {
+      const result = await this.loopsService.runLearningIndexWorker();
+      await this.auditLog(
+        req,
+        'UPDATE',
+        'loop_learning',
+        'index-worker',
+        'runLearningIndexWorker',
+        {
+          total: result.learningIndex?.summary.total ?? 0,
+          workspaces: result.learningIndex?.summary.workspaces ?? 0,
+          duplicateFingerprints: result.learningIndex?.summary.duplicateFingerprints ?? 0,
+        },
+      );
+      return success(result);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   @TsRestHandler(c.upsertWorkspace)
   async upsertWorkspace(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.upsertWorkspace, async ({ body }) => {
@@ -584,6 +930,37 @@ export class LoopsController {
     });
   }
 
+  /** gstack P2: Serve Browser QA artifact files for embedded preview in detail page. */
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.getBrowserQaArtifact)
+  async getBrowserQaArtifact(@Req() req: BrowserQaArtifactRequest) {
+    return tsRestHandler(c.getBrowserQaArtifact, async ({ params }) => {
+      const artifactPath = req.params?.['0'] ?? '';
+      const result = await this.loopsService.getBrowserQaArtifact(params.issueId, artifactPath);
+      return { status: 200 as const, body: result };
+    });
+  }
+
+  /** gstack P2: List workspace-level workflow recipe configurations. */
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.listWorkspaceRecipes)
+  async listWorkspaceRecipes(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.listWorkspaceRecipes, async ({ query }) => {
+      const result = await this.loopsService.listWorkspaceRecipes(query);
+      return success(result);
+    });
+  }
+
+  /** gstack P2: Loop Bench drilldown by workspace/repo/recipe dimensions. */
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.getLoopBenchDrilldown)
+  async getLoopBenchDrilldown(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.getLoopBenchDrilldown, async ({ query }) => {
+      const result = await this.loopsService.getLoopBenchDrilldown(query);
+      return success(result);
+    });
+  }
+
   private async auditLoopCreate(
     req: AuthenticatedRequest,
     issueId: string,
@@ -599,6 +976,292 @@ export class LoopsController {
     metadata: Prisma.InputJsonObject,
   ): Promise<void> {
     await this.auditLog(req, 'UPDATE', 'loop_issue', issueId, operation, metadata);
+  }
+
+  // =========================================================================
+  // Schedule Triggers (P1-3, R30c)
+  // =========================================================================
+
+  @TsRestHandler(c.listScheduleTriggers)
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  async listScheduleTriggers(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.listScheduleTriggers, async ({ query }) => {
+      return success(await this.loopsService.listScheduleTriggers(query));
+    });
+  }
+
+  @TsRestHandler(c.getScheduleTrigger)
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  async getScheduleTrigger(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.getScheduleTrigger, async ({ params }) => {
+      return success(await this.loopsService.getScheduleTrigger(params.triggerId));
+    });
+  }
+
+  @TsRestHandler(c.createScheduleTrigger)
+  @RequireLoopsPermission(LOOPS_PERMISSION.CREATE)
+  async createScheduleTrigger(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.createScheduleTrigger, async ({ body }) => {
+      const result = await this.loopsService.createScheduleTrigger(body);
+      await this.auditLog(
+        req,
+        'CREATE',
+        'loop_schedule_trigger',
+        result.id,
+        'createScheduleTrigger',
+        {
+          name: result.name,
+          cronExpression: result.cronExpression,
+        } as Prisma.InputJsonObject,
+      );
+      return success(result);
+    });
+  }
+
+  @TsRestHandler(c.updateScheduleTrigger)
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  async updateScheduleTrigger(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.updateScheduleTrigger, async ({ params, body }) => {
+      const result = await this.loopsService.updateScheduleTrigger(params.triggerId, body);
+      await this.auditLog(
+        req,
+        'UPDATE',
+        'loop_schedule_trigger',
+        result.id,
+        'updateScheduleTrigger',
+        {
+          status: result.status,
+        } as Prisma.InputJsonObject,
+      );
+      return success(result);
+    });
+  }
+
+  @TsRestHandler(c.deleteScheduleTrigger)
+  @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
+  async deleteScheduleTrigger(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.deleteScheduleTrigger, async ({ params }) => {
+      const result = await this.loopsService.deleteScheduleTrigger(params.triggerId);
+      await this.auditLog(
+        req,
+        'UPDATE',
+        'loop_schedule_trigger',
+        params.triggerId,
+        'deleteScheduleTrigger',
+        {} as Prisma.InputJsonObject,
+      );
+      return success(result);
+    });
+  }
+
+  @TsRestHandler(c.fireScheduleTrigger)
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  async fireScheduleTrigger(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.fireScheduleTrigger, async ({ params, body }) => {
+      const result = await this.loopsService.fireScheduleTrigger(params.triggerId, body);
+      if (result.created) {
+        await this.auditLog(req, 'CREATE', 'loop_issue', result.issueId, 'fireScheduleTrigger', {
+          triggerId: params.triggerId,
+          source: 'schedule',
+        } as Prisma.InputJsonObject);
+      }
+      return success(result);
+    });
+  }
+
+  // =========================================================================
+  // Trigger Lifecycle Management (P1-3, R30c)
+  // =========================================================================
+
+  @TsRestHandler(c.listTriggerExecutions)
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  async listTriggerExecutions(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.listTriggerExecutions, async ({ params, query }) => {
+      return success(await this.loopsService.listTriggerExecutions(params.triggerId, query));
+    });
+  }
+
+  @TsRestHandler(c.retryTriggerExecution)
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  async retryTriggerExecution(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.retryTriggerExecution, async ({ params, body }) => {
+      const result = await this.loopsService.retryTriggerExecution(params.executionId, body);
+      await this.auditLog(
+        req,
+        'UPDATE',
+        'loop_trigger_execution',
+        params.executionId,
+        'retryTriggerExecution',
+        {
+          attempt: result.attempt,
+          reason: body.reason,
+        } as Prisma.InputJsonObject,
+      );
+      return success(result);
+    });
+  }
+
+  @TsRestHandler(c.replayTriggerExecution)
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  async replayTriggerExecution(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.replayTriggerExecution, async ({ params, body }) => {
+      const result = await this.loopsService.replayTriggerExecution(params.executionId, body);
+      await this.auditLog(
+        req,
+        'CREATE',
+        'loop_trigger_execution',
+        result.id,
+        'replayTriggerExecution',
+        {
+          originalExecutionId: params.executionId,
+          reason: body.reason,
+        } as Prisma.InputJsonObject,
+      );
+      return success(result);
+    });
+  }
+
+  @TsRestHandler(c.listDeadLetters)
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  async listDeadLetters(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.listDeadLetters, async ({ query }) => {
+      return success(await this.loopsService.listDeadLetters(query));
+    });
+  }
+
+  // =========================================================================
+  // Tool Registry (P1-4, R31a)
+  // =========================================================================
+
+  @TsRestHandler(c.listTools)
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  async listTools(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.listTools, async ({ query }) => {
+      return success(await this.loopsService.listTools(query));
+    });
+  }
+
+  @TsRestHandler(c.getTool)
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  async getTool(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.getTool, async ({ params }) => {
+      return success(await this.loopsService.getTool(params.toolId));
+    });
+  }
+
+  @TsRestHandler(c.registerTool)
+  @RequireLoopsPermission(LOOPS_PERMISSION.CREATE)
+  async registerTool(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.registerTool, async ({ body }) => {
+      const result = await this.loopsService.registerTool(body);
+      await this.auditLog(req, 'CREATE', 'loop_tool', result.id, 'registerTool', {
+        name: result.name,
+        kind: result.kind,
+      } as Prisma.InputJsonObject);
+      return success(result);
+    });
+  }
+
+  @TsRestHandler(c.updateTool)
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  async updateTool(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.updateTool, async ({ params, body }) => {
+      const result = await this.loopsService.updateTool(params.toolId, body);
+      await this.auditLog(req, 'UPDATE', 'loop_tool', params.toolId, 'updateTool', {
+        status: result.status,
+      } as Prisma.InputJsonObject);
+      return success(result);
+    });
+  }
+
+  @TsRestHandler(c.toolHealthCheck)
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  async toolHealthCheck(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.toolHealthCheck, async ({ params }) => {
+      const result = await this.loopsService.toolHealthCheck(params.toolId);
+      await this.auditLog(req, 'UPDATE', 'loop_tool', params.toolId, 'toolHealthCheck', {
+        ok: result.ok,
+      } as Prisma.InputJsonObject);
+      return success(result);
+    });
+  }
+
+  @TsRestHandler(c.testTool)
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  async testTool(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.testTool, async ({ params, body }) => {
+      const result = await this.loopsService.testTool(params.toolId, body);
+      await this.auditLog(req, 'UPDATE', 'loop_tool', params.toolId, 'testTool', {
+        ok: result.ok,
+      } as Prisma.InputJsonObject);
+      return success(result);
+    });
+  }
+
+  // =========================================================================
+  // Delivery Blueprint Marketplace (P1-2, R31b)
+  // =========================================================================
+
+  @TsRestHandler(c.listBlueprints)
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  async listBlueprints(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.listBlueprints, async ({ query }) => {
+      return success(await this.loopsService.listBlueprints(query));
+    });
+  }
+
+  @TsRestHandler(c.getBlueprint)
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  async getBlueprint(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.getBlueprint, async ({ params }) => {
+      return success(await this.loopsService.getBlueprint(params.blueprintId));
+    });
+  }
+
+  @TsRestHandler(c.createBlueprint)
+  @RequireLoopsPermission(LOOPS_PERMISSION.CREATE)
+  async createBlueprint(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.createBlueprint, async ({ body }) => {
+      const result = await this.loopsService.createBlueprint(body);
+      await this.auditLog(req, 'CREATE', 'loop_blueprint', result.id, 'createBlueprint', {
+        name: result.name,
+        kind: result.kind,
+      } as Prisma.InputJsonObject);
+      return success(result);
+    });
+  }
+
+  @TsRestHandler(c.updateBlueprint)
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  async updateBlueprint(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.updateBlueprint, async ({ params, body }) => {
+      const result = await this.loopsService.updateBlueprint(params.blueprintId, body);
+      await this.auditLog(req, 'UPDATE', 'loop_blueprint', params.blueprintId, 'updateBlueprint', {
+        active: result.active,
+      } as Prisma.InputJsonObject);
+      return success(result);
+    });
+  }
+
+  @TsRestHandler(c.rollbackBlueprint)
+  @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
+  async rollbackBlueprint(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.rollbackBlueprint, async ({ params, body }) => {
+      const result = await this.loopsService.rollbackBlueprint(params.blueprintId, body);
+      await this.auditLog(
+        req,
+        'UPDATE',
+        'loop_blueprint',
+        params.blueprintId,
+        'rollbackBlueprint',
+        {
+          targetVersion: body?.targetVersion,
+          fromVersion: result.version,
+          reason: body?.reason,
+        } as Prisma.InputJsonObject,
+      );
+      return success(result);
+    });
   }
 
   private async auditLog(

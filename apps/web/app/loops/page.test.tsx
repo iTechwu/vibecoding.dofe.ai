@@ -23,8 +23,11 @@ vi.mock('@/i18n/navigation', () => ({
 }));
 
 const mutate = vi.fn();
+const requestRecipeAdminActionMutate = vi.fn();
 const governLearningMutate = vi.fn();
 const autoMergeWorkerMutate = vi.fn();
+const learningIndexWorkerMutate = vi.fn();
+const loopBenchTrendWorkerMutate = vi.fn();
 
 vi.mock('@/lib/api/contracts/hooks', () => ({
   useLoopsList: () => ({
@@ -332,6 +335,142 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
       },
     },
   }),
+  useLoopsCiChecks: () => ({
+    data: {
+      body: {
+        data: {
+          list: [
+            {
+              id: 'github-delivery-evidence',
+              name: 'DofeAI Delivery Evidence',
+              provider: 'github',
+              status: 'ready',
+              tenantId: 'tenant-1',
+              permissions: ['vibecoding:loops:operate'],
+              requiredPermission: 'vibecoding:loops:operate',
+              lastPublication: undefined,
+            },
+          ],
+          total: 1,
+          page: 1,
+          limit: 20,
+        },
+      },
+    },
+  }),
+  useLoopsCiCheckPublications: () => ({
+    data: {
+      body: {
+        data: {
+          latest: {
+            artifactRef:
+              '.loops/ci-checks/github-delivery-evidence/publications/abc1234567-2026-06-23T01-00-00.000Z.json',
+            integrationId: 'github-delivery-evidence',
+            provider: 'github',
+            headSha: 'abc1234567',
+            checkRunId: 'check-run-11',
+            url: 'https://github.com/dofe/repo/runs/11',
+            outcome: 'published',
+            issueId: 'issue-1',
+            prId: '42',
+            evidenceBacklink: 'https://vibecoding.dofe.ai/loops/issue-1/delivery-evidence',
+            workPackageCommitMap: [
+              {
+                workPackageId: 'shard-1',
+                title: 'Checkout fix',
+                commitSha: 'abc123456789',
+                branch: 'loops/issue-1',
+                files: ['apps/web/app/checkout/page.tsx'],
+              },
+            ],
+            request: {
+              name: 'DofeAI Delivery Evidence',
+              detailsUrl: 'https://dofe.ai/loops/issue-1/evidence',
+              evidenceBacklink: 'https://vibecoding.dofe.ai/loops/issue-1/delivery-evidence',
+            },
+            publishedAt: '2026-06-23T01:00:00.000Z',
+          },
+          entries: [
+            {
+              artifactRef:
+                '.loops/ci-checks/github-delivery-evidence/publications/abc1234567-2026-06-23T01-00-00.000Z.json',
+              integrationId: 'github-delivery-evidence',
+              provider: 'github',
+              headSha: 'abc1234567',
+              checkRunId: 'check-run-11',
+              url: 'https://github.com/dofe/repo/runs/11',
+              outcome: 'published',
+              issueId: 'issue-1',
+              prId: '42',
+              evidenceBacklink: 'https://vibecoding.dofe.ai/loops/issue-1/delivery-evidence',
+              workPackageCommitMap: [
+                {
+                  workPackageId: 'shard-1',
+                  title: 'Checkout fix',
+                  commitSha: 'abc123456789',
+                  branch: 'loops/issue-1',
+                  files: ['apps/web/app/checkout/page.tsx'],
+                },
+              ],
+              request: {
+                name: 'DofeAI Delivery Evidence',
+                detailsUrl: 'https://dofe.ai/loops/issue-1/evidence',
+                evidenceBacklink: 'https://vibecoding.dofe.ai/loops/issue-1/delivery-evidence',
+              },
+              publishedAt: '2026-06-23T01:00:00.000Z',
+            },
+          ],
+        },
+      },
+    },
+  }),
+  useLoopsAssetPermissions: () => ({
+    data: {
+      body: {
+        data: {
+          identity: {
+            userId: 'sso-user-42',
+            teamId: 'team-1',
+            tenantId: 'tenant-1',
+            isSuperAdmin: false,
+          },
+          source: 'sso',
+          permissions: ['vibecoding:loops:read', 'vibecoding:loops:create'],
+          roles: ['MEMBER'],
+          summary: { total: 3, granted: 1, blocked: 2 },
+          assets: [
+            {
+              assetKind: 'blueprint',
+              assetId: 'delivery-blueprints',
+              label: 'Delivery blueprints',
+              scope: 'tenant',
+              requiredAction: 'create',
+              granted: true,
+              sourcePermission: 'vibecoding:loops:create',
+            },
+            {
+              assetKind: 'runtime-backend',
+              assetId: 'codex-claude-runtime-backends',
+              label: 'Codex / Claude Code runtime backends',
+              scope: 'workspace',
+              requiredAction: 'operate',
+              granted: false,
+              sourcePermission: 'vibecoding:loops:operate',
+            },
+            {
+              assetKind: 'mcp-server',
+              assetId: 'mcp-server-registry',
+              label: 'MCP server registry',
+              scope: 'tenant',
+              requiredAction: 'admin',
+              granted: false,
+              sourcePermission: 'vibecoding:loops:admin',
+            },
+          ],
+        },
+      },
+    },
+  }),
   useLoopsMetrics: () => ({
     data: {
       body: {
@@ -406,9 +545,49 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
             resumableShards: 1,
             affectedIssues: 1,
           },
+          loopBenchTrend: {
+            historyCount: 2,
+            latest: {
+              id: 'loop-bench-1782262800000',
+              capturedAt: '2026-06-23T01:00:00.000Z',
+              artifactRef: '.loops/bench-trends/2026-06-23T01-00-00-000Z.json',
+              loopCount: 2,
+              metrics: {
+                firstPassReviewRate: 50,
+                browserQaRegressionRate: 0,
+                secondOpinionConflictRate: 0,
+                releaseBlockerRate: 50,
+                runtimeViolationRate: 50,
+                learningReuseRate: 50,
+                canaryPassRate: 50,
+              },
+              previousMetrics: {
+                firstPassReviewRate: 40,
+                browserQaRegressionRate: 10,
+                secondOpinionConflictRate: 0,
+                releaseBlockerRate: 60,
+                runtimeViolationRate: 50,
+                learningReuseRate: 25,
+                canaryPassRate: 40,
+              },
+              deltas: {
+                firstPassReviewRate: 10,
+                browserQaRegressionRate: -10,
+                secondOpinionConflictRate: 0,
+                releaseBlockerRate: -10,
+                runtimeViolationRate: 0,
+                learningReuseRate: 25,
+                canaryPassRate: 10,
+              },
+            },
+          },
         },
       },
     },
+  }),
+  useRunLoopBenchTrendWorker: () => ({
+    isPending: false,
+    mutate: loopBenchTrendWorkerMutate,
   }),
   useLoopsLogs: () => ({
     data: {
@@ -447,11 +626,19 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
       },
     },
   }),
+  useRequestRecipeAdminAction: () => ({
+    isPending: false,
+    mutate: requestRecipeAdminActionMutate,
+  }),
   useResumeLoops: () => ({ isPending: false, mutate }),
   useGovernLoopLearning: () => ({ isPending: false, mutate: governLearningMutate }),
   useRunLoopLearningAutoMergeWorker: () => ({
     isPending: false,
     mutate: autoMergeWorkerMutate,
+  }),
+  useRunLoopLearningIndexWorker: () => ({
+    isPending: false,
+    mutate: learningIndexWorkerMutate,
   }),
   useLoopsWorkspaces: () => ({
     data: {
@@ -487,6 +674,45 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
               createdAt: '2026-06-22T00:00:00.000Z',
             },
           ],
+          learningGovernance: {
+            dismissed: [],
+            merges: [],
+            deprecated: [],
+            autoMergeCandidates: [
+              {
+                sourceLearningId: 'learning-test-policy',
+                targetLearningId: 'learning-ownership',
+                status: 'pending-approval',
+                reason: 'Similar fingerprint',
+                createdAt: '2026-06-23T00:45:00.000Z',
+              },
+            ],
+          },
+          learningIndex: {
+            generatedAt: '2026-06-23T01:20:00.000Z',
+            artifactRef: '.loops/learnings/cross-workspace-index.json',
+            summary: {
+              total: 2,
+              workspaces: 1,
+              repos: 2,
+              duplicateFingerprints: 1,
+              reusable: 1,
+            },
+            entries: [
+              {
+                learningId: 'learning-test-policy',
+                workspaceId: 'default',
+                repo: '/repo/app',
+                kind: 'test_policy',
+                fingerprint: 'learning-test-policy-fingerprint',
+                tags: ['test', 'policy', 'dashboard'],
+                confidence: 0.92,
+                evidenceIds: ['test-record-1'],
+                recallCount: 0,
+                createdAt: '2026-06-23T00:00:00.000Z',
+              },
+            ],
+          },
           workspaces: [
             {
               workspaceId: 'default',
@@ -552,6 +778,16 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
   useDetectLoopsRuntime: () => ({ isPending: false, mutateAsync: vi.fn() }),
   usePullLoopsImage: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useRetryLoopsAgentRuntime: () => vi.fn(),
+  getBrowserQaArtifactUrl: (_issueId: string, artifactPath: string) =>
+    `http://localhost:13100/loops/${_issueId}/browser-qa/artifact/${artifactPath}`,
+  useWorkspaceRecipes: () => ({
+    data: { body: { data: { list: [], total: 0, page: 1, limit: 20 } } },
+    isLoading: false,
+  }),
+  useLoopBenchDrilldown: () => ({
+    data: { body: { data: { metrics: [], period: '30d', filters: {} } } },
+    isLoading: false,
+  }),
 }));
 
 function IntlWrapper({ children }: { children: React.ReactNode }) {
@@ -612,7 +848,7 @@ describe('LoopsPage', () => {
       screen.getByText('2 issues grouped by delivery stage, human gate, branch, and evidence'),
     ).toBeInTheDocument();
     expect(screen.getByText('Backlog')).toBeInTheDocument();
-    expect(screen.getByText('Spec Review')).toBeInTheDocument();
+    expect(screen.getAllByText('Spec Review').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Running').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Blocked').length).toBeGreaterThan(0);
     expect(screen.getByText('Delivered')).toBeInTheDocument();
@@ -622,6 +858,16 @@ describe('LoopsPage', () => {
     expect(screen.getAllByText('Pending PR').length).toBeGreaterThan(0);
     expect(screen.getByText('1/3 shards')).toBeInTheDocument();
     expect(screen.getByText('Workflow Recipe')).toBeInTheDocument();
+    expect(screen.getByText('Trend snapshot')).toBeInTheDocument();
+    expect(screen.getByText('2 snapshots')).toBeInTheDocument();
+    expect(
+      screen.getByText('2 loops · first-pass 50% · canary 50% · first-pass delta 10 pts'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('.loops/bench-trends/2026-06-23T01-00-00-000Z.json'),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Run trend worker' }));
+    expect(loopBenchTrendWorkerMutate).toHaveBeenCalledWith({ body: {} });
     expect(
       screen.getByText(
         '2 loops mapped to Plan → Build → Review → QA → Ship · 1 blocked · 0 release-ready',
@@ -640,8 +886,16 @@ describe('LoopsPage', () => {
     expect(screen.getByText('2 reusable learnings in this workspace')).toBeInTheDocument();
     expect(screen.getByText('Top learnings')).toBeInTheDocument();
     expect(screen.getByText('Stale learnings')).toBeInTheDocument();
+    expect(screen.getByText('Pending approvals')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Run merge worker' }));
     expect(autoMergeWorkerMutate).toHaveBeenCalledWith({ body: {} });
+    expect(screen.getByText('Cross-workspace index')).toBeInTheDocument();
+    expect(
+      screen.getByText('2 learnings · 1 workspaces · 2 repos · 1 duplicates · 1 reusable'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('.loops/learnings/cross-workspace-index.json')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Run index worker' }));
+    expect(learningIndexWorkerMutate).toHaveBeenCalledWith({ body: {} });
     expect(screen.getAllByText('Test Policy').length).toBeGreaterThan(0);
     expect(screen.getByText('92%')).toBeInTheDocument();
     expect(
@@ -671,9 +925,37 @@ describe('LoopsPage', () => {
         reason: 'Dismissed from dashboard stale learning queue',
       },
     });
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(governLearningMutate).toHaveBeenLastCalledWith({
+      params: { learningId: 'learning-test-policy' },
+      body: {
+        action: 'approve-merge',
+        actor: 'dashboard',
+        targetLearningId: 'learning-ownership',
+        reason: 'Approved from dashboard learning queue',
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+    expect(governLearningMutate).toHaveBeenLastCalledWith({
+      params: { learningId: 'learning-test-policy' },
+      body: {
+        action: 'reject-merge',
+        actor: 'dashboard',
+        targetLearningId: 'learning-ownership',
+        reason: 'Rejected from dashboard learning queue',
+      },
+    });
     expect(screen.getByText('1 specs need decision')).toBeInTheDocument();
     expect(screen.getByText('1 blocked by exception')).toBeInTheDocument();
     expect(screen.getByText('Security review planned')).toBeInTheDocument();
+    expect(screen.getByText('CI Evidence Publications')).toBeInTheDocument();
+    expect(screen.getByText('1 publications · latest status: published')).toBeInTheDocument();
+    expect(screen.getByText('Published')).toBeInTheDocument();
+    expect(screen.getByText('check-run-11')).toBeInTheDocument();
+    expect(screen.getAllByText('issue-1').length).toBeGreaterThan(0);
+    expect(screen.getByText('Checkout fix')).toBeInTheDocument();
+    expect(screen.getByText('abc123456789')).toBeInTheDocument();
+    expect(screen.getByText('1 files · apps/web/app/checkout/page.tsx')).toBeInTheDocument();
     expect(screen.getByText('Release Readiness')).toBeInTheDocument();
     expect(screen.getByText('0 ready · 0 need attention · 0 blocked')).toBeInTheDocument();
     expect(screen.getByText('No loops are near release yet.')).toBeInTheDocument();
@@ -722,6 +1004,28 @@ describe('LoopsPage', () => {
     expect(screen.getByText('Network')).toBeInTheDocument();
     expect(screen.getByText('Approval')).toBeInTheDocument();
     expect(screen.getByText('2 third-party tool compatibilities planned')).toBeInTheDocument();
+    expect(screen.getByText('SSO Asset Permissions')).toBeInTheDocument();
+    expect(screen.getByText('1 granted · 2 blocked · source: SSO')).toBeInTheDocument();
+    expect(screen.getByText('Delivery blueprints')).toBeInTheDocument();
+    expect(screen.getByText('Recipe Admin')).toBeInTheDocument();
+    expect(screen.getByText('Tenant scope')).toBeInTheDocument();
+    expect(screen.getAllByText('Granted').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('vibecoding:loops:create').length).toBeGreaterThan(0);
+    expect(screen.getByText('Create version')).toBeInTheDocument();
+    expect(screen.getByText('Review approval')).toBeInTheDocument();
+    expect(screen.getByText('Rollback version')).toBeInTheDocument();
+    expect(screen.getAllByText('Ready').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getAllByRole('button', { name: /Request/i })[0]!);
+    expect(requestRecipeAdminActionMutate).toHaveBeenCalledWith({
+      body: {
+        actionId: 'createVersion',
+        blueprintId: 'delivery-blueprints',
+        reason: 'vibecoding:loops:create grants recipe version changes',
+        evidenceRefs: [],
+      },
+    });
+    expect(screen.getByText('Codex / Claude Code runtime backends')).toBeInTheDocument();
+    expect(screen.getByText('MCP server registry')).toBeInTheDocument();
     expect(screen.getByText('Provider Profile')).toBeInTheDocument();
     expect(
       screen.getByText('2 providers · 2 active agents · 2 planned tool routes'),
@@ -736,7 +1040,7 @@ describe('LoopsPage', () => {
     expect(screen.getByText('0/5 passed · 3 attention · 2 blocked')).toBeInTheDocument();
     expect(screen.getAllByText('Architecture').length).toBeGreaterThan(0);
     expect(screen.getByText('Runtime safety')).toBeInTheDocument();
-    expect(screen.getByText('1 runtime security exceptions recorded')).toBeInTheDocument();
+    expect(screen.getAllByText('1 runtime security exceptions recorded').length).toBeGreaterThan(1);
     expect(screen.getAllByText('Hard gate').length).toBeGreaterThan(0);
     expect(screen.getByText('Runtime Backends')).toBeInTheDocument();
     expect(screen.getByText('2/2 ready · 0 degraded · 0 unavailable')).toBeInTheDocument();

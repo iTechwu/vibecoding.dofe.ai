@@ -135,20 +135,20 @@ export function useFormState(issueId: string) {
       });
     },
     runSecondOpinion: () => secondOpinion.mutate({ params: { issueId }, body: {} }),
-    acceptPrimaryFindings: () =>
+    acceptPrimaryFindings: (findingFingerprints?: string[]) =>
       resolveSecondOpinion.mutate({
         params: { issueId },
-        body: { action: 'accept-primary' },
+        body: { action: 'accept-primary', findingFingerprints },
       }),
-    acceptSecondaryFindings: () =>
+    acceptSecondaryFindings: (findingFingerprints?: string[]) =>
       resolveSecondOpinion.mutate({
         params: { issueId },
-        body: { action: 'accept-secondary' },
+        body: { action: 'accept-secondary', findingFingerprints },
       }),
-    waiveSecondOpinion: (reason?: string) =>
+    waiveSecondOpinion: (reason?: string, findingFingerprints?: string[]) =>
       resolveSecondOpinion.mutate({
         params: { issueId },
-        body: { action: 'waive', reason },
+        body: { action: 'waive', reason, findingFingerprints },
       }),
     requireSecondOpinion: () =>
       deliveryGovernance.mutate({
@@ -161,18 +161,45 @@ export function useFormState(issueId: string) {
           reason: 'Require Claude Code second opinion before release.',
         },
       }),
+    setRequiredReviewGates: (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const gateKinds = form
+        .getAll('gateKinds')
+        .map((value) => String(value))
+        .filter(
+          (value): value is 'product' | 'architecture' | 'design' | 'devex' | 'security' | 'code' =>
+            ['product', 'architecture', 'design', 'devex', 'security', 'code'].includes(value),
+        );
+      if (!gateKinds.length) return;
+      deliveryGovernance.mutate({
+        params: { issueId },
+        body: {
+          action: 'set-required-review-gates',
+          gateKinds,
+          actor: 'human',
+          reason: 'Configured from Delivery Controls required review gates.',
+        },
+      });
+    },
     recordReleaseCanary: (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
       const targetUrl = String(form.get('targetUrl') ?? '').trim() || undefined;
       const status = String(form.get('status') ?? 'pending') as 'pending' | 'passed' | 'failed';
+      const environment = String(form.get('environment') ?? '').trim() || undefined;
+      const environmentOwner = String(form.get('environmentOwner') ?? '').trim() || undefined;
       const reason = String(form.get('reason') ?? '').trim() || undefined;
+      const rollbackNote = String(form.get('rollbackNote') ?? '').trim() || undefined;
       deliveryGovernance.mutate({
         params: { issueId },
         body: {
           action: 'record-release-canary',
           status,
+          environment,
+          environmentOwner,
           targetUrl,
+          rollbackNote,
           actor: 'human',
           reason,
         },

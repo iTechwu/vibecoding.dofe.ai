@@ -131,4 +131,64 @@ describe('LoopsRunnerService runtime security policy', () => {
       blockedPatterns: ['node-fs-outside-workspace'],
     });
   });
+
+  it('enforces per-loop sandbox profile allowed commands before execution', async () => {
+    const runner = new LoopsRunnerService();
+
+    const record = await runner.runShardTests({
+      issueId: 'issue-1',
+      shardId: 'shard-1',
+      round: 1,
+      cwd: process.cwd(),
+      sandboxProfile: {
+        network: 'deny',
+        writeScope: 'repo',
+        shellEnforcement: 'strict-allowlist',
+        secretMode: 'redacted',
+        allowedCommands: ['node'],
+      },
+      request: {
+        runner: 'loops-runner',
+        commands: ['pnpm --version'],
+      },
+    });
+
+    expect(record.status).toBe('TEST-FAIL');
+    expect(record.commands[0]).toMatchObject({
+      exitCode: 126,
+      stderr: 'Command is not allowed by .loops/config.yaml tests.allowed_commands.',
+    });
+    expect(record.runtimeSecurityPolicy?.shell.allowedCommands).toEqual(['node']);
+  });
+
+  it('applies sandbox profile network and write deny patterns', async () => {
+    const runner = new LoopsRunnerService();
+
+    const record = await runner.runShardTests({
+      issueId: 'issue-1',
+      shardId: 'shard-1',
+      round: 1,
+      cwd: process.cwd(),
+      sandboxProfile: {
+        network: 'deny',
+        writeScope: 'repo',
+        shellEnforcement: 'strict-allowlist',
+        secretMode: 'redacted',
+        allowedCommands: ['node'],
+        extraBlockedTools: ['customfetch'],
+        extraBlockedPatterns: ['forbidden-output'],
+      },
+      request: {
+        runner: 'loops-runner',
+        commands: [
+          'node -e "process.stdout.write(\'customfetch\')"',
+          'node -e "process.stdout.write(\'forbidden-output\')"',
+        ],
+      },
+    });
+
+    expect(record.status).toBe('TEST-FAIL');
+    expect(record.runtimeSecurityPolicy?.network.blockedTools).toEqual(['customfetch']);
+    expect(record.runtimeSecurityPolicy?.write.blockedPatterns).toEqual(['forbidden-output']);
+  });
 });

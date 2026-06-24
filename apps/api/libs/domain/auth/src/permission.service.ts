@@ -96,6 +96,22 @@ export class PermissionService {
     }
   }
 
+  async getUserPermissionSnapshot(
+    userId: string,
+    teamId?: string,
+  ): Promise<{ permissions: string[]; roles: string[] }> {
+    try {
+      return await this.ssoPermissionClient.getUserPermissions(userId, teamId);
+    } catch (error) {
+      this.logger.error('[PermissionService] Get user permission snapshot failed', {
+        userId,
+        teamId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return { permissions: [], roles: [] };
+    }
+  }
+
   isSuperAdmin(isAdmin?: boolean): boolean {
     return isAdmin === true;
   }

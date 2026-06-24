@@ -1,313 +1,234 @@
 # 基于 gstack 的 DofeAI 优化路线图
 
+日期：2026-06-24
+适用边界：本项目以 Codex CLI + Claude Code CLI 为底层运行时。gstack 的多 host 能力只作为竞品启发，不作为当前阶段实现目标。
+
 ## 总体原则
 
 1. 不复制命令，抽象流程。
-2. 不只展示状态，沉淀证据。
-3. 不只允许 agent 执行，给每一步设置可审阅门禁。
-4. 不只做单次任务，把学习和决策带到下一次 Loop。
+2. 不泛化 host，强化 Codex planner/reviewer 与 Claude Code implementer/secondary reviewer 的职责归因。
+3. 不只展示状态，沉淀证据。
+4. 不只 report-only，关键发布/安全门禁必须能 enforce。
+5. 不只做单次任务，把学习、决策、风险和发布结果带到下一次 Loop。
 
 ## Epic 1：Workflow Recipe
 
-状态：已实施 dashboard v1 + 后端 contract/list/detail 派生 v2 + detail Delivery Controls v3 + 创建时 per-loop recipe snapshot v4 + delivery governance workflow default 记录 v5；workspace 级管理 UI 和新建 Loop 默认应用后续 Epic。
+状态：✅ P2 闭合。已实施 dashboard v1 + 后端 contract/list/detail 派生 v2 + detail Delivery Controls v3 + 创建时 per-loop recipe snapshot v4 + delivery governance workflow default 记录 v5 + Workspace Recipe Admin API/dashboard v8。2026-06-24 复审修正：`GET /loops/workspace-recipes` 已按项目列表契约标准返回 `list/total/page/limit`。
 
 ### 背景
 
-gstack 的最大产品资产是 Think -> Plan -> Build -> Review -> Test -> Ship -> Reflect 的流程心智。DofeAI 目前已有 phase、mode、human gate、rule snapshot，但缺少可配置的“这类 Loop 应走哪条路径”的显式对象。
+gstack 的最大产品资产是 Think -> Plan -> Build -> Review -> Test -> Ship -> Reflect 的流程心智。DofeAI 已经把该心智转成 `LoopWorkflowRecipe`，下一步应让团队可配置、可审计、可量化。
 
-### 建议 contract
+### 已完成
 
-```typescript
-export const LoopWorkflowStepSchema = z.object({
-  id: z.string(),
-  kind: z.enum([
-    'intake',
-    'product_review',
-    'spec_review',
-    'architecture_review',
-    'design_review',
-    'implementation',
-    'code_review',
-    'security_review',
-    'browser_qa',
-    'test_gate',
-    'release_gate',
-    'retro',
-  ]),
-  required: z.boolean(),
-  agentPath: z.string().optional(),
-  humanGate: z.enum(['none', 'approval', 'decision', 'override']).default('none'),
-  evidenceTypes: z.array(z.string()).default([]),
-});
+- `LoopWorkflowRecipe` Zod contract 和类型导出。
+- 后端 list/detail 派生 workflow steps、runtime owner、humanGate、evidenceIds。
+- 创建 Loop 时固化 per-loop recipe snapshot，保留 `source=loop-snapshot`。
+- Detail 展示 recipe timeline、当前 gate、runtime owner 和 evidence link count。
+- Delivery governance 可记录 feature/bugfix/refactor/docs/ops 的 workflow default recipeId。
 
-export const LoopWorkflowRecipeSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  version: z.number(),
-  appliesTo: z.array(z.enum(['feature', 'bugfix', 'refactor', 'docs', 'ops'])),
-  steps: z.array(LoopWorkflowStepSchema),
-});
-```
+### 非阻断增强
 
-### UI 落点
-
-- 创建页：模板选择后显示推荐 workflow；
-- Dashboard：按 workflow step 展示卡片分布；
-- Detail：显示完整 step timeline、当前 gate、缺失 evidence；
-- Admin/Workspace：配置默认 recipe。
-
-### 验收标准
-
-- 已完成：dashboard 基于现有 phase、cost guard、pause/global verdict 派生 Intake / Plan / Build / Review / Browser QA / Ship / Reflect 路线、gate、blocked、release-ready 与 evidence；
-- 已完成：`LoopWorkflowRecipe` Zod contract 已在 `packages/contracts/src/schemas/loops.schema.ts` 定义并导出类型；
-- 已完成：后端 list/detail payload 已基于现有 Loop 状态派生 workflow steps、Codex/Claude Code runtime owner、humanGate 与 evidenceIds；
-- 已完成：delivery governance 可 file-backed 记录 feature/bugfix/refactor/docs/ops 的 workflow default recipeId；
-- 已完成：新建 Loop 时固化 per-loop recipe snapshot，Detail 保留 `source=loop-snapshot` 与创建时间作为审计来源；
-- 已完成：detail 页展示 per-loop recipe timeline、当前 gate、runtime owner 和 evidence link count；
-- 已完成：Detail 读取 snapshot 身份并动态计算步骤状态，recipe 身份变更不影响历史 Loop 审计。
+- Workspace Recipe Admin 已能查看 workspace recipe defaults；后续可增强为可视化版本 diff、启停步骤与历史版本回滚。
+- 新建 Loop 已有 live preview；后续可进一步展示 workspace default recipe 与模板 recipe 的差异。
+- Recipe metrics 已有 blocker/usage 基础；cycle time、first-pass、release success rate 可进入长期运营指标，不作为当前 gstack P0/P1/P2 闭环阻断项。
 
 ## Epic 2：Multi-review Gate
 
-状态：已实施 dashboard v1 + 后端 `LoopReviewGate` contract/list/detail 派生 v2 + detail Delivery Controls v3 + Review Inbox gate 聚合 v5 + file-backed gate override/waiver 审计 v6；per-loop required gates 配置 UI 后续 Epic。
+状态：✅ P1 闭合。已实施 dashboard v1 + 后端 `LoopReviewGate` contract/list/detail 派生 v2 + detail Delivery Controls v3 + Review Inbox gate 聚合 v5 + file-backed gate override/waiver 审计 v6 + per-loop required gates 配置 v7 + Second Opinion conflict queue owner/SLA 展示 v8/v9。
 
 ### 背景
 
-gstack 的 `/autoplan` 将 CEO、Design、Eng、DX review 串成计划审查流水线。DofeAI 当前 Spec Review 已有 v1，但 review 类型还不够细。
+gstack 的 `/autoplan` 会串联 CEO、Design、Eng、DX review。DofeAI 已把 review 类型结构化为 product / architecture / design / devex / security / code，并能影响 Release Gate。
 
-### 建议数据模型
+### 已完成
 
-```typescript
-export const LoopReviewGateSchema = z.object({
-  kind: z.enum(['product', 'architecture', 'design', 'devex', 'security', 'code']),
-  status: z.enum(['pending', 'passed', 'needs_changes', 'waived']),
-  reviewer: z.enum(['agent', 'human', 'external']),
-  confidence: z.number().min(0).max(1).optional(),
-  findingsCount: z.number().default(0),
-  evidenceId: z.string().optional(),
-  requiredByStepId: z.string(),
-});
-```
+- Dashboard 派生 Product / Architecture / Code / Security gate。
+- `LoopReviewGate` Zod contract 和类型导出。
+- 后端 list/detail payload 派生 gate，并限制 reviewer 为 Codex、Claude Code、human、system。
+- Detail 展示 gate 状态、reviewer、findings、waiver reason。
+- Review Inbox 按 gate kind 聚合人工决策项。
+- Delivery governance 可记录 passed/blocked/waived override。
+- Delivery governance 可配置 per-loop required gates，Detail Delivery Controls 提供 required review gates 表单。
+- Release Gate 的 `requiredReviewsPassed` 引用持久化 gate 状态。
+- Release Gate 只按当前 loop 配置的 required gates 判断 `requiredReviewsPassed`。
 
-### 实施建议
+### 非阻断增强
 
-- P0：只做 product/architecture/code/security 四类；
-- P1：补 design/devex；
-- 每个 gate 先允许 report-only，避免阻断开发；
-- 当 Loop 进入 ship/release 前，required gates 必须 passed 或 waived。
-
-### 验收标准
-
-- 已完成：dashboard 基于现有 phase、global verdict、pause/cost guard 派生 Product / Architecture / Code / Security gate 与 passed/pending/blocked 状态；
-- 已完成：`LoopReviewGate` Zod contract 已在 `packages/contracts/src/schemas/loops.schema.ts` 定义并导出类型；
-- 已完成：后端 list/detail payload 已派生 product / architecture / code / security gate，并把 reviewer 限定为 human、Codex 或系统角色；
-- 已完成：Detail 页展示每类 review gate 的状态、reviewer、findings 和 waiver reason；
-- 已完成：Review Inbox 按 gate kind 聚合 product / architecture / code / security / release / exception 人工决策项；
-- 已完成：delivery governance 可记录 review gate passed/blocked/waived override，并影响 Detail/List 派生 gate 状态；
-- 已完成：Release Gate 的 `requiredReviewsPassed` 引用持久化 review gate override/waiver 状态；
-- 后续：per-loop required gates 配置 UI 和更细 gate 规则。
+- Review Inbox 已展示 Second Opinion conflict owner/SLA；后续可扩展到所有 gate 的批量 waive/assign。
+- Design/DevEx gate 已有结构化 gate 位；专门 reviewer 编排可作为更细粒度流程包增强，不阻断当前 P1 闭环。
 
 ## Epic 3：Browser QA Worker
 
-状态：已实施 report-only v1 + Loop Detail 前端触发 UI v2 + Playwright trace evidence v3 + auth session ref/session policy governance v4 + visual regression/browser handoff artifacts v5：`runBrowserQa` API + Playwright CLI worker + file-backed Browser QA report/evidence + detail Delivery Actions；真实 authenticated session profile、高级像素阈值/多 viewport visual regression 和 QA bug 自动回归后续 Epic。
+状态：✅ P1/P2 闭合。已实施 report-only API + Playwright CLI worker + trace evidence + auth session ref/session policy governance + visualDiffs/handoff artifacts + multi-viewport contract + 逐 viewport worker artifact + pixel-threshold `changedPixels` evidence + Loop Detail QA artifact 摘要。R7 新增 authenticated session profile（cookie/token/header）、ignore regions/dynamic content masks；R8 新增 detail 内嵌 screenshot/trace/diff artifact 预览入口。
 
 ### 背景
 
-gstack 的 persistent browser 是强能力。DofeAI 如要成为“交付控制面”，需要能验证用户可见结果，而不只是验证代码 diff。
+gstack 的 persistent browser 是强差异能力。DofeAI 要成为交付控制面，必须验证用户可见结果，而不只是验证代码 diff。
 
-### MVP 范围
+### 已完成
 
-- Loop issue 支持 `qaTargetUrl`；
-- Worker 能打开页面，采集 screenshot、title、console errors、network failures；
-- 支持 report-only，不自动修复；
-- 将截图和日志 summary 写入 evidence；
-- 如果需要登录，先支持“人工提供测试账号/步骤说明”，不做 cookie import。
+- `LoopBrowserQaRequest` / `LoopBrowserQaReport` contract（含 `authSession` 支持 cookie/token/header 三种 authMode）。
+- `runBrowserQa` API 和 Loop Detail Delivery Actions 触发 UI。
+- Playwright CLI worker 打开目标 URL，采集 title、screenshot、console errors、4xx/5xx network failures。
+- 采集 Playwright trace zip，并渲染到 file-backed Markdown evidence。
+- 支持 `authSessionRef` 和 Browser QA session policy。
+- **R7：Authenticated session profile**：测试账号、cookie/token/header 三种 authMode、`buildContextOptions()` 在 Playwright 脚本中注入登录态。
+- 支持 `viewports` contract，并在 report 中记录 viewport identity。
+- Browser QA worker 按 viewport 独立生成 screenshot、trace、baseline、diff 和 handoff artifact。
+- Browser QA worker 使用 pixel-threshold visual regression 引擎写入 `changedPixels` evidence，并在 Markdown evidence 中展示。
+- **R7：Visual regression ignore/mask**：`IgnoreRegion` 区域忽略、`DynamicContentMask` 动态内容 mask、`isPixelIgnored()` 跳过检查。
+- 写入 handoff JSON，记录 targetUrl、title、viewport、screenshot、trace、console/network 摘要。
+- Loop Detail 展示最新 Browser QA artifact 摘要，包括 screenshot/trace/handoff 数量、visual diff 状态、viewport、changedPixels 和 artifact path。
+- **R8：Browser QA embedded preview**：新增 `getBrowserQaArtifact` contract/API/controller/service、file-store 安全路径解析、前端 `getBrowserQaArtifactUrl()` 和 detail 页 visual diff 缩略图预览。
+- Release Gate 读取最新 Browser QA report 判断 `browserQaPassed`。
 
-### Evidence 类型
+### 非阻断增强
 
-```typescript
-export const BrowserQaEvidenceSchema = z.object({
-  targetUrl: z.string().url(),
-  status: z.enum(['passed', 'failed', 'blocked']),
-  screenshots: z.array(z.object({ path: z.string(), label: z.string() })),
-  consoleErrors: z.array(z.string()),
-  networkFailures: z.array(z.object({ url: z.string(), status: z.number().optional() })),
-  checkedFlows: z.array(z.string()),
-  blockedReason: z.string().optional(),
-});
-```
-
-### 后续增强
-
-- 已完成：`LoopBrowserQaRequest` / `LoopBrowserQaReport` contract；
-- 已完成：`runBrowserQa` API 可触发 report-only Browser QA；
-- 已完成：Playwright CLI worker 打开目标 URL，采集 title、截图路径、console errors 和 4xx/5xx network failures；
-- 已完成：Browser QA report 写入 `.loops/runs/<issueId>/browser-qa/<reportId>.json/.md`，并作为 detail evidence artifact 暴露；
-- 已完成：Release Gate 在存在 Browser QA report 时按最新 report status 判定 `browserQaPassed`；
-- 已完成：Loop Detail 的 Delivery Actions 支持输入 target URL、checked flows、notes 并触发 report-only Browser QA；
-- 已完成：Browser QA report 采集 Playwright trace zip，并在 file-backed Markdown evidence 中渲染 trace 路径；
-- 已完成：`LoopBrowserQaRequest` 支持 `authSessionRef`，Delivery Actions 支持 Browser QA session policy 记录 authMode/testAccountRef；
-- 已完成：Browser QA log payload 写入 trace 引用，可进入 `/loops/[issueId]` trace timeline 事件流；
-- 已完成：Browser QA worker 维护 issue 级 baseline screenshot，后续运行产出 visualDiffs baseline/actual/diff artifact；
-- 已完成：Browser QA worker 写入 handoff JSON，记录 targetUrl、title、screenshot、trace、visualStatus、console/network 摘要；
-- 后续：authenticated session profile；
-- 后续：高级像素阈值、多 viewport visual regression；
-- 后续：QA bug 自动生成 regression test；
+- QA bug regression candidate 可作为后续自动测试生成增强；当前 P1/P2 的 authenticated QA、visual regression、artifact preview 已闭合。
 
 ## Epic 4：Learning & Decision Memory
 
-状态：已实施 finalize 后 LoopLearning v1、Loop detail 可视化 v2、新建 Loop preview recent learning 召回 v3、Dashboard top/stale learning 展示 v4、人工 dismiss + merge API/file-backed governance v5、Dashboard merge UI v6、自动 fingerprint/tags + similarity merge suggestions v7、delivery governance learning policy v8、auto-merge worker pending approvals v9；真实跨 workspace 索引执行和审批 UI 后续 Epic。
+状态：✅ P1 闭合。已实施 finalize 后 LoopLearning、detail/dashboard 展示、新建 preview recall、dismiss/merge/approve-merge/reject-merge/deprecate/supersede governance、similarity suggestions、delivery governance learning policy、auto-merge candidates、dashboard pending approval UI、dashboard supersede UI、aging policy 自动 deprecate、cross-workspace recall 基础、learning governance service、file-backed cross-workspace index worker/API/UI/artifact。R7 新增 DB-backed `LoopLearningRecord` Prisma 模型（含 workspace/repo/lifecycle/confidence/reuseCount/supersede 治理字段及多维度索引）。
 
 ### 背景
 
-gstack 的 `/learn` 和 GBrain 强调跨会话复利。DofeAI 现有 evidence/trace 已经天然适合沉淀，但缺少“学习条目”的一等对象。
+gstack 的 `/learn` 和 GBrain 强调跨会话复利。DofeAI 的优势是能把 evidence、review、test、PR 和 runtime 结果结构化成团队知识资产。
 
-### 建议能力
+### 已完成
 
-- 每次 Loop finalize 后生成 `LoopLearning`：
-  - what worked；
-  - what failed；
-  - repo-specific rule；
-  - test command；
-  - file ownership hint；
-  - recurring blocker；
-  - review pattern。
-- 创建新 Loop 时按 repo/source/template 检索相关 learning；
-- Dashboard 展示近期 top learnings 和 stale learnings。
+- Loop finalize 后生成 decision / test_policy / ownership / pitfall learning。
+- Loop detail 展示 Learning Memory 摘要、类型、置信度、证据链接数和 repo 来源。
+- 新建 Loop preview 按目标 repo 展示 recent learnings。
+- Dashboard 展示 top/stale learnings。
+- `LoopLearningGovernance` contract 与 `governLearning` API 支持 dismiss/merge/approve-merge/reject-merge/deprecate/supersede。
+- `.loops/learning-governance.json` 持久化治理记录，并过滤 dismissed/merged/deprecated/superseded learning。
+- 自动生成 fingerprint/tags/similarLearningIds。
+- `runLearningAutoMergeWorker` 将 similarity suggestions 固化为 pending approval candidates，并执行 aging policy 自动 deprecate 低置信过期 learning。
+- Dashboard Learning Memory 已展示 pending approvals，并可 approve/reject auto-merge candidate；stale learning 可手动 supersede 到更新 learning。
+- `readRecentLearnings` 支持在策略触发时进行 cross-workspace recall。
+- `LoopsLearningGovernanceService` 提供 cross-workspace index、approval queue、approve/reject/deprecate、aging policy 的服务层基础。
+- `runLearningIndexWorker` 已将 active cross-workspace learnings 物化到 `.loops/learnings/cross-workspace-index.json/.md`，contract/API/dashboard 可查看 total/workspaces/repos/duplicateFingerprints/reusable 和 artifact ref。
 
-### Contract 草案
+### 非阻断增强
 
-```typescript
-export const LoopLearningSchema = z.object({
-  id: z.string(),
-  workspaceId: z.string(),
-  repo: z.string().optional(),
-  kind: z.enum(['pattern', 'pitfall', 'decision', 'test_policy', 'ownership', 'security']),
-  summary: z.string(),
-  evidenceIds: z.array(z.string()).default([]),
-  confidence: z.number().min(0).max(1),
-  lastUsedAt: z.coerce.date().optional(),
-  createdAt: z.coerce.date(),
-});
-```
-
-### 验收标准
-
-- 已完成：Loop finalize 后将 final summary、test command、file ownership hint 和 review pattern 保存为 file-backed LoopLearning；
-- 已完成：Loop detail 可读取并返回 learnings；
-- 已完成：Loop detail 展示 Learning Memory 摘要、类型、置信度、证据链接数和 repo 来源；
-- 已完成：`listWorkspaces` 返回 current workspace 的 recent learnings，新建 Loop preview 按目标 repo 展示相关 learning；
-- 已完成：Dashboard 展示 top learnings 和未复用 stale learnings；
-- 已完成：`LoopLearningGovernance` contract 与 `governLearning` API 可记录 dismiss/merge 治理；
-- 已完成：`.loops/learning-governance.json` 持久化治理记录，`readRecentLearnings` 过滤 dismissed learning 与 merged source；
-- 已完成：Dashboard stale learning 支持人工 dismiss；
-- 已完成：Dashboard stale learning 支持人工 merge 到 top learning；
-- 已完成：LoopLearning 自动生成 fingerprint/tags，`readRecentLearnings` 为旧记录补齐内存态 enrichment；
-- 已完成：Dashboard stale learning 展示 similarity suggestions，并优先以相似 learning 作为 merge target；
-- 已完成：delivery governance 可记录 learning dedupeScope 与 autoMergeApproval 策略；
-- 已完成：`runLearningAutoMergeWorker` 将 similarity suggestions 固化为 `pending-approval` autoMergeCandidates，不自动 merge；
-- 后续：真实跨 workspace 索引执行、审批 UI 和更强相似度模型。
+- DB-backed/global learning index 的 Prisma 模型和生成服务已落地；后续可把 file-backed worker 的读取路径逐步切到 DB 查询与后台重建。
+- lifecycle evidence drilldown 与 reuse/conflict/reverted quality metrics 属于治理深水区增强，不阻断当前 P1 闭环。
 
 ## Epic 5：Second Opinion Agent
 
-状态：已实施 report-only contract/detail v1 + Claude Code secondary reviewer worker/file-backed evidence v2 + finding fingerprint 精确比对 v3 + Loop Detail 前端触发 UI v4 + delivery governance requiredForRelease/conflictHumanGate policy v5；冲突 human gate 队列和 release hard gate UI 后续 Epic。必须围绕 Codex CLI 与 Claude Code CLI 两条底层运行时做 reviewer 归因，不扩大到任意 host。
+状态：✅ P1 闭合。已实施 report-only contract/detail v1 + Claude Code secondary reviewer worker/file-backed evidence v2 + finding fingerprint 精确比对 v3 + Loop Detail 触发 UI v4 + delivery governance requiredForRelease/conflictHumanGate policy v5 + conflict resolve API/UI operation v6 + resolution evidence 审计 v7 + release hard gate 引用 + Review Inbox conflict queue/SLA/owner 展示 v8 + Loop Detail conflict fingerprint drilldown + 批量 fingerprint resolve v9。R7 新增 DB-backed `LoopSecondOpinionRecord` Prisma 模型（含 findings/comparison/conflicts/resolutions/fingerprint 索引）。
 
 ### 背景
 
-gstack 的 `/codex` 用不同模型做独立审查，并对比重叠/差异 findings。DofeAI 的 Provider Profile v1 已有基础，可以做成结构化 review artifact。
+gstack 的 `/codex` 用不同模型做独立审查，并对比重叠/差异 findings。DofeAI 当前严格围绕 Codex primary 与 Claude Code secondary 做 reviewer 归因。
 
-### 建议能力
+### 已完成
 
-- 支持 primary reviewer 与 secondary reviewer；
-- 对 findings 做 fingerprint；
-- 标记 agreement、conflict、unique；
-- 高风险 conflict 触发 human gate。
+- `LoopSecondOpinion` contract 表达 Codex primary、Claude Code secondary、agreement/conflict/primary-only/secondary-only。
+- `runSecondOpinion` API 触发 Claude Code secondary reviewer worker。
+- Second Opinion 写入 `.loops/runs/<issueId>/second-opinion.json/.md`。
+- CLI 不可用或 schema 不符时记录 pending/not_run，不冒充通过。
+- finding fingerprint 精确比对，标记 agreement、primary-only、secondary-only、conflict。
+- Delivery governance 可配置 `requiredForRelease` 与 `conflictHumanGate`。
+- `resolveSecondOpinion` API 支持 accept-primary、accept-secondary、waive、request-changes。
+- `resolveSecondOpinion` 支持单个 `findingFingerprint` 和批量 `findingFingerprints`，会逐条写入 `secondOpinionResolutions` 审计记录，并同步更新 code review gate；request-changes 会保持 gate blocked，不会误标为通过。
+- `enforceReleaseGate` 在 requiredForRelease 且仍有 unresolved conflict fingerprint 时阻断 finalize。
+- Dashboard Review Inbox 独立派生 Second Opinion conflict queue item，展示 owner、age、SLA 和 Resolve 入口。
+- Loop Detail 展示 conflict fingerprints drilldown，并可批量 accept primary、accept secondary 或 waive。
 
-### 验收标准
+### 非阻断增强
 
-- 已完成：`LoopSecondOpinion` contract 可表达 primary Codex reviewer、secondary Claude Code reviewer、agreement/conflict/primary-only/secondary-only 比较结果；
-- 已完成：Loop detail 派生 report-only second opinion，并在 Delivery Controls 展示 primary / secondary reviewer 状态和比较指标；
-- 已完成：Release Gate checklist 预留 `secondOpinionPassed`，当前 `requiredForRelease=false` 时不阻断发布；
-- 已完成：`runSecondOpinion` API 可触发 Claude Code secondary reviewer worker；
-- 已完成：Second Opinion 写入 `.loops/runs/<issueId>/second-opinion.json/.md`，detail 优先读取持久化 worker report；
-- 已完成：CLI 不可用或 schema 不符时记录 pending/not_run，不冒充审查通过；
-- 已完成：对 findings 做精确 fingerprint，标记 agreement、conflict、primary-only 和 secondary-only；
-- 已完成：Loop Detail 的 Delivery Actions 支持触发 Claude Code secondary reviewer；
-- 已完成：delivery governance 可配置 Second Opinion `requiredForRelease` 与 `conflictHumanGate`，并影响 release checklist；
-- 后续：高风险 conflict 进入 human gate 队列，并提供 release hard gate UI。
+- conflict severity/file/runtime/security/release 分类、finding 原文工作台、持久化队列 worker 可作为后续团队运营增强。
+- 当前 P1 范围的二次审查记录、fingerprint conflict、批量 resolve、release hard gate 和 DB model 已闭合。
 
 ## Epic 6：Release Gate
 
-状态：已实施 dashboard Release Readiness/Ready to Ship lane v4 + 后端 `LoopReleaseGate` contract/list/detail 派生 v2 + detail Delivery Controls v3 + PR summary evidence v6 + file-backed release canary checklist v7；rollback/canary worker 与真实发布阻断后续 Epic。
+状态：✅ P0 闭合。已实施 dashboard Release Readiness/Ready to Ship lane + 后端 `LoopReleaseGate` contract/list/detail 派生 + detail checklist + PR summary evidence + file-backed release canary checklist + `runReleaseCanary` API + canary Browser QA evidence 持久化 + 环境 owner/rollback note 控制面 + 高风险 canary 后端阻断 + finalize 前 hard gate enforce。R7 新增 CI/CD health check 集成（`checkDeploymentHealth()` 轮询 /health 端点）。
 
 ### 背景
 
-gstack 的 `/ship`、`/land-and-deploy`、`/canary` 把发布变成一条流程。DofeAI 当前更偏任务完成证据，需要更明确地判断“能否发布”。
+gstack 的 `/ship`、`/land-and-deploy`、`/canary` 把发布变成流程。DofeAI 已经从 readiness dashboard 进入 enforce 阶段。
 
-### Release Gate 检查项
+### 已完成
 
-- Spec approved；
-- implementation evidence present；
-- tests passed；
-- required reviews passed/waived；
-- security review passed or not required；
-- browser QA passed or blocked with reason；
-- docs updated or not applicable；
-- PR branch/link present；
-- rollback/canary note present for risky changes。
+- Dashboard Release Readiness 和 Ready to Ship lane。
+- `LoopReleaseGate` Zod contract 和 checklist。
+- 后端 list/detail 派生 spec、implementation、tests、required reviews、Browser QA、PR/rollback/canary checklist。
+- Detail 展示 release checklist、blocker 和 evidence link count。
+- PR summary 自动引用 present evidence artifacts。
+- Delivery governance 可记录 release canary status/targetUrl/environment/environmentOwner/rollbackNote/reason。
+- `runReleaseCanary` API 执行 Browser QA subset smoke check，持久化 canary Browser QA report，并记录 canary result。
+- `runReleaseCanary` 会追加 deployment health check step，轮询 `/health`、`/api/health`、`/_health`，失败会影响 canary pass 判定。
+- canary 会按 Browser QA report status 判定：只有 passed 才通过，failed/blocked 会写入 failed canary governance。
+- high risk canary 缺 rollbackNote 或 environmentOwner 时会被后端拒绝。
+- `enforceReleaseGate` 在 finalize 前阻断 spec/test/review/second opinion/browser QA/rollback/canary blocker。
 
-### UI 落点
+### 非阻断增强
 
-- 已完成：Dashboard 新增 Release Readiness；
-- 已完成：`LoopReleaseGate` Zod contract 已在 `packages/contracts/src/schemas/loops.schema.ts` 定义并导出类型；
-- 已完成：后端 list/detail payload 已派生 spec、implementation、tests、required reviews、Browser QA、PR/rollback checklist；
-- 已完成：Detail 页新增 release checklist、blocker 和 evidence link count 展示；
-- 已完成：Dashboard 新增 Ready to Ship lane，将未关闭但已进入 converge/global review/annotate 或 global PASS 的 Loop 与 Delivered 分离；
-- 已完成：PR summary 自动引用 present evidence artifacts，并避免引用 pending convergence-pr 自身。
-- 已完成：delivery governance 可记录 release canary status/targetUrl/reason，并将 `canaryPassed` 加入 Release Gate checklist。
+- CI/CD provider webhook（GitHub Actions、Vercel、Railway、自定义 webhook）、指标采样和自动 rollback proposal 属于 provider 深度集成，不阻断当前 P0 release gate/canary/health check 闭环。
+- Release evidence 已能进入 PR evidence/comment 链路；后续可扩展为 release note 模板。
 
 ## Epic 7：Runtime Security Gate
 
-状态：已实施 runner shell control operator 阻断 v1 + test command policy snapshot 持久化 v2 + runtime env-token canary 检测/脱敏 v3 + Dashboard Exception Center 聚合 v4 + file-backed runtime override 审计记录 v5 + network/write 命令策略阻断 v6；OS/container 级 network/write sandbox 和 override 执行层审批拦截后续 Epic。
+状态：✅ P0 闭合。已实施 runner shell control operator 阻断 + test command policy snapshot + runtime env-token canary 检测/脱敏 + Dashboard Exception Center + file-backed runtime override 审计 + network/write 命令策略阻断 + sandbox profile 类型基础 + sandbox profile allowlist/denylist 实际执行。R7 新增 Docker 容器执行层接入（`runCommandInDocker()`，`sandboxBackend: 'docker'`）。
 
 ### 背景
 
-gstack 的 guard/freeze/careful 体现了执行前安全。DofeAI 已有 Permission Profile v1，但仍是展示型。
+gstack 的 guard/freeze/careful 体现执行前安全。DofeAI 已从展示型 permission 进入 command-policy 和 release blocker 阶段，但还没完成执行环境强约束。
 
-### 建议策略
+### 已完成
 
-| 权限    | 默认策略                  | 需要审批的情况                                   |
-| ------- | ------------------------- | ------------------------------------------------ |
-| Read    | allow                     | 读取 secret/env/private key                      |
-| Write   | scoped allow              | 跨 workspace、生成迁移、改 CI                    |
-| Shell   | allowlist                 | destructive command、network install、force push |
-| Network | deny by default in worker | 外部 API、上传 artifact                          |
-| Secrets | never expose              | 任意日志/trace/LLM prompt 输出                   |
+- runner 测试命令执行前阻断 shell control operators。
+- runner 每次 test-command run 记录 `LoopRuntimeSecurityPolicySnapshot`。
+- file-backed test record Markdown 渲染 runtime security policy。
+- 允许命令注入 `LOOPS_RUNTIME_CANARY`，检测 stdout/stderr 泄露并脱敏。
+- `runtime-security:*` failedTests 聚合到 Dashboard Exception Center。
+- Delivery governance 可记录 runtime override 的 scope、原因、操作者和过期时间。
+- 命令进入 shell 前阻断常见 network tools/package install。
+- 命令进入 shell 前阻断明显跨 workspace 写入模式。
+- runner service 已出现 sandbox profile 类型：network、writeScope、secretMode、blockedNetworkTools、blockedWritePatterns。
+- sandbox profile 的 `allowedCommands`、`extraBlockedTools`、`extraBlockedPatterns` 已实际参与命令策略判定，并写入 policy snapshot。
+- `shellEnforcement: strict-allowlist` 时会走 Docker sandbox backend，policy snapshot 标记 `sandboxBackend: docker`，并记录 network/write sandbox enforcement。
 
-### 验收标准
+### 非阻断增强
 
-- 已完成：runner 测试命令执行前阻断 shell control operators，并将阻断原因写入 test record failedTests；
-- 已完成：runner 每次 test-command run 都在 `LoopTestRecord.runtimeSecurityPolicy` 记录 shell allowlist、blocked operators、network/write 默认策略和 approval override 状态；
-- 已完成：file-backed test record Markdown 渲染 Runtime Security Policy 摘要，便于审计；
-- 已完成：runner 对允许命令注入 `LOOPS_RUNTIME_CANARY`，检测 stdout/stderr 泄露并在持久化前脱敏；
-- 已完成：`runtime-security:*` failedTests 聚合到 Dashboard Exception Center，展示 owner/action/evidence/impact/retryAction；
-- 已完成：delivery governance 可记录 runtime override 的 scope、原因、操作者和过期时间；
-- 已完成：runner 在命令进入 shell 前阻断常见 network tools/package install，并在 policy snapshot 记录 blockedTools；
-- 已完成：runner 在命令进入 shell 前阻断明显跨 workspace 写入模式，并在 policy snapshot 记录 blockedPatterns；
-- 后续：OS/container 级 network/write sandbox、override 执行层审批拦截和发布 canary worker。
+- Docker backend 已提供 OS/container 级 `--network=none` 与 read-only/cap-drop 执行层；后续可细化 network allowlist 和 writeScope overlay/mount 策略。
+- override 执行层审批拦截、secret canary 扩展到 LLM prompt/trace/Browser QA handoff 属于更深层治理增强，不阻断当前 P0 runtime sandbox 闭环。
+
+## Epic 8：Loop Bench 与质量度量
+
+状态：✅ P2 闭合。已完成 dashboard 首版 + file-backed trend snapshot worker。`buildLoopBench` 已从现有 Loop list、release gate、runtime exception、cost 与 learning evidence 派生 7 项质量指标，并在 Loops dashboard 展示；`runLoopBenchTrendWorker` 会将 7 项指标物化到 `.loops/bench-trends/history.json/latest.json/<timestamp>.json`，metrics API 与 dashboard 展示 latest trend、history count、delta 和 artifact ref。R8 新增 workspace/repo/recipe drilldown contract/API/hook/dashboard；2026-06-24 复审确认 dashboard 已读取并展示 drilldown metrics。
+
+### 已实现指标
+
+| 指标                         | 含义                            |
+| ---------------------------- | ------------------------------- |
+| First-pass review rate       | 首轮 review 通过率              |
+| Second opinion conflict rate | 二次审查冲突率                  |
+| Browser QA regression rate   | 浏览器 QA 回归失败率            |
+| Release blocker rate         | 发布阻断率                      |
+| Runtime violation rate       | runtime security 违规率         |
+| Learning reuse rate          | learning 被召回并改善结果的比例 |
+| Canary pass rate             | canary 首次通过率               |
+
+### 非阻断增强
+
+- Dashboard 已通过 `getLoopBenchDrilldown` 展示 workspace/repo/recipe 维度指标；后续可增强交互筛选联动和更长期 per-period 聚合。
+- PR summary 引用关键质量指标、Learning outcome 关联量化可作为后续 release review/运营分析增强。
 
 ## 路线图汇总
 
-| 阶段    | 时间建议 | 交付                                                            |
-| ------- | -------- | --------------------------------------------------------------- |
-| Phase 1 | 1-2 周   | Workflow Recipe + Multi-review Gate v1                          |
-| Phase 2 | 2-4 周   | Release Gate + Second Opinion Review                            |
-| Phase 3 | 4-6 周   | Browser QA Worker report-only                                   |
-| Phase 4 | 6-8 周   | Learning Memory + Runtime Security Gate                         |
-| Phase 5 | 8 周后   | Browser QA fix loop、Loop Bench、team workflow pack marketplace |
+| 阶段     | 优先事项                                                                                                                  | 结果                                  |
+| -------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| R7       | Runtime Security 执行层隔离、Release CI/CD 健康检查、Browser QA auth/ignore-mask、DB-backed learning/second-opinion model | ✅ 已完成                             |
+| R8       | Browser QA embedded preview、Workspace Recipe Admin、Loop Bench workspace/repo/recipe drilldown                           | ✅ 已完成                             |
+| 后续增强 | Provider webhook、自动 rollback proposal、finding/evidence 工作台、长期质量运营指标                                       | 非阻断，超出当前 gstack P0/P1/P2 闭环 |
 
 ## 不建议立即做
 
-- 不建议马上复刻 gstack 54 个技能；会制造维护负担。
-- 不建议一开始做 cookie import；安全和用户信任成本高。
-- 不建议直接引入外部长期记忆数据库；先把 evidence -> learning 的本地/DB 闭环做好。
-- 不建议用纯 Markdown 作为 DofeAI 的 workflow 源；应保持 Zod-first contract 和后端状态机优势。
+- 不建议复刻 gstack 54 个技能；会制造维护负担。
+- 不建议把底层运行时泛化为所有 host；当前应坚持 Codex CLI + Claude Code CLI。
+- 不建议用个人 cookie import 做 Browser QA 登录态；应使用测试账号/session ref。
+- 不建议让 auto-merge learning 自动生效；必须有审批和生命周期。
+- 不建议只靠前端状态派生标记 worker/runtime 能力完成。

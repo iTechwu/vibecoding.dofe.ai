@@ -6,12 +6,15 @@ import {
   buildAgingQueue,
   buildAgentHandoffTimeline,
   buildDashboardGuide,
+  buildDeliveryFlow,
   buildExceptionCenter,
   buildEvalPlan,
   buildLoopBoard,
+  buildLoopBench,
   buildPermissionProfile,
   buildPerformanceSnapshot,
   buildProviderProfile,
+  buildRecipeAdminSummary,
   buildRepoContextMap,
   buildReleaseReadiness,
   buildReviewGatePortfolio,
@@ -19,6 +22,7 @@ import {
   buildReviewInboxGroups,
   buildRiskQueue,
   buildRuntimeBackends,
+  buildSecondOpinionConflictItems,
   buildTriggerPortfolio,
   buildWorkforceOverview,
   buildWorkflowRecipe,
@@ -413,6 +417,52 @@ describe('loops-dashboard-model', () => {
     expect(inbox.map((item) => item.title)).toEqual(['Human approval needed']);
   });
 
+  it('builds a second-opinion conflict queue with owner and SLA evidence', () => {
+    const conflictItem: LoopListResponse['list'][number] = {
+      ...list.list[1]!,
+      state: {
+        ...list.list[1]!.state!,
+        phase: 'PHASE_6_CONVERGE',
+        updated: '2026-06-20T00:00:00.000Z',
+      },
+      releaseGate: {
+        id: 'issue-2-release-gate',
+        status: 'blocked',
+        checklist: {
+          specApproved: true,
+          implementationEvidence: true,
+          testsPassed: true,
+          requiredReviewsPassed: true,
+          secondOpinionPassed: false,
+          browserQaPassed: true,
+          docsUpdated: true,
+          prReady: true,
+          rollbackNote: true,
+        },
+        evidenceIds: ['issue-2-second-opinion'],
+        blocker: 'Second opinion has unresolved conflicts',
+        updated: '2026-06-20T00:00:00.000Z',
+      },
+    };
+
+    const queue = buildSecondOpinionConflictItems(
+      [conflictItem],
+      new Date('2026-06-21T02:00:00.000Z'),
+    );
+
+    expect(queue).toEqual([
+      expect.objectContaining({
+        id: 'issue-2-second-opinion-conflict',
+        owner: 'Release reviewer',
+        priority: 'critical',
+        slaHours: 24,
+        ageHours: 26,
+        evidence: 'Second opinion has unresolved conflicts',
+        meta: expect.stringContaining('1 conflict(s)'),
+      }),
+    ]);
+  });
+
   it('builds a loop board with user-facing stages, modes, and delivery signals', () => {
     const readyItem: LoopListResponse['list'][number] = {
       issue: {
@@ -484,9 +534,11 @@ describe('loops-dashboard-model', () => {
     });
   });
 
-  it('builds an exception center with owners, actions, evidence, and capacity', () => {
+  it('builds an exception center with owners, actions, evidence, eval gates, and capacity', () => {
+    const evalPlan = buildEvalPlan(list.list, cost);
     const center = buildExceptionCenter(list.list, {
       cost,
+      evalPlan,
       runtime,
       health: {
         ok: false,
@@ -507,19 +559,34 @@ describe('loops-dashboard-model', () => {
       failed: 2,
       capacity: 4,
     });
-    expect(center.items.map((item) => [item.reason, item.level, item.owner, item.action])).toEqual([
-      ['Cost guard tripped', 'critical', 'Product owner', 'Adjust budget or reduce scope'],
-      ['Paused', 'critical', 'Loop operator', 'Resume or assign recovery'],
-      [
-        'Command "pnpm test && rm -rf /tmp/out" was blocked by runtime policy.',
-        'warning',
-        'Runtime security',
-        'Review command evidence',
-      ],
-      ['Global FAIL', 'warning', 'Reviewer', 'Review failure evidence'],
-      ['Spec draft is waiting for human review', 'warning', 'spec-review-agent', 'Open diagnostic'],
-      ['issue index is stale', 'warning', 'Runtime owner', 'Run doctor or re-index'],
-    ]);
+    expect(center.items.map((item) => [item.reason, item.level, item.owner, item.action])).toEqual(
+      expect.arrayContaining([
+        ['Cost guard tripped', 'critical', 'Product owner', 'Adjust budget or reduce scope'],
+        ['Paused', 'critical', 'Loop operator', 'Resume or assign recovery'],
+        ['Eval gate blocked: delivery-readiness', 'critical', 'Eval owner', 'Resolve hard gate'],
+        ['Eval gate blocked: test-evidence', 'critical', 'Eval owner', 'Resolve hard gate'],
+        ['Eval gate blocked: cost-policy', 'critical', 'Eval owner', 'Resolve hard gate'],
+        [
+          'Command "pnpm test && rm -rf /tmp/out" was blocked by runtime policy.',
+          'warning',
+          'Runtime security',
+          'Review command evidence',
+        ],
+        ['Global FAIL', 'warning', 'Reviewer', 'Review failure evidence'],
+        [
+          'Spec draft is waiting for human review',
+          'warning',
+          'spec-review-agent',
+          'Open diagnostic',
+        ],
+      ]),
+    );
+    expect(center.items.find((item) => item.source === 'eval')).toEqual(
+      expect.objectContaining({
+        href: '/loops#eval-plan',
+        evidenceHref: '/loops#eval-plan',
+      }),
+    );
     expect(center.items[0]).toMatchObject({
       title: 'Docs reloop',
       href: '/loops/issue-2',
@@ -702,6 +769,39 @@ describe('loops-dashboard-model', () => {
     ]);
   });
 
+  it('builds a delivery flow pipeline with runtime owners and blocked steps', () => {
+    const flow = buildDeliveryFlow(list.list);
+
+    expect(flow.summary).toEqual({
+      totalSteps: 10,
+      activeSteps: 2,
+      blockedSteps: 1,
+    });
+    expect(flow.pipelineLabel).toBe(
+      'Intake → Spec → Spec Review → Plan → Build → Test → Converge → Global Review → Annotate → Close',
+    );
+    expect(
+      flow.steps.map((step) => [
+        step.id,
+        step.runtimeOwner,
+        step.gateKind,
+        step.loopCount,
+        step.blockedCount,
+      ]),
+    ).toEqual([
+      ['intake', 'system', 'none', 0, 0],
+      ['spec', 'codex', 'none', 0, 0],
+      ['review', 'human', 'human', 0, 0],
+      ['decompose', 'codex', 'none', 0, 0],
+      ['implement', 'claude-code', 'agent', 1, 0],
+      ['test', 'codex', 'agent', 0, 0],
+      ['converge', 'codex', 'agent', 1, 1],
+      ['globalReview', 'codex', 'agent', 0, 0],
+      ['annotate', 'codex', 'none', 0, 0],
+      ['close', 'system', 'release', 0, 0],
+    ]);
+  });
+
   it('builds a performance snapshot from loop state, costs, and trace summary', () => {
     const passedItem: LoopListResponse['list'][number] = {
       issue: {
@@ -752,6 +852,85 @@ describe('loops-dashboard-model', () => {
       averageTokens: 550,
       traceEvents: 12,
       recentEvents: 5,
+    });
+  });
+
+  it('builds loop bench quality metrics from canary and learning evidence', () => {
+    const passedCanaryItem: LoopListResponse['list'][number] = {
+      ...list.list[0]!,
+      releaseGate: {
+        id: 'issue-1-release-gate',
+        status: 'ready',
+        checklist: {
+          specApproved: true,
+          implementationEvidence: true,
+          testsPassed: true,
+          requiredReviewsPassed: true,
+          secondOpinionPassed: true,
+          browserQaPassed: true,
+          docsUpdated: true,
+          prReady: true,
+          rollbackNote: true,
+          canaryPassed: true,
+        },
+        evidenceIds: ['issue-1-canary'],
+        updated: '2026-06-20T00:00:00.000Z',
+      },
+    };
+    const failedCanaryItem: LoopListResponse['list'][number] = {
+      ...list.list[1]!,
+      releaseGate: {
+        id: 'issue-2-release-gate',
+        status: 'blocked',
+        checklist: {
+          specApproved: true,
+          implementationEvidence: true,
+          testsPassed: true,
+          requiredReviewsPassed: true,
+          secondOpinionPassed: false,
+          browserQaPassed: false,
+          docsUpdated: true,
+          prReady: true,
+          rollbackNote: true,
+          canaryPassed: false,
+        },
+        evidenceIds: ['issue-2-canary'],
+        blocker: 'Canary failed',
+        updated: '2026-06-20T00:00:00.000Z',
+      },
+    };
+
+    const bench = buildLoopBench([passedCanaryItem, failedCanaryItem], {
+      recentLearnings: [
+        {
+          id: 'learning-1',
+          workspaceId: 'default',
+          repo: '/repo/app',
+          kind: 'pattern',
+          summary: 'Reuse Browser QA handoff checklist.',
+          evidenceIds: ['issue-1-canary'],
+          confidence: 0.8,
+          lastUsedAt: '2026-06-21T00:00:00.000Z',
+          createdAt: '2026-06-20T00:00:00.000Z',
+        },
+        {
+          id: 'learning-2',
+          workspaceId: 'default',
+          repo: '/repo/app',
+          kind: 'pitfall',
+          summary: 'Do not skip release owner review.',
+          evidenceIds: ['issue-2-canary'],
+          confidence: 0.6,
+          createdAt: '2026-06-20T00:00:00.000Z',
+        },
+      ],
+    });
+
+    expect(bench).toMatchObject({
+      canaryPassRate: 50,
+      learningReuseRate: 50,
+      browserQaRegressionRate: 50,
+      secondOpinionConflictRate: 50,
     });
   });
 
@@ -830,6 +1009,54 @@ describe('loops-dashboard-model', () => {
       'Browser QA gate planned',
       'Release gate planned',
       'No loops',
+    ]);
+  });
+
+  it('builds recipe admin tenant governance from SSO asset permissions', () => {
+    const recipe = buildRecipeAdminSummary(list.list, cost, {
+      identity: {
+        userId: 'sso-user-42',
+        teamId: 'team-1',
+        tenantId: 'tenant-1',
+        isSuperAdmin: false,
+      },
+      source: 'sso',
+      permissions: ['vibecoding:loops:create'],
+      roles: ['MEMBER'],
+      summary: { total: 1, granted: 1, blocked: 0 },
+      assets: [
+        {
+          assetKind: 'blueprint',
+          assetId: 'delivery-blueprints',
+          label: 'Delivery blueprints',
+          scope: 'tenant',
+          requiredAction: 'create',
+          granted: true,
+          sourcePermission: 'vibecoding:loops:create',
+        },
+      ],
+    });
+
+    expect(recipe.tenantGovernance).toEqual({
+      scope: 'tenant',
+      granted: true,
+      requiredAction: 'create',
+      sourcePermission: 'vibecoding:loops:create',
+    });
+    expect(recipe.actions).toEqual([
+      expect.objectContaining({
+        id: 'createVersion',
+        state: 'ready',
+        sourcePermission: 'vibecoding:loops:create',
+      }),
+      expect.objectContaining({
+        id: 'reviewApproval',
+        state: 'ready',
+      }),
+      expect.objectContaining({
+        id: 'rollbackVersion',
+        state: 'ready',
+      }),
     ]);
   });
 

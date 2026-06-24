@@ -12,6 +12,7 @@ import type {
   LoopsDoctorResponse,
   LoopStateItem,
   LoopWorkflowRecipe,
+  RuntimeBackendPolicyUpdate,
 } from '@repo/contracts';
 import type {
   LoopIssue as DbLoopIssue,
@@ -138,6 +139,18 @@ export class LoopsPersistenceService {
 
   async syncClosed(state: LoopStateItem) {
     await this.syncState({ ...state, phase: 'CLOSED', finalized: true }, 'CLOSED');
+  }
+
+  async readRuntimeBackendPolicies(): Promise<Record<string, RuntimeBackendPolicyUpdate>> {
+    return this.db.listRuntimeBackendPolicies();
+  }
+
+  async patchRuntimeBackendPolicy(
+    id: string,
+    patch: RuntimeBackendPolicyUpdate,
+  ): Promise<RuntimeBackendPolicyUpdate> {
+    const current = (await this.db.listRuntimeBackendPolicies())[id] ?? {};
+    return this.db.upsertRuntimeBackendPolicy(id, { ...current, ...patch });
   }
 
   async doctor(): Promise<LoopsDoctorResponse> {

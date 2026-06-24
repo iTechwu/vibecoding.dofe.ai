@@ -278,3 +278,42 @@ DB 访问必须通过 DB Service，不在 controller/service 直接访问 Prisma
 - 不建议将 Tool Builder 做成任意代码执行平台，先做受控工具 schema；
 - 不建议跳过 eval suite 直接扩 integrations，否则自动化越多风险越大；
 - 不建议把内部 phase 完全暴露给终端用户，应保留在高级/调试层。
+
+## 2026-06-24 实施状态
+
+### 已实施 / 已部分实施
+
+| 建议                        | 状态       | 代码证据                                                                                                                                                                                                                                                                |
+| --------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Software Delivery Workforce | 已部分实施 | `buildWorkforceOverview`、`buildAgentHandoffTimeline`、`buildDeliveryFlow`、Dashboard 区块                                                                                                                                                                              |
+| Runtime Backend Registry    | 已部分实施 | `RuntimeBackendSchema`、`listRuntimeBackends`、`getRuntimeBackend`、`runtimeBackendHealthCheck`、`updateRuntimeBackendPolicy`、Runtime Backends UI                                                                                                                      |
+| Invent for Delivery         | 已部分实施 | `/loops/new` Runtime Plan / Workforce Plan / Eval Plan / Risk-Gate preview                                                                                                                                                                                              |
+| Release Governance          | 已部分实施 | delivery governance、review gate override、release canary、rollback note、release gate hard blocking                                                                                                                                                                    |
+| Delivery Intelligence       | 已部分实施 | Performance Snapshot、Fleet Health、Loop Bench、Exception Center、Repo Context Map                                                                                                                                                                                      |
+| Blueprint Marketplace       | 已部分实施 | dashboard catalog/blueprint cards；仍缺持久化 clone/config                                                                                                                                                                                                              |
+| Eval Suite / Eval Run       | 已部分实施 | `EvalSuiteSchema`、`EvalRunSchema`、`listEvalSuites`、`listEvalRuns`；当前为派生只读 v1，缺持久化/版本化/runner/trend                                                                                                                                                   |
+| Webhook Trigger intake      | 已部分实施 | `LoopWebhookTriggerSchema`、`webhookTrigger`、配置 secret 时强制 HMAC-SHA256 签名校验、基础 payload mapping、敏感字段脱敏、payload size guard、in-process rate guard、受控 `sourceChannel/sourceKind`；缺 trigger object、replay、retry/dead-letter、worker、分布式限流 |
+
+### 本轮新增修复
+
+- `record-release-canary` 增加 `rollbackNote` contract 字段；
+- delivery governance 持久化并渲染 rollback note；
+- release gate checklist 使用显式 rollback note，修复“首次 finalize 前没有 PR 因而永远无法满足 rollbackNote”的逻辑矛盾；
+- Detail 页 release canary 表单增加 rollback note；
+- 自动 finalize 测试显式准备 code/security gate 与 canary/rollback 记录。
+- `CreateLoopIssueRequest` 增加受控 `sourceChannel/sourceKind`，让 webhook intake 不再靠类型强转偷传来源；
+- `webhookTrigger` 增加 HMAC-SHA256 签名校验，配置 signing secret 时缺失/错误签名都会拒绝创建 Loop；
+- `webhookTrigger` 默认 targetRepo 对齐 `LOOPS_WORKSPACE_ROOT`，避免 API 包工作目录导致目标仓库越权/误判；
+- `webhookTrigger` 增加基础 payload mapping，将外部 `title/body/acceptanceCriteria/targetRepo/priority` 与 GitHub issue/PR 常见字段映射为 Delivery Loop issue；
+- `webhookTrigger` 写入 evidence 前对 token、secret、authorization、password、api key 等敏感 payload 字段做基础脱敏；
+- `webhookTrigger` 增加 payload size guard，默认限制 64KB，可通过 `LOOPS_WEBHOOK_MAX_PAYLOAD_BYTES` 调整；
+- `webhookTrigger` 增加单实例 in-process rate guard，默认同一 `source:event` 每分钟 60 次，可通过 `LOOPS_WEBHOOK_RATE_LIMIT_PER_MINUTE` 调整；
+- `loops.service.spec.ts` 增加 derived EvalSuite/EvalRun、unsigned webhook、invalid signature、valid signature 回归测试。
+
+### 仍建议保留为后续 Epic
+
+- 将当前 derived Eval Suite / Eval Run 升级为持久化、版本化、可趋势分析，并与 finalize gating 绑定；
+- 将当前 signed webhook intake + basic payload mapping + evidence redaction + payload size guard + in-process rate guard v1 升级为完整 Trigger Platform：trigger object、schedule、GitHub/Slack/Linear worker、payload replay、retry/dead-letter、分布式 rate limit/cost policy；
+- Tool Registry v2 与 OAuth/secret connection；
+- Blueprint clone/config；
+- OTEL event streaming 与 Audit Explorer。

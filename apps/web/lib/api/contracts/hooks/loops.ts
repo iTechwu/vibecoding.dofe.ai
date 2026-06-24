@@ -19,6 +19,10 @@ export const loopsKeys = {
   metrics: () => [...loopsKeys.all, 'metrics'] as const,
   agentRuntime: () => [...loopsKeys.all, 'agent-runtime'] as const,
   capabilities: () => [...loopsKeys.all, 'capabilities'] as const,
+  assetPermissions: () => [...loopsKeys.all, 'asset-permissions'] as const,
+  mcpServers: () => [...loopsKeys.all, 'mcp-servers'] as const,
+  ciChecks: () => [...loopsKeys.all, 'ci-checks'] as const,
+  ciCheckPublications: (id: string) => [...loopsKeys.ciChecks(), id, 'publications'] as const,
   workspaces: () => [...loopsKeys.all, 'workspaces'] as const,
   logs: (query: Record<string, unknown>) => [...loopsKeys.all, 'logs', query] as const,
   notifications: (query: Record<string, unknown>) =>
@@ -53,6 +57,16 @@ export function useLoopsMetrics() {
   return tsRestClient.loops.metrics.useQuery(queryKey, {}, { queryKey, staleTime: 0 });
 }
 
+/** Materialize Loop Bench quality trend snapshots. */
+export function useRunLoopBenchTrendWorker() {
+  const queryClient = useQueryClient();
+  return tsRestClient.loops.runLoopBenchTrendWorker.useMutation({
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: loopsKeys.metrics() });
+    },
+  });
+}
+
 /** Current Loops agent runtime status and diagnostics. */
 export function useLoopsAgentRuntime() {
   const queryKey = loopsKeys.agentRuntime();
@@ -63,6 +77,53 @@ export function useLoopsAgentRuntime() {
 export function useLoopsCapabilities() {
   const queryKey = loopsKeys.capabilities();
   return tsRestClient.loops.capabilities.useQuery(queryKey, {}, { queryKey, staleTime: 0 });
+}
+
+/** SSO-derived asset permission matrix for Loops control-plane assets. */
+export function useLoopsAssetPermissions() {
+  const queryKey = loopsKeys.assetPermissions();
+  return tsRestClient.loops.assetPermissions.useQuery(queryKey, {}, { queryKey, staleTime: 0 });
+}
+
+/** SSO-governed MCP server configuration registry. */
+export function useLoopsMcpServers() {
+  const queryKey = loopsKeys.mcpServers();
+  return tsRestClient.loops.listMcpServers.useQuery(
+    queryKey,
+    { query: { page: 1, limit: 20 } },
+    { queryKey, staleTime: 0 },
+  );
+}
+
+/** SSO-governed CI check integration registry. */
+export function useLoopsCiChecks() {
+  const queryKey = loopsKeys.ciChecks();
+  return tsRestClient.loops.listCiChecks.useQuery(
+    queryKey,
+    { query: { page: 1, limit: 20 } },
+    { queryKey, staleTime: 0 },
+  );
+}
+
+/** Durable CI check publication history for evidence review. */
+export function useLoopsCiCheckPublications(id: string) {
+  const queryKey = loopsKeys.ciCheckPublications(id);
+  return tsRestClient.loops.listCiCheckPublications.useQuery(
+    queryKey,
+    { params: { id } },
+    { queryKey, staleTime: 0 },
+  );
+}
+
+/** Request a tenant-scoped Recipe Admin action for audited backend processing. */
+export function useRequestRecipeAdminAction() {
+  const queryClient = useQueryClient();
+  return tsRestClient.loops.requestRecipeAdminAction.useMutation({
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: loopsKeys.assetPermissions() });
+      queryClient.invalidateQueries({ queryKey: loopsKeys.lists() });
+    },
+  });
 }
 
 /** Recent Loops log events. */
@@ -335,6 +396,16 @@ export function useRunLoopLearningAutoMergeWorker() {
   });
 }
 
+/** Materialize the file-backed cross-workspace learning index. */
+export function useRunLoopLearningIndexWorker() {
+  const queryClient = useQueryClient();
+  return tsRestClient.loops.runLearningIndexWorker.useMutation({
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: loopsKeys.workspaces() });
+    },
+  });
+}
+
 /** Probe local CLI + Docker runtimes for a workspace (Retry detection). */
 export function useDetectLoopsRuntime() {
   const invalidate = useInvalidateWorkspaceRuntime();
@@ -363,4 +434,63 @@ export function useRetryLoopsAgentRuntime() {
  */
 export function useCreateSimpleLoopIssue() {
   return tsRestClient.loops.createSimpleIssue.useMutation();
+}
+
+// ============================================================================
+// gstack P2: Browser QA embedded preview, workspace recipes, bench drilldown
+// ============================================================================
+
+/** Get the URL for a Browser QA artifact file to use in <img> tags. */
+export function getBrowserQaArtifactUrl(issueId: string, artifactPath: string): string {
+  if (typeof window === 'undefined') {
+    const base = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? 'http://localhost:13100';
+    return `${base}/loops/${issueId}/browser-qa/artifact/${artifactPath}`;
+  }
+  const base = process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? window.location.origin;
+  return `${base}/loops/${issueId}/browser-qa/artifact/${artifactPath}`;
+}
+
+/** List workspace-level workflow recipe configurations for admin panel. */
+export function useWorkspaceRecipes(query: { page?: number; limit?: number } = {}) {
+  return tsRestClient.loops.listWorkspaceRecipes.useQuery(
+    [...loopsKeys.all, 'workspace-recipes', query],
+    { query: { page: 1, limit: 20, ...query } },
+  );
+}
+
+/** Get Loop Bench quality metrics with workspace/repo/recipe drilldown. */
+export function useLoopBenchDrilldown(
+  query: {
+    workspaceId?: string;
+    repo?: string;
+    recipeId?: string;
+    period?: '7d' | '30d' | '90d' | 'all';
+  } = {},
+) {
+  return tsRestClient.loops.getLoopBenchDrilldown.useQuery(
+    [...loopsKeys.all, 'bench-drilldown', query],
+    { query: { period: '30d' as const, ...query } },
+  );
+}
+
+// ============================================================================
+// Tool Registry hooks (P1-4, R31a)
+// ============================================================================
+
+/** List all registered tools (paginated). */
+export function useLoopsTools(query: { page?: number; limit?: number } = {}) {
+  const q = { page: 1, limit: 20, ...query };
+  return tsRestClient.loops.listTools.useQuery([...loopsKeys.all, 'tools', q], { query: q });
+}
+
+// ============================================================================
+// Delivery Blueprint hooks (P1-2, R31b)
+// ============================================================================
+
+/** List all delivery blueprints (paginated). */
+export function useLoopsBlueprints(query: { page?: number; limit?: number } = {}) {
+  const q = { page: 1, limit: 20, ...query };
+  return tsRestClient.loops.listBlueprints.useQuery([...loopsKeys.all, 'blueprints', q], {
+    query: q,
+  });
 }

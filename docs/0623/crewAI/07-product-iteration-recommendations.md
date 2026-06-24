@@ -20,16 +20,16 @@
 
 ## 2. DofeAI 对比差异矩阵
 
-| 维度             | crewAI v1.14.7                       | DofeAI 当前（R6）                                  | 差距      | 优先级 |
-| ---------------- | ------------------------------------ | -------------------------------------------------- | --------- | ------ |
-| Skills 生态      | Claude Code 官方 skills plugin       | 无 Codex/Claude 官方 Loops skills                  | 🔴 高     | P0     |
-| 企业 API/Webhook | Crew execution lifecycle API         | Trigger portfolio（仅前端展示，无 webhook 接收端） | 🟡 中     | P1     |
-| Flow 产品化      | Flow DSL + @start/@listen/@router    | Loop state machine（工程化但未产品化命名）         | 🟡 中     | P1     |
-| MCP/工具生态     | MCP server + crewai-tools + A2A      | Tool registry（前端展示），无 MCP 集成             | 🟡 中     | P1     |
-| 开发者教育       | learn.crewai.com（100K+）            | 无                                                 | 🟢 可延后 | P2     |
-| 人机协作 (HITL)  | Resume with human feedback API       | Review Inbox + Human Gates（Dashboard）            | 🟢 低     | P2     |
-| Studio/低代码    | Crew Studio（AMP Suite）             | `/loops/new`（text-based，较工程化）               | 🟢 可延后 | P2     |
-| 多租户/RBAC      | Enterprise RBAC + entity permissions | Workspace RBAC decorator（单 workspace 级）        | 🟡 中     | P1     |
+| 维度             | crewAI v1.14.7                       | DofeAI 当前（R31.1）                              | 差距      | 优先级 |
+| ---------------- | ------------------------------------ | ------------------------------------------------- | --------- | ------ |
+| Skills 生态      | Claude Code 官方 skills plugin       | Loops Skills v1 已标注；官方分发/安装流待产品化   | 🟡 中     | P1     |
+| 企业 API/Webhook | Crew execution lifecycle API         | Webhook trigger + Schedule trigger + lifecycle v1 | 🟡 中     | P1     |
+| Flow 产品化      | Flow DSL + @start/@listen/@router    | Delivery Flow Pipeline + Workflow baseline v1     | 🟡 中     | P1     |
+| MCP/工具生态     | MCP server + crewai-tools + A2A      | MCP/Tool registry 控制面 v1，真实协议握手待接入   | 🟡 中     | P1     |
+| 开发者教育       | learn.crewai.com（100K+）            | 无                                                | 🟢 可延后 | P2     |
+| 人机协作 (HITL)  | Resume with human feedback API       | Review Inbox + Human Gates（Dashboard）           | 🟢 低     | P2     |
+| Studio/低代码    | Crew Studio（AMP Suite）             | `/loops/new`（text-based，较工程化）              | 🟢 可延后 | P2     |
+| 多租户/RBAC      | Enterprise RBAC + entity permissions | SSO Asset Permissions v1 + asset action gates     | 🟡 中     | P1     |
 
 ## 3. P0 迭代建议
 
@@ -67,7 +67,7 @@ crewAI 已有官方 Claude Code skills plugin（4 个 skill），让 coding agen
 
 **问题诊断：**
 
-crewAI 的企业 API 提供了完整的外部系统触发和异步执行状态追踪。DofeAI 当前只有 Trigger Portfolio（前端展示），没有真正的 webhook 接收端点来接收来自 GitHub/Linear/Slack 的外部事件并创建 Loop。
+crewAI 的企业 API 提供了完整的外部系统触发和异步执行状态追踪。DofeAI R7 已补齐 `POST /loops/triggers/webhook`，R30c 已补齐 Schedule Trigger CRUD 与 Trigger Lifecycle retry/replay/dead-letter 控制面。当前差距不再是“没有接收端”，而是跨系统自动映射、签名 provider 策略、分布式 queue worker、外部告警和长期 execution archive。
 
 **建议实现：**
 
@@ -106,6 +106,8 @@ const LoopWebhookTriggerSchema = z.object({
 
 ### P1-1 · Delivery Flow 产品化
 
+**实施状态（R8 / 2026-06-24）：✅ Dashboard v1 已完成。**
+
 **问题诊断：**
 
 crewAI 的 Flow-first 架构让用户理解"这是一个事件驱动的自动化流程"。DofeAI 的 Loop state machine 功能更强（11 个 phase、stateful orchestration、review gates），但对外表述仍是 "phase/shard/reloop" 而非 "delivery flow"。
@@ -123,20 +125,27 @@ crewAI 的 Flow-first 架构让用户理解"这是一个事件驱动的自动化
 
 - `apps/web/app/loops/loops-dashboard-model.ts`（`buildDeliveryFlow()`）
 - `apps/web/app/loops/page.tsx`（Dashboard 顶部新增 Delivery Flow 可视化）
+- `apps/web/app/loops/loops-dashboard-model.test.ts`（runtime owner、gate kind、blocked step 覆盖）
 
 ### P1-2 · MCP Server 集成
 
+**实施状态（R10 / 2026-06-24）：✅ MCP Server Registry 控制面 v1 已完成。**
+
 **问题诊断：**
 
-crewAI 支持 MCP servers 作为工具来源。DofeAI 的 tool registry 当前仅为前端展示，未与 MCP 协议集成。将 tool registry 与 MCP 集成可让 DofeAI 的工具生态从 "内置 N 个工具" 变为 "可扩展的 tool ecosystem"。
+crewAI 支持 MCP servers 作为工具来源。DofeAI 已有 tool registry 与 capability registry；R10 已新增 MCP server 配置管理控制面，但真实 MCP client bootstrap / handshake / tool invocation 仍待 provider client 层接入。
 
 **建议实现：**
 
-- 在 Tool Registry 面板中新增 MCP 兼容性标识
-- 展示哪些 tools 支持 MCP 协议
-- 添加 MCP server 配置管理（list/connect/disconnect/test）
+- ✅ `GET /loops/mcp-servers` 返回 MCP server 配置、transport、toolIds、authStatus、health、risks；
+- ✅ `POST /loops/mcp-servers/:id/{connect|disconnect|test}` 已接入 SSO `mcp-server` admin asset permission 硬门禁；
+- ✅ 前端 API hooks 已暴露 `useLoopsMcpServers()`；
+- ✅ R22 已落地 durable execution audit artifact（`.loops/mcp-audits` + `executionAudit.artifactRef`）；
+- 后续：接真实 MCP client handshake、tool invocation runtime、provider secret 管理。
 
 ### P1-3 · 多租户 Workspace 权限增强
+
+**实施状态（R9 / 2026-06-24）：✅ SSO Asset Permissions v1 已完成。**
 
 **问题诊断：**
 
@@ -144,11 +153,14 @@ crewAI 的 RBAC 支持 feature permissions + entity permissions 两层。DofeAI 
 
 **建议实现：**
 
-参考 models.dofe.ai 的多租户模型：
+参考 `../agents.dofe.ai` 的多租户权限模型：SSO 是租户身份与权限的唯一权威来源，本项目只消费 SSO permission snapshot，并派生本地资产级能力矩阵，不维护第二套本地角色真相源。
 
-- Workspace 级权限：admin/member/viewer
-- Blueprint 级权限：哪些 workspace 可用哪些 blueprint
-- 与 SSO 超级管理员系统集成
+- ✅ `GET /loops/asset-permissions` 返回 workspace / blueprint / runtime-backend / tool / eval-suite / trigger / remote-runner / MCP server / CI check 的资产权限矩阵；
+- ✅ 后端通过 `PermissionService.getUserPermissionSnapshot()` 读取 SSO 权限，支持 `vibecoding:loops:{read|create|operate|admin}`；
+- ✅ `runtime-backend` 的现有写操作（health-check / policy patch）已接入 SSO asset permission 硬门禁；
+- ✅ `mcp-server` 与 `ci-check` 配置控制面写操作已接入 SSO asset permission 硬门禁；
+- ✅ Dashboard 在 Capability Registry 下展示 SSO Asset Permissions；
+- 后续：Remote Runner 执行池落地时必须复用 `assertAssetPermission()` 作为写操作硬门禁。
 
 ## 5. 不需要做的
 
@@ -160,11 +172,11 @@ crewAI 的 RBAC 支持 feature permissions + entity permissions 两层。DofeAI 
 
 ## 6. 推荐实施路线
 
-| 阶段          | 时间   | 优先事项                                  |
-| ------------- | ------ | ----------------------------------------- |
-| **本轮 (R7)** | 即刻   | P0-1 Loops Skills + P0-2 Webhook Trigger  |
-| 后续          | 2 周内 | P1-1 Delivery Flow 产品化 + P1-2 MCP 集成 |
-| 后续          | 4 周内 | P1-3 多租户权限 + Workspace admin         |
+| 阶段     | 时间   | 优先事项                                                                                       |
+| -------- | ------ | ---------------------------------------------------------------------------------------------- |
+| R7-R10   | 已完成 | Loops Skills、Webhook Trigger、Delivery Flow、SSO Asset Permissions、MCP/CI Registry 控制面 v1 |
+| R30c-R31 | 已完成 | Schedule Trigger、Trigger Lifecycle、Tool Registry backend、Blueprint Marketplace backend v1   |
+| 后续     | 4 周内 | Remote Runner 分布式执行池 + MCP/GitHub provider 实连 + cross-system trigger mapping           |
 
 ## 7. 产品定位更新
 

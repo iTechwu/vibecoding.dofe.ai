@@ -14,7 +14,8 @@
  * `GET /loops/doctor` endpoint against a migrated DB, documented in
  * `docs/0619/loops设计/todo/TASK-07-smoke-tests-and-quality-gate.md`.
  */
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'fs';
+import { createHmac } from 'crypto';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { LoopConvergencePr, LoopRuntimeDetection, LoopTestRecord } from '@repo/contracts';
@@ -27,11 +28,13 @@ import type {
 import { AgentRuntimeDetectionService } from './agent-runtime-detection.service';
 import { LoopsBrowserQaWorkerService } from './loops-browser-qa-worker.service';
 import { LoopsFileStoreService } from './loops-file-store.service';
+import type { LoopsPersistenceService } from './loops-persistence.service';
 import { LoopsRunnerService } from './loops-runner.service';
 import { LoopsSecondOpinionWorkerService } from './loops-second-opinion-worker.service';
 import { LoopsService } from './loops.service';
 import { LoopsWorkLockService } from './loops-work-lock.service';
 import { LoopsWorkspaceProfileService } from './loops-workspace-profile.service';
+import type { LoopsPrProviderClient } from './adapters/loops-pr-provider.client';
 
 function makePassTestRecord(issueId: string, shardId: string, round: number): LoopTestRecord {
   return {
@@ -78,13 +81,19 @@ function createFakeGitAdapter(): LoopsGitAdapter {
       committed: false,
       message: `chore(loops): ${shard.id}`,
       branch: 'main',
+      commitSha: `abc1234${shard.id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 8)}`,
     }),
-    createConvergencePr: async ({ issue }): Promise<LoopConvergencePr> => ({
+    createConvergencePr: async ({ issue, commits }): Promise<LoopConvergencePr> => ({
       id: `conv-${issue.id}`,
       issueId: issue.id,
       branch: `loops/${issue.id}`,
       baseBranch: 'main',
-      commits: [],
+      commits: commits.map((commit) => ({
+        shardId: commit.shardId,
+        message: commit.message,
+        commitSha: commit.commitSha,
+        branch: commit.branch,
+      })),
       annotationsSummary: 'ok',
       prBody: 'convergence',
       status: 'DRAFT',
@@ -169,6 +178,37 @@ function createFakeSecondOpinionWorker(status: 'passed' | 'needs_changes' = 'pas
   } as unknown as LoopsSecondOpinionWorkerService;
 }
 
+function createPermissionedLoopsService(
+  store: LoopsFileStoreService,
+  permissions: string[],
+  roles: string[] = ['MEMBER'],
+  runtimeDetection?: AgentRuntimeDetectionService,
+  persistence?: LoopsPersistenceService,
+  prProvider?: LoopsPrProviderClient,
+) {
+  const permissionService = {
+    getUserPermissionSnapshot: jest.fn().mockResolvedValue({ permissions, roles }),
+  };
+  const scopedService = new LoopsService(
+    store,
+    createFakeRunner(),
+    new LoopsWorkLockService(),
+    new DeterministicLoopsAgentAdapter(),
+    new DeterministicLoopsClaudeAdapter(),
+    createFakeGitAdapter(),
+    persistence,
+    undefined,
+    undefined,
+    runtimeDetection,
+    new LoopsWorkspaceProfileService(),
+    undefined,
+    undefined,
+    prProvider,
+    permissionService as never,
+  );
+  return { scopedService, permissionService };
+}
+
 describe('LoopsService v1 main chain (file-only smoke)', () => {
   let workspace: string;
   let store: LoopsFileStoreService;
@@ -185,6 +225,11 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     // temp dir so the smoke issue's `targetRepo` is accepted and isolated.
     previousEnv.LOOPS_WORKSPACE_ROOT = process.env.LOOPS_WORKSPACE_ROOT;
     previousEnv.LOOPS_ALLOWED_REPO_ROOTS = process.env.LOOPS_ALLOWED_REPO_ROOTS;
+    previousEnv.LOOPS_WEBHOOK_SECRET = process.env.LOOPS_WEBHOOK_SECRET;
+    previousEnv.LOOPS_GITHUB_WEBHOOK_SECRET = process.env.LOOPS_GITHUB_WEBHOOK_SECRET;
+    previousEnv.LOOPS_WEBHOOK_MAX_PAYLOAD_BYTES = process.env.LOOPS_WEBHOOK_MAX_PAYLOAD_BYTES;
+    previousEnv.LOOPS_WEBHOOK_RATE_LIMIT_PER_MINUTE =
+      process.env.LOOPS_WEBHOOK_RATE_LIMIT_PER_MINUTE;
     process.env.LOOPS_WORKSPACE_ROOT = workspace;
     process.env.LOOPS_ALLOWED_REPO_ROOTS = workspace;
 
@@ -214,6 +259,1357 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
       }
     }
     rmSync(workspace, { recursive: true, force: true });
+  });
+
+  async function prepareReleaseGate(target: LoopsService, issueId: string) {
+    await target.governDelivery(issueId, {
+      action: 'set-review-gate',
+      gateKind: 'code',
+      status: 'passed',
+      actor: 'tester',
+      reason: 'Hermetic smoke review accepted.',
+    });
+    await target.governDelivery(issueId, {
+      action: 'set-review-gate',
+      gateKind: 'security',
+      status: 'passed',
+      actor: 'tester',
+      reason: 'Hermetic smoke security gate accepted.',
+    });
+    await target.governDelivery(issueId, {
+      action: 'record-release-canary',
+      status: 'passed',
+      targetUrl: 'https://example.com/canary',
+      rollbackNote: 'Revert the generated convergence branch.',
+      actor: 'tester',
+      reason: 'Hermetic canary accepted for finalize.',
+    });
+  }
+
+  async function createFinalizedLoopForEvidence(target: LoopsService) {
+    const created = await target.createIssue({
+      title: 'CI evidence mapping issue',
+      targetRepo: workspace,
+      body: 'Publish CI checks with DofeAI delivery evidence backlink.',
+      priority: 'P2',
+      acceptanceCriteria: ['- CI publication maps work packages to commits'],
+    });
+    await target.generateSpec(created.issue.id);
+    await prepareReleaseGate(target, created.issue.id);
+    return target.reviewSpec(created.issue.id, { action: 'approve', reviewer: 'tester' });
+  }
+
+  it('derives Loops asset permissions from the SSO permission snapshot', async () => {
+    const permissionService = {
+      getUserPermissionSnapshot: jest.fn().mockResolvedValue({
+        permissions: ['vibecoding:loops:read', 'vibecoding:loops:create'],
+        roles: ['MEMBER'],
+      }),
+    };
+    const scopedService = new LoopsService(
+      store,
+      createFakeRunner(),
+      new LoopsWorkLockService(),
+      new DeterministicLoopsAgentAdapter(),
+      new DeterministicLoopsClaudeAdapter(),
+      createFakeGitAdapter(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      new LoopsWorkspaceProfileService(),
+      undefined,
+      undefined,
+      undefined,
+      permissionService as never,
+    );
+
+    const snapshot = await scopedService.assetPermissions({
+      userId: 'sso-user-42',
+      teamId: 'team-1',
+      tenantId: 'tenant-1',
+      isAdmin: false,
+    });
+
+    expect(permissionService.getUserPermissionSnapshot).toHaveBeenCalledWith(
+      'sso-user-42',
+      'team-1',
+    );
+    expect(snapshot.source).toBe('sso');
+    expect(snapshot.identity).toMatchObject({
+      userId: 'sso-user-42',
+      teamId: 'team-1',
+      tenantId: 'tenant-1',
+      isSuperAdmin: false,
+    });
+    expect(snapshot.roles).toEqual(['MEMBER']);
+    expect(
+      snapshot.assets.map((asset) => [asset.assetKind, asset.requiredAction, asset.granted]),
+    ).toEqual([
+      ['workspace', 'operate', false],
+      ['blueprint', 'create', true],
+      ['runtime-backend', 'operate', false],
+      ['tool', 'operate', false],
+      ['eval-suite', 'operate', false],
+      ['trigger', 'operate', false],
+      ['remote-runner', 'admin', false],
+      ['mcp-server', 'admin', false],
+      ['ci-check', 'operate', false],
+    ]);
+    expect(snapshot.summary).toEqual({ total: 9, granted: 1, blocked: 8 });
+  });
+
+  it('blocks runtime backend operations without the SSO runtime asset permission', async () => {
+    const permissionService = {
+      getUserPermissionSnapshot: jest.fn().mockResolvedValue({
+        permissions: ['vibecoding:loops:read', 'vibecoding:loops:create'],
+        roles: ['MEMBER'],
+      }),
+    };
+    const scopedService = new LoopsService(
+      store,
+      createFakeRunner(),
+      new LoopsWorkLockService(),
+      new DeterministicLoopsAgentAdapter(),
+      new DeterministicLoopsClaudeAdapter(),
+      createFakeGitAdapter(),
+      undefined,
+      undefined,
+      undefined,
+      {
+        detectAll: async () => [
+          {
+            agent: 'codex',
+            preferredMode: 'local',
+            selected: { mode: 'local', status: 'ready' },
+            modes: [],
+            checks: [],
+          },
+        ],
+      } as unknown as AgentRuntimeDetectionService,
+      new LoopsWorkspaceProfileService(),
+      undefined,
+      undefined,
+      undefined,
+      permissionService as never,
+    );
+
+    await expect(
+      scopedService.updateRuntimeBackendPolicy(
+        'runtime-backend-codex',
+        { permissionProfile: 'read-only' },
+        {
+          userId: 'sso-user-42',
+          teamId: 'team-1',
+          tenantId: 'tenant-1',
+          isAdmin: false,
+        },
+      ),
+    ).rejects.toThrow('SSO permission vibecoding:loops:operate is required for runtime-backend');
+  });
+
+  it('allows runtime backend operations with the SSO runtime asset permission', async () => {
+    const permissionService = {
+      getUserPermissionSnapshot: jest.fn().mockResolvedValue({
+        permissions: ['vibecoding:loops:operate'],
+        roles: ['OPERATOR'],
+      }),
+    };
+    const scopedService = new LoopsService(
+      store,
+      createFakeRunner(),
+      new LoopsWorkLockService(),
+      new DeterministicLoopsAgentAdapter(),
+      new DeterministicLoopsClaudeAdapter(),
+      createFakeGitAdapter(),
+      undefined,
+      undefined,
+      undefined,
+      {
+        detectAll: async () => [
+          {
+            agent: 'codex',
+            preferredMode: 'local',
+            selected: { mode: 'local', status: 'ready' },
+            modes: [],
+            checks: [],
+          },
+        ],
+      } as unknown as AgentRuntimeDetectionService,
+      new LoopsWorkspaceProfileService(),
+      undefined,
+      undefined,
+      undefined,
+      permissionService as never,
+    );
+
+    const backend = await scopedService.updateRuntimeBackendPolicy(
+      'runtime-backend-codex',
+      { permissionProfile: 'workspace-write' },
+      {
+        userId: 'sso-user-42',
+        teamId: 'team-1',
+        tenantId: 'tenant-1',
+        isAdmin: false,
+      },
+    );
+
+    expect(backend.permissionProfile).toBe('workspace-write');
+    expect(permissionService.getUserPermissionSnapshot).toHaveBeenCalledWith(
+      'sso-user-42',
+      'team-1',
+    );
+  });
+
+  it('persists runtime backend policy patches in the Loops file store', async () => {
+    const { scopedService } = createPermissionedLoopsService(
+      store,
+      ['vibecoding:loops:operate'],
+      ['OPERATOR'],
+      {
+        detectAll: async () => [
+          {
+            agent: 'codex',
+            preferredMode: 'local',
+            selected: { mode: 'local', status: 'ready' },
+            modes: [],
+            checks: [],
+          },
+        ],
+      } as unknown as AgentRuntimeDetectionService,
+    );
+
+    await scopedService.updateRuntimeBackendPolicy(
+      'runtime-backend-codex',
+      {
+        permissionProfile: 'workspace-write via approved work package',
+        costPolicy: 'max 20 calls per loop',
+        fallbackPolicy: 'Fallback to Claude Code second opinion',
+      },
+      {
+        userId: 'sso-user-42',
+        teamId: 'team-1',
+        tenantId: 'tenant-1',
+        isAdmin: false,
+      },
+    );
+
+    const backend = await scopedService.getRuntimeBackend('runtime-backend-codex');
+    expect(backend).toMatchObject({
+      permissionProfile: 'workspace-write via approved work package',
+      costPolicy: 'max 20 calls per loop',
+      fallbackPolicy: 'Fallback to Claude Code second opinion',
+    });
+  });
+
+  it('persists runtime backend policy patches through DB persistence when available', async () => {
+    const policies = new Map<
+      string,
+      { permissionProfile?: string; costPolicy?: string; fallbackPolicy?: string }
+    >();
+    const persistence = {
+      patchRuntimeBackendPolicy: jest.fn(async (id: string, policy) => {
+        policies.set(id, { ...policies.get(id), ...policy });
+        return policies.get(id);
+      }),
+      readRuntimeBackendPolicies: jest.fn(async () => Object.fromEntries(policies)),
+    } as unknown as LoopsPersistenceService;
+    const { scopedService } = createPermissionedLoopsService(
+      store,
+      ['vibecoding:loops:operate'],
+      ['OPERATOR'],
+      {
+        detectAll: async () => [
+          {
+            agent: 'codex',
+            preferredMode: 'local',
+            selected: { mode: 'local', status: 'ready' },
+            modes: [],
+            checks: [],
+          },
+        ],
+      } as unknown as AgentRuntimeDetectionService,
+      persistence,
+    );
+
+    await scopedService.updateRuntimeBackendPolicy(
+      'runtime-backend-codex',
+      {
+        permissionProfile: 'db workspace-write',
+        costPolicy: 'db max 20 calls per loop',
+        fallbackPolicy: 'db fallback to Claude Code',
+      },
+      {
+        userId: 'sso-user-42',
+        teamId: 'team-1',
+        tenantId: 'tenant-1',
+        isAdmin: false,
+      },
+    );
+
+    const backend = await scopedService.getRuntimeBackend('runtime-backend-codex');
+    expect(persistence.patchRuntimeBackendPolicy).toHaveBeenCalledWith('runtime-backend-codex', {
+      permissionProfile: 'db workspace-write',
+      costPolicy: 'db max 20 calls per loop',
+      fallbackPolicy: 'db fallback to Claude Code',
+    });
+    expect(persistence.readRuntimeBackendPolicies).toHaveBeenCalled();
+    expect(backend).toMatchObject({
+      permissionProfile: 'db workspace-write',
+      costPolicy: 'db max 20 calls per loop',
+      fallbackPolicy: 'db fallback to Claude Code',
+    });
+  });
+
+  it('lists remote runner pool capacity as a control-plane asset', async () => {
+    const runners = await service.listRemoteRunners({ page: 1, limit: 20 });
+
+    expect(runners.list).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'remote-runner-primary',
+          status: 'ready',
+          sandboxProfile: 'remote-sandbox',
+          artifactRoot: '.loops/runs/remote-runner-primary',
+        }),
+      ]),
+    );
+  });
+
+  it('gates remote runner leases with SSO admin asset permission', async () => {
+    const { scopedService } = createPermissionedLoopsService(store, ['vibecoding:loops:operate']);
+
+    await expect(
+      scopedService.acquireRemoteRunnerLease(
+        'remote-runner-primary',
+        {
+          issueId: 'issue-1',
+          shardId: 'shard-1',
+          runtimeBackend: 'codex-cli',
+          reason: 'run shard remotely',
+        },
+        {
+          userId: 'sso-user-42',
+          teamId: 'team-1',
+          tenantId: 'tenant-1',
+          isAdmin: false,
+        },
+      ),
+    ).rejects.toThrow('SSO permission vibecoding:loops:admin is required for remote-runner');
+  });
+
+  it('acquires and releases remote runner control-plane leases with SSO admin permission', async () => {
+    const { scopedService } = createPermissionedLoopsService(
+      store,
+      ['vibecoding:loops:admin'],
+      ['ADMIN'],
+    );
+
+    const lease = await scopedService.acquireRemoteRunnerLease(
+      'remote-runner-primary',
+      {
+        issueId: 'issue-1',
+        shardId: 'shard-1',
+        runtimeBackend: 'claude-code-cli',
+        reason: 'run shard remotely',
+      },
+      {
+        userId: 'sso-user-42',
+        teamId: 'team-1',
+        tenantId: 'tenant-1',
+        isAdmin: false,
+      },
+    );
+
+    expect(lease).toEqual(
+      expect.objectContaining({
+        runnerId: 'remote-runner-primary',
+        issueId: 'issue-1',
+        shardId: 'shard-1',
+        runtimeBackend: 'claude-code-cli',
+        status: 'leased',
+        artifactRoot: '.loops/runs/remote-runner-primary/leases',
+      }),
+    );
+
+    const released = await scopedService.releaseRemoteRunnerLease(
+      'remote-runner-primary',
+      { leaseId: lease.id, reason: 'done' },
+      {
+        userId: 'sso-user-42',
+        teamId: 'team-1',
+        tenantId: 'tenant-1',
+        isAdmin: false,
+      },
+    );
+
+    expect(released).toMatchObject({
+      id: lease.id,
+      runnerId: 'remote-runner-primary',
+      status: 'released',
+      message: 'done',
+    });
+  });
+
+  it('gates remote runner jobs with SSO admin asset permission', async () => {
+    const { scopedService } = createPermissionedLoopsService(store, ['vibecoding:loops:operate']);
+
+    await expect(
+      scopedService.runRemoteRunnerJob(
+        'remote-runner-primary',
+        {
+          issueId: 'issue-1',
+          shardId: 'shard-1',
+          runtimeBackend: 'codex-cli',
+          workerKind: 'artifact-only',
+        },
+        {
+          userId: 'sso-user-42',
+          teamId: 'team-1',
+          tenantId: 'tenant-1',
+          isAdmin: false,
+        },
+      ),
+    ).rejects.toThrow('SSO permission vibecoding:loops:admin is required for remote-runner');
+  });
+
+  it('runs a remote runner worker job and persists artifact metadata', async () => {
+    const { scopedService } = createPermissionedLoopsService(
+      store,
+      ['vibecoding:loops:admin'],
+      ['ADMIN'],
+    );
+
+    const job = await scopedService.runRemoteRunnerJob(
+      'remote-runner-primary',
+      {
+        leaseId: 'lease-1',
+        issueId: 'issue-1',
+        shardId: 'shard-1',
+        runtimeBackend: 'claude-code-cli',
+        workerKind: 'artifact-only',
+        reason: 'materialize artifacts',
+      },
+      {
+        userId: 'sso-user-42',
+        teamId: 'team-1',
+        tenantId: 'tenant-1',
+        isAdmin: false,
+      },
+    );
+
+    expect(job).toMatchObject({
+      runnerId: 'remote-runner-primary',
+      leaseId: 'lease-1',
+      issueId: 'issue-1',
+      shardId: 'shard-1',
+      runtimeBackend: 'claude-code-cli',
+      workerKind: 'artifact-only',
+      status: 'succeeded',
+      message: 'materialize artifacts',
+    });
+    expect(job.artifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'manifest',
+          path: `${job.artifactRoot}/manifest.json`,
+          sizeBytes: expect.any(Number),
+          sha256: expect.any(String),
+        }),
+        expect.objectContaining({
+          kind: 'evidence',
+          path: `${job.artifactRoot}/worker-receipt.json`,
+          sizeBytes: expect.any(Number),
+          sha256: expect.any(String),
+        }),
+        expect.objectContaining({
+          kind: 'log',
+          path: `${job.artifactRoot}/worker.log`,
+          sizeBytes: expect.any(Number),
+          sha256: expect.any(String),
+        }),
+        expect.objectContaining({
+          kind: 'trace',
+          path: `${job.artifactRoot}/trace.json`,
+          sizeBytes: expect.any(Number),
+          sha256: expect.any(String),
+        }),
+      ]),
+    );
+    expect(existsSync(join(workspace, job.artifactRoot, 'manifest.json'))).toBe(true);
+    expect(existsSync(join(workspace, job.artifactRoot, 'worker-receipt.json'))).toBe(true);
+    expect(existsSync(join(workspace, job.artifactRoot, 'worker.log'))).toBe(true);
+    expect(existsSync(join(workspace, job.artifactRoot, 'trace.json'))).toBe(true);
+    expect(
+      existsSync(
+        join(workspace, '.loops', 'runs', 'remote-runner-primary', 'jobs', `${job.id}.json`),
+      ),
+    ).toBe(true);
+  });
+
+  it('lists MCP server and CI check control-plane registries', async () => {
+    const mcpServers = await service.listMcpServers({ page: 1, limit: 20 });
+    const ciChecks = await service.listCiChecks({ page: 1, limit: 20 });
+
+    expect(mcpServers.list).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'mcp-repo-tools',
+          protocol: 'mcp',
+          status: 'configured',
+        }),
+      ]),
+    );
+    expect(ciChecks.list).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'github-delivery-evidence',
+          provider: 'github-checks',
+          requiredForRelease: true,
+        }),
+      ]),
+    );
+  });
+
+  it('gates MCP server lifecycle actions with SSO admin asset permission', async () => {
+    const { scopedService } = createPermissionedLoopsService(store, ['vibecoding:loops:operate']);
+
+    await expect(
+      scopedService.connectMcpServer(
+        'mcp-repo-tools',
+        { reason: 'connect repo tools' },
+        {
+          userId: 'sso-user-42',
+          teamId: 'team-1',
+          tenantId: 'tenant-1',
+          isAdmin: false,
+        },
+      ),
+    ).rejects.toThrow('SSO permission vibecoding:loops:admin is required for mcp-server');
+  });
+
+  it('connects MCP server configs when SSO admin asset permission is present', async () => {
+    const { scopedService, permissionService } = createPermissionedLoopsService(
+      store,
+      ['vibecoding:loops:admin'],
+      ['ADMIN'],
+    );
+
+    const result = await scopedService.connectMcpServer(
+      'mcp-repo-tools',
+      { reason: 'connect repo tools' },
+      {
+        userId: 'sso-user-42',
+        teamId: 'team-1',
+        tenantId: 'tenant-1',
+        isAdmin: false,
+      },
+    );
+
+    expect(result.status).toBe('connected');
+    expect(result.health.ok).toBe(true);
+    expect(result.executionAudit).toEqual(
+      expect.objectContaining({
+        providerId: 'mcp-repo-tools',
+        action: 'connect',
+        outcome: 'success',
+        toolCount: 3,
+      }),
+    );
+    expect(result.executionAudit?.artifactRef).toContain('.loops/mcp-audits/mcp-repo-tools/');
+    expect(
+      existsSync(join(workspace, result.executionAudit?.artifactRef ?? 'missing-artifact')),
+    ).toBe(true);
+    expect(permissionService.getUserPermissionSnapshot).toHaveBeenCalledWith(
+      'sso-user-42',
+      'team-1',
+    );
+  });
+
+  it('records MCP provider execution audit artifacts when disconnecting a server', async () => {
+    const { scopedService } = createPermissionedLoopsService(
+      store,
+      ['vibecoding:loops:admin'],
+      ['ADMIN'],
+    );
+
+    const result = await scopedService.disconnectMcpServer(
+      'mcp-repo-tools',
+      { reason: 'disconnect repo tools' },
+      {
+        userId: 'sso-user-42',
+        teamId: 'team-1',
+        tenantId: 'tenant-1',
+        isAdmin: false,
+      },
+    );
+
+    expect(result.status).toBe('disconnected');
+    expect(result.executionAudit).toEqual(
+      expect.objectContaining({
+        providerId: 'mcp-repo-tools',
+        action: 'disconnect',
+        outcome: 'success',
+        toolCount: 3,
+      }),
+    );
+    expect(result.executionAudit?.artifactRef).toContain('.loops/mcp-audits/mcp-repo-tools/');
+    expect(
+      existsSync(join(workspace, result.executionAudit?.artifactRef ?? 'missing-artifact')),
+    ).toBe(true);
+  });
+
+  it('returns MCP provider execution audit metadata when testing a server', async () => {
+    const { scopedService, permissionService } = createPermissionedLoopsService(
+      store,
+      ['vibecoding:loops:admin'],
+      ['ADMIN'],
+    );
+
+    const result = await scopedService.testMcpServer(
+      'mcp-repo-tools',
+      { reason: 'audit provider test' },
+      {
+        userId: 'sso-user-42',
+        teamId: 'team-1',
+        tenantId: 'tenant-1',
+        isAdmin: false,
+      },
+    );
+
+    expect(result.status).toBe('configured');
+    expect(result.executionAudit).toEqual(
+      expect.objectContaining({
+        providerId: 'mcp-repo-tools',
+        action: 'test',
+        outcome: 'success',
+        toolCount: 3,
+      }),
+    );
+    expect(result.executionAudit?.auditRef).toContain('mcp-audit-mcp-repo-tools-');
+    expect(result.executionAudit?.artifactRef).toContain('.loops/mcp-audits/mcp-repo-tools/');
+    expect(
+      existsSync(join(workspace, result.executionAudit?.artifactRef ?? 'missing-artifact')),
+    ).toBe(true);
+    expect(permissionService.getUserPermissionSnapshot).toHaveBeenCalledWith(
+      'sso-user-42',
+      'team-1',
+    );
+  });
+
+  it('gates CI check lifecycle actions with SSO operate asset permission', async () => {
+    const { scopedService } = createPermissionedLoopsService(store, ['vibecoding:loops:create']);
+
+    await expect(
+      scopedService.connectCiCheck(
+        'github-delivery-evidence',
+        { reason: 'connect checks' },
+        {
+          userId: 'sso-user-42',
+          teamId: 'team-1',
+          tenantId: 'tenant-1',
+          isAdmin: false,
+        },
+      ),
+    ).rejects.toThrow('SSO permission vibecoding:loops:operate is required for ci-check');
+  });
+
+  it('connects CI check integrations when SSO operate asset permission is present', async () => {
+    const { scopedService } = createPermissionedLoopsService(
+      store,
+      ['vibecoding:loops:operate'],
+      ['OPERATOR'],
+    );
+
+    const result = await scopedService.connectCiCheck(
+      'github-delivery-evidence',
+      { reason: 'connect checks' },
+      {
+        userId: 'sso-user-42',
+        teamId: 'team-1',
+        tenantId: 'tenant-1',
+        isAdmin: false,
+      },
+    );
+
+    expect(result.status).toBe('connected');
+    expect(result.provider).toBe('github-checks');
+    expect(result.health.ok).toBe(true);
+  });
+
+  it('publishes GitHub Checks through the provider client when headSha is supplied', async () => {
+    const prProvider = {
+      publishGithubCheckRun: jest.fn().mockResolvedValue({
+        published: true,
+        provider: 'github',
+        id: 'check-run-11',
+        url: 'https://github.com/dofe/repo/runs/11',
+      }),
+    } as unknown as LoopsPrProviderClient;
+    const { scopedService } = createPermissionedLoopsService(
+      store,
+      ['vibecoding:loops:operate'],
+      ['OPERATOR'],
+      undefined,
+      undefined,
+      prProvider,
+    );
+    const finalized = await createFinalizedLoopForEvidence(scopedService);
+    const evidenceBacklink = `https://vibecoding.dofe.ai/loops/${finalized.issue.id}/delivery-evidence`;
+
+    const result = await scopedService.testCiCheck(
+      'github-delivery-evidence',
+      {
+        headSha: 'abc1234567',
+        name: 'DofeAI Delivery Evidence',
+        title: 'Delivery evidence passed',
+        summary: 'All required Loops evidence is present.',
+        detailsUrl: 'https://dofe.ai/loops/issue-1/evidence',
+        issueId: finalized.issue.id,
+        prId: '42',
+        evidenceBacklink,
+      },
+      {
+        userId: 'sso-user-42',
+        teamId: 'team-1',
+        tenantId: 'tenant-1',
+        isAdmin: false,
+      },
+    );
+
+    expect(prProvider.publishGithubCheckRun).toHaveBeenCalledWith({
+      headSha: 'abc1234567',
+      name: 'DofeAI Delivery Evidence',
+      title: 'Delivery evidence passed',
+      summary: 'All required Loops evidence is present.',
+      detailsUrl: 'https://dofe.ai/loops/issue-1/evidence',
+      status: undefined,
+      conclusion: undefined,
+    });
+    expect(result).toMatchObject({
+      id: 'github-delivery-evidence',
+      provider: 'github-checks',
+      status: 'connected',
+      lastPublication: {
+        artifactRef: expect.stringContaining(
+          '.loops/ci-checks/github-delivery-evidence/publications/abc1234567-',
+        ),
+        provider: 'github',
+        headSha: 'abc1234567',
+        checkRunId: 'check-run-11',
+        url: 'https://github.com/dofe/repo/runs/11',
+        outcome: 'published',
+        issueId: finalized.issue.id,
+        prId: '42',
+        evidenceBacklink,
+        workPackageCommitMap: expect.arrayContaining([
+          expect.objectContaining({
+            workPackageId: expect.stringContaining('shard'),
+            commitSha: expect.stringMatching(/^abc1234/),
+          }),
+        ]),
+      },
+      health: {
+        ok: true,
+        message: 'Published GitHub Check Run check-run-11.',
+      },
+    });
+    expect(existsSync(join(workspace, result.lastPublication?.artifactRef ?? 'missing'))).toBe(
+      true,
+    );
+    const publicationIndex = JSON.parse(
+      readFileSync(
+        join(workspace, '.loops/ci-checks/github-delivery-evidence/publications/index.json'),
+        'utf8',
+      ),
+    );
+    expect(publicationIndex.latest).toMatchObject({
+      artifactRef: result.lastPublication?.artifactRef,
+      headSha: 'abc1234567',
+      checkRunId: 'check-run-11',
+      outcome: 'published',
+      issueId: finalized.issue.id,
+      prId: '42',
+      evidenceBacklink,
+      workPackageCommitMap: expect.arrayContaining([
+        expect.objectContaining({
+          workPackageId: expect.stringContaining('shard'),
+          commitSha: expect.stringMatching(/^abc1234/),
+        }),
+      ]),
+    });
+    expect(publicationIndex.entries).toEqual([
+      expect.objectContaining({
+        artifactRef: result.lastPublication?.artifactRef,
+        headSha: 'abc1234567',
+        outcome: 'published',
+      }),
+    ]);
+
+    const history = await scopedService.listCiCheckPublications('github-delivery-evidence');
+    expect(history).toMatchObject({
+      integrationId: 'github-delivery-evidence',
+      latest: {
+        artifactRef: result.lastPublication?.artifactRef,
+        headSha: 'abc1234567',
+        checkRunId: 'check-run-11',
+        outcome: 'published',
+        issueId: finalized.issue.id,
+        prId: '42',
+        evidenceBacklink,
+        workPackageCommitMap: expect.arrayContaining([
+          expect.objectContaining({
+            workPackageId: expect.stringContaining('shard'),
+            commitSha: expect.stringMatching(/^abc1234/),
+          }),
+        ]),
+      },
+      entries: [
+        expect.objectContaining({
+          artifactRef: result.lastPublication?.artifactRef,
+          outcome: 'published',
+        }),
+      ],
+    });
+  });
+
+  it('records a GitHub Checks publication artifact when provider publish fails', async () => {
+    const prProvider = {
+      publishGithubCheckRun: jest.fn().mockResolvedValue({
+        published: false,
+        provider: 'github',
+        reason: 'repository not allowlisted',
+      }),
+    } as unknown as LoopsPrProviderClient;
+    const { scopedService } = createPermissionedLoopsService(
+      store,
+      ['vibecoding:loops:operate'],
+      ['OPERATOR'],
+      undefined,
+      undefined,
+      prProvider,
+    );
+
+    const result = await scopedService.testCiCheck(
+      'github-delivery-evidence',
+      {
+        headSha: 'def1234567',
+        name: 'DofeAI Delivery Evidence',
+      },
+      {
+        userId: 'sso-user-42',
+        teamId: 'team-1',
+        tenantId: 'tenant-1',
+        isAdmin: false,
+      },
+    );
+
+    expect(result).toMatchObject({
+      id: 'github-delivery-evidence',
+      provider: 'github-checks',
+      status: 'failed',
+      lastPublication: {
+        artifactRef: expect.stringContaining(
+          '.loops/ci-checks/github-delivery-evidence/publications/def1234567-',
+        ),
+        provider: 'github',
+        headSha: 'def1234567',
+        outcome: 'failed',
+        reason: 'repository not allowlisted',
+      },
+      health: {
+        ok: false,
+        message: 'repository not allowlisted',
+      },
+    });
+    expect(existsSync(join(workspace, result.lastPublication?.artifactRef ?? 'missing'))).toBe(
+      true,
+    );
+    const publicationIndex = JSON.parse(
+      readFileSync(
+        join(workspace, '.loops/ci-checks/github-delivery-evidence/publications/index.json'),
+        'utf8',
+      ),
+    );
+    expect(publicationIndex.latest).toMatchObject({
+      artifactRef: result.lastPublication?.artifactRef,
+      headSha: 'def1234567',
+      outcome: 'failed',
+      reason: 'repository not allowlisted',
+    });
+    expect(publicationIndex.entries[0]).toMatchObject({
+      artifactRef: result.lastPublication?.artifactRef,
+      headSha: 'def1234567',
+      outcome: 'failed',
+    });
+  });
+
+  it('gates recipe admin action requests with SSO blueprint create permission', async () => {
+    const { scopedService } = createPermissionedLoopsService(store, ['vibecoding:loops:read']);
+
+    await expect(
+      scopedService.requestRecipeAdminAction(
+        {
+          actionId: 'createVersion',
+          blueprintId: 'delivery-blueprints',
+          recipeKind: 'feature',
+          evidenceRefs: [],
+        },
+        {
+          userId: 'sso-user-42',
+          teamId: 'team-1',
+          tenantId: 'tenant-1',
+          isAdmin: false,
+        },
+      ),
+    ).rejects.toThrow('SSO permission vibecoding:loops:create is required for blueprint');
+  });
+
+  it('records tenant-scoped recipe admin action artifacts', async () => {
+    const { scopedService } = createPermissionedLoopsService(
+      store,
+      ['vibecoding:loops:create'],
+      ['MEMBER'],
+    );
+
+    const result = await scopedService.requestRecipeAdminAction(
+      {
+        actionId: 'rollbackVersion',
+        blueprintId: 'delivery-blueprints',
+        recipeKind: 'feature',
+        targetVersion: 'v1',
+        reason: 'rollback failed recipe',
+        evidenceRefs: ['issue-1'],
+      },
+      {
+        userId: 'sso-user-42',
+        teamId: 'team-1',
+        tenantId: 'tenant-1',
+        isAdmin: false,
+      },
+    );
+
+    expect(result).toMatchObject({
+      actionId: 'rollbackVersion',
+      status: 'requested',
+      blueprintId: 'delivery-blueprints',
+      recipeKind: 'feature',
+      targetVersion: 'v1',
+      tenantId: 'tenant-1',
+      teamId: 'team-1',
+      actorId: 'sso-user-42',
+      sourcePermission: 'vibecoding:loops:create',
+      reason: 'rollback failed recipe',
+      evidenceRefs: ['issue-1'],
+      message:
+        'Recipe admin action request recorded for tenant-scoped approval or worker execution.',
+    });
+    expect(result.artifactRef).toContain('.loops/recipe-admin/tenant-1/actions/');
+    expect(existsSync(join(workspace, result.artifactRef))).toBe(true);
+  });
+
+  it('aggregates eval suites and runs from existing loop evidence', async () => {
+    const passed = await service.createIssue({
+      title: 'Eval-ready delivery',
+      targetRepo: workspace,
+      body: 'Eval API should derive suite and run records from existing loop state.',
+      priority: 'P2',
+      acceptanceCriteria: ['- eval run links back to the loop issue'],
+    });
+    await store.upsertState({
+      ...passed.state,
+      globalVerdict: 'PASS',
+      updated: new Date().toISOString(),
+    });
+    const needsWork = await service.createIssue({
+      title: 'Eval attention delivery',
+      targetRepo: workspace,
+      body: 'Eval API should count attention records from global review evidence.',
+      priority: 'P2',
+      acceptanceCriteria: ['- attention run is visible'],
+    });
+    await store.upsertState({
+      ...needsWork.state,
+      globalVerdict: 'NEEDS-WORK',
+      updated: new Date().toISOString(),
+    });
+    const failed = await service.createIssue({
+      title: 'Eval blocked delivery',
+      targetRepo: workspace,
+      body: 'Eval API should count blocked records from failed global review evidence.',
+      priority: 'P2',
+      acceptanceCriteria: ['- blocked run is visible'],
+    });
+    await store.upsertState({
+      ...failed.state,
+      globalVerdict: 'FAIL',
+      paused: true,
+      updated: new Date().toISOString(),
+    });
+
+    const suites = await service.listEvalSuites({ page: 1, limit: 20 });
+    expect(suites.list.map((suite) => suite.id)).toEqual(
+      expect.arrayContaining(['architecture-compliance', 'delivery-readiness']),
+    );
+    const deliverySuite = suites.list.find((suite) => suite.id === 'delivery-readiness');
+    expect(deliverySuite).toEqual(
+      expect.objectContaining({
+        version: 1,
+        checks: expect.arrayContaining([expect.objectContaining({ hardGate: true })]),
+        summary: expect.objectContaining({
+          total: 3,
+          passed: 0,
+          attention: 1,
+          blocked: 2,
+          passRate: expect.any(Number),
+        }),
+      }),
+    );
+    expect(deliverySuite?.checks.find((check) => check.id === 'global-review-pass')).toEqual(
+      expect.objectContaining({
+        status: 'blocked',
+        passCount: 1,
+        failCount: 1,
+        blockedCount: 1,
+      }),
+    );
+
+    const runs = await service.listEvalRuns({
+      suiteId: 'delivery-readiness',
+      loopId: passed.issue.id,
+      page: 1,
+      limit: 20,
+    });
+    expect(runs.total).toBe(1);
+    expect(runs.list[0]).toEqual(
+      expect.objectContaining({
+        id: `eval-run-delivery-readiness-${passed.issue.id}`,
+        suiteId: 'delivery-readiness',
+        loopId: passed.issue.id,
+        status: 'attention',
+        score: 33,
+        evidenceRefs: [`.loops/issues/${passed.issue.id}.json`],
+      }),
+    );
+    expect(runs.list[0]?.checkResults.find((check) => check.id === 'global-review-pass')).toEqual(
+      expect.objectContaining({
+        status: 'passed',
+        passCount: 1,
+        failCount: 0,
+        blockedCount: 0,
+      }),
+    );
+  });
+
+  it('materializes eval historical baselines and returns trend deltas', async () => {
+    const baselineLoop = await service.createIssue({
+      title: 'Historical baseline delivery',
+      targetRepo: workspace,
+      body: 'Eval trend worker should persist blueprint baselines from existing runs.',
+      priority: 'P2',
+      acceptanceCriteria: ['- baseline snapshot is persisted'],
+    });
+    await store.upsertState({
+      ...baselineLoop.state,
+      globalVerdict: 'PASS',
+      updated: new Date().toISOString(),
+    });
+
+    const worker = await service.runEvalTrendWorker();
+
+    expect(worker.snapshotCount).toBeGreaterThan(0);
+    expect(worker.baselines).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          suiteId: 'delivery-readiness',
+          blueprintId: 'default-feature@v1',
+          runCount: expect.any(Number),
+          averageScore: expect.any(Number),
+          baselineVersion: expect.stringContaining('default-feature-v1:delivery-readiness:'),
+        }),
+      ]),
+    );
+
+    const runs = await service.listEvalRuns({
+      suiteId: 'delivery-readiness',
+      loopId: baselineLoop.issue.id,
+      page: 1,
+      limit: 20,
+    });
+
+    expect(runs.list[0]).toEqual(
+      expect.objectContaining({
+        blueprintId: 'default-feature@v1',
+        baselineScore: expect.any(Number),
+        baselineVersion: expect.stringContaining('default-feature-v1:delivery-readiness:'),
+        trendDelta: expect.any(Number),
+      }),
+    );
+  });
+
+  it('materializes Loop Bench trend snapshots for dashboard regression review', async () => {
+    const baselineLoop = await service.createIssue({
+      title: 'Loop bench trend delivery',
+      targetRepo: workspace,
+      body: 'Loop Bench trend worker should persist a dashboard quality snapshot.',
+      priority: 'P2',
+      acceptanceCriteria: ['- trend snapshot is persisted'],
+    });
+    await store.upsertState({
+      ...baselineLoop.state,
+      phase: 'CLOSED',
+      finalized: true,
+      globalVerdict: 'PASS',
+      reloopCount: 0,
+      updated: new Date().toISOString(),
+    });
+
+    const first = await service.runLoopBenchTrendWorker();
+    const second = await service.runLoopBenchTrendWorker();
+
+    expect(second.historyCount).toBe(first.historyCount + 1);
+    expect(second.snapshot).toMatchObject({
+      loopCount: expect.any(Number),
+      artifactRef: expect.stringMatching(/^\.loops\/bench-trends\//),
+      metrics: expect.objectContaining({
+        firstPassReviewRate: expect.any(Number),
+        browserQaRegressionRate: expect.any(Number),
+        secondOpinionConflictRate: expect.any(Number),
+        releaseBlockerRate: expect.any(Number),
+        runtimeViolationRate: expect.any(Number),
+        learningReuseRate: expect.any(Number),
+        canaryPassRate: expect.any(Number),
+      }),
+      previousMetrics: first.snapshot.metrics,
+    });
+    expect(second.snapshot.deltas).toEqual(
+      expect.objectContaining({
+        firstPassReviewRate: expect.any(Number),
+        canaryPassRate: expect.any(Number),
+      }),
+    );
+
+    const latest = await service.metrics();
+    expect(latest.loopBenchTrend).toMatchObject({
+      historyCount: second.historyCount,
+      latest: {
+        id: second.snapshot.id,
+        artifactRef: second.snapshot.artifactRef,
+      },
+    });
+  });
+
+  it('creates a loop from an unsigned webhook trigger for local/manual compatibility', async () => {
+    const result = await service.webhookTrigger({
+      source: 'generic',
+      event: 'manual-smoke',
+      payload: { title: 'Webhook smoke', repo: workspace },
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        source: 'generic',
+        event: 'manual-smoke',
+        created: true,
+        issueId: expect.any(String),
+      }),
+    );
+
+    const detail = await service.getIssue(result.issueId);
+    expect(detail.issue.sourceChannel).toBe('webhook');
+    expect(detail.issue.sourceKind).toBe('generic');
+    expect(detail.issue.body).toContain('"title": "Webhook smoke"');
+  });
+
+  it('maps webhook payload fields into a delivery loop issue', async () => {
+    const result = await service.webhookTrigger({
+      source: 'github',
+      event: 'issues.opened',
+      payload: {
+        targetRepo: workspace,
+        issue: {
+          title: 'Checkout regression after payment callback',
+          body: 'Users cannot complete checkout after the callback redirects.',
+        },
+        labels: ['bug', 'P1'],
+        acceptanceCriteria: [
+          'Regression test covers the callback path',
+          'Checkout succeeds after redirect',
+        ],
+      },
+    });
+
+    expect(result.created).toBe(true);
+    const detail = await service.getIssue(result.issueId);
+    expect(detail.issue).toMatchObject({
+      title: '[github:issues.opened] Checkout regression after payment callback',
+      priority: 'P1',
+      targetRepo: workspace,
+      acceptanceCriteria: [
+        'Regression test covers the callback path',
+        'Checkout succeeds after redirect',
+      ],
+      sourceChannel: 'webhook',
+      sourceKind: 'github',
+    });
+    expect(detail.issue.body).toContain('**Mapped Summary**');
+    expect(detail.issue.body).toContain('Users cannot complete checkout');
+  });
+
+  it('redacts sensitive webhook payload fields before writing delivery evidence', async () => {
+    const result = await service.webhookTrigger({
+      source: 'generic',
+      event: 'secure-payload',
+      payload: {
+        title: 'Webhook with secret material',
+        token: 'ghp_should_not_be_written',
+        nested: {
+          authorization: 'Bearer should-not-be-written',
+          api_key: 'key-should-not-be-written',
+          safeContext: 'keep this context',
+        },
+      },
+    });
+
+    expect(result.created).toBe(true);
+    const detail = await service.getIssue(result.issueId);
+    expect(detail.issue.body).toContain('"token": "[REDACTED]"');
+    expect(detail.issue.body).toContain('"authorization": "[REDACTED]"');
+    expect(detail.issue.body).toContain('"api_key": "[REDACTED]"');
+    expect(detail.issue.body).toContain('"safeContext": "keep this context"');
+    expect(detail.issue.body).not.toContain('ghp_should_not_be_written');
+    expect(detail.issue.body).not.toContain('Bearer should-not-be-written');
+    expect(detail.issue.body).not.toContain('key-should-not-be-written');
+  });
+
+  it('rejects oversized webhook payloads before creating a loop', async () => {
+    process.env.LOOPS_WEBHOOK_MAX_PAYLOAD_BYTES = '64';
+    const before = await service.list({ page: 1, limit: 20 });
+
+    await expect(
+      service.webhookTrigger({
+        source: 'generic',
+        event: 'oversized',
+        payload: { title: 'Oversized webhook', body: 'x'.repeat(128) },
+      }),
+    ).rejects.toThrow('Webhook payload exceeds 64 byte limit');
+
+    const after = await service.list({ page: 1, limit: 20 });
+    expect(after.total).toBe(before.total);
+  });
+
+  it('applies a per-source webhook rate guard before creating a loop', async () => {
+    process.env.LOOPS_WEBHOOK_RATE_LIMIT_PER_MINUTE = '1';
+    const first = await service.webhookTrigger({
+      source: 'generic',
+      event: 'rate-limited',
+      payload: { title: 'First webhook in window' },
+    });
+
+    expect(first.created).toBe(true);
+    await expect(
+      service.webhookTrigger({
+        source: 'generic',
+        event: 'rate-limited',
+        payload: { title: 'Second webhook in window' },
+      }),
+    ).rejects.toThrow('Webhook rate limit exceeded for generic:rate-limited');
+  });
+
+  it('does not spend webhook rate quota on invalid signatures', async () => {
+    process.env.LOOPS_WEBHOOK_SECRET = 'local-test-secret';
+    process.env.LOOPS_WEBHOOK_RATE_LIMIT_PER_MINUTE = '1';
+    const payload = { title: 'Signed request after rejected spoof' };
+
+    await expect(
+      service.webhookTrigger({
+        source: 'generic',
+        event: 'signed-rate-window',
+        payload,
+        signatureHeader: 'sha256=0'.padEnd(71, '0'),
+      }),
+    ).rejects.toThrow('Webhook signature verification failed');
+
+    const signature = createHmac('sha256', process.env.LOOPS_WEBHOOK_SECRET)
+      .update(JSON.stringify(payload))
+      .digest('hex');
+    const result = await service.webhookTrigger({
+      source: 'generic',
+      event: 'signed-rate-window',
+      payload,
+      signatureHeader: `sha256=${signature}`,
+    });
+
+    expect(result.created).toBe(true);
+  });
+
+  it('requires a webhook signature when a signing secret is configured', async () => {
+    process.env.LOOPS_WEBHOOK_SECRET = 'local-test-secret';
+
+    await expect(
+      service.webhookTrigger({
+        source: 'generic',
+        event: 'missing-signature',
+        payload: { title: 'Unsigned webhook should be blocked' },
+      }),
+    ).rejects.toThrow('Webhook signing secret is configured but no signature was provided');
+  });
+
+  it('rejects webhook triggers with an invalid HMAC signature before creating a loop', async () => {
+    process.env.LOOPS_WEBHOOK_SECRET = 'local-test-secret';
+    const before = await service.list({ page: 1, limit: 20 });
+
+    await expect(
+      service.webhookTrigger({
+        source: 'github',
+        event: 'issues.opened',
+        payload: { action: 'opened', issue: { title: 'Bad signature' } },
+        signatureHeader: 'sha256=0'.padEnd(71, '0'),
+      }),
+    ).rejects.toThrow('Webhook signature verification failed');
+
+    const after = await service.list({ page: 1, limit: 20 });
+    expect(after.total).toBe(before.total);
+  });
+
+  it('accepts webhook triggers with a valid HMAC signature', async () => {
+    process.env.LOOPS_WEBHOOK_SECRET = 'local-test-secret';
+    const payload = { action: 'opened', issue: { title: 'Signed webhook' } };
+    const signature = createHmac('sha256', process.env.LOOPS_WEBHOOK_SECRET)
+      .update(JSON.stringify(payload))
+      .digest('hex');
+
+    const result = await service.webhookTrigger({
+      source: 'github',
+      event: 'issues.opened',
+      payload,
+      signatureHeader: `sha256=${signature}`,
+    });
+
+    expect(result.created).toBe(true);
+    const detail = await service.getIssue(result.issueId);
+    expect(detail.issue.sourceChannel).toBe('webhook');
+    expect(detail.issue.sourceKind).toBe('github');
+  });
+
+  it('accepts webhook signatures with a named secretRef', async () => {
+    process.env.LOOPS_GITHUB_WEBHOOK_SECRET = 'github-secret';
+    const payload = { action: 'opened', issue: { title: 'Secret ref webhook' } };
+    const signature = createHmac('sha256', process.env.LOOPS_GITHUB_WEBHOOK_SECRET)
+      .update(JSON.stringify(payload))
+      .digest('hex');
+
+    const result = await service.webhookTrigger({
+      source: 'github',
+      event: 'issues.opened',
+      payload,
+      secretRef: 'LOOPS_GITHUB_WEBHOOK_SECRET',
+      signature,
+    });
+
+    expect(result.created).toBe(true);
+    const detail = await service.getIssue(result.issueId);
+    expect(detail.issue.title).toContain('Secret ref webhook');
   });
 
   it('attributes createIssue to the authenticated SSO user, ignoring client submitter fields (dofe-sso)', async () => {
@@ -475,6 +1871,17 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(queued.list[0].workflowRecipe).toMatchObject({
       id: 'default-feature',
       source: 'loop-snapshot',
+      baselineEvidence: expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'blueprint',
+          label: 'Blueprint version',
+          value: 'default-feature@v1',
+        }),
+        expect.objectContaining({
+          kind: 'eval',
+          value: 'architecture, delivery, runtime, test, cost hard gates',
+        }),
+      ]),
       steps: expect.arrayContaining([
         expect.objectContaining({ kind: 'spec_review', owner: 'codex', status: 'current' }),
         expect.objectContaining({ kind: 'implementation', owner: 'claude-code' }),
@@ -495,6 +1902,11 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(detail.workflowRecipe).toMatchObject({
       source: 'loop-snapshot',
       capturedAt: created.issue.created,
+      baselineEvidence: expect.arrayContaining([
+        expect.objectContaining({ kind: 'blueprint', value: 'default-feature@v1' }),
+        expect.objectContaining({ kind: 'runtime' }),
+        expect.objectContaining({ kind: 'gate' }),
+      ]),
       steps: expect.arrayContaining([
         expect.objectContaining({ kind: 'spec_review', status: 'current' }),
       ]),
@@ -518,6 +1930,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(detail.spec?.body).toContain('真实浏览器 SSO E2E 仍需外部联调环境验证');
 
     // approve -> APPROVED spec and wakes the engine through automated phases.
+    await prepareReleaseGate(service, created.issue.id);
     detail = await service.reviewSpec(created.issue.id, { action: 'approve', reviewer: 'tester' });
     expect(detail.spec?.status).toBe('APPROVED');
     expect(detail.shards.length).toBeGreaterThan(0);
@@ -540,8 +1953,8 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(detail.reviewGates).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: 'product', status: 'passed' }),
-        expect.objectContaining({ kind: 'code', reviewer: 'codex', status: 'passed' }),
-        expect.objectContaining({ kind: 'security', reviewer: 'codex', status: 'passed' }),
+        expect.objectContaining({ kind: 'code', status: 'passed' }),
+        expect.objectContaining({ kind: 'security', status: 'passed' }),
       ]),
     );
     expect(detail.releaseGate).toMatchObject({
@@ -553,6 +1966,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
         requiredReviewsPassed: true,
         secondOpinionPassed: true,
         browserQaPassed: true,
+        rollbackNote: true,
       }),
     });
     expect(detail.secondOpinion).toMatchObject({
@@ -621,6 +2035,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     });
 
     await runtimeService.advance(created.issue.id);
+    await prepareReleaseGate(runtimeService, created.issue.id);
     const finalized = await runtimeService.reviewSpec(created.issue.id, {
       action: 'approve',
       reviewer: 'tester',
@@ -674,6 +2089,25 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
       ]),
     );
     expect(workspaces.recentLearnings?.map((learning) => learning.id)).not.toContain(
+      testPolicyLearning!.id,
+    );
+
+    const superseded = await runtimeService.governLearning(testPolicyLearning!.id, {
+      action: 'supersede',
+      actor: 'tester',
+      targetLearningId: decisionLearning!.id,
+      reason: 'Replaced by the higher confidence delivery decision',
+    });
+    expect(superseded.learningGovernance?.superseded).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceLearningId: testPolicyLearning!.id,
+          targetLearningId: decisionLearning!.id,
+          actor: 'tester',
+        }),
+      ]),
+    );
+    expect(superseded.recentLearnings?.map((learning) => learning.id)).not.toContain(
       testPolicyLearning!.id,
     );
   });
@@ -826,6 +2260,16 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
             confidence: 0.8,
             createdAt: '2026-06-23T00:01:00.000Z',
           },
+          {
+            id: 'learning-old-low-confidence',
+            workspaceId: 'default',
+            repo: workspace,
+            kind: 'pitfall',
+            summary: 'Old weak guidance that should age out automatically',
+            evidenceIds: [],
+            confidence: 0.2,
+            createdAt: '2025-01-01T00:00:00.000Z',
+          },
         ],
         null,
         2,
@@ -843,6 +2287,140 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
         }),
       ]),
     );
+    expect(result.learningGovernance?.deprecated).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          learningId: 'learning-old-low-confidence',
+          actor: 'learning-aging-worker',
+        }),
+      ]),
+    );
+    expect(result.recentLearnings?.map((learning) => learning.id)).not.toContain(
+      'learning-old-low-confidence',
+    );
+
+    const candidate = result.learningGovernance!.autoMergeCandidates[0]!;
+    const approved = await runtimeService.governLearning(candidate.sourceLearningId, {
+      action: 'approve-merge',
+      actor: 'tester',
+      targetLearningId: candidate.targetLearningId,
+      reason: 'Approved duplicate memory',
+    });
+    expect(approved.learningGovernance?.autoMergeCandidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceLearningId: candidate.sourceLearningId,
+          targetLearningId: candidate.targetLearningId,
+          status: 'approved',
+        }),
+      ]),
+    );
+    expect(approved.learningGovernance?.merges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceLearningId: candidate.sourceLearningId,
+          targetLearningId: candidate.targetLearningId,
+          actor: 'tester',
+        }),
+      ]),
+    );
+    expect(approved.recentLearnings?.map((learning) => learning.id)).not.toContain(
+      candidate.sourceLearningId,
+    );
+
+    const rejected = await runtimeService.governLearning(candidate.targetLearningId, {
+      action: 'reject-merge',
+      actor: 'tester',
+      targetLearningId: candidate.sourceLearningId,
+      reason: 'Not actually equivalent',
+    });
+    expect(rejected.learningGovernance?.autoMergeCandidates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          sourceLearningId: candidate.targetLearningId,
+          targetLearningId: candidate.sourceLearningId,
+          status: 'rejected',
+        }),
+      ]),
+    );
+
+    const deprecated = await runtimeService.governLearning(candidate.targetLearningId, {
+      action: 'deprecate',
+      actor: 'tester',
+      reason: 'Superseded by approved merge target',
+    });
+    expect(deprecated.learningGovernance?.deprecated).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          learningId: candidate.targetLearningId,
+          actor: 'tester',
+        }),
+      ]),
+    );
+    expect(deprecated.recentLearnings?.map((learning) => learning.id)).not.toContain(
+      candidate.targetLearningId,
+    );
+  });
+
+  it('materializes a file-backed cross-workspace learning index', async () => {
+    const runtimeService = buildRuntimeService([]);
+    await store.ensureInitialized();
+    mkdirSync(join(workspace, '.loops', 'learnings'), { recursive: true });
+    writeFileSync(
+      join(workspace, '.loops', 'learnings', 'manual.json'),
+      JSON.stringify(
+        [
+          {
+            id: 'learning-index-a',
+            workspaceId: 'default',
+            repo: workspace,
+            kind: 'test_policy',
+            summary: 'Run Browser QA before release.',
+            fingerprint: 'browser-qa-release',
+            tags: ['browser', 'qa'],
+            evidenceIds: ['browser-qa-1'],
+            confidence: 0.88,
+            lastUsedAt: '2026-06-23T01:00:00.000Z',
+            createdAt: '2026-06-23T00:00:00.000Z',
+          },
+          {
+            id: 'learning-index-b',
+            workspaceId: 'workspace-b',
+            repo: join(workspace, 'packages/web'),
+            kind: 'test_policy',
+            summary: 'Run Browser QA before release.',
+            fingerprint: 'browser-qa-release',
+            tags: ['browser', 'qa'],
+            evidenceIds: ['browser-qa-2'],
+            confidence: 0.8,
+            createdAt: '2026-06-23T00:05:00.000Z',
+          },
+        ],
+        null,
+        2,
+      ),
+    );
+
+    const result = await runtimeService.runLearningIndexWorker();
+    const indexPath = join(workspace, '.loops', 'learnings', 'cross-workspace-index.json');
+    const indexMarkdownPath = join(workspace, '.loops', 'learnings', 'cross-workspace-index.md');
+
+    expect(result.learningIndex).toMatchObject({
+      artifactRef: '.loops/learnings/cross-workspace-index.json',
+      summary: {
+        total: 2,
+        workspaces: 2,
+        repos: 2,
+        duplicateFingerprints: 1,
+        reusable: 1,
+      },
+    });
+    expect(result.learningIndex?.entries.map((entry) => entry.learningId)).toEqual([
+      'learning-index-b',
+      'learning-index-a',
+    ]);
+    expect(JSON.parse(readFileSync(indexPath, 'utf8'))).toMatchObject(result.learningIndex!);
+    expect(readFileSync(indexMarkdownPath, 'utf8')).toContain('duplicateFingerprints: 1');
   });
 
   it('runs report-only Browser QA and stores evidence on the loop detail', async () => {
@@ -945,6 +2523,247 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(detail.releaseGate?.checklist.secondOpinionPassed).toBe(true);
   });
 
+  it('records second-opinion conflict resolutions as delivery governance evidence', async () => {
+    const runtimeService = buildRuntimeService([]);
+    const created = await runtimeService.createIssue({
+      title: 'Resolve second opinion',
+      targetRepo: workspace,
+      body: 'The loop should audit every second opinion conflict decision.',
+      priority: 'P1',
+      acceptanceCriteria: ['- Conflict decisions are persisted in delivery governance'],
+    });
+
+    const detail = await runtimeService.resolveSecondOpinion(created.issue.id, {
+      action: 'accept-secondary',
+      findingFingerprint: 'secondary-finding',
+      reason: 'Claude Code finding catches a release blocker.',
+    });
+
+    expect(detail.deliveryGovernance?.secondOpinionResolutions).toEqual([
+      expect.objectContaining({
+        resolution: 'accept-secondary',
+        conflictFingerprint: 'secondary-finding',
+        actor: 'human',
+        reason: 'Claude Code finding catches a release blocker.',
+      }),
+    ]);
+    expect(detail.reviewGates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'code',
+          status: 'passed',
+          waiverReason: undefined,
+        }),
+      ]),
+    );
+  });
+
+  it('keeps the code review gate blocked when second-opinion resolution requests changes', async () => {
+    const runtimeService = buildRuntimeService([]);
+    const created = await runtimeService.createIssue({
+      title: 'Request changes from second opinion',
+      targetRepo: workspace,
+      body: 'The loop should keep release blocked when a conflict requires changes.',
+      priority: 'P1',
+      acceptanceCriteria: ['- request-changes records a blocker'],
+    });
+
+    const detail = await runtimeService.resolveSecondOpinion(created.issue.id, {
+      action: 'request-changes',
+      findingFingerprint: 'secondary-finding',
+      reason: 'Fix the secondary finding before release.',
+    });
+
+    expect(detail.deliveryGovernance?.secondOpinionResolutions).toEqual([
+      expect.objectContaining({
+        resolution: 'request-changes',
+        conflictFingerprint: 'secondary-finding',
+      }),
+    ]);
+    expect(detail.reviewGates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'code',
+          status: 'blocked',
+          waiverReason: 'Fix the secondary finding before release.',
+        }),
+      ]),
+    );
+  });
+
+  it('resolves second-opinion conflicts by fingerprint batch before release', async () => {
+    const runtimeService = buildRuntimeService([]);
+    const created = await runtimeService.createIssue({
+      title: 'Resolve batched second opinion conflicts',
+      targetRepo: workspace,
+      body: 'The loop should only unblock release after all conflict fingerprints are resolved.',
+      priority: 'P1',
+      acceptanceCriteria: ['- Conflict decisions are tracked per fingerprint'],
+    });
+    await store.writeSecondOpinion({
+      id: `${created.issue.id}-second-opinion`,
+      issueId: created.issue.id,
+      status: 'conflict',
+      primary: {
+        role: 'primary',
+        reviewer: 'codex',
+        status: 'passed',
+        findingsCount: 2,
+        findings: [
+          { fingerprint: 'conflict-a', severity: 'major', desc: 'Primary A' },
+          { fingerprint: 'conflict-b', severity: 'major', desc: 'Primary B' },
+        ],
+        evidenceIds: ['primary-review'],
+      },
+      secondary: {
+        role: 'secondary',
+        reviewer: 'claude-code',
+        status: 'needs_changes',
+        findingsCount: 2,
+        findings: [
+          { fingerprint: 'conflict-a', severity: 'critical', desc: 'Secondary A' },
+          { fingerprint: 'conflict-b', severity: 'critical', desc: 'Secondary B' },
+        ],
+        evidenceIds: ['second-opinion'],
+      },
+      comparison: {
+        agreementCount: 0,
+        primaryOnlyCount: 0,
+        secondaryOnlyCount: 0,
+        conflictCount: 2,
+        agreementFingerprints: [],
+        primaryOnlyFingerprints: [],
+        secondaryOnlyFingerprints: [],
+        conflictFingerprints: ['conflict-a', 'conflict-b'],
+      },
+      requiredForRelease: false,
+      updated: '2026-06-24T00:00:00.000Z',
+    });
+    await runtimeService.governDelivery(created.issue.id, {
+      action: 'set-second-opinion-policy',
+      requiredForRelease: true,
+      conflictHumanGate: true,
+      actor: 'human',
+    });
+
+    const partial = await runtimeService.resolveSecondOpinion(created.issue.id, {
+      action: 'accept-secondary',
+      findingFingerprints: ['conflict-a'],
+      reason: 'Accept only one conflict.',
+    });
+    expect(partial.deliveryGovernance?.secondOpinionResolutions).toEqual([
+      expect.objectContaining({
+        resolution: 'accept-secondary',
+        conflictFingerprint: 'conflict-a',
+      }),
+    ]);
+    const partialReleaseGate = {
+      ...partial.releaseGate!,
+      checklist: {
+        specApproved: true,
+        implementationEvidence: true,
+        testsPassed: true,
+        requiredReviewsPassed: true,
+        secondOpinionPassed: true,
+        browserQaPassed: true,
+        docsUpdated: true,
+        prReady: true,
+        rollbackNote: true,
+        canaryPassed: true,
+      },
+    };
+    expect(() =>
+      (runtimeService as unknown as { enforceReleaseGate: Function }).enforceReleaseGate(
+        partial,
+        partialReleaseGate,
+        partial.secondOpinion,
+      ),
+    ).toThrow('Second opinion has 1 unresolved conflict(s)');
+
+    const resolved = await runtimeService.resolveSecondOpinion(created.issue.id, {
+      action: 'accept-secondary',
+      findingFingerprints: ['conflict-a', 'conflict-b'],
+      reason: 'Batch accept all Claude Code conflict findings.',
+    });
+
+    expect(resolved.deliveryGovernance?.secondOpinionResolutions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ conflictFingerprint: 'conflict-a' }),
+        expect.objectContaining({ conflictFingerprint: 'conflict-b' }),
+      ]),
+    );
+    expect(() =>
+      (runtimeService as unknown as { enforceReleaseGate: Function }).enforceReleaseGate(
+        resolved,
+        partialReleaseGate,
+        resolved.secondOpinion,
+      ),
+    ).not.toThrow();
+  });
+
+  it('persists release canary Browser QA evidence and fails the canary on failed QA reports', async () => {
+    const browserQaWorker = createFakeBrowserQaWorker('failed');
+    const runtimeService = buildRuntimeService([], browserQaWorker);
+    const created = await runtimeService.createIssue({
+      title: 'Canary evidence issue',
+      targetRepo: workspace,
+      body: 'The release canary should persist its Browser QA smoke artifact.',
+      priority: 'P1',
+      acceptanceCriteria: ['- Canary Browser QA evidence is visible in Loop detail'],
+    });
+
+    const detail = await runtimeService.runReleaseCanary(created.issue.id, {
+      targetUrl: 'https://example.com/canary',
+      riskLevel: 'high',
+      environment: 'staging-us',
+      rollbackNote: 'Revert the generated convergence branch.',
+      environmentOwner: 'release-owner',
+    });
+
+    expect(browserQaWorker.run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        issueId: created.issue.id,
+        reportId: expect.stringContaining(`canary-${created.issue.id}`),
+        request: expect.objectContaining({
+          checkedFlows: ['canary-smoke', 'page-load'],
+          viewports: [{ name: 'desktop', width: 1440, height: 900 }],
+        }),
+      }),
+    );
+    expect(detail.browserQaReports?.[0]).toMatchObject({
+      id: expect.stringContaining(`canary-${created.issue.id}`),
+      status: 'failed',
+      targetUrl: 'https://example.com/canary',
+    });
+    expect(detail.deliveryGovernance?.releaseCanary).toMatchObject({
+      status: 'failed',
+      environment: 'staging-us',
+      environmentOwner: 'release-owner',
+      rollbackNote: 'Revert the generated convergence branch.',
+    });
+    expect(detail.releaseGate?.checklist.canaryPassed).toBe(false);
+  });
+
+  it('rejects high-risk release canaries without rollback ownership', async () => {
+    const created = await service.createIssue({
+      title: 'High risk canary ownership',
+      targetRepo: workspace,
+      body: 'High-risk releases should name a rollback owner.',
+      priority: 'P1',
+      acceptanceCriteria: ['- High risk canaries require rollback ownership'],
+    });
+
+    await expect(
+      service.runReleaseCanary(created.issue.id, {
+        targetUrl: 'https://example.com/canary',
+        riskLevel: 'high',
+        rollbackNote: 'Revert the generated convergence branch.',
+      }),
+    ).rejects.toThrow(
+      'High-risk release canary requires both a rollback note and an environment owner.',
+    );
+  });
+
   it('records delivery governance and applies release gate policies', async () => {
     const created = await service.createIssue({
       title: 'Govern release controls',
@@ -954,6 +2773,12 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
       acceptanceCriteria: ['- Delivery governance is visible on the detail payload'],
     });
 
+    await service.governDelivery(created.issue.id, {
+      action: 'set-required-review-gates',
+      gateKinds: ['product', 'code'],
+      actor: 'human',
+      reason: 'This loop only requires product and code review.',
+    });
     await service.governDelivery(created.issue.id, {
       action: 'set-review-gate',
       gateKind: 'code',
@@ -970,7 +2795,10 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     await service.governDelivery(created.issue.id, {
       action: 'record-release-canary',
       status: 'failed',
+      environment: 'staging-us',
+      environmentOwner: 'release-manager',
       targetUrl: 'https://example.com/canary',
+      rollbackNote: 'Revert the generated convergence branch.',
       actor: 'human',
       reason: 'Smoke failed.',
     });
@@ -983,9 +2811,18 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     });
 
     expect(detail.deliveryGovernance).toMatchObject({
+      requiredReviewGates: expect.objectContaining({
+        gateKinds: ['product', 'code'],
+        reason: 'This loop only requires product and code review.',
+      }),
       reviewGateOverrides: [expect.objectContaining({ gateKind: 'code', status: 'waived' })],
       secondOpinionPolicy: expect.objectContaining({ requiredForRelease: true }),
-      releaseCanary: expect.objectContaining({ status: 'failed' }),
+      releaseCanary: expect.objectContaining({
+        status: 'failed',
+        environment: 'staging-us',
+        environmentOwner: 'release-manager',
+        rollbackNote: 'Revert the generated convergence branch.',
+      }),
       runtimeOverrides: [
         expect.objectContaining({ scope: 'network', reason: 'Allow localhost canary probe.' }),
       ],
@@ -993,12 +2830,16 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(detail.reviewGates).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          kind: 'product',
+        }),
+        expect.objectContaining({
           kind: 'code',
           status: 'waived',
           waiverReason: 'Accepted for canary validation.',
         }),
       ]),
     );
+    expect(detail.reviewGates?.map((gate) => gate.kind)).toEqual(['product', 'code']);
     expect(detail.secondOpinion).toMatchObject({
       requiredForRelease: true,
       status: 'pending',
@@ -1077,6 +2918,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(detail.state.phase).toBe('PHASE_2_REVIEW');
     expect(detail.shards).toHaveLength(0);
 
+    await prepareReleaseGate(service, created.issue.id);
     await service.reviewSpec(created.issue.id, { action: 'approve', reviewer: 'tester' });
 
     detail = await service.advance(created.issue.id);
@@ -1095,6 +2937,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     });
     await service.advance(created.issue.id);
 
+    await prepareReleaseGate(service, created.issue.id);
     const detail = await service.reviewSpec(created.issue.id, {
       action: 'approve',
       reviewer: 'tester',
@@ -1115,6 +2958,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
       acceptanceCriteria: ['- terminal loops stay closed'],
     });
     await service.advance(created.issue.id);
+    await prepareReleaseGate(service, created.issue.id);
     const finalized = await service.reviewSpec(created.issue.id, {
       action: 'approve',
       reviewer: 'tester',
@@ -1145,6 +2989,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
       acceptanceCriteria: ['- closed loop is idempotent under advance'],
     });
     await service.advance(created.issue.id); // generate DRAFT
+    await prepareReleaseGate(service, created.issue.id);
     const finalized = await service.reviewSpec(created.issue.id, {
       action: 'approve',
       reviewer: 'tester',
@@ -1243,6 +3088,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     }
     expect(converged.state.phase).toBe('PHASE_6_CONVERGE');
 
+    await prepareReleaseGate(service, created.issue.id);
     const result = await service.advance(created.issue.id);
     expect(result.state.globalVerdict).toBe('PASS');
     expect(result.state.phase).toBe('CLOSED');

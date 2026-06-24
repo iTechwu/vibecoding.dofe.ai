@@ -36,6 +36,10 @@
     "loopBench": {
       "title": "Loop Bench",
       "summary": "Derived quality signals from delivery evidence, runtime security, and learning reuse.",
+      "runTrendWorker": "Run trend worker",
+      "trendTitle": "Trend snapshot",
+      "trendHistory": "{count} snapshots",
+      "trendSummary": "{loops} loops · first-pass {firstPass}% · canary {canary}% · first-pass delta {delta} pts",
       "firstPassRate": "First-pass rate",
       "firstPassRateDesc": "Loops with PASS and no rework",
       "browserQaRegression": "QA regression",
@@ -46,9 +50,28 @@
       "releaseBlockerDesc": "Loops blocked before shipping",
       "runtimeViolation": "Runtime violation",
       "runtimeViolationDesc": "Security exception rate per loop",
+      "canaryPass": "Canary pass",
+      "canaryPassDesc": "Release canary pass rate",
       "learningReuse": "Learning reuse",
-      "learningReuseDesc": "Recall with positive outcome (planned)",
-      "planned": "Planned"
+      "learningReuseDesc": "Recalled learnings with later reuse",
+      "planned": "Planned",
+      "filterWorkspace": "Filter by workspace",
+      "allWorkspaces": "All workspaces",
+      "period7d": "Last 7 days",
+      "period30d": "Last 30 days",
+      "period90d": "Last 90 days",
+      "periodAll": "All time",
+      "drilldownHint": "Select filters to drill down into workspace/repo-specific quality trends",
+      "drilldownLoading": "Loading drilldown metrics.",
+      "drilldownEmpty": "No drilldown metrics yet.",
+      "drilldownDelta": "Delta {delta} pts"
+    },
+    "workspaceRecipeAdmin": {
+      "title": "Workspace Recipe Defaults",
+      "hint": "Configure the default workflow recipe applied when creating new Loops of each kind.",
+      "loading": "Loading workspace recipes.",
+      "empty": "No workspace recipe defaults recorded yet.",
+      "recipeMeta": "{kind} · {steps} steps · {usage} uses"
     },
     "workforce": {
       "title": "Software Delivery Workforce",
@@ -172,6 +195,22 @@
       "summary": "{kinds} recipe kinds · {loops} active loops · {blocked} blocked",
       "loading": "Loading recipe metrics.",
       "empty": "No active loops to analyze.",
+      "tenantScope": "Tenant scope",
+      "permission": "Permission",
+      "source": "SSO source",
+      "granted": "Granted",
+      "blocked": "Blocked",
+      "requestAction": "Request",
+      "requesting": "Requesting",
+      "action": {
+        "createVersion": "Create version",
+        "reviewApproval": "Review approval",
+        "rollbackVersion": "Rollback version"
+      },
+      "actionState": {
+        "ready": "Ready",
+        "blocked": "Blocked"
+      },
       "blockerRate": "Blocker rate",
       "avgShards": "Avg shards",
       "kind": {
@@ -192,6 +231,9 @@
       "runtimeReady": "Runtime ready",
       "releaseReady": "Release ready",
       "repos": "Repos"
+    },
+    "deliveryFlow": {
+      "title": "Delivery Flow Pipeline"
     },
     "rulesCenter": {
       "title": "Rules Center",
@@ -289,7 +331,16 @@
       "noStale": "No stale learnings.",
       "dismiss": "Dismiss",
       "merge": "Merge",
+      "supersede": "Supersede",
+      "pendingApprovals": "Pending approvals",
+      "approve": "Approve",
+      "reject": "Reject",
+      "mergeTarget": "Target: {target}",
       "runAutoMerge": "Run merge worker",
+      "runIndexWorker": "Run index worker",
+      "indexTitle": "Cross-workspace index",
+      "indexGenerated": "Generated {value}",
+      "indexSummary": "{total} learnings · {workspaces} workspaces · {repos} repos · {duplicates} duplicates · {reusable} reusable",
       "similar": "{count} similar suggestions",
       "confidence": "{value}%",
       "kind": {
@@ -316,6 +367,25 @@
         "implementation": "Implementation",
         "review": "Review",
         "qa": "QA"
+      }
+    },
+    "ciEvidence": {
+      "title": "CI Evidence Publications",
+      "summary": "{total} publications · latest status: {status}",
+      "loading": "Loading CI evidence publications.",
+      "empty": "No CI evidence publication has been recorded yet.",
+      "defaultCheck": "DofeAI Delivery Evidence",
+      "noHeadSha": "No head SHA recorded",
+      "artifact": "Artifact",
+      "checkRun": "GitHub Check Run",
+      "evidence": "Evidence backlink",
+      "workPackages": "Work package commit map",
+      "noCommits": "No work package commits were attached.",
+      "noBranch": "No branch recorded",
+      "files": "{count} files",
+      "outcome": {
+        "published": "Published",
+        "failed": "Failed"
       }
     },
     "releaseGatePanel": {
@@ -489,6 +559,7 @@
         "exception": "Exception gate"
       },
       "conflictAction": "Unresolved conflict:",
+      "slaMeta": "{owner} · age {age}h · SLA {sla}h",
       "resolveConflict": "Resolve →"
     },
     "traceSummary": {
@@ -518,6 +589,13 @@
       "compatibilityChecks": "Compatibility Checks",
       "tools": "{count} tools",
       "owners": "{count} owners",
+      "assetPermissions": {
+        "title": "SSO Asset Permissions",
+        "summary": "{granted} granted · {blocked} blocked · source: SSO",
+        "loading": "Loading SSO asset permissions.",
+        "granted": "Granted",
+        "blocked": "Blocked"
+      },
       "permissionProfile": {
         "title": "Permission Profile",
         "summary": "{agents} agents · {tools} tools · {activeTools} active tools",
@@ -849,6 +927,7 @@
       "meta": "{steps} workflow steps · {gates} review gates",
       "workflowTitle": "Workflow Timeline",
       "workflowVersion": "v{version}",
+      "baselineTitle": "Baseline evidence",
       "actionsTitle": "Delivery Actions",
       "reviewTitle": "Review Gates",
       "secondOpinionTitle": "Second Opinion",
@@ -871,7 +950,11 @@
         "require": "Require before release",
         "acceptPrimary": "Accept primary (Codex)",
         "acceptSecondary": "Accept secondary (Claude Code)",
-        "waive": "Waive conflict"
+        "waive": "Waive conflict",
+        "conflictDrilldown": "Conflict fingerprints",
+        "acceptPrimaryBatch": "Accept primary conflicts",
+        "acceptSecondaryBatch": "Accept secondary conflicts",
+        "waiveBatch": "Waive all conflicts"
       },
       "browserQa": {
         "title": "Browser QA",
@@ -888,13 +971,28 @@
         "sessionPolicy": "Session policy",
         "authMode": "Auth mode",
         "testAccountRef": "Test account ref",
-        "saveSessionPolicy": "Save session policy"
+        "saveSessionPolicy": "Save session policy",
+        "artifactsTitle": "Latest QA artifacts",
+        "screenshots": "Screenshots",
+        "traces": "Traces",
+        "handoffs": "Handoffs",
+        "visualDiffs": "Visual diffs",
+        "handoffTitle": "Browser handoff",
+        "changedPixels": "{count} changed pixels",
+        "viewportUnknown": "Viewport not reported"
+      },
+      "requiredReviewGates": {
+        "title": "Required review gates",
+        "save": "Save required gates"
       },
       "releaseCanary": {
         "title": "Release canary",
         "status": "Status",
         "targetUrl": "Target URL",
+        "environment": "Environment",
+        "environmentOwner": "Environment owner",
         "reason": "Reason",
+        "rollbackNote": "Rollback note",
         "record": "Record canary"
       },
       "runtimeOverride": {

@@ -67,11 +67,13 @@ export class CliLoopsGitAdapter implements LoopsGitAdapter {
     }
     const message = `loops(${input.issue.id}): ${input.shard.id} — ${input.shard.title}`;
     const committed = await this.git(cwd, ['commit', '-m', message]);
+    const commitSha = committed ? await this.currentCommitSha(cwd) : undefined;
     return {
       shardId: input.shard.id,
       committed,
       message: committed ? message : 'nothing to commit',
       branch,
+      commitSha,
     };
   }
 
@@ -89,7 +91,12 @@ export class CliLoopsGitAdapter implements LoopsGitAdapter {
         issueId: input.issue.id,
         branch,
         baseBranch,
-        commits: input.commits.map((item) => ({ shardId: item.shardId, message: item.message })),
+        commits: input.commits.map((item) => ({
+          shardId: item.shardId,
+          message: item.message,
+          commitSha: item.commitSha,
+          branch: item.branch,
+        })),
         annotationsSummary,
         prBody,
         status: 'SKIPPED',
@@ -115,7 +122,12 @@ export class CliLoopsGitAdapter implements LoopsGitAdapter {
       url: opened.opened ? opened.url : undefined,
       commits: input.commits
         .filter((item) => item.committed)
-        .map((item) => ({ shardId: item.shardId, message: item.message })),
+        .map((item) => ({
+          shardId: item.shardId,
+          message: item.message,
+          commitSha: item.commitSha,
+          branch: item.branch,
+        })),
       annotationsSummary,
       prBody: opened.opened ? prBody : `${prBody}\n\n## Provider 状态\n${opened.reason}`,
       status: opened.opened ? 'OPENED' : pushed ? 'PUSHED' : 'DRAFT',
@@ -126,6 +138,17 @@ export class CliLoopsGitAdapter implements LoopsGitAdapter {
   private async git(cwd: string, args: string[]): Promise<boolean> {
     const result = await runProcess({ command: 'git', args, cwd, timeoutMs: 60_000 });
     return result.exitCode === 0;
+  }
+
+  private async currentCommitSha(cwd: string): Promise<string | undefined> {
+    const result = await runProcess({
+      command: 'git',
+      args: ['rev-parse', 'HEAD'],
+      cwd,
+      timeoutMs: 30_000,
+    });
+    const sha = result.stdout.trim();
+    return result.exitCode === 0 && sha.length >= 7 ? sha : undefined;
   }
 
   /**
@@ -156,7 +179,10 @@ export class CliLoopsGitAdapter implements LoopsGitAdapter {
   private renderPrBody(input: LoopsConvergencePrInput, annotationsSummary: string): string {
     const commits = input.commits
       .filter((item) => item.committed)
-      .map((item) => `- ${item.shardId}: ${item.message}`)
+      .map((item) => {
+        const sha = item.commitSha ? ` (${item.commitSha.slice(0, 12)})` : '';
+        return `- ${item.shardId}: ${item.message}${sha}`;
+      })
       .join('\n');
     const evidenceSummary = this.renderEvidenceSummary(input);
     return [

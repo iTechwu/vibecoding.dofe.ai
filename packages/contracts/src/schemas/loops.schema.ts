@@ -90,6 +90,17 @@ export const LoopTestStatusSchema = z.enum([
   'SKIPPED',
 ]);
 
+export const LoopSourceChannelSchema = z.enum(['web', 'webhook', 'schedule']);
+export const LoopSourceKindSchema = z.enum([
+  'web_form',
+  'github',
+  'linear',
+  'jira',
+  'slack',
+  'schedule',
+  'generic',
+]);
+
 export const CreateLoopIssueRequestSchema = z.object({
   title: z.string().trim().min(4).max(160),
   targetRepo: z.string().trim().min(1),
@@ -105,6 +116,8 @@ export const CreateLoopIssueRequestSchema = z.object({
     .optional(),
   submitterId: z.string().trim().min(1).optional(),
   submitterName: z.string().trim().min(1).optional(),
+  sourceChannel: LoopSourceChannelSchema.optional(),
+  sourceKind: LoopSourceKindSchema.optional(),
 });
 
 export const LoopIssueSchema = z.object({
@@ -114,8 +127,8 @@ export const LoopIssueSchema = z.object({
   priority: LoopPrioritySchema,
   created: z.string(),
   updated: z.string(),
-  sourceChannel: z.literal('web'),
-  sourceKind: z.literal('web_form'),
+  sourceChannel: LoopSourceChannelSchema,
+  sourceKind: LoopSourceKindSchema,
   submitterId: z.string(),
   submitterName: z.string(),
   targetRepo: z.string(),
@@ -127,8 +140,8 @@ export const LoopIssueSchema = z.object({
 export const LoopIntakeSchema = z.object({
   id: z.string(),
   issueId: z.string(),
-  sourceChannel: z.literal('web'),
-  sourceKind: z.literal('web_form'),
+  sourceChannel: LoopSourceChannelSchema,
+  sourceKind: LoopSourceKindSchema,
   submitter: LoopSubmitterSchema,
   rawPayloadRef: z.string(),
   status: z.enum(['RECEIVED', 'NEEDS-CLARIFICATION', 'NORMALIZED', 'REJECTED']),
@@ -275,8 +288,10 @@ export const LoopReviewRecordSchema = z.object({
 export const LoopRuntimeSecurityPolicySnapshotSchema = z.object({
   id: z.string(),
   mode: z.literal('test-command'),
+  /** gstack P0-1: Identifies whether Docker container or local shell executed commands. */
+  sandboxBackend: z.enum(['docker', 'local-shell']).optional(),
   shell: z.object({
-    strategy: z.literal('allowlist'),
+    strategy: z.enum(['allowlist', 'strict-allowlist']),
     allowedCommands: z.array(z.string()),
     blockedOperators: z.array(z.string()),
   }),
@@ -284,11 +299,15 @@ export const LoopRuntimeSecurityPolicySnapshotSchema = z.object({
     strategy: z.literal('deny-by-default'),
     status: z.enum(['not-requested', 'blocked', 'allowed-by-override']),
     blockedTools: z.array(z.string()).default([]),
+    /** gstack P0-1: Whether network isolation is enforced at container level. */
+    sandboxEnforced: z.boolean().optional(),
   }),
   write: z.object({
     strategy: z.literal('workspace-scoped'),
     scope: z.literal('target-repo'),
     blockedPatterns: z.array(z.string()).default([]),
+    /** gstack P0-1: Whether write isolation is enforced at container/fs level. */
+    sandboxEnforced: z.boolean().optional(),
   }),
   approvals: z.object({
     override: z.literal('not-supported'),
@@ -376,6 +395,36 @@ export const LoopBrowserQaRequestSchema = z.object({
   checkedFlows: z.array(z.string().trim().min(1)).default(['page-load']),
   notes: z.string().trim().optional(),
   authSessionRef: z.string().trim().min(1).optional(),
+  /** gstack P1: Authenticated session profile for Browser QA.
+   *  Uses test account credentials instead of personal cookies. */
+  authSession: z
+    .object({
+      /** Reference to the test account (never stores real credentials inline). */
+      testAccountRef: z.string(),
+      /** Short-lived session token or cookie string. */
+      sessionToken: z.string().optional(),
+      /** Cookie JSON array for Playwright storageState format. */
+      cookies: z
+        .array(
+          z.object({
+            name: z.string(),
+            value: z.string(),
+            domain: z.string(),
+            path: z.string().default('/'),
+            httpOnly: z.boolean().optional(),
+            secure: z.boolean().optional(),
+            sameSite: z.enum(['Strict', 'Lax', 'None']).optional(),
+          }),
+        )
+        .optional(),
+      /** Session expiration timestamp for audit trail. */
+      expiresAt: z.string().optional(),
+      /** Auth mode: token (bearer header), cookie (storageState), or header (custom). */
+      authMode: z.enum(['token', 'cookie', 'header']).default('cookie'),
+      /** Custom HTTP headers to inject into browser context. */
+      extraHeaders: z.record(z.string(), z.string()).optional(),
+    })
+    .optional(),
   /** gstack/0 P1-3: Configurable viewports for multi-viewport visual regression. */
   viewports: z
     .array(
@@ -479,6 +528,8 @@ export const LoopConvergencePrSchema = z.object({
     z.object({
       shardId: z.string(),
       message: z.string(),
+      commitSha: z.string().trim().min(7).optional(),
+      branch: z.string().trim().min(1).optional(),
     }),
   ),
   annotationsSummary: z.string(),
@@ -612,6 +663,57 @@ export const LoopMetricsActionItemSchema = z.object({
   href: z.string(),
 });
 
+export const LoopBenchMetricKeySchema = z.enum([
+  'firstPassReviewRate',
+  'browserQaRegressionRate',
+  'secondOpinionConflictRate',
+  'releaseBlockerRate',
+  'runtimeViolationRate',
+  'learningReuseRate',
+  'canaryPassRate',
+]);
+
+export const LoopBenchMetricsSchema = z.object({
+  firstPassReviewRate: z.number().min(0).max(100),
+  browserQaRegressionRate: z.number().min(0).max(100),
+  secondOpinionConflictRate: z.number().min(0).max(100),
+  releaseBlockerRate: z.number().min(0).max(100),
+  runtimeViolationRate: z.number().min(0).max(100),
+  learningReuseRate: z.number().min(0).max(100),
+  canaryPassRate: z.number().min(0).max(100),
+});
+
+export const LoopBenchTrendSnapshotSchema = z.object({
+  id: z.string(),
+  capturedAt: z.string(),
+  artifactRef: z.string(),
+  loopCount: z.number().int().nonnegative(),
+  metrics: LoopBenchMetricsSchema,
+  previousMetrics: LoopBenchMetricsSchema.optional(),
+  deltas: z
+    .object({
+      firstPassReviewRate: z.number(),
+      browserQaRegressionRate: z.number(),
+      secondOpinionConflictRate: z.number(),
+      releaseBlockerRate: z.number(),
+      runtimeViolationRate: z.number(),
+      learningReuseRate: z.number(),
+      canaryPassRate: z.number(),
+    })
+    .optional(),
+});
+
+export const LoopBenchTrendSummarySchema = z.object({
+  latest: LoopBenchTrendSnapshotSchema.optional(),
+  historyCount: z.number().int().nonnegative(),
+});
+
+export const LoopBenchTrendWorkerResponseSchema = z.object({
+  generatedAt: z.string(),
+  snapshot: LoopBenchTrendSnapshotSchema,
+  historyCount: z.number().int().nonnegative(),
+});
+
 export const LoopRequirementCoverageItemSchema = z.object({
   id: z.string(),
   criterion: z.string(),
@@ -680,6 +782,33 @@ export const LoopLearningSchema = z.object({
   createdAt: z.string(),
 });
 
+export const LoopLearningIndexEntrySchema = z.object({
+  learningId: z.string(),
+  workspaceId: z.string(),
+  repo: z.string().optional(),
+  kind: z.enum(['pattern', 'pitfall', 'decision', 'test_policy', 'ownership', 'security']),
+  fingerprint: z.string().trim().min(1).optional(),
+  tags: z.array(z.string().trim().min(1)).default([]),
+  confidence: z.number().min(0).max(1),
+  evidenceIds: z.array(z.string()).default([]),
+  recallCount: z.number().int().nonnegative(),
+  lastRecalledAt: z.string().optional(),
+  createdAt: z.string(),
+});
+
+export const LoopLearningIndexSchema = z.object({
+  generatedAt: z.string(),
+  artifactRef: z.string(),
+  summary: z.object({
+    total: z.number().int().nonnegative(),
+    workspaces: z.number().int().nonnegative(),
+    repos: z.number().int().nonnegative(),
+    duplicateFingerprints: z.number().int().nonnegative(),
+    reusable: z.number().int().nonnegative(),
+  }),
+  entries: z.array(LoopLearningIndexEntrySchema),
+});
+
 export const LoopRuntimeSecurityExceptionSchema = z.object({
   id: z.string(),
   testRecordId: z.string(),
@@ -692,7 +821,14 @@ export const LoopRuntimeSecurityExceptionSchema = z.object({
   created: z.string(),
 });
 
-export const LoopLearningGovernanceActionSchema = z.enum(['dismiss', 'merge']);
+export const LoopLearningGovernanceActionSchema = z.enum([
+  'dismiss',
+  'merge',
+  'approve-merge',
+  'reject-merge',
+  'deprecate',
+  'supersede',
+]);
 
 export const LoopLearningGovernanceRequestSchema = z.object({
   action: LoopLearningGovernanceActionSchema,
@@ -719,6 +855,27 @@ export const LoopLearningGovernanceSchema = z.object({
       createdAt: z.string(),
     }),
   ),
+  deprecated: z
+    .array(
+      z.object({
+        learningId: z.string(),
+        actor: z.string(),
+        reason: z.string().optional(),
+        createdAt: z.string(),
+      }),
+    )
+    .default([]),
+  superseded: z
+    .array(
+      z.object({
+        sourceLearningId: z.string(),
+        targetLearningId: z.string(),
+        actor: z.string(),
+        reason: z.string().optional(),
+        createdAt: z.string(),
+      }),
+    )
+    .default([]),
   autoMergeCandidates: z
     .array(
       z.object({
@@ -787,6 +944,14 @@ export const LoopWorkflowStepSchema = z.object({
   blockedReason: z.string().optional(),
 });
 
+export const LoopWorkflowBaselineEvidenceSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  kind: z.enum(['blueprint', 'runtime', 'eval', 'gate', 'risk']),
+  value: z.string(),
+  evidenceRef: z.string().optional(),
+});
+
 export const LoopWorkflowRecipeSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -794,6 +959,7 @@ export const LoopWorkflowRecipeSchema = z.object({
   appliesTo: z.array(z.enum(['feature', 'bugfix', 'refactor', 'docs', 'ops'])),
   capturedAt: z.string(),
   source: z.enum(['default', 'workspace', 'loop-snapshot']),
+  baselineEvidence: z.array(LoopWorkflowBaselineEvidenceSchema).default([]),
   steps: z.array(LoopWorkflowStepSchema),
 });
 
@@ -907,6 +1073,14 @@ export const LoopDeliveryGovernanceSchema = z.object({
       }),
     )
     .default([]),
+  requiredReviewGates: z
+    .object({
+      gateKinds: z.array(LoopReviewGateKindSchema).min(1),
+      actor: z.string().trim().min(1),
+      reason: z.string().trim().optional(),
+      updated: z.string(),
+    })
+    .optional(),
   secondOpinionPolicy: z
     .object({
       requiredForRelease: z.boolean(),
@@ -931,7 +1105,10 @@ export const LoopDeliveryGovernanceSchema = z.object({
   releaseCanary: z
     .object({
       status: z.enum(['not_run', 'pending', 'passed', 'failed']),
+      environment: z.string().trim().min(1).optional(),
+      environmentOwner: z.string().trim().min(1).optional(),
       targetUrl: z.string().url().optional(),
+      rollbackNote: z.string().trim().min(1).optional(),
       actor: z.string().trim().min(1),
       reason: z.string().trim().optional(),
       updated: z.string(),
@@ -986,6 +1163,12 @@ export const LoopDeliveryGovernanceRequestSchema = z.discriminatedUnion('action'
     expiresAt: z.string().optional(),
   }),
   z.object({
+    action: z.literal('set-required-review-gates'),
+    gateKinds: z.array(LoopReviewGateKindSchema).min(1),
+    actor: z.string().trim().min(1).default('human'),
+    reason: z.string().trim().optional(),
+  }),
+  z.object({
     action: z.literal('set-second-opinion-policy'),
     requiredForRelease: z.boolean(),
     conflictHumanGate: z.boolean().default(true),
@@ -995,7 +1178,10 @@ export const LoopDeliveryGovernanceRequestSchema = z.discriminatedUnion('action'
   z.object({
     action: z.literal('record-release-canary'),
     status: z.enum(['not_run', 'pending', 'passed', 'failed']),
+    environment: z.string().trim().min(1).optional(),
+    environmentOwner: z.string().trim().min(1).optional(),
     targetUrl: z.string().url().optional(),
+    rollbackNote: z.string().trim().min(1).optional(),
     actor: z.string().trim().min(1).default('human'),
     reason: z.string().trim().optional(),
   }),
@@ -1152,6 +1338,7 @@ export const LoopMetricsResponseSchema = z.object({
   requirementsCoverage: LoopRequirementCoverageSummarySchema,
   traceSummary: LoopTraceSummarySchema,
   resumeSummary: LoopResumeSummarySchema,
+  loopBenchTrend: LoopBenchTrendSummarySchema.optional(),
 });
 
 export const LoopDetailSchema = z.object({
@@ -1403,6 +1590,49 @@ export const LoopWorkspacesResponseSchema = z.object({
   current: z.string(),
   recentLearnings: z.array(LoopLearningSchema).optional(),
   learningGovernance: LoopLearningGovernanceSchema.optional(),
+  learningIndex: LoopLearningIndexSchema.optional(),
+});
+
+export const LoopAssetPermissionActionSchema = z.enum(['read', 'create', 'operate', 'admin']);
+
+export const LoopAssetPermissionKindSchema = z.enum([
+  'workspace',
+  'blueprint',
+  'runtime-backend',
+  'tool',
+  'eval-suite',
+  'trigger',
+  'remote-runner',
+  'mcp-server',
+  'ci-check',
+]);
+
+export const LoopAssetPermissionItemSchema = z.object({
+  assetKind: LoopAssetPermissionKindSchema,
+  assetId: z.string(),
+  label: z.string(),
+  scope: z.enum(['tenant', 'workspace', 'repo', 'global']),
+  requiredAction: LoopAssetPermissionActionSchema,
+  granted: z.boolean(),
+  sourcePermission: z.string(),
+});
+
+export const LoopAssetPermissionsResponseSchema = z.object({
+  identity: z.object({
+    userId: z.string(),
+    teamId: z.string().optional(),
+    tenantId: z.string().optional(),
+    isSuperAdmin: z.boolean(),
+  }),
+  source: z.literal('sso'),
+  permissions: z.array(z.string()),
+  roles: z.array(z.string()).default([]),
+  assets: z.array(LoopAssetPermissionItemSchema),
+  summary: z.object({
+    total: z.number().int().nonnegative(),
+    granted: z.number().int().nonnegative(),
+    blocked: z.number().int().nonnegative(),
+  }),
 });
 
 export const UpsertLoopWorkspaceAgentsSchema = z.object({
@@ -1473,6 +1703,8 @@ export const LoopSimpleIssuePreviewSchema = z.object({
 
 export type CreateLoopIssueRequest = z.infer<typeof CreateLoopIssueRequestSchema>;
 export type LoopPriority = z.infer<typeof LoopPrioritySchema>;
+export type LoopSourceChannel = z.infer<typeof LoopSourceChannelSchema>;
+export type LoopSourceKind = z.infer<typeof LoopSourceKindSchema>;
 export type LoopSubmitterProvider = z.infer<typeof LoopSubmitterProviderSchema>;
 export type LoopSubmitter = z.infer<typeof LoopSubmitterSchema>;
 export type LoopRuleSnapshotRule = z.infer<typeof LoopRuleSnapshotRuleSchema>;
@@ -1511,11 +1743,18 @@ export type LoopCostResponse = z.infer<typeof LoopCostResponseSchema>;
 export type LoopMetricsPhaseItem = z.infer<typeof LoopMetricsPhaseItemSchema>;
 export type LoopMetricsRiskItem = z.infer<typeof LoopMetricsRiskItemSchema>;
 export type LoopMetricsActionItem = z.infer<typeof LoopMetricsActionItemSchema>;
+export type LoopBenchMetricKey = z.infer<typeof LoopBenchMetricKeySchema>;
+export type LoopBenchMetrics = z.infer<typeof LoopBenchMetricsSchema>;
+export type LoopBenchTrendSnapshot = z.infer<typeof LoopBenchTrendSnapshotSchema>;
+export type LoopBenchTrendSummary = z.infer<typeof LoopBenchTrendSummarySchema>;
+export type LoopBenchTrendWorkerResponse = z.infer<typeof LoopBenchTrendWorkerResponseSchema>;
 export type LoopRequirementCoverageItem = z.infer<typeof LoopRequirementCoverageItemSchema>;
 export type LoopRequirementCoverageSummary = z.infer<typeof LoopRequirementCoverageSummarySchema>;
 export type LoopRequirementCoverage = z.infer<typeof LoopRequirementCoverageSchema>;
 export type LoopEvidenceArtifact = z.infer<typeof LoopEvidenceArtifactSchema>;
 export type LoopLearning = z.infer<typeof LoopLearningSchema>;
+export type LoopLearningIndexEntry = z.infer<typeof LoopLearningIndexEntrySchema>;
+export type LoopLearningIndex = z.infer<typeof LoopLearningIndexSchema>;
 export type LoopRuntimeSecurityException = z.infer<typeof LoopRuntimeSecurityExceptionSchema>;
 export type LoopLearningGovernanceAction = z.infer<typeof LoopLearningGovernanceActionSchema>;
 export type LoopLearningGovernanceRequest = z.infer<typeof LoopLearningGovernanceRequestSchema>;
@@ -1589,6 +1828,10 @@ export type LoopWorkspaceAgentProfile = z.infer<typeof LoopWorkspaceAgentProfile
 export type LoopWorkspaceProfile = z.infer<typeof LoopWorkspaceProfileSchema>;
 export type LoopWorkspaceSummary = z.infer<typeof LoopWorkspaceSummarySchema>;
 export type LoopWorkspacesResponse = z.infer<typeof LoopWorkspacesResponseSchema>;
+export type LoopAssetPermissionAction = z.infer<typeof LoopAssetPermissionActionSchema>;
+export type LoopAssetPermissionKind = z.infer<typeof LoopAssetPermissionKindSchema>;
+export type LoopAssetPermissionItem = z.infer<typeof LoopAssetPermissionItemSchema>;
+export type LoopAssetPermissionsResponse = z.infer<typeof LoopAssetPermissionsResponseSchema>;
 export type UpsertLoopWorkspaceRequest = z.infer<typeof UpsertLoopWorkspaceRequestSchema>;
 export type DetectLoopRuntimeResponse = z.infer<typeof DetectLoopRuntimeResponseSchema>;
 export type PullLoopImageRequest = z.infer<typeof PullLoopImageRequestSchema>;
@@ -1602,7 +1845,7 @@ export type LoopSimpleIssuePreview = z.infer<typeof LoopSimpleIssuePreviewSchema
 // of one loop's spec, work packages, tests, reviews, risks, cost and global
 // verdict, plus a pre-formatted markdown body for PR comments. v1 is derived
 // read-only from existing LoopDetail data; no new persistence is required.
-// Runtime execution still sits on Codex CLI / Cluade Code CLI.
+// Runtime execution still sits on Codex CLI / Claude Code CLI.
 // ============================================================================
 export const LoopDeliveryEvidenceWorkPackageSchema = z.object({
   id: z.string(),
@@ -1611,6 +1854,9 @@ export const LoopDeliveryEvidenceWorkPackageSchema = z.object({
   files: z.array(z.string()).default([]),
   tests: z.string(),
   review: z.string(),
+  commitSha: z.string().trim().min(7).optional(),
+  commitMessage: z.string().trim().min(1).optional(),
+  branch: z.string().trim().min(1).optional(),
 });
 
 export const LoopDeliveryEvidenceSchema = z.object({
@@ -1655,7 +1901,7 @@ export type LoopDeliveryEvidenceWorkPackage = z.infer<typeof LoopDeliveryEvidenc
 
 // ============================================================================
 // Runtime Backend Registry (P0-2, 0623 · CrewAI gap 2). A formal contract for
-// Codex CLI / Cluade Code CLI runtimes as first-class, configurable assets.
+// Codex CLI / Claude Code CLI runtimes as first-class, configurable assets.
 // v1: derived read-only from existing agent-runtime-detection data.
 // ============================================================================
 export const RuntimeBackendKindSchema = z.enum([
@@ -1708,6 +1954,302 @@ export type RuntimeBackendListResponse = z.infer<typeof RuntimeBackendListRespon
 export type RuntimeBackendPolicyUpdate = z.infer<typeof RuntimeBackendPolicyUpdateSchema>;
 
 // ============================================================================
+// Remote Runner Pool (P2-3, 0623 · CrewAI). Control-plane v1 for execution pool
+// governance. Jobs still execute through Codex CLI / Claude Code CLI runtimes;
+// this surface models pool capacity, leases, artifact roots, and SSO-gated
+// lifecycle actions before a real queue worker is introduced.
+// ============================================================================
+export const LoopRemoteRunnerStatusSchema = z.enum(['ready', 'degraded', 'offline']);
+
+export const LoopRemoteRunnerSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  status: LoopRemoteRunnerStatusSchema,
+  runtimeBackends: z.array(RuntimeBackendKindSchema),
+  capacity: z.object({
+    maxConcurrent: z.number().int().positive(),
+    leased: z.number().int().nonnegative(),
+    available: z.number().int().nonnegative(),
+  }),
+  queue: z.object({
+    pending: z.number().int().nonnegative(),
+    running: z.number().int().nonnegative(),
+  }),
+  sandboxProfile: z.enum(['workspace-scoped', 'docker-isolated', 'remote-sandbox']),
+  artifactRoot: z.string(),
+  leaseTtlSec: z.number().int().positive(),
+  health: z.object({
+    ok: z.boolean(),
+    message: z.string(),
+  }),
+  risks: z.array(z.string()).default([]),
+});
+
+export const LoopRemoteRunnerListResponseSchema = PaginatedResponseSchema(LoopRemoteRunnerSchema);
+
+export const LoopRemoteRunnerLeaseRequestSchema = z.object({
+  issueId: z.string().trim().min(1).optional(),
+  shardId: z.string().trim().min(1).optional(),
+  runtimeBackend: RuntimeBackendKindSchema.default('codex-cli'),
+  reason: z.string().trim().min(1).optional(),
+});
+
+export const LoopRemoteRunnerLeaseSchema = z.object({
+  id: z.string(),
+  runnerId: z.string(),
+  issueId: z.string().optional(),
+  shardId: z.string().optional(),
+  runtimeBackend: RuntimeBackendKindSchema,
+  status: z.enum(['leased', 'released']),
+  leasedAt: z.string(),
+  expiresAt: z.string(),
+  artifactRoot: z.string(),
+  message: z.string(),
+});
+
+export const LoopRemoteRunnerReleaseRequestSchema = z.object({
+  leaseId: z.string().trim().min(1),
+  reason: z.string().trim().min(1).optional(),
+});
+
+export const LoopRemoteRunnerJobArtifactSchema = z.object({
+  path: z.string().trim().min(1),
+  kind: z.enum(['manifest', 'log', 'evidence', 'trace']),
+  sizeBytes: z.number().int().nonnegative().optional(),
+  sha256: z.string().trim().min(1).optional(),
+});
+
+export const LoopRemoteRunnerJobRequestSchema = z.object({
+  leaseId: z.string().trim().min(1).optional(),
+  issueId: z.string().trim().min(1).optional(),
+  shardId: z.string().trim().min(1).optional(),
+  runtimeBackend: RuntimeBackendKindSchema.default('codex-cli'),
+  workerKind: z.enum(['codex-cli', 'claude-code-cli', 'artifact-only']).default('artifact-only'),
+  reason: z.string().trim().min(1).optional(),
+});
+
+export const LoopRemoteRunnerJobSchema = z.object({
+  id: z.string(),
+  runnerId: z.string(),
+  leaseId: z.string().optional(),
+  issueId: z.string().optional(),
+  shardId: z.string().optional(),
+  runtimeBackend: RuntimeBackendKindSchema,
+  workerKind: z.enum(['codex-cli', 'claude-code-cli', 'artifact-only']),
+  status: z.enum(['queued', 'running', 'succeeded', 'failed']),
+  queuedAt: z.string(),
+  startedAt: z.string().optional(),
+  finishedAt: z.string().optional(),
+  artifactRoot: z.string(),
+  artifacts: z.array(LoopRemoteRunnerJobArtifactSchema).default([]),
+  message: z.string(),
+});
+
+export type LoopRemoteRunnerStatus = z.infer<typeof LoopRemoteRunnerStatusSchema>;
+export type LoopRemoteRunner = z.infer<typeof LoopRemoteRunnerSchema>;
+export type LoopRemoteRunnerListResponse = z.infer<typeof LoopRemoteRunnerListResponseSchema>;
+export type LoopRemoteRunnerLeaseRequest = z.infer<typeof LoopRemoteRunnerLeaseRequestSchema>;
+export type LoopRemoteRunnerLease = z.infer<typeof LoopRemoteRunnerLeaseSchema>;
+export type LoopRemoteRunnerReleaseRequest = z.infer<typeof LoopRemoteRunnerReleaseRequestSchema>;
+export type LoopRemoteRunnerJobArtifact = z.infer<typeof LoopRemoteRunnerJobArtifactSchema>;
+export type LoopRemoteRunnerJobRequest = z.infer<typeof LoopRemoteRunnerJobRequestSchema>;
+export type LoopRemoteRunnerJob = z.infer<typeof LoopRemoteRunnerJobSchema>;
+
+// ============================================================================
+// Multi-tenant Recipe Admin (P2, 0623 · CrewAI). Control-plane action requests
+// for tenant-scoped delivery blueprint administration. v1 persists an auditable
+// request artifact; downstream CRUD/approval/rollback workers consume it later.
+// ============================================================================
+export const LoopRecipeAdminActionIdSchema = z.enum([
+  'createVersion',
+  'reviewApproval',
+  'rollbackVersion',
+]);
+
+export const LoopRecipeAdminActionRequestSchema = z.object({
+  actionId: LoopRecipeAdminActionIdSchema,
+  blueprintId: z.string().trim().min(1).default('delivery-blueprints'),
+  recipeKind: z.string().trim().min(1).optional(),
+  targetVersion: z.string().trim().min(1).optional(),
+  reason: z.string().trim().min(1).optional(),
+  evidenceRefs: z.array(z.string().trim().min(1)).default([]),
+});
+
+export const LoopRecipeAdminActionResponseSchema = z.object({
+  id: z.string(),
+  actionId: LoopRecipeAdminActionIdSchema,
+  status: z.enum(['requested', 'blocked']),
+  artifactRef: z.string().trim().min(1),
+  blueprintId: z.string(),
+  recipeKind: z.string().optional(),
+  targetVersion: z.string().optional(),
+  tenantId: z.string().optional(),
+  teamId: z.string().optional(),
+  actorId: z.string(),
+  sourcePermission: z.string(),
+  requestedAt: z.string(),
+  reason: z.string().optional(),
+  evidenceRefs: z.array(z.string()).default([]),
+  message: z.string(),
+});
+
+export type LoopRecipeAdminActionId = z.infer<typeof LoopRecipeAdminActionIdSchema>;
+export type LoopRecipeAdminActionRequest = z.infer<typeof LoopRecipeAdminActionRequestSchema>;
+export type LoopRecipeAdminActionResponse = z.infer<typeof LoopRecipeAdminActionResponseSchema>;
+
+// ============================================================================
+// MCP / CI Integration Registry (P1-2/P2-3, 0623 · CrewAI). Control-plane v1 for
+// tenant-governed integration assets. Real MCP handshake and GitHub Checks API
+// publication stay in provider clients; this contract captures config posture,
+// compatibility, and SSO-gated lifecycle actions.
+// ============================================================================
+export const LoopIntegrationLifecycleSchema = z.enum([
+  'configured',
+  'connected',
+  'disconnected',
+  'failed',
+]);
+
+export const LoopMcpServerSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  protocol: z.literal('mcp'),
+  transport: z.enum(['stdio', 'sse', 'http']),
+  status: LoopIntegrationLifecycleSchema,
+  toolIds: z.array(z.string()).default([]),
+  permissionProfile: z.string(),
+  authStatus: z.enum(['configured', 'missing', 'not-required']),
+  lastTestedAt: z.string().optional(),
+  health: z.object({
+    ok: z.boolean(),
+    message: z.string(),
+  }),
+  executionAudit: z
+    .object({
+      auditRef: z.string(),
+      artifactRef: z.string().trim().min(1).optional(),
+      providerId: z.string(),
+      action: z.enum(['connect', 'disconnect', 'test']),
+      outcome: z.enum(['success', 'failed', 'skipped']),
+      toolCount: z.number().int().nonnegative(),
+      recordedAt: z.string(),
+    })
+    .optional(),
+  risks: z.array(z.string()).default([]),
+});
+
+export const LoopMcpServerListResponseSchema = PaginatedResponseSchema(LoopMcpServerSchema);
+
+export const LoopMcpServerActionSchema = z.object({
+  reason: z.string().trim().min(1).optional(),
+});
+
+export const LoopCiCheckPublicationWorkPackageSchema = z.object({
+  workPackageId: z.string().trim().min(1),
+  title: z.string().trim().min(1).optional(),
+  commitSha: z.string().trim().min(7).optional(),
+  commitMessage: z.string().trim().min(1).optional(),
+  branch: z.string().trim().min(1).optional(),
+  files: z.array(z.string()).default([]),
+});
+
+export const LoopCiCheckPublicationSchema = z.object({
+  artifactRef: z.string().trim().min(1),
+  integrationId: z.string().trim().min(1).optional(),
+  provider: z.enum(['github', 'gitlab', 'gitea']).optional(),
+  headSha: z.string().trim().min(7).optional(),
+  checkRunId: z.string().trim().min(1).optional(),
+  url: z.string().url().optional(),
+  outcome: z.enum(['published', 'failed']),
+  reason: z.string().trim().min(1).optional(),
+  issueId: z.string().trim().min(1).optional(),
+  prId: z.string().trim().min(1).optional(),
+  evidenceBacklink: z.string().url().optional(),
+  workPackageCommitMap: z.array(LoopCiCheckPublicationWorkPackageSchema).default([]),
+  request: z
+    .object({
+      name: z.string().trim().min(1).optional(),
+      title: z.string().trim().min(1).optional(),
+      summary: z.string().trim().min(1).optional(),
+      detailsUrl: z.string().url().optional(),
+      evidenceBacklink: z.string().url().optional(),
+      status: z.enum(['queued', 'in_progress', 'completed']).optional(),
+      conclusion: z
+        .enum([
+          'success',
+          'failure',
+          'neutral',
+          'cancelled',
+          'skipped',
+          'timed_out',
+          'action_required',
+        ])
+        .optional(),
+    })
+    .default({}),
+  publishedAt: z.string(),
+});
+
+export const LoopCiCheckPublicationHistorySchema = z.object({
+  integrationId: z.string().trim().min(1),
+  latest: LoopCiCheckPublicationSchema.optional(),
+  entries: z.array(LoopCiCheckPublicationSchema).default([]),
+  updatedAt: z.string().optional(),
+});
+
+export const LoopCiCheckIntegrationSchema = z.object({
+  id: z.string(),
+  provider: z.enum(['github-checks', 'generic-ci']),
+  name: z.string(),
+  status: LoopIntegrationLifecycleSchema,
+  requiredForRelease: z.boolean(),
+  checkSuites: z.array(z.string()).default([]),
+  targetRef: z.string(),
+  lastPublishedAt: z.string().optional(),
+  lastPublication: LoopCiCheckPublicationSchema.optional(),
+  health: z.object({
+    ok: z.boolean(),
+    message: z.string(),
+  }),
+  risks: z.array(z.string()).default([]),
+});
+
+export const LoopCiCheckIntegrationListResponseSchema = PaginatedResponseSchema(
+  LoopCiCheckIntegrationSchema,
+);
+
+export const LoopCiCheckActionSchema = z.object({
+  reason: z.string().trim().min(1).optional(),
+  headSha: z.string().trim().min(7).optional(),
+  name: z.string().trim().min(1).optional(),
+  title: z.string().trim().min(1).optional(),
+  summary: z.string().trim().min(1).optional(),
+  detailsUrl: z.string().url().optional(),
+  issueId: z.string().trim().min(1).optional(),
+  prId: z.string().trim().min(1).optional(),
+  evidenceBacklink: z.string().url().optional(),
+  status: z.enum(['queued', 'in_progress', 'completed']).optional(),
+  conclusion: z
+    .enum(['success', 'failure', 'neutral', 'cancelled', 'skipped', 'timed_out', 'action_required'])
+    .optional(),
+});
+
+export type LoopIntegrationLifecycle = z.infer<typeof LoopIntegrationLifecycleSchema>;
+export type LoopMcpServer = z.infer<typeof LoopMcpServerSchema>;
+export type LoopMcpServerListResponse = z.infer<typeof LoopMcpServerListResponseSchema>;
+export type LoopMcpServerAction = z.infer<typeof LoopMcpServerActionSchema>;
+export type LoopCiCheckIntegration = z.infer<typeof LoopCiCheckIntegrationSchema>;
+export type LoopCiCheckPublicationWorkPackage = z.infer<
+  typeof LoopCiCheckPublicationWorkPackageSchema
+>;
+export type LoopCiCheckPublication = z.infer<typeof LoopCiCheckPublicationSchema>;
+export type LoopCiCheckPublicationHistory = z.infer<typeof LoopCiCheckPublicationHistorySchema>;
+export type LoopCiCheckIntegrationListResponse = z.infer<
+  typeof LoopCiCheckIntegrationListResponseSchema
+>;
+export type LoopCiCheckAction = z.infer<typeof LoopCiCheckActionSchema>;
+
+// ============================================================================
 // Eval Suite / Eval Run (P0-3, 0623 · CrewAI gap 4). Formal quality gate
 // contracts so teams can track pass rates, trends, and baselines across loops.
 // v1: derived from existing loop evidence (architecture, delivery, runtime, test,
@@ -1758,6 +2300,9 @@ export const EvalRunSchema = z.object({
   suiteId: z.string(),
   loopId: z.string(),
   targetRef: z.string(),
+  blueprintId: z.string().optional(),
+  baselineVersion: z.string().optional(),
+  baselineScore: z.number().min(0).max(100).optional(),
   status: EvalCheckStatusSchema,
   score: z.number().min(0).max(100),
   checkResults: z.array(EvalSuiteCheckSchema),
@@ -1768,6 +2313,25 @@ export const EvalRunSchema = z.object({
 
 export const EvalRunListResponseSchema = PaginatedResponseSchema(EvalRunSchema);
 
+export const EvalHistoricalBaselineSnapshotSchema = z.object({
+  id: z.string(),
+  suiteId: z.string(),
+  blueprintId: z.string(),
+  baselineVersion: z.string(),
+  capturedAt: z.string(),
+  runCount: z.number().int().nonnegative(),
+  averageScore: z.number().min(0).max(100),
+  passRate: z.number().min(0).max(100),
+  previousAverageScore: z.number().min(0).max(100).optional(),
+  trendDelta: z.number().optional(),
+});
+
+export const EvalTrendWorkerResponseSchema = z.object({
+  generatedAt: z.string(),
+  snapshotCount: z.number().int().nonnegative(),
+  baselines: z.array(EvalHistoricalBaselineSnapshotSchema),
+});
+
 export type EvalScope = z.infer<typeof EvalScopeSchema>;
 export type EvalCheckStatus = z.infer<typeof EvalCheckStatusSchema>;
 export type EvalSuiteCheck = z.infer<typeof EvalSuiteCheckSchema>;
@@ -1775,14 +2339,17 @@ export type EvalSuite = z.infer<typeof EvalSuiteSchema>;
 export type EvalSuiteListResponse = z.infer<typeof EvalSuiteListResponseSchema>;
 export type EvalRun = z.infer<typeof EvalRunSchema>;
 export type EvalRunListResponse = z.infer<typeof EvalRunListResponseSchema>;
+export type EvalHistoricalBaselineSnapshot = z.infer<typeof EvalHistoricalBaselineSnapshotSchema>;
+export type EvalTrendWorkerResponse = z.infer<typeof EvalTrendWorkerResponseSchema>;
 
 // ============================================================================
 // Second Opinion Resolution (P1-5, gstack/0, 0623).
 // ============================================================================
 export const LoopResolveSecondOpinionSchema = z.object({
-  action: z.enum(['accept-primary', 'accept-secondary', 'waive']),
+  action: z.enum(['accept-primary', 'accept-secondary', 'waive', 'request-changes']),
   role: z.enum(['primary', 'secondary']).optional(),
   findingFingerprint: z.string().trim().min(1).optional(),
+  findingFingerprints: z.array(z.string().trim().min(1)).optional(),
   reason: z.string().trim().optional(),
 });
 
@@ -1797,6 +2364,7 @@ export const LoopWebhookTriggerSourceSchema = z.enum([
   'linear',
   'jira',
   'slack',
+  'schedule',
   'generic',
 ]);
 
@@ -1821,3 +2389,332 @@ export const LoopWebhookTriggerResponseSchema = z.object({
 export type LoopWebhookTriggerSource = z.infer<typeof LoopWebhookTriggerSourceSchema>;
 export type LoopWebhookTrigger = z.infer<typeof LoopWebhookTriggerSchema>;
 export type LoopWebhookTriggerResponse = z.infer<typeof LoopWebhookTriggerResponseSchema>;
+
+// ============================================================================
+// Schedule Trigger (P1-3, 0623 · crewAI R30c).
+// Cron-based scheduled loop creation for recurring delivery tasks.
+// ============================================================================
+export const LoopScheduleTriggerStatusSchema = z.enum(['active', 'paused', 'error']);
+
+export const LoopScheduleTriggerSchema = z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+  blueprintId: z.string().optional(),
+  name: z.string().trim().min(1),
+  cronExpression: z.string().trim().min(1),
+  status: LoopScheduleTriggerStatusSchema,
+  targetRepo: z.string().trim().min(1),
+  templateTitle: z.string().trim().min(1),
+  templateBody: z.string().trim().min(1),
+  templatePriority: LoopPrioritySchema.default('P2'),
+  templateAcceptanceCriteria: z.array(z.string().trim().min(1)).min(1),
+  lastRunAt: z.string().optional(),
+  nextRunAt: z.string().optional(),
+  failureCount: z.number().int().nonnegative().default(0),
+  maxFailures: z.number().int().positive().default(3),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  owner: z.string().optional(),
+});
+
+export const CreateScheduleTriggerRequestSchema = z.object({
+  name: z.string().trim().min(1),
+  cronExpression: z.string().trim().min(1),
+  blueprintId: z.string().trim().min(1).optional(),
+  targetRepo: z.string().trim().min(1),
+  templateTitle: z.string().trim().min(1),
+  templateBody: z.string().trim().min(10),
+  templatePriority: LoopPrioritySchema.optional(),
+  templateAcceptanceCriteria: z.array(z.string().trim().min(1)).min(1),
+  owner: z.string().trim().min(1).optional(),
+});
+
+export const UpdateScheduleTriggerRequestSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  cronExpression: z.string().trim().min(1).optional(),
+  status: LoopScheduleTriggerStatusSchema.optional(),
+  blueprintId: z.string().trim().min(1).optional(),
+  templateTitle: z.string().trim().min(1).optional(),
+  templateBody: z.string().trim().min(10).optional(),
+  templatePriority: LoopPrioritySchema.optional(),
+  templateAcceptanceCriteria: z.array(z.string().trim().min(1)).optional(),
+  owner: z.string().trim().min(1).optional(),
+});
+
+export const LoopScheduleTriggerListResponseSchema =
+  PaginatedResponseSchema(LoopScheduleTriggerSchema);
+
+// ============================================================================
+// Trigger Lifecycle Management (P1-3, 0623 · crewAI R30c).
+// Retry, replay, and dead-letter queue for trigger executions.
+// ============================================================================
+export const LoopTriggerExecutionStatusSchema = z.enum([
+  'pending',
+  'running',
+  'completed',
+  'failed',
+  'dead_lettered',
+]);
+
+export const LoopTriggerExecutionSchema = z.object({
+  id: z.string(),
+  triggerId: z.string(),
+  triggerType: z.enum(['webhook', 'schedule', 'manual']),
+  status: LoopTriggerExecutionStatusSchema,
+  inputPayload: z.record(z.string(), z.unknown()).optional(),
+  outputLoopId: z.string().optional(),
+  outputIssueId: z.string().optional(),
+  error: z.string().optional(),
+  attempt: z.number().int().nonnegative().default(1),
+  maxRetries: z.number().int().nonnegative().default(3),
+  nextRetryAt: z.string().optional(),
+  createdAt: z.string(),
+  completedAt: z.string().optional(),
+});
+
+export const LoopTriggerRetryRequestSchema = z.object({
+  reason: z.string().trim().min(1).optional(),
+});
+
+export const LoopTriggerReplayRequestSchema = z.object({
+  executionId: z.string().trim().min(1),
+  reason: z.string().trim().min(1).optional(),
+});
+
+export const LoopTriggerDeadLetterSchema = z.object({
+  executionId: z.string(),
+  triggerId: z.string(),
+  triggerType: z.enum(['webhook', 'schedule', 'manual']),
+  error: z.string(),
+  attempt: z.number().int().nonnegative(),
+  inputPayload: z.record(z.string(), z.unknown()).optional(),
+  deadLetteredAt: z.string(),
+  reason: z.string().optional(),
+});
+
+export const LoopTriggerDeadLetterListResponseSchema = PaginatedResponseSchema(
+  LoopTriggerDeadLetterSchema,
+);
+
+export const LoopTriggerExecutionListResponseSchema = PaginatedResponseSchema(
+  LoopTriggerExecutionSchema,
+);
+
+export type LoopScheduleTriggerStatus = z.infer<typeof LoopScheduleTriggerStatusSchema>;
+export type LoopScheduleTrigger = z.infer<typeof LoopScheduleTriggerSchema>;
+export type CreateScheduleTriggerRequest = z.infer<typeof CreateScheduleTriggerRequestSchema>;
+export type UpdateScheduleTriggerRequest = z.infer<typeof UpdateScheduleTriggerRequestSchema>;
+export type LoopScheduleTriggerListResponse = z.infer<typeof LoopScheduleTriggerListResponseSchema>;
+export type LoopTriggerExecutionStatus = z.infer<typeof LoopTriggerExecutionStatusSchema>;
+export type LoopTriggerExecution = z.infer<typeof LoopTriggerExecutionSchema>;
+export type LoopTriggerRetryRequest = z.infer<typeof LoopTriggerRetryRequestSchema>;
+export type LoopTriggerReplayRequest = z.infer<typeof LoopTriggerReplayRequestSchema>;
+export type LoopTriggerDeadLetter = z.infer<typeof LoopTriggerDeadLetterSchema>;
+export type LoopTriggerDeadLetterListResponse = z.infer<
+  typeof LoopTriggerDeadLetterListResponseSchema
+>;
+export type LoopTriggerExecutionListResponse = z.infer<
+  typeof LoopTriggerExecutionListResponseSchema
+>;
+
+// ============================================================================
+// Tool Registry (P1-4, 0623 · crewAI gap 5). Formal tool lifecycle management
+// with schema, auth, health, test, and audit. Upgrades the read-only capability
+// registry into a configurable, governed tool catalog.
+// ============================================================================
+export const LoopToolLifecycleSchema = z.enum(['active', 'planned', 'experimental', 'deprecated']);
+export const LoopToolAuthKindSchema = z.enum(['none', 'token', 'oauth', 'ssh', 'mcp']);
+
+export const LoopToolSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  kind: z.string(),
+  category: z.enum(['repo', 'build', 'qa', 'collaboration', 'runtime', 'security', 'custom']),
+  status: LoopToolLifecycleSchema,
+  description: z.string(),
+  schema: z
+    .object({
+      inputs: z.array(z.object({ name: z.string(), type: z.string(), required: z.boolean() })),
+      outputs: z.array(z.object({ name: z.string(), type: z.string() })),
+    })
+    .optional(),
+  auth: z.object({
+    kind: LoopToolAuthKindSchema,
+    configured: z.boolean(),
+    expiresAt: z.string().optional(),
+    scopes: z.array(z.string()).default([]),
+  }),
+  permissions: z.array(z.string()).default([]),
+  compatibility: z.object({
+    codex: z.boolean(),
+    claudeCode: z.boolean(),
+    thirdParty: z.enum(['unsupported', 'planned', 'compatible']),
+  }),
+  health: z.object({
+    ok: z.boolean(),
+    message: z.string(),
+    lastCheckedAt: z.string().optional(),
+  }),
+  risks: z.array(z.string()).default([]),
+  deterministicBoundary: z.string(),
+  ownerAgentIds: z.array(z.string()).default([]),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const RegisterToolRequestSchema = z.object({
+  name: z.string().trim().min(1),
+  kind: z.string().trim().min(1),
+  category: z.enum(['repo', 'build', 'qa', 'collaboration', 'runtime', 'security', 'custom']),
+  description: z.string().trim().min(1),
+  authKind: LoopToolAuthKindSchema.default('none'),
+  permissions: z.array(z.string()).default([]),
+  compatibility: z
+    .object({
+      codex: z.boolean(),
+      claudeCode: z.boolean(),
+      thirdParty: z.enum(['unsupported', 'planned', 'compatible']),
+    })
+    .default({ codex: false, claudeCode: false, thirdParty: 'unsupported' as const }),
+  deterministicBoundary: z.string().trim().min(1),
+});
+
+export const UpdateToolRequestSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  status: LoopToolLifecycleSchema.optional(),
+  description: z.string().trim().min(1).optional(),
+  permissions: z.array(z.string()).optional(),
+  compatibility: z
+    .object({
+      codex: z.boolean().optional(),
+      claudeCode: z.boolean().optional(),
+      thirdParty: z.enum(['unsupported', 'planned', 'compatible']).optional(),
+    })
+    .optional(),
+  deterministicBoundary: z.string().trim().min(1).optional(),
+});
+
+export const LoopToolListResponseSchema = PaginatedResponseSchema(LoopToolSchema);
+
+export const ToolHealthCheckResponseSchema = z.object({
+  toolId: z.string(),
+  ok: z.boolean(),
+  message: z.string(),
+  checkedAt: z.string(),
+});
+
+export const ToolTestResponseSchema = z.object({
+  toolId: z.string(),
+  ok: z.boolean(),
+  message: z.string(),
+  output: z.string().optional(),
+  durationMs: z.number().nonnegative().optional(),
+  testedAt: z.string(),
+});
+
+export type LoopToolLifecycle = z.infer<typeof LoopToolLifecycleSchema>;
+export type LoopToolAuthKind = z.infer<typeof LoopToolAuthKindSchema>;
+export type LoopTool = z.infer<typeof LoopToolSchema>;
+export type RegisterToolRequest = z.infer<typeof RegisterToolRequestSchema>;
+export type UpdateToolRequest = z.infer<typeof UpdateToolRequestSchema>;
+export type LoopToolListResponse = z.infer<typeof LoopToolListResponseSchema>;
+export type ToolHealthCheckResponse = z.infer<typeof ToolHealthCheckResponseSchema>;
+export type ToolTestResponse = z.infer<typeof ToolTestResponseSchema>;
+
+// ============================================================================
+// Delivery Blueprint (P1-2, 0623 · crewAI gap 3). Versioned delivery templates
+// that encode persona sequence, runtime policy, eval suite, gates, and evidence.
+// Upgrades the frontend-only blueprint catalog into a governed, versioned registry.
+// ============================================================================
+export const LoopBlueprintSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  kind: z.enum([
+    'bugfix',
+    'feature',
+    'refactor',
+    'docs',
+    'integration',
+    'flow',
+    'security',
+    'dependency',
+  ]),
+  description: z.string(),
+  version: z.string(),
+  priority: LoopPrioritySchema,
+  active: z.boolean(),
+  personaSequence: z.array(z.string()),
+  evalSuiteId: z.string().optional(),
+  gateProfile: z.object({
+    humanGates: z.array(z.string()).default([]),
+    agentGates: z.array(z.string()).default([]),
+    releaseGates: z.array(z.string()).default([]),
+  }),
+  runtimePolicy: z.object({
+    primary: z.string(),
+    fallback: z.string().optional(),
+  }),
+  evidenceTemplate: z.object({
+    requiredArtifacts: z.array(z.string()).default([]),
+    prCommentTemplate: z.string().optional(),
+  }),
+  usageCount: z.number().int().nonnegative().default(0),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const CreateBlueprintRequestSchema = z.object({
+  name: z.string().trim().min(1),
+  kind: z.enum([
+    'bugfix',
+    'feature',
+    'refactor',
+    'docs',
+    'integration',
+    'flow',
+    'security',
+    'dependency',
+  ]),
+  description: z.string().trim().min(1),
+  personaSequence: z.array(z.string().trim().min(1)).min(1),
+  evalSuiteId: z.string().trim().min(1).optional(),
+  gateProfile: z
+    .object({
+      humanGates: z.array(z.string()).default([]),
+      agentGates: z.array(z.string()).default([]),
+      releaseGates: z.array(z.string()).default([]),
+    })
+    .optional(),
+  runtimePolicy: z.object({
+    primary: z.string().trim().min(1),
+    fallback: z.string().trim().min(1).optional(),
+  }),
+});
+
+export const UpdateBlueprintRequestSchema = z.object({
+  name: z.string().trim().min(1).optional(),
+  description: z.string().trim().min(1).optional(),
+  active: z.boolean().optional(),
+  personaSequence: z.array(z.string().trim().min(1)).optional(),
+  evalSuiteId: z.string().trim().min(1).optional(),
+  gateProfile: z
+    .object({
+      humanGates: z.array(z.string()).optional(),
+      agentGates: z.array(z.string()).optional(),
+      releaseGates: z.array(z.string()).optional(),
+    })
+    .optional(),
+  runtimePolicy: z
+    .object({
+      primary: z.string().trim().min(1).optional(),
+      fallback: z.string().trim().min(1).optional(),
+    })
+    .optional(),
+});
+
+export const LoopBlueprintListResponseSchema = PaginatedResponseSchema(LoopBlueprintSchema);
+
+export type LoopBlueprint = z.infer<typeof LoopBlueprintSchema>;
+export type CreateBlueprintRequest = z.infer<typeof CreateBlueprintRequestSchema>;
+export type UpdateBlueprintRequest = z.infer<typeof UpdateBlueprintRequestSchema>;
+export type LoopBlueprintListResponse = z.infer<typeof LoopBlueprintListResponseSchema>;

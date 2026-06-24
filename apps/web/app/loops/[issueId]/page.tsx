@@ -34,6 +34,7 @@ import {
   useLoopIssue,
   useLoopsAgentRuntime,
   useLoopDeliveryEvidence,
+  getBrowserQaArtifactUrl,
 } from '@/lib/api/contracts/hooks';
 import { buildAgentHandoffTimeline, type WorkforcePersonaId } from '../loops-dashboard-model';
 import {
@@ -1097,6 +1098,29 @@ export default function LoopIssueDetailPage() {
                     <p className="text-sm text-muted-foreground">{t('deliveryControls.empty')}</p>
                   )}
                 </div>
+                {detail.workflowRecipe?.baselineEvidence?.length ? (
+                  <div className="mt-5">
+                    <h4 className="text-xs font-semibold uppercase text-muted-foreground">
+                      {t('deliveryControls.baselineTitle')}
+                    </h4>
+                    <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+                      {detail.workflowRecipe.baselineEvidence.map((item) => (
+                        <div className="rounded-md border bg-muted/20 p-3 text-xs" key={item.id}>
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="line-clamp-2 font-medium">{item.label}</span>
+                            <span className="shrink-0 rounded-md border bg-background px-2 py-0.5">
+                              {formatLoopLabel(item.kind, locale)}
+                            </span>
+                          </div>
+                          <p className="mt-2 line-clamp-2 text-muted-foreground">{item.value}</p>
+                          {item.evidenceRef ? (
+                            <p className="mt-2 truncate font-medium">{item.evidenceRef}</p>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className="grid grid-cols-1 gap-5">
@@ -1186,6 +1210,109 @@ export default function LoopIssueDetailPage() {
                       </button>
                     </form>
 
+                    {latestBrowserQa ? (
+                      <div className="rounded-md border bg-muted/20 p-3 text-xs">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium">
+                            {t('deliveryControls.browserQa.artifactsTitle')}
+                          </span>
+                          <StatusBadge className={deliveryStatusClass(latestBrowserQa.status)}>
+                            {formatLoopStatus(latestBrowserQa.status, locale)}
+                          </StatusBadge>
+                        </div>
+                        <p className="mt-2 truncate text-muted-foreground">
+                          {latestBrowserQa.title ?? latestBrowserQa.targetUrl}
+                        </p>
+                        <div className="mt-3 grid grid-cols-3 gap-2">
+                          <MetricTile
+                            label={t('deliveryControls.browserQa.screenshots')}
+                            value={latestBrowserQa.screenshots.length}
+                          />
+                          <MetricTile
+                            label={t('deliveryControls.browserQa.traces')}
+                            value={latestBrowserQa.traces?.length ?? 0}
+                          />
+                          <MetricTile
+                            label={t('deliveryControls.browserQa.handoffs')}
+                            value={latestBrowserQa.handoffs?.length ?? 0}
+                          />
+                        </div>
+                        {latestBrowserQa.visualDiffs?.length ? (
+                          <div className="mt-3 space-y-2">
+                            <p className="font-medium">
+                              {t('deliveryControls.browserQa.visualDiffs')}
+                            </p>
+                            {latestBrowserQa.visualDiffs.map((diff) => (
+                              <div
+                                className={`rounded-md border p-2 ${deliveryStatusClass(diff.status)}`}
+                                key={`${diff.label}-${diff.actualPath}`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <span className="line-clamp-2 font-medium">{diff.label}</span>
+                                  <span className="shrink-0 rounded-md border bg-background/70 px-2 py-0.5">
+                                    {formatLoopStatus(diff.status, locale)}
+                                  </span>
+                                </div>
+                                <p className="mt-1 truncate opacity-80">
+                                  {diff.viewport
+                                    ? `${diff.viewport.name} ${diff.viewport.width}x${diff.viewport.height}`
+                                    : t('deliveryControls.browserQa.viewportUnknown')}
+                                </p>
+                                <p className="mt-1 truncate opacity-80">
+                                  {t('deliveryControls.browserQa.changedPixels', {
+                                    count: diff.changedPixels ?? 0,
+                                  })}
+                                </p>
+                                <p className="mt-2 truncate font-medium">{diff.actualPath}</p>
+                                {/* gstack P2: Embedded preview thumbnail */}
+                                {diff.status === 'changed' && diff.diffPath ? (
+                                  <div className="mt-2 grid grid-cols-2 gap-1">
+                                    <img
+                                      alt={`baseline: ${diff.label}`}
+                                      className="w-full rounded border object-cover"
+                                      src={getBrowserQaArtifactUrl(
+                                        detail.issue.id,
+                                        diff.baselinePath,
+                                      )}
+                                      style={{ maxHeight: 120 }}
+                                    />
+                                    <img
+                                      alt={`diff: ${diff.label}`}
+                                      className="w-full rounded border object-cover"
+                                      src={getBrowserQaArtifactUrl(detail.issue.id, diff.diffPath)}
+                                      style={{ maxHeight: 120 }}
+                                    />
+                                  </div>
+                                ) : (
+                                  <img
+                                    alt={`screenshot: ${diff.label}`}
+                                    className="mt-2 w-full rounded border object-cover"
+                                    src={getBrowserQaArtifactUrl(detail.issue.id, diff.actualPath)}
+                                    style={{ maxHeight: 120 }}
+                                  />
+                                )}
+                                {diff.diffPath ? (
+                                  <p className="mt-1 truncate opacity-80">{diff.diffPath}</p>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                        {latestBrowserQa.handoffs?.length ? (
+                          <div className="mt-3 space-y-1">
+                            <p className="font-medium">
+                              {t('deliveryControls.browserQa.handoffTitle')}
+                            </p>
+                            {latestBrowserQa.handoffs.map((handoff) => (
+                              <p className="truncate text-muted-foreground" key={handoff.path}>
+                                {handoff.label}: {handoff.path}
+                              </p>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+
                     <form
                       className="rounded-md border bg-muted/20 p-3 text-xs"
                       onSubmit={ops.setBrowserQaSessionPolicy}
@@ -1227,6 +1354,51 @@ export default function LoopIssueDetailPage() {
                         type="submit"
                       >
                         {t('deliveryControls.browserQa.saveSessionPolicy')}
+                      </button>
+                    </form>
+
+                    <form
+                      className="rounded-md border bg-muted/20 p-3 text-xs"
+                      onSubmit={ops.setRequiredReviewGates}
+                    >
+                      <span className="font-medium">
+                        {t('deliveryControls.requiredReviewGates.title')}
+                      </span>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        {(
+                          [
+                            'product',
+                            'architecture',
+                            'design',
+                            'devex',
+                            'security',
+                            'code',
+                          ] as const
+                        ).map((kind) => (
+                          <label
+                            className="flex items-center gap-2 rounded-md border bg-background px-2 py-1"
+                            key={kind}
+                          >
+                            <input
+                              defaultChecked={
+                                detail.deliveryGovernance?.requiredReviewGates?.gateKinds.includes(
+                                  kind,
+                                ) ?? detail.reviewGates?.some((gate) => gate.kind === kind)
+                              }
+                              name="gateKinds"
+                              type="checkbox"
+                              value={kind}
+                            />
+                            <span>{formatLoopLabel(kind, locale)}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <button
+                        className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={ops.operations.isPending}
+                        type="submit"
+                      >
+                        {t('deliveryControls.requiredReviewGates.save')}
                       </button>
                     </form>
 
@@ -1288,8 +1460,28 @@ export default function LoopIssueDetailPage() {
                       />
                       <input
                         className="mt-2 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                        defaultValue={detail.deliveryGovernance?.releaseCanary?.environment ?? ''}
+                        name="environment"
+                        placeholder={t('deliveryControls.releaseCanary.environment')}
+                      />
+                      <input
+                        className="mt-2 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                        defaultValue={
+                          detail.deliveryGovernance?.releaseCanary?.environmentOwner ?? ''
+                        }
+                        name="environmentOwner"
+                        placeholder={t('deliveryControls.releaseCanary.environmentOwner')}
+                      />
+                      <input
+                        className="mt-2 h-9 w-full rounded-md border bg-background px-3 text-sm"
                         name="reason"
                         placeholder={t('deliveryControls.releaseCanary.reason')}
+                      />
+                      <input
+                        className="mt-2 h-9 w-full rounded-md border bg-background px-3 text-sm"
+                        defaultValue={detail.deliveryGovernance?.releaseCanary?.rollbackNote ?? ''}
+                        name="rollbackNote"
+                        placeholder={t('deliveryControls.releaseCanary.rollbackNote')}
                       />
                       <button
                         className="mt-3 inline-flex h-9 w-full items-center justify-center rounded-md border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1466,31 +1658,60 @@ export default function LoopIssueDetailPage() {
                         />
                       </div>
                       {detail.secondOpinion.comparison.conflictCount > 0 ? (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <button
-                            className="inline-flex h-8 items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-950 hover:bg-emerald-100 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100 disabled:opacity-50"
-                            disabled={ops.operations.isPending}
-                            onClick={ops.acceptPrimaryFindings}
-                            type="button"
-                          >
-                            {t('deliveryControls.secondOpinion.acceptPrimary')}
-                          </button>
-                          <button
-                            className="inline-flex h-8 items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-3 text-xs font-medium text-sky-950 hover:bg-sky-100 dark:border-sky-900/70 dark:bg-sky-950/20 dark:text-sky-100 disabled:opacity-50"
-                            disabled={ops.operations.isPending}
-                            onClick={ops.acceptSecondaryFindings}
-                            type="button"
-                          >
-                            {t('deliveryControls.secondOpinion.acceptSecondary')}
-                          </button>
-                          <button
-                            className="inline-flex h-8 items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-3 text-xs font-medium text-amber-950 hover:bg-amber-100 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100 disabled:opacity-50"
-                            disabled={ops.operations.isPending}
-                            onClick={() => ops.waiveSecondOpinion()}
-                            type="button"
-                          >
-                            {t('deliveryControls.secondOpinion.waive')}
-                          </button>
+                        <div className="mt-3 space-y-3">
+                          <div className="rounded-md border bg-background p-3 text-xs">
+                            <p className="font-medium">
+                              {t('deliveryControls.secondOpinion.conflictDrilldown')}
+                            </p>
+                            <ul className="mt-2 space-y-1 text-muted-foreground">
+                              {detail.secondOpinion.comparison.conflictFingerprints.map(
+                                (fingerprint) => (
+                                  <li className="truncate" key={fingerprint}>
+                                    {fingerprint}
+                                  </li>
+                                ),
+                              )}
+                            </ul>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              className="inline-flex h-8 items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-3 text-xs font-medium text-emerald-950 hover:bg-emerald-100 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100 disabled:opacity-50"
+                              disabled={ops.operations.isPending}
+                              onClick={() =>
+                                ops.acceptPrimaryFindings(
+                                  detail.secondOpinion?.comparison.conflictFingerprints,
+                                )
+                              }
+                              type="button"
+                            >
+                              {t('deliveryControls.secondOpinion.acceptPrimaryBatch')}
+                            </button>
+                            <button
+                              className="inline-flex h-8 items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-3 text-xs font-medium text-sky-950 hover:bg-sky-100 dark:border-sky-900/70 dark:bg-sky-950/20 dark:text-sky-100 disabled:opacity-50"
+                              disabled={ops.operations.isPending}
+                              onClick={() =>
+                                ops.acceptSecondaryFindings(
+                                  detail.secondOpinion?.comparison.conflictFingerprints,
+                                )
+                              }
+                              type="button"
+                            >
+                              {t('deliveryControls.secondOpinion.acceptSecondaryBatch')}
+                            </button>
+                            <button
+                              className="inline-flex h-8 items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-3 text-xs font-medium text-amber-950 hover:bg-amber-100 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100 disabled:opacity-50"
+                              disabled={ops.operations.isPending}
+                              onClick={() =>
+                                ops.waiveSecondOpinion(
+                                  undefined,
+                                  detail.secondOpinion?.comparison.conflictFingerprints,
+                                )
+                              }
+                              type="button"
+                            >
+                              {t('deliveryControls.secondOpinion.waiveBatch')}
+                            </button>
+                          </div>
                         </div>
                       ) : null}
                     </div>

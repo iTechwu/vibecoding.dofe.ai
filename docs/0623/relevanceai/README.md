@@ -62,11 +62,16 @@ DofeAI 的底层执行运行时不是自研通用 agent 引擎，而是以 Codex
 
 ## 最大产品缺口
 
-- 缺少“一眼就懂”的 workforce/team 抽象，用户仍需要理解 Loop/phase/shard 等工程语言。
-- 缺少从模板开始的业务入口，创建 Issue 仍偏任务录入，不是“招募一个团队/复制一个流程”。
-- 缺少生产评测体系，已有 test/review/evidence 但还不是可复用 eval suite。
-- 缺少触发器生命周期管理，已有 source/trigger 展示，但 webhook/schedule/integration trigger 仍未闭环。
-- 缺少集成市场与权限配置 UI，capability registry 仍以展示为主。
+- Workforce/team 抽象已部分补齐，但仍需要继续减少 Loop/phase/shard 等内部术语暴露。
+- 从模板开始的业务入口已部分补齐，但 blueprint clone/config 仍未闭环。
+- 生产评测体系已具备 derived checks/test/review/evidence，并已有只读 EvalSuite/EvalRun API v1；但还不是持久化、可版本化、可趋势分析的 eval suite。
+- 触发器生命周期已有 source/portfolio/lifecycle 展示，并已有 signed webhook intake + basic payload mapping + evidence redaction + payload size guard + in-process rate guard v1；但 schedule、replay/dead-letter、integration trigger worker 仍未闭环。
+- 集成市场与权限配置 UI 仍偏展示，capability registry 还未升级为完整 Tool & Integration Registry。
+
+## 2026-06-24 最新实施状态
+
+- 已实施/部分实施：Runtime Backend Registry、Software Delivery Workforce、Delivery Flow Pipeline、Invent Delivery Preview、Release Governance、rollback note release gate、Runtime Backends dashboard、derived EvalSuite/EvalRun API v1、signed Webhook Trigger intake + basic payload mapping + evidence redaction + payload size guard + in-process rate guard v1。
+- 后续仍需实施：持久化/可版本化 Eval Suite 与 Eval Run、Trigger worker/replay/schedule/integration platform、Tool Registry v2、Blueprint clone/config、Enterprise Governance Center、OTEL event streaming。
 
 ## 建议的北极星
 

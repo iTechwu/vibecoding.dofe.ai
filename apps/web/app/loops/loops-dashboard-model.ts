@@ -349,6 +349,10 @@ export interface ReviewInboxItem {
   gateKind: ReviewGateKind;
   label: string;
   meta: string;
+  owner?: string;
+  slaHours?: number;
+  ageHours?: number;
+  evidence?: string;
 }
 
 export interface ReviewInboxGroup {
@@ -387,6 +391,7 @@ export interface LoopBoardColumn {
 
 export type ExceptionSource =
   | 'cost'
+  | 'eval'
   | 'pause'
   | 'review'
   | 'runtime'
@@ -923,8 +928,12 @@ export function buildReviewInboxGroups(items: ReviewInboxItem[]): ReviewInboxGro
  * phase (PHASE_6+). These items are surfaced in the Review Inbox under the
  * "release" gate kind with critical priority.
  */
-export function buildSecondOpinionConflictItems(items: LoopListItem[]): ReviewInboxItem[] {
+export function buildSecondOpinionConflictItems(
+  items: LoopListItem[],
+  now = new Date(),
+): ReviewInboxItem[] {
   const convergencePhases = ['PHASE_6_CONVERGE', 'PHASE_7_GLOBAL_REVIEW', 'PHASE_8_ANNOTATE'];
+  const slaHours = 24;
   return items
     .filter(({ state, releaseGate }) => {
       const phase = state?.phase ?? 'PHASE_0_INTAKE';
@@ -932,16 +941,30 @@ export function buildSecondOpinionConflictItems(items: LoopListItem[]): ReviewIn
         convergencePhases.includes(phase) && releaseGate?.checklist.secondOpinionPassed === false
       );
     })
-    .map((item) => ({
-      id: `${item.issue.id}-second-opinion-conflict`,
-      title: item.issue.title,
-      href: `/loops/${item.issue.id}`,
-      source: 'action' as const,
-      priority: 'critical' as RiskLevel,
-      gateKind: 'release' as ReviewGateKind,
-      label: 'Second opinion conflict',
-      meta: `Phase ${formatPhase(item.state?.phase ?? '')} · Release gate requires resolution`,
-    }));
+    .map((item) => {
+      const updated = item.state?.updated ?? item.issue.updated;
+      const updatedMs = new Date(updated).getTime();
+      const nowMs = now.getTime();
+      const ageHours =
+        Number.isFinite(updatedMs) && Number.isFinite(nowMs)
+          ? Math.max(0, Math.floor((nowMs - updatedMs) / 3_600_000))
+          : 0;
+      const conflictCount = item.releaseGate?.checklist.secondOpinionPassed === false ? 1 : 0;
+      return {
+        id: `${item.issue.id}-second-opinion-conflict`,
+        title: item.issue.title,
+        href: `/loops/${item.issue.id}`,
+        source: 'action' as const,
+        priority: ageHours >= slaHours ? ('critical' as RiskLevel) : ('warning' as RiskLevel),
+        gateKind: 'release' as ReviewGateKind,
+        label: 'Second opinion conflict',
+        meta: `Phase ${formatPhase(item.state?.phase ?? '')} · ${conflictCount} conflict(s) · SLA ${slaHours}h`,
+        owner: 'Release reviewer',
+        slaHours,
+        ageHours,
+        evidence: item.releaseGate?.blocker ?? item.releaseGate?.id,
+      };
+    });
 }
 
 function inferReviewGateKind(input: {
@@ -1134,6 +1157,7 @@ export function buildExceptionCenter(
   items: LoopListItem[],
   options: {
     cost?: LoopCostResponse;
+    evalPlan?: EvalPlan;
     runtime?: LoopAgentRuntimeResponse;
     health?: LoopsDoctorResponse;
   } = {},
@@ -1250,6 +1274,34 @@ export function buildExceptionCenter(
         source: 'doctor',
       }),
     ) ?? [];
+  const evalItems =
+    options.evalPlan?.checks
+      .filter((check) => check.hardGate && check.status !== 'passed')
+      .map(
+        (check): ExceptionCenterItem => ({
+          id: `eval-${check.id}`,
+          title: 'Eval hard gate',
+          href: '/loops#eval-plan',
+          level: check.status === 'blocked' ? 'critical' : 'warning',
+          reason:
+            check.status === 'blocked'
+              ? `Eval gate blocked: ${check.id}`
+              : `Eval gate needs evidence: ${check.id}`,
+          owner: 'Eval owner',
+          action: check.status === 'blocked' ? 'Resolve hard gate' : 'Collect evidence',
+          evidence: check.evidence,
+          impact:
+            check.status === 'blocked'
+              ? 'Release readiness is blocked by eval evidence'
+              : 'Release readiness needs more eval evidence before final review',
+          retryAction:
+            check.status === 'blocked'
+              ? 'Open the failing loop evidence, fix the gate, then rerun review'
+              : 'Collect the missing test, runtime, or review evidence',
+          evidenceHref: '/loops#eval-plan',
+          source: 'eval',
+        }),
+      ) ?? [];
 
   const failed = items.filter(
     (item) =>
@@ -1267,7 +1319,7 @@ export function buildExceptionCenter(
       failed,
       capacity: options.runtime?.summary.total ?? items.length,
     },
-    items: [...loopItems, ...runtimeItems, ...doctorItems]
+    items: [...loopItems, ...evalItems, ...runtimeItems, ...doctorItems]
       .sort(
         (a, b) =>
           exceptionSeverityRank(a.level) - exceptionSeverityRank(b.level) ||
@@ -1568,10 +1620,6 @@ export function buildPerformanceSnapshot(
     traceEvents: options.traceSummary?.total ?? 0,
     recentEvents: options.traceSummary?.recent ?? 0,
   };
-}
-
-function hasRuntimeSecurityException(item: LoopListItem) {
-  return (item.runtimeSecurityExceptions?.length ?? 0) > 0;
 }
 
 export function buildEvalPlan(items: LoopListItem[], cost?: LoopCostResponse): EvalPlan {
@@ -2017,12 +2065,28 @@ export interface RecipeAdminItem {
   avgShardsTotal: number;
 }
 
+export type RecipeAdminActionId = 'createVersion' | 'reviewApproval' | 'rollbackVersion';
+
+export interface RecipeAdminAction {
+  id: RecipeAdminActionId;
+  state: 'ready' | 'blocked';
+  evidence: string;
+  sourcePermission?: string;
+}
+
 export interface RecipeAdminSummary {
   summary: {
     totalKinds: number;
     totalLoops: number;
     totalBlocked: number;
   };
+  tenantGovernance?: {
+    scope: string;
+    granted: boolean;
+    requiredAction: string;
+    sourcePermission: string;
+  };
+  actions: RecipeAdminAction[];
   items: RecipeAdminItem[];
 }
 
@@ -2034,6 +2098,7 @@ export interface RecipeAdminSummary {
 export function buildRecipeAdminSummary(
   items: LoopListItem[],
   cost?: import('@repo/contracts').LoopCostResponse,
+  assetPermissions?: import('@repo/contracts').LoopAssetPermissionsResponse,
 ): RecipeAdminSummary {
   const costByIssue = new Map((cost?.loops ?? []).map((item) => [item.issueId, item]));
   const active = items.filter(({ issue }) => !['ARCHIVED', 'REJECTED'].includes(issue.status));
@@ -2092,13 +2157,56 @@ export function buildRecipeAdminSummary(
           : 0,
     }))
     .sort((a, b) => b.count - a.count || a.loopKind.localeCompare(b.loopKind));
+  const blueprintAsset = assetPermissions?.assets.find(
+    (asset) => asset.assetKind === 'blueprint' && asset.assetId === 'delivery-blueprints',
+  );
+  const canCreateRecipe = Boolean(blueprintAsset?.granted);
+  const totalBlocked = items_out.reduce((s, item) => s + item.blockedCount, 0);
+  const sourcePermission = blueprintAsset?.sourcePermission;
+  const actions: RecipeAdminAction[] = [
+    {
+      id: 'createVersion',
+      state: canCreateRecipe ? 'ready' : 'blocked',
+      evidence: canCreateRecipe
+        ? `${sourcePermission ?? 'sso'} grants recipe version changes`
+        : 'SSO blueprint create permission required',
+      sourcePermission,
+    },
+    {
+      id: 'reviewApproval',
+      state: canCreateRecipe && totalBlocked > 0 ? 'ready' : 'blocked',
+      evidence:
+        totalBlocked > 0
+          ? `${totalBlocked} blocked loops need approval review`
+          : 'No blocked recipe loops require approval',
+      sourcePermission,
+    },
+    {
+      id: 'rollbackVersion',
+      state: canCreateRecipe && items_out.length > 0 ? 'ready' : 'blocked',
+      evidence:
+        items_out.length > 0
+          ? `${items_out.length} recipe kinds have rollback baseline`
+          : 'No active recipe baseline available',
+      sourcePermission,
+    },
+  ];
 
   return {
     summary: {
       totalKinds: items_out.length,
       totalLoops: active.length,
-      totalBlocked: items_out.reduce((s, item) => s + item.blockedCount, 0),
+      totalBlocked,
     },
+    tenantGovernance: blueprintAsset
+      ? {
+          scope: blueprintAsset.scope,
+          granted: blueprintAsset.granted,
+          requiredAction: blueprintAsset.requiredAction,
+          sourcePermission: blueprintAsset.sourcePermission,
+        }
+      : undefined,
+    actions,
     items: items_out,
   };
 }
@@ -2609,6 +2717,7 @@ export interface LoopBenchSummary {
   releaseBlockerRate: number;
   runtimeViolationRate: number;
   learningReuseRate: number;
+  canaryPassRate: number;
 }
 
 export function buildLoopBench(
@@ -2679,6 +2788,12 @@ export function buildLoopBench(
   const reusedCount = learnings.filter((l) => l.lastUsedAt).length;
   const learningReuseRate =
     learnings.length > 0 ? Math.round((reusedCount / learnings.length) * 100) : 0;
+  const canaryResults = items
+    .map(({ releaseGate }) => releaseGate?.checklist.canaryPassed)
+    .filter((value): value is boolean => value !== undefined);
+  const canaryPassCount = canaryResults.filter(Boolean).length;
+  const canaryPassRate =
+    canaryResults.length > 0 ? Math.round((canaryPassCount / canaryResults.length) * 100) : 0;
 
   return {
     firstPassReviewRate,
@@ -2687,6 +2802,7 @@ export function buildLoopBench(
     releaseBlockerRate,
     runtimeViolationRate,
     learningReuseRate,
+    canaryPassRate,
   };
 }
 
@@ -2963,5 +3079,138 @@ export function buildTriggerLifecycle(items: LoopListItem[]): TriggerLifecycle {
       repos: allRepos.size,
     },
     sources,
+  };
+}
+
+// ============================================================================
+// Delivery Flow (P1-1, R8 · 0623 crewAI). Visualizes the full loop pipeline
+// as a flow diagram with runtime owners and human/automated gate markers.
+// ============================================================================
+
+export interface DeliveryFlowStep {
+  id: string;
+  label: string;
+  phases: string[];
+  runtimeOwner: 'codex' | 'claude-code' | 'human' | 'system';
+  gateKind: 'none' | 'human' | 'agent' | 'release';
+  loopCount: number;
+  blockedCount: number;
+}
+
+export interface DeliveryFlow {
+  summary: { totalSteps: number; activeSteps: number; blockedSteps: number };
+  steps: DeliveryFlowStep[];
+  pipelineLabel: string;
+}
+
+const DELIVERY_FLOW_PIPELINE: Array<{
+  id: string;
+  label: string;
+  phases: string[];
+  runtimeOwner: 'codex' | 'claude-code' | 'human' | 'system';
+  gateKind: 'none' | 'human' | 'agent' | 'release';
+}> = [
+  {
+    id: 'intake',
+    label: 'Intake',
+    phases: ['PHASE_0_INTAKE'],
+    runtimeOwner: 'system',
+    gateKind: 'none',
+  },
+  {
+    id: 'spec',
+    label: 'Spec',
+    phases: ['PHASE_1_SPEC'],
+    runtimeOwner: 'codex',
+    gateKind: 'none',
+  },
+  {
+    id: 'review',
+    label: 'Spec Review',
+    phases: ['PHASE_2_REVIEW'],
+    runtimeOwner: 'human',
+    gateKind: 'human',
+  },
+  {
+    id: 'decompose',
+    label: 'Plan',
+    phases: ['PHASE_3_DECOMPOSE'],
+    runtimeOwner: 'codex',
+    gateKind: 'none',
+  },
+  {
+    id: 'implement',
+    label: 'Build',
+    phases: ['PHASE_4_IMPLEMENT'],
+    runtimeOwner: 'claude-code',
+    gateKind: 'agent',
+  },
+  {
+    id: 'test',
+    label: 'Test',
+    phases: ['PHASE_5_REVIEW'],
+    runtimeOwner: 'codex',
+    gateKind: 'agent',
+  },
+  {
+    id: 'converge',
+    label: 'Converge',
+    phases: ['PHASE_6_CONVERGE'],
+    runtimeOwner: 'codex',
+    gateKind: 'agent',
+  },
+  {
+    id: 'globalReview',
+    label: 'Global Review',
+    phases: ['PHASE_7_GLOBAL_REVIEW'],
+    runtimeOwner: 'codex',
+    gateKind: 'agent',
+  },
+  {
+    id: 'annotate',
+    label: 'Annotate',
+    phases: ['PHASE_8_ANNOTATE'],
+    runtimeOwner: 'codex',
+    gateKind: 'none',
+  },
+  {
+    id: 'close',
+    label: 'Close',
+    phases: ['CLOSED'],
+    runtimeOwner: 'system',
+    gateKind: 'release',
+  },
+];
+
+export function buildDeliveryFlow(items: LoopListItem[]): DeliveryFlow {
+  const active = items.filter(({ issue }) => !['ARCHIVED', 'REJECTED'].includes(issue.status));
+
+  const steps: DeliveryFlowStep[] = DELIVERY_FLOW_PIPELINE.map((def) => {
+    let loopCount = 0;
+    let blockedCount = 0;
+    for (const item of active) {
+      const phase = item.state?.phase ?? 'PHASE_0_INTAKE';
+      if (def.phases.includes(phase)) {
+        loopCount++;
+        if (
+          item.state?.paused ||
+          (item.state?.globalVerdict && item.state.globalVerdict !== 'PASS')
+        ) {
+          blockedCount++;
+        }
+      }
+    }
+    return { ...def, loopCount, blockedCount };
+  });
+
+  return {
+    summary: {
+      totalSteps: steps.length,
+      activeSteps: steps.filter((s) => s.loopCount > 0).length,
+      blockedSteps: steps.filter((s) => s.blockedCount > 0).length,
+    },
+    steps,
+    pipelineLabel:
+      'Intake → Spec → Spec Review → Plan → Build → Test → Converge → Global Review → Annotate → Close',
   };
 }

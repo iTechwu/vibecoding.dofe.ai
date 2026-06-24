@@ -156,6 +156,19 @@ model LoopState {
   @@map("loop_state")
 }
 
+model LoopRuntimeBackendPolicy {
+  id                String    @id @db.VarChar(120)
+  fallbackPolicy    String?   @map("fallback_policy") @db.Text
+  costPolicy        String?   @map("cost_policy") @db.Text
+  permissionProfile String?   @map("permission_profile") @db.Text
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  isDeleted         Boolean   @default(false) @map("is_deleted")
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@index([updatedAt(sort: Desc)])
+  @@map("loop_runtime_backend_policy")
+}
+
 /// 审计日志（参考 models.dofe.ai：业务主动调用 AuditLogService 记录管理操作，不挂全局拦截器）
 model AuditLog {
   id String @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
@@ -190,6 +203,67 @@ model AuditLog {
   @@index([resource, resourceId])
   @@index([actorId])
   @@map("audit_logs")
+}
+
+/// gstack P1-5: DB-backed persistence for second opinion conflict queue.
+model LoopSecondOpinionRecord {
+  id               String    @id @db.VarChar(120)
+  issueId          String    @map("issue_id") @db.VarChar(80)
+  runner           String    @default("claude-code") @db.VarChar(60)
+  status           String    @default("pending") @db.VarChar(40)
+  summary          String?   @db.Text
+  primaryFindings  Json      @default("[]") @map("primary_findings")
+  secondaryFindings Json     @default("[]") @map("secondary_findings")
+  comparison       Json?     @map("comparison")
+  conflicts        Json      @default("[]")
+  resolutions      Json      @default("[]")
+  fingerprintHash  String?   @map("fingerprint_hash") @db.VarChar(128)
+  referencePath    String?   @map("reference_path") @db.Text
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  resolvedAt       DateTime? @map("resolved_at") @db.Timestamptz(6)
+  isDeleted        Boolean   @default(false) @map("is_deleted")
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@index([issueId])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([fingerprintHash])
+  @@map("loop_second_opinion_record")
+}
+
+/// gstack P1-4: DB-backed global learning index.
+model LoopLearningRecord {
+  id                String    @id @db.VarChar(120)
+  issueId           String    @map("issue_id") @db.VarChar(80)
+  workspaceId       String    @map("workspace_id") @db.VarChar(120)
+  repo              String    @db.VarChar(200)
+  kind              String    @db.VarChar(60)
+  summary           String    @db.Text
+  confidence        Float     @default(0.5)
+  tags              Json      @default("[]")
+  fingerprint       String?   @db.VarChar(128)
+  similarLearningIds Json     @default("[]") @map("similar_learning_ids")
+  lifecycle         String    @default("active") @db.VarChar(40)
+  source            String    @default("loop-finalize") @db.VarChar(60)
+  evidenceRefs      Json      @default("[]") @map("evidence_refs")
+  reuseCount        Int       @default(0) @map("reuse_count")
+  lastUsedAt        DateTime? @map("last_used_at") @db.Timestamptz(6)
+  supersededById    String?   @map("superseded_by_id") @db.VarChar(120)
+  mergeDecision     String?   @map("merge_decision") @db.VarChar(40)
+  mergeDecidedBy    String?   @map("merge_decided_by") @db.VarChar(120)
+  mergeDecidedAt    DateTime? @map("merge_decided_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deprecatedAt      DateTime? @map("deprecated_at") @db.Timestamptz(6)
+  isDeleted         Boolean   @default(false) @map("is_deleted")
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, lifecycle, updatedAt(sort: Desc)])
+  @@index([repo, kind, lifecycle])
+  @@index([fingerprint])
+  @@index([lifecycle, confidence(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@map("loop_learning_record")
 }
 
 enum AuditActionType {

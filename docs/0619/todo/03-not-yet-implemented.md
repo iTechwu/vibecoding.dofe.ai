@@ -4,18 +4,18 @@
 >
 > 注（2026-06-20）：SSO 与 file 唯一真源迁移当前可由 `docs/0619/sso` 范围的独立进程推进；即便该迁移在代码层部分落地，也不改变 Loops v1 的验收口径，本文件仍按 Loops v1 后置项记录。
 
-| 能力                | 后置原因                              | 建议阶段 | 当前骨架状态                                                                      |
-| ------------------- | ------------------------------------- | -------- | --------------------------------------------------------------------------------- |
-| Dofe SSO 真实登录   | 第一版明确不加入登录                  | v1.1     | 🟡 进行中：SSO OIDC 登录链路由 `docs/0619/sso` 落地；Loops 面已接真实用户（见下） |
-| 用户角色/权限       | 依赖 SSO                              | v1.1     | ✅ Loops 最小 RBAC 已落地；组织/团队级生产权限模型仍后置                          |
-| 飞书 Issue 入口     | Web 表单覆盖主流程                    | v1.2     | 仅 Web 入口                                                                       |
-| 飞书审批卡片        | 依赖飞书入口与用户映射                | v1.2     | Web 审核台覆盖人工门禁                                                            |
-| 飞书反向通知        | v1 用 Web/CLI 通知记录                | v1.2     | `.loops/notifications` + Web/CLI 查询，无真实飞书发送                             |
-| 真实远端 PR 打开    | provider API 后置                     | v1.3     | `GitAdapter` 骨架 + convergence PR record，默认 `commit_per_shard=false` 安全跳过 |
-| 多 Loop 并行队列    | v1 先单 Loop/手动推进                 | v1.3     | 同进程 `max_parallel` 调度，无独立队列                                            |
-| 独立 worker 池      | API 内置 Runner 足够验证              | v1.3     | `LoopsRunnerService` 内置，无 worker 隔离                                         |
-| 完整 E2E/build 矩阵 | v1 先做最小冒烟 + regression commands | v1.2     | 文件侧 + live-DB jest 冒烟、`.loops/config.yaml` `tests.regression_commands`      |
-| 生产级 agent 告警   | v1 先保证失败落日志/状态/通知可见     | v1.3     | 失败落 `log.jsonl` + 状态 + 通知记录                                              |
+| 能力                | 后置原因                              | 建议阶段 | 当前骨架状态                                                                                                                                   |
+| ------------------- | ------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dofe SSO 真实登录   | 第一版明确不加入登录                  | v1.1     | 🟡 进行中：SSO OIDC 登录链路由 `docs/0619/sso` 落地；Loops 面已接真实用户（见下）                                                              |
+| 用户角色/权限       | 依赖 SSO                              | v1.1     | ✅ Loops 最小 RBAC 已落地；组织/团队级生产权限模型仍后置                                                                                       |
+| 飞书 Issue 入口     | Web 表单覆盖主流程                    | v1.2     | 仅 Web 入口                                                                                                                                    |
+| 飞书审批卡片        | 依赖飞书入口与用户映射                | v1.2     | Web 审核台覆盖人工门禁                                                                                                                         |
+| 飞书反向通知        | v1 用 Web/CLI 通知记录                | v1.2     | `.loops/notifications` + Web/CLI 查询，无真实飞书发送                                                                                          |
+| 真实远端 PR 打开    | provider API 已落地 v2                | v1.3     | ✅ R6/R29 已完成：PR provider adapter（GitHub/GitLab/Gitea）+ GitHub App token exchange + PR comment 自动发布 + Checks API + evidence backlink |
+| 多 Loop 并行队列    | v1 先单 Loop/手动推进                 | v1.3     | 同进程 `max_parallel` 调度，无独立队列                                                                                                         |
+| 独立 worker 池      | API 内置 Runner 足够验证              | v1.3     | `LoopsRunnerService` 内置，无 worker 隔离                                                                                                      |
+| 完整 E2E/build 矩阵 | v1 先做最小冒烟 + regression commands | v1.2     | 文件侧 + live-DB jest 冒烟、`.loops/config.yaml` `tests.regression_commands`                                                                   |
+| 生产级 agent 告警   | v1 先保证失败落日志/状态/通知可见     | v1.3     | 失败落 `log.jsonl` + 状态 + 通知记录                                                                                                           |
 
 ## v1.1 进度（2026-06-20）：Loops submitter 接真实 SSO 用户 + 最小 RBAC
 

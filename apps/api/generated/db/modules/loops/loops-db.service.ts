@@ -3,7 +3,13 @@ import { DbOperationType, HandlePrismaError } from '@dofe/infra-common';
 import { PrismaService } from '@dofe/infra-prisma';
 import { TransactionalServiceBase } from '@dofe/infra-shared-db';
 import { PAGINATION } from '@repo/constants';
-import type { LoopIntake, LoopIssue, LoopIssuesQuery, LoopStateItem } from '@repo/contracts';
+import type {
+  LoopIntake,
+  LoopIssue,
+  LoopIssuesQuery,
+  LoopStateItem,
+  RuntimeBackendPolicyUpdate,
+} from '@repo/contracts';
 import { Prisma } from '@prisma/client';
 import type { LoopIssue as DbLoopIssue, LoopIssueIntake, LoopState } from '@prisma/client';
 
@@ -18,6 +24,13 @@ export type LoopIssueDetailPersistence = {
   issue: DbLoopIssue;
   intakes: LoopIssueIntake[];
   state: LoopState;
+};
+
+type RuntimeBackendPolicyRow = {
+  id: string;
+  fallback_policy: string | null;
+  cost_policy: string | null;
+  permission_profile: string | null;
 };
 
 @Injectable()
@@ -248,6 +261,53 @@ export class LoopsDbService extends TransactionalServiceBase {
     return detail;
   }
 
+  @HandlePrismaError(DbOperationType.QUERY)
+  async listRuntimeBackendPolicies(): Promise<Record<string, RuntimeBackendPolicyUpdate>> {
+    const rows = await this.getReadClient().$queryRaw<RuntimeBackendPolicyRow[]>`
+      SELECT id, fallback_policy, cost_policy, permission_profile
+      FROM loop_runtime_backend_policy
+      WHERE is_deleted = false
+      ORDER BY updated_at DESC
+    `;
+    return Object.fromEntries(rows.map((row) => [row.id, this.toRuntimeBackendPolicy(row)]));
+  }
+
+  @HandlePrismaError(DbOperationType.UPDATE)
+  async upsertRuntimeBackendPolicy(
+    id: string,
+    policy: RuntimeBackendPolicyUpdate,
+  ): Promise<RuntimeBackendPolicyUpdate> {
+    const rows = await this.getWriteClient().$queryRaw<RuntimeBackendPolicyRow[]>`
+      INSERT INTO loop_runtime_backend_policy (
+        id,
+        fallback_policy,
+        cost_policy,
+        permission_profile,
+        updated_at,
+        is_deleted,
+        deleted_at
+      )
+      VALUES (
+        ${id},
+        ${policy.fallbackPolicy ?? null},
+        ${policy.costPolicy ?? null},
+        ${policy.permissionProfile ?? null},
+        NOW(),
+        false,
+        NULL
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        fallback_policy = EXCLUDED.fallback_policy,
+        cost_policy = EXCLUDED.cost_policy,
+        permission_profile = EXCLUDED.permission_profile,
+        updated_at = NOW(),
+        is_deleted = false,
+        deleted_at = NULL
+      RETURNING id, fallback_policy, cost_policy, permission_profile
+    `;
+    return this.toRuntimeBackendPolicy(rows[0]);
+  }
+
   private toDate(value: string) {
     return new Date(value);
   }
@@ -290,6 +350,16 @@ export class LoopsDbService extends TransactionalServiceBase {
       paused: state.paused,
       finalized: state.finalized,
       updatedAt: state.updated ? this.toDate(state.updated) : undefined,
+    };
+  }
+
+  private toRuntimeBackendPolicy(
+    row: RuntimeBackendPolicyRow | undefined,
+  ): RuntimeBackendPolicyUpdate {
+    return {
+      ...(row?.fallback_policy ? { fallbackPolicy: row.fallback_policy } : {}),
+      ...(row?.cost_policy ? { costPolicy: row.cost_policy } : {}),
+      ...(row?.permission_profile ? { permissionProfile: row.permission_profile } : {}),
     };
   }
 }

@@ -63,6 +63,7 @@ describe('useFormState delivery actions', () => {
 
   it('maps delivery governance actions to ts-rest mutation payloads', () => {
     mutations.deliveryGovernance.mutate.mockClear();
+    mutations.resolveSecondOpinion.mutate.mockClear();
     const { result } = renderHook(() => useFormState('issue-1'));
 
     result.current.requireSecondOpinion();
@@ -77,11 +78,23 @@ describe('useFormState delivery actions', () => {
       },
     });
 
+    result.current.acceptSecondaryFindings(['conflict-a', 'conflict-b']);
+    expect(mutations.resolveSecondOpinion.mutate).toHaveBeenCalledWith({
+      params: { issueId: 'issue-1' },
+      body: {
+        action: 'accept-secondary',
+        findingFingerprints: ['conflict-a', 'conflict-b'],
+      },
+    });
+
     const canaryForm = document.createElement('form');
     canaryForm.innerHTML = `
       <input name="status" value="passed" />
       <input name="targetUrl" value="https://example.com/canary" />
+      <input name="environment" value="staging-us" />
+      <input name="environmentOwner" value="release-manager" />
       <input name="reason" value="Smoke passed" />
+      <input name="rollbackNote" value="Revert the release branch" />
     `;
     result.current.recordReleaseCanary({
       preventDefault: vi.fn(),
@@ -94,8 +107,31 @@ describe('useFormState delivery actions', () => {
         action: 'record-release-canary',
         status: 'passed',
         targetUrl: 'https://example.com/canary',
+        environment: 'staging-us',
+        environmentOwner: 'release-manager',
+        rollbackNote: 'Revert the release branch',
         actor: 'human',
         reason: 'Smoke passed',
+      },
+    });
+
+    const requiredGatesForm = document.createElement('form');
+    requiredGatesForm.innerHTML = `
+      <input type="checkbox" name="gateKinds" value="product" checked />
+      <input type="checkbox" name="gateKinds" value="code" checked />
+    `;
+    result.current.setRequiredReviewGates({
+      preventDefault: vi.fn(),
+      currentTarget: requiredGatesForm,
+    } as unknown as FormEvent<HTMLFormElement>);
+
+    expect(mutations.deliveryGovernance.mutate).toHaveBeenLastCalledWith({
+      params: { issueId: 'issue-1' },
+      body: {
+        action: 'set-required-review-gates',
+        gateKinds: ['product', 'code'],
+        actor: 'human',
+        reason: 'Configured from Delivery Controls required review gates.',
       },
     });
   });

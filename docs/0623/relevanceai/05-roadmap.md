@@ -44,14 +44,14 @@
 
 ### 交付项
 
-| 项                       | 内容                                                    | 验收                                      |
-| ------------------------ | ------------------------------------------------------- | ----------------------------------------- |
-| Eval Suite v1            | blueprint/workspace scope、scenario、checks、run result | finalized Loop 必须关联 eval result       |
-| Built-in Delivery Checks | coverage、tests、review、cost、architecture guard       | 至少 8 个内置 checks                      |
-| Manual Trigger Object    | 兼容当前创建入口                                        | 现有 issue source 迁移到 trigger run 展示 |
-| Webhook Trigger v1       | 签名校验、payload mapping、replay                       | 外部 POST 可创建 Loop，失败可重放         |
-| Schedule Trigger v1      | cron/timezone、pause/resume                             | 可定时创建健康检查或依赖巡检 Loop         |
-| Trigger Audit            | trigger created/paused/fired/failed/replayed            | Audit Explorer 或日志可追溯               |
+| 项                       | 内容                                                                                             | 验收                                      |
+| ------------------------ | ------------------------------------------------------------------------------------------------ | ----------------------------------------- |
+| Eval Suite v1            | blueprint/workspace scope、scenario、checks、run result                                          | finalized Loop 必须关联 eval result       |
+| Built-in Delivery Checks | coverage、tests、review、cost、architecture guard                                                | 至少 8 个内置 checks                      |
+| Manual Trigger Object    | 兼容当前创建入口                                                                                 | 现有 issue source 迁移到 trigger run 展示 |
+| Webhook Trigger v1       | 签名校验、payload mapping、evidence redaction、payload size guard、in-process rate guard、replay | 外部 POST 可创建 Loop，失败可重放         |
+| Schedule Trigger v1      | cron/timezone、pause/resume                                                                      | 可定时创建健康检查或依赖巡检 Loop         |
+| Trigger Audit            | trigger created/paused/fired/failed/replayed                                                     | Audit Explorer 或日志可追溯               |
 
 ### 风险控制
 
@@ -180,3 +180,34 @@
 - Tool Registry 不应允许无边界 shell/network 权限；
 - 企业审计日志要避免记录 secrets 和敏感 payload；
 - 若新增 DB 表，必须走 DB Service layer 和迁移计划。
+
+## 2026-06-24 路线图回标
+
+### 0-30 天范围
+
+| 项                          | 状态       | 说明                                                                                                         |
+| --------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------ |
+| Workforce Overview v1       | 已实施 v1  | Dashboard/Detail 已有 workforce/persona/handoff；本轮新增 Delivery Flow Pipeline                             |
+| Runtime Backend Registry v0 | 已实施 v1  | 已有 contract/API/service/dashboard；仍缺真实持久化 policy 和 remote runner                                  |
+| Invent Delivery Preview v1  | 已实施 v1  | 新建页已展示 workforce/runtime/eval/risk-gate preview                                                        |
+| Blueprint 数据模型草案      | 已部分实施 | 有 blueprint catalog 和 UI；缺 DB/clone/config                                                               |
+| Eval Suite 设计稿           | 已部分实施 | 有 derived eval plan/checks，也有 EvalSuite/EvalRun contract/API/service v1；缺持久化、版本化、runner、trend |
+| 文案清理                    | 已部分实施 | 仍可继续减少 phase/shard 暴露                                                                                |
+
+### 31-60 天范围
+
+仍应作为下一轮主线：
+
+- Eval Suite v1：在当前 derived API v1 基础上补持久化 schema、runner、result UI、trend metrics；
+- Trigger Contract v2：在当前 signed webhook intake + basic payload mapping + evidence redaction + payload size guard + in-process rate guard v1 基础上补 manual trigger object、schedule、audit、replay、retry/dead-letter、distributed rate limit/cost policy 和 integration worker；
+- Built-in Delivery Checks：将当前 derived checks 固化为可版本化 check catalog。
+
+### 61-90 天范围
+
+仍应作为中期主线：
+
+- Blueprint Marketplace clone/config；
+- Tool Registry v2；
+- GitHub/Slack/Linear integrations；
+- Governance Center alpha；
+- OTEL event streaming。

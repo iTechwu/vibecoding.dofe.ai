@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from 'crypto';
 import { of } from 'rxjs';
 import { LoopsPrProviderClient, readPrProviderConfig } from './loops-pr-provider.client';
 
@@ -111,7 +112,39 @@ describe('LoopsPrProviderClient', () => {
       apiBaseUrl: 'https://git.example/api/v1',
       repository: 'dofe/repo',
       token: 'token',
+      tokenSecretRef: undefined,
+      githubAppId: undefined,
+      githubAppInstallationId: undefined,
+      githubAppPrivateKey: undefined,
+      githubAppPrivateKeySecretRef: undefined,
+      tokenSource: 'token',
       allowlist: ['dofe/repo', 'other/repo'],
+    });
+  });
+
+  it('tracks GitHub App installation and secret references without exposing secret values', () => {
+    expect(
+      readPrProviderConfig({
+        LOOPS_PR_PROVIDER: 'github',
+        LOOPS_PR_API_BASE_URL: 'https://api.github.com',
+        LOOPS_PR_REPOSITORY: 'dofe/repo',
+        LOOPS_GITHUB_APP_ID: '12345',
+        LOOPS_GITHUB_APP_INSTALLATION_ID: '98765',
+        LOOPS_GITHUB_APP_PRIVATE_KEY_SECRET_REF: 'LOOPS_GITHUB_APP_PRIVATE_KEY',
+        LOOPS_PR_REPOSITORY_ALLOWLIST: 'dofe/repo',
+      }),
+    ).toEqual({
+      provider: 'github',
+      apiBaseUrl: 'https://api.github.com',
+      repository: 'dofe/repo',
+      token: undefined,
+      tokenSecretRef: undefined,
+      githubAppId: '12345',
+      githubAppInstallationId: '98765',
+      githubAppPrivateKey: undefined,
+      githubAppPrivateKeySecretRef: 'LOOPS_GITHUB_APP_PRIVATE_KEY',
+      tokenSource: 'github-app',
+      allowlist: ['dofe/repo'],
     });
   });
 
@@ -183,6 +216,133 @@ describe('LoopsPrProviderClient', () => {
         reason: 'provider api returned 422',
         provider: 'github',
       });
+    });
+
+    it('publishes a GitHub Check Run via HttpService', async () => {
+      const httpService: HttpServiceLike = {
+        post: jest.fn().mockReturnValue(
+          of({
+            status: 201,
+            data: { html_url: 'https://github.com/dofe/repo/runs/11', id: 11 },
+          }),
+        ),
+      };
+      const client = new LoopsPrProviderClient(
+        {
+          provider: 'github',
+          apiBaseUrl: 'https://api.github.com',
+          repository: 'dofe/repo',
+          token: 'token',
+          allowlist: ['dofe/repo'],
+        },
+        httpService as never,
+      );
+
+      const result = await client.publishGithubCheckRun({
+        headSha: 'abc1234567',
+        name: 'DofeAI Delivery Evidence',
+        title: 'Delivery evidence passed',
+        summary: 'All required Loops evidence is present.',
+      });
+
+      expect(result).toEqual({
+        published: true,
+        provider: 'github',
+        id: '11',
+        url: 'https://github.com/dofe/repo/runs/11',
+      });
+      expect(httpService.post).toHaveBeenCalledWith(
+        'https://api.github.com/repos/dofe/repo/check-runs',
+        expect.objectContaining({
+          name: 'DofeAI Delivery Evidence',
+          head_sha: 'abc1234567',
+          status: 'completed',
+          conclusion: 'success',
+          output: {
+            title: 'Delivery evidence passed',
+            summary: 'All required Loops evidence is present.',
+          },
+        }),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Accept: 'application/vnd.github+json',
+            Authorization: 'Bearer token',
+          }),
+          validateStatus: expect.any(Function),
+        }),
+      );
+    });
+
+    it('exchanges a GitHub App JWT for an installation token before publishing Checks', async () => {
+      const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+      const privateKeyPem = privateKey.export({ format: 'pem', type: 'pkcs8' }).toString();
+      const httpService: HttpServiceLike = {
+        post: jest
+          .fn()
+          .mockReturnValueOnce(
+            of({
+              status: 201,
+              data: {
+                token: 'installation-token',
+                expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+              },
+            }),
+          )
+          .mockReturnValueOnce(
+            of({
+              status: 201,
+              data: { html_url: 'https://github.com/dofe/repo/runs/22', id: 22 },
+            }),
+          ),
+      };
+      const client = new LoopsPrProviderClient(
+        {
+          provider: 'github',
+          apiBaseUrl: 'https://api.github.com',
+          repository: 'dofe/repo',
+          githubAppId: '12345',
+          githubAppInstallationId: '98765',
+          githubAppPrivateKey: privateKeyPem,
+          tokenSource: 'github-app',
+          allowlist: ['dofe/repo'],
+        },
+        httpService as never,
+      );
+
+      const result = await client.publishGithubCheckRun({
+        headSha: 'abc1234567',
+        name: 'DofeAI Delivery Evidence',
+        title: 'Delivery evidence passed',
+        summary: 'All required Loops evidence is present.',
+      });
+
+      expect(result).toEqual({
+        published: true,
+        provider: 'github',
+        id: '22',
+        url: 'https://github.com/dofe/repo/runs/22',
+      });
+      expect(httpService.post).toHaveBeenNthCalledWith(
+        1,
+        'https://api.github.com/app/installations/98765/access_tokens',
+        {},
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Accept: 'application/vnd.github+json',
+            Authorization: expect.stringMatching(/^Bearer [^.]+\.[^.]+\.[^.]+$/),
+          }),
+        }),
+      );
+      expect(httpService.post).toHaveBeenNthCalledWith(
+        2,
+        'https://api.github.com/repos/dofe/repo/check-runs',
+        expect.objectContaining({ head_sha: 'abc1234567' }),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer installation-token',
+          }),
+        }),
+      );
     });
   });
 });

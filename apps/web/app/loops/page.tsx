@@ -30,24 +30,33 @@ import type {
   LoopLogsResponse,
   LoopMetricsResponse,
   LoopNotificationsResponse,
+  LoopAssetPermissionsResponse,
 } from '@repo/contracts';
 import {
   useLoopsAgentRuntime,
   useLoopsCost,
   useLoopsCapabilities,
+  useLoopsAssetPermissions,
   useLoopsDoctor,
+  useLoopsCiChecks,
+  useLoopsCiCheckPublications,
   useLoopsList,
   useLoopsLogs,
   useLoopsMetrics,
   useLoopsNotifications,
+  useRequestRecipeAdminAction,
+  useRunLoopBenchTrendWorker,
   useLoopsWorkspaces,
   useGovernLoopLearning,
   useGovernLoopDelivery,
   useRunLoopLearningAutoMergeWorker,
+  useRunLoopLearningIndexWorker,
   usePullLoopsImage,
   useRetryLoopsAgentRuntime,
   useUpsertLoopsWorkspace,
   useResumeLoops,
+  useWorkspaceRecipes,
+  useLoopBenchDrilldown,
 } from '@/lib/api/contracts/hooks';
 import {
   AGING_QUEUE_SLA_POLICY,
@@ -56,6 +65,7 @@ import {
   buildAgentHandoffTimeline,
   buildBlueprintMarketplace,
   buildDashboardGuide,
+  buildDeliveryFlow,
   buildFleetHealth,
   buildEvalPlan,
   buildExceptionCenter,
@@ -251,13 +261,18 @@ export default function LoopsPage() {
   const costQuery = useLoopsCost();
   const agentRuntimeQuery = useLoopsAgentRuntime();
   const capabilitiesQuery = useLoopsCapabilities();
+  const assetPermissionsQuery = useLoopsAssetPermissions();
+  const ciChecksQuery = useLoopsCiChecks();
+  const ciCheckPublicationsQuery = useLoopsCiCheckPublications('github-delivery-evidence');
   const metricsQuery = useLoopsMetrics();
+  const loopBenchTrendWorker = useRunLoopBenchTrendWorker();
   const logsQuery = useLoopsLogs({ limit: 10 });
   const notificationsQuery = useLoopsNotifications({ limit: 8 });
   const resume = useResumeLoops();
   const workspacesQuery = useLoopsWorkspaces();
   const governLearning = useGovernLoopLearning();
   const autoMergeWorker = useRunLoopLearningAutoMergeWorker();
+  const learningIndexWorker = useRunLoopLearningIndexWorker();
   const upsertWorkspace = useUpsertLoopsWorkspace();
   const pullImage = usePullLoopsImage();
   const retryDetection = useRetryLoopsAgentRuntime();
@@ -265,6 +280,8 @@ export default function LoopsPage() {
   const workspaces = workspacesQuery.data?.body?.data?.workspaces ?? [];
   const currentWorkspaceId = workspacesQuery.data?.body?.data?.current ?? '';
   const recentLearnings = workspacesQuery.data?.body?.data?.recentLearnings ?? [];
+  const learningGovernance = workspacesQuery.data?.body?.data?.learningGovernance;
+  const learningIndex = workspacesQuery.data?.body?.data?.learningIndex;
 
   const data = listQuery.data?.body.data;
   const doctor = doctorQuery.data?.body.data;
@@ -272,6 +289,14 @@ export default function LoopsPage() {
   const agentRuntime = agentRuntimeQuery.data?.body.data as LoopAgentRuntimeResponse | undefined;
   const runtimeDetection = agentRuntime?.runtimes ?? [];
   const capabilities = capabilitiesQuery.data?.body.data as LoopCapabilitiesResponse | undefined;
+  const assetPermissions = assetPermissionsQuery.data?.body.data as
+    | LoopAssetPermissionsResponse
+    | undefined;
+  const ciChecks = ciChecksQuery.data?.body.data;
+  const ciPublicationHistory = ciCheckPublicationsQuery.data?.body.data;
+  const githubDeliveryCheck = ciChecks?.list.find((item) => item.id === 'github-delivery-evidence');
+  const latestCiPublication = ciPublicationHistory?.latest ?? githubDeliveryCheck?.lastPublication;
+  const latestCiWorkPackageCommitMap = latestCiPublication?.workPackageCommitMap ?? [];
   const metrics = metricsQuery.data?.body.data as LoopMetricsResponse | undefined;
   const logs = logsQuery.data?.body.data as LoopLogsResponse | undefined;
   const notifications = notificationsQuery.data?.body.data as LoopNotificationsResponse | undefined;
@@ -304,8 +329,10 @@ export default function LoopsPage() {
     traceSummary,
   });
   const loopBench = buildLoopBench(fallbackSummary.items, { cost, agentRuntime, recentLearnings });
+  const loopBenchTrend = metrics?.loopBenchTrend;
   const blueprintMarketplace = buildBlueprintMarketplace(fallbackSummary.items);
   const fleetHealth = buildFleetHealth(fallbackSummary.items, { cost, agentRuntime });
+  const deliveryFlow = buildDeliveryFlow(fallbackSummary.items);
   const runtimeBackends = buildRuntimeBackends(agentRuntime);
   const evalPlan = buildEvalPlan(fallbackSummary.items, cost);
   const workforceOverview = buildWorkforceOverview(fallbackSummary.items, cost);
@@ -329,18 +356,26 @@ export default function LoopsPage() {
   const releaseGatePanel = buildReleaseGatePanel(fallbackSummary.items, { cost });
   const runtimeSecurityPanel = buildRuntimeSecurityPanel(fallbackSummary.items, { agentRuntime });
   const rulesCenter = buildRulesCenter(fallbackSummary.items, { agentRuntime });
+  const workspaceRecipes = useWorkspaceRecipes();
+  const loopBenchDrilldown = useLoopBenchDrilldown();
   const topLearnings = [...recentLearnings]
     .sort((a, b) => b.confidence - a.confidence || b.createdAt.localeCompare(a.createdAt))
     .slice(0, 3);
   const staleLearnings = recentLearnings.filter((learning) => !learning.lastUsedAt).slice(0, 3);
   const learningById = new Map(recentLearnings.map((learning) => [learning.id, learning]));
+  const pendingLearningApprovals =
+    learningGovernance?.autoMergeCandidates
+      ?.filter((candidate) => candidate.status === 'pending-approval')
+      .slice(0, 3) ?? [];
   const triggerPortfolio = buildTriggerPortfolio(fallbackSummary.items);
   const triggerLifecycle = buildTriggerLifecycle(fallbackSummary.items);
   const toolRegistryLifecycle = buildToolRegistryLifecycle(agentToolRegistry);
-  const recipeAdmin = buildRecipeAdminSummary(fallbackSummary.items, cost);
+  const recipeAdmin = buildRecipeAdminSummary(fallbackSummary.items, cost, assetPermissions);
+  const recipeAdminAction = useRequestRecipeAdminAction();
   const repoContextMap = buildRepoContextMap(fallbackSummary.items, cost);
   const exceptionCenter = buildExceptionCenter(fallbackSummary.items, {
     cost,
+    evalPlan,
     runtime: agentRuntime,
     health: health
       ? {
@@ -492,7 +527,7 @@ export default function LoopsPage() {
           </div>
         ) : null}
 
-        <section className="rounded-lg border p-4">
+        <section className="rounded-lg border p-4" id="eval-plan">
           <div className="flex flex-col gap-1">
             <h2 className="text-sm font-semibold">{t('guide.title')}</h2>
             <p className="text-sm text-muted-foreground">{t('guide.summary')}</p>
@@ -562,6 +597,169 @@ export default function LoopsPage() {
             note={t('metrics.closedNote')}
             value={summary.closed}
           />
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">{t('ciEvidence.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t('ciEvidence.summary', {
+                  total: ciPublicationHistory?.entries.length ?? 0,
+                  status: latestCiPublication?.outcome ?? 'pending',
+                })}
+              </p>
+            </div>
+            <ListChecks className="size-4 text-muted-foreground" />
+          </div>
+          {!ciChecks ? (
+            <EmptyLine>{t('ciEvidence.loading')}</EmptyLine>
+          ) : !latestCiPublication ? (
+            <EmptyLine>{t('ciEvidence.empty')}</EmptyLine>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[360px_1fr]">
+              <div className="rounded-md border bg-muted/20 p-3 text-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">
+                      {githubDeliveryCheck?.name ?? t('ciEvidence.defaultCheck')}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">
+                      {latestCiPublication.headSha ?? t('ciEvidence.noHeadSha')}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-md border px-2 py-1 text-xs ${
+                      latestCiPublication.outcome === 'published'
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100'
+                        : 'border-red-200 bg-red-50 text-red-950 dark:border-red-900/70 dark:bg-red-950/20 dark:text-red-100'
+                    }`}
+                  >
+                    {t(`ciEvidence.outcome.${latestCiPublication.outcome}`)}
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-2 text-xs">
+                  <div className="rounded-md bg-background/70 px-2 py-1.5">
+                    <p className="text-muted-foreground">{t('ciEvidence.artifact')}</p>
+                    <p className="truncate font-medium">{latestCiPublication.artifactRef}</p>
+                  </div>
+                  {latestCiPublication.checkRunId ? (
+                    <div className="rounded-md bg-background/70 px-2 py-1.5">
+                      <p className="text-muted-foreground">{t('ciEvidence.checkRun')}</p>
+                      {latestCiPublication.url ? (
+                        <a
+                          className="block truncate font-medium underline-offset-4 hover:underline"
+                          href={latestCiPublication.url}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          {latestCiPublication.checkRunId}
+                        </a>
+                      ) : (
+                        <p className="truncate font-medium">{latestCiPublication.checkRunId}</p>
+                      )}
+                    </div>
+                  ) : null}
+                  {latestCiPublication.evidenceBacklink ? (
+                    <div className="rounded-md bg-background/70 px-2 py-1.5">
+                      <p className="text-muted-foreground">{t('ciEvidence.evidence')}</p>
+                      <a
+                        className="block truncate font-medium underline-offset-4 hover:underline"
+                        href={latestCiPublication.evidenceBacklink}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        {latestCiPublication.issueId ?? latestCiPublication.evidenceBacklink}
+                      </a>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              <div className="rounded-md border bg-muted/20 p-3">
+                <h3 className="text-xs font-semibold text-muted-foreground">
+                  {t('ciEvidence.workPackages')}
+                </h3>
+                {latestCiWorkPackageCommitMap.length === 0 ? (
+                  <p className="mt-2 text-xs text-muted-foreground">{t('ciEvidence.noCommits')}</p>
+                ) : (
+                  <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
+                    {latestCiWorkPackageCommitMap.slice(0, 6).map((item) => (
+                      <div
+                        className="rounded-md border bg-background p-2 text-xs"
+                        key={item.workPackageId}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="min-w-0 truncate font-medium">
+                            {item.title ?? item.workPackageId}
+                          </span>
+                          {item.commitSha ? (
+                            <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 font-mono">
+                              {item.commitSha.slice(0, 12)}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-1 truncate text-muted-foreground">
+                          {item.branch ?? t('ciEvidence.noBranch')}
+                        </p>
+                        {(item.files ?? []).length > 0 ? (
+                          <p className="mt-1 truncate text-muted-foreground">
+                            {t('ciEvidence.files', { count: (item.files ?? []).length })} ·{' '}
+                            {(item.files ?? [])[0]}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-lg border p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold">{t('deliveryFlow.title')}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{deliveryFlow.pipelineLabel}</p>
+            </div>
+            <Workflow className="size-4 text-muted-foreground" />
+          </div>
+          <div className="mt-4 overflow-x-auto">
+            <div className="flex items-start gap-1 min-w-max">
+              {deliveryFlow.steps.map((step, index) => (
+                <div key={step.id} className="flex items-start gap-1">
+                  <div
+                    className={`rounded-md border p-2 text-xs w-24 flex-shrink-0 ${
+                      step.blockedCount > 0
+                        ? 'border-red-200 bg-red-50 text-red-950 dark:border-red-900/70 dark:bg-red-950/20 dark:text-red-100'
+                        : step.loopCount > 0
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100'
+                          : 'border-border bg-muted/20 text-muted-foreground'
+                    }`}
+                  >
+                    <p className="truncate font-medium">{step.label}</p>
+                    <p className="mt-0.5 truncate text-[10px] opacity-70">
+                      {step.runtimeOwner === 'codex'
+                        ? 'Codex'
+                        : step.runtimeOwner === 'claude-code'
+                          ? 'Claude Code'
+                          : step.runtimeOwner === 'human'
+                            ? 'Human'
+                            : 'System'}
+                      {step.blockedCount > 0
+                        ? ` · ${step.blockedCount} blocked`
+                        : step.loopCount > 0
+                          ? ` · ${step.loopCount} loops`
+                          : ''}
+                    </p>
+                  </div>
+                  {index < deliveryFlow.steps.length - 1 ? (
+                    <span className="flex items-center pt-1 text-muted-foreground text-xs">→</span>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
         </section>
 
         <section className="rounded-lg border p-4">
@@ -697,9 +895,43 @@ export default function LoopsPage() {
               <h2 className="text-sm font-semibold">{t('loopBench.title')}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{t('loopBench.summary')}</p>
             </div>
-            <Activity className="size-4 text-muted-foreground" />
+            <div className="flex items-center gap-2">
+              <button
+                className="inline-flex h-8 items-center justify-center rounded-md border px-3 text-xs font-medium hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={loopBenchTrendWorker.isPending}
+                onClick={() => loopBenchTrendWorker.mutate({ body: {} })}
+                type="button"
+              >
+                {t('loopBench.runTrendWorker')}
+              </button>
+              <Activity className="size-4 text-muted-foreground" />
+            </div>
           </div>
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
+          {loopBenchTrend?.latest ? (
+            <div className="mt-3 rounded-md border bg-muted/20 p-3 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-medium">{t('loopBench.trendTitle')}</p>
+                <span className="text-muted-foreground">
+                  {t('loopBench.trendHistory', { count: loopBenchTrend.historyCount })}
+                </span>
+              </div>
+              <p className="mt-2 text-muted-foreground">
+                {t('loopBench.trendSummary', {
+                  loops: loopBenchTrend.latest.loopCount,
+                  firstPass: loopBenchTrend.latest.metrics.firstPassReviewRate,
+                  canary: loopBenchTrend.latest.metrics.canaryPassRate,
+                  delta:
+                    loopBenchTrend.latest.deltas?.firstPassReviewRate === undefined
+                      ? 0
+                      : loopBenchTrend.latest.deltas.firstPassReviewRate,
+                })}
+              </p>
+              <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground">
+                {loopBenchTrend.latest.artifactRef}
+              </p>
+            </div>
+          ) : null}
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-7">
             <div className="rounded-md border bg-muted/20 p-3 text-xs">
               <div className="flex items-center justify-between gap-2">
                 <span className="font-medium truncate">{t('loopBench.firstPassRate')}</span>
@@ -775,6 +1007,21 @@ export default function LoopsPage() {
             </div>
             <div className="rounded-md border bg-muted/20 p-3 text-xs">
               <div className="flex items-center justify-between gap-2">
+                <span className="font-medium truncate">{t('loopBench.canaryPass')}</span>
+                <span
+                  className={`shrink-0 rounded-md border px-2 py-0.5 ${
+                    loopBench.canaryPassRate >= 80
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100'
+                      : 'bg-background text-muted-foreground'
+                  }`}
+                >
+                  {loopBench.canaryPassRate}%
+                </span>
+              </div>
+              <p className="mt-2 text-muted-foreground">{t('loopBench.canaryPassDesc')}</p>
+            </div>
+            <div className="rounded-md border bg-muted/20 p-3 text-xs">
+              <div className="flex items-center justify-between gap-2">
                 <span className="font-medium truncate">{t('loopBench.learningReuse')}</span>
                 <span
                   className={`shrink-0 rounded-md border px-2 py-0.5 ${
@@ -783,14 +1030,66 @@ export default function LoopsPage() {
                       : 'bg-background text-muted-foreground'
                   }`}
                 >
-                  {loopBench.learningReuseRate > 0
-                    ? `${loopBench.learningReuseRate}%`
-                    : t('loopBench.planned')}
+                  {loopBench.learningReuseRate}%
                 </span>
               </div>
               <p className="mt-2 text-muted-foreground">{t('loopBench.learningReuseDesc')}</p>
             </div>
           </div>
+          {/* gstack P2: Bench drilldown filters */}
+          <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
+            <select
+              className="h-8 rounded-md border bg-background px-2 text-xs"
+              defaultValue="all"
+              name="benchWorkspace"
+              title={t('loopBench.filterWorkspace')}
+            >
+              <option value="all">{t('loopBench.allWorkspaces')}</option>
+              {(workspaces ?? []).map(
+                (w: { workspaceId: string; root: string; isDefault: boolean }) => (
+                  <option key={w.workspaceId} value={w.workspaceId}>
+                    {w.root ?? w.workspaceId}
+                  </option>
+                ),
+              )}
+            </select>
+            <select
+              className="h-8 rounded-md border bg-background px-2 text-xs"
+              defaultValue="30d"
+              name="benchPeriod"
+            >
+              <option value="7d">{t('loopBench.period7d')}</option>
+              <option value="30d">{t('loopBench.period30d')}</option>
+              <option value="90d">{t('loopBench.period90d')}</option>
+              <option value="all">{t('loopBench.periodAll')}</option>
+            </select>
+            <span className="ml-auto text-xs text-muted-foreground self-center">
+              {t('loopBench.drilldownHint')}
+            </span>
+          </div>
+          {loopBenchDrilldown.isLoading ? (
+            <EmptyLine>{t('loopBench.drilldownLoading')}</EmptyLine>
+          ) : (loopBenchDrilldown.data?.body.data.metrics.length ?? 0) === 0 ? (
+            <EmptyLine>{t('loopBench.drilldownEmpty')}</EmptyLine>
+          ) : (
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {loopBenchDrilldown.data?.body.data.metrics.map((metric) => (
+                <div className="rounded-md border bg-muted/20 p-3 text-xs" key={metric.key}>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-medium">{metric.label}</span>
+                    <span className="shrink-0 rounded-md bg-background px-2 py-0.5">
+                      {metric.value}
+                    </span>
+                  </div>
+                  {metric.delta === undefined ? null : (
+                    <p className="mt-2 text-muted-foreground">
+                      {t('loopBench.drilldownDelta', { delta: metric.delta })}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="rounded-lg border p-4">
@@ -1238,6 +1537,73 @@ export default function LoopsPage() {
             </div>
             <Workflow className="size-4 text-muted-foreground" />
           </div>
+          {recipeAdmin.tenantGovernance ? (
+            <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-3">
+              <div className="rounded-md bg-muted/30 p-2">
+                <p className="text-muted-foreground">{t('recipeAdmin.tenantScope')}</p>
+                <p className="mt-1 font-medium">{recipeAdmin.tenantGovernance.scope}</p>
+              </div>
+              <div className="rounded-md bg-muted/30 p-2">
+                <p className="text-muted-foreground">{t('recipeAdmin.permission')}</p>
+                <p
+                  className={
+                    recipeAdmin.tenantGovernance.granted
+                      ? 'mt-1 font-medium text-emerald-600'
+                      : 'mt-1 font-medium text-red-600'
+                  }
+                >
+                  {recipeAdmin.tenantGovernance.granted
+                    ? t('recipeAdmin.granted')
+                    : t('recipeAdmin.blocked')}
+                </p>
+              </div>
+              <div className="rounded-md bg-muted/30 p-2">
+                <p className="text-muted-foreground">{t('recipeAdmin.source')}</p>
+                <p className="mt-1 truncate font-medium">
+                  {recipeAdmin.tenantGovernance.sourcePermission}
+                </p>
+              </div>
+            </div>
+          ) : null}
+          <div className="mt-3 grid grid-cols-1 gap-2 text-xs md:grid-cols-3">
+            {recipeAdmin.actions.map((action) => (
+              <div className="rounded-md border bg-muted/20 p-2" key={action.id}>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">{t(`recipeAdmin.action.${action.id}`)}</span>
+                  <span
+                    className={
+                      action.state === 'ready'
+                        ? 'shrink-0 text-emerald-600 font-medium'
+                        : 'shrink-0 text-muted-foreground font-medium'
+                    }
+                  >
+                    {t(`recipeAdmin.actionState.${action.state}`)}
+                  </span>
+                </div>
+                <p className="mt-1 text-muted-foreground">{action.evidence}</p>
+                <button
+                  className="mt-2 inline-flex h-7 items-center gap-1 rounded-md border px-2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={action.state !== 'ready' || recipeAdminAction.isPending}
+                  onClick={() =>
+                    recipeAdminAction.mutate({
+                      body: {
+                        actionId: action.id,
+                        blueprintId: 'delivery-blueprints',
+                        reason: action.evidence,
+                        evidenceRefs: [],
+                      },
+                    })
+                  }
+                  type="button"
+                >
+                  <Plus className="size-3" />
+                  {recipeAdminAction.isPending
+                    ? t('recipeAdmin.requesting')
+                    : t('recipeAdmin.requestAction')}
+                </button>
+              </div>
+            ))}
+          </div>
           {!data ? (
             <EmptyLine>{t('recipeAdmin.loading')}</EmptyLine>
           ) : recipeAdmin.items.length === 0 ? (
@@ -1280,6 +1646,70 @@ export default function LoopsPage() {
               ))}
             </div>
           )}
+          {/* gstack P2: Workspace Recipe Admin — list configurable recipes */}
+          <div className="mt-4 border-t pt-3">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-xs font-semibold uppercase text-muted-foreground">
+                {t('workspaceRecipeAdmin.title')}
+              </h3>
+              <span className="text-xs text-muted-foreground">
+                {t('workspaceRecipeAdmin.hint')}
+              </span>
+            </div>
+            <div className="mt-2 grid grid-cols-1 gap-2 text-xs">
+              {['feature', 'bugfix', 'refactor', 'docs', 'ops'].map((kind) => (
+                <div
+                  className="flex items-center gap-3 rounded-md border bg-muted/20 p-2"
+                  key={kind}
+                >
+                  <span className="w-20 shrink-0 font-medium capitalize">{kind}</span>
+                  <select
+                    className="h-7 flex-1 rounded border bg-background px-2 text-xs"
+                    defaultValue="default-v1"
+                    name={`recipe-default-${kind}`}
+                  >
+                    <option value="default-v1">Default v1 (7-step)</option>
+                    <option value="fast-fix">Fast Fix (minimal gates)</option>
+                    <option value="risky-release">Risky Release (all gates)</option>
+                    <option value="visual-change">Visual Change (browser QA focused)</option>
+                    <option value="security-sensitive">Security Sensitive (security first)</option>
+                  </select>
+                  <span className="shrink-0 rounded bg-background px-2 py-0.5 text-muted-foreground">
+                    {['feature'].includes(kind)
+                      ? '7 steps'
+                      : kind === 'bugfix'
+                        ? '5 steps'
+                        : '6 steps'}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {workspaceRecipes.isLoading ? (
+              <EmptyLine>{t('workspaceRecipeAdmin.loading')}</EmptyLine>
+            ) : (workspaceRecipes.data?.body.data.list.length ?? 0) === 0 ? (
+              <EmptyLine>{t('workspaceRecipeAdmin.empty')}</EmptyLine>
+            ) : (
+              <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2 lg:grid-cols-3">
+                {workspaceRecipes.data?.body.data.list.map((recipe) => (
+                  <div className="rounded-md border bg-background p-3" key={recipe.id}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate font-medium">{recipe.name}</span>
+                      <span className="shrink-0 rounded-md bg-muted px-2 py-0.5">
+                        {recipe.version}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-muted-foreground">
+                      {t('workspaceRecipeAdmin.recipeMeta', {
+                        kind: recipe.loopKind,
+                        steps: recipe.stepCount,
+                        usage: recipe.usageCount,
+                      })}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </section>
 
         <section className="rounded-lg border p-4">
@@ -1912,6 +2342,14 @@ export default function LoopsPage() {
               <div className="flex items-center gap-2">
                 <button
                   className="inline-flex h-8 items-center justify-center rounded-md border px-3 text-xs font-medium hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={learningIndexWorker.isPending}
+                  onClick={() => learningIndexWorker.mutate({ body: {} })}
+                  type="button"
+                >
+                  {t('learningMemory.runIndexWorker')}
+                </button>
+                <button
+                  className="inline-flex h-8 items-center justify-center rounded-md border px-3 text-xs font-medium hover:bg-muted/40 disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={autoMergeWorker.isPending}
                   onClick={() => autoMergeWorker.mutate({ body: {} })}
                   type="button"
@@ -1927,6 +2365,30 @@ export default function LoopsPage() {
               <EmptyLine>{t('learningMemory.empty')}</EmptyLine>
             ) : (
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {learningIndex ? (
+                  <div className="rounded-md border bg-muted/20 p-3 text-xs sm:col-span-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-medium">{t('learningMemory.indexTitle')}</p>
+                      <span className="text-muted-foreground">
+                        {t('learningMemory.indexGenerated', {
+                          value: new Date(learningIndex.generatedAt).toLocaleString(locale),
+                        })}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-muted-foreground">
+                      {t('learningMemory.indexSummary', {
+                        total: learningIndex.summary.total,
+                        workspaces: learningIndex.summary.workspaces,
+                        repos: learningIndex.summary.repos,
+                        duplicates: learningIndex.summary.duplicateFingerprints,
+                        reusable: learningIndex.summary.reusable,
+                      })}
+                    </p>
+                    <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground">
+                      {learningIndex.artifactRef}
+                    </p>
+                  </div>
+                ) : null}
                 <div>
                   <h3 className="text-xs font-medium text-muted-foreground">
                     {t('learningMemory.top')}
@@ -1980,25 +2442,46 @@ export default function LoopsPage() {
                               </p>
                               <div className="flex shrink-0 gap-1">
                                 {mergeTarget ? (
-                                  <button
-                                    className="rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-muted/30 disabled:opacity-60"
-                                    disabled={governLearning.isPending}
-                                    onClick={() =>
-                                      governLearning.mutate({
-                                        params: { learningId: learning.id },
-                                        body: {
-                                          action: 'merge',
-                                          actor: 'dashboard',
-                                          targetLearningId: mergeTarget.id,
-                                          reason:
-                                            'Merged from dashboard stale learning queue into top learning',
-                                        },
-                                      })
-                                    }
-                                    type="button"
-                                  >
-                                    {t('learningMemory.merge')}
-                                  </button>
+                                  <>
+                                    <button
+                                      className="rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-muted/30 disabled:opacity-60"
+                                      disabled={governLearning.isPending}
+                                      onClick={() =>
+                                        governLearning.mutate({
+                                          params: { learningId: learning.id },
+                                          body: {
+                                            action: 'merge',
+                                            actor: 'dashboard',
+                                            targetLearningId: mergeTarget.id,
+                                            reason:
+                                              'Merged from dashboard stale learning queue into top learning',
+                                          },
+                                        })
+                                      }
+                                      type="button"
+                                    >
+                                      {t('learningMemory.merge')}
+                                    </button>
+                                    <button
+                                      className="rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-muted/30 disabled:opacity-60"
+                                      disabled={governLearning.isPending}
+                                      onClick={() =>
+                                        governLearning.mutate({
+                                          params: { learningId: learning.id },
+                                          body: {
+                                            action: 'supersede',
+                                            actor: 'dashboard',
+                                            targetLearningId: mergeTarget.id,
+                                            reason:
+                                              'Superseded from dashboard stale learning queue by newer learning',
+                                          },
+                                        })
+                                      }
+                                      type="button"
+                                    >
+                                      {t('learningMemory.supersede')}
+                                    </button>
+                                  </>
                                 ) : null}
                                 <button
                                   className="rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-muted/30 disabled:opacity-60"
@@ -2033,6 +2516,79 @@ export default function LoopsPage() {
                     )}
                   </div>
                 </div>
+                {pendingLearningApprovals.length ? (
+                  <div className="sm:col-span-2">
+                    <h3 className="text-xs font-medium text-muted-foreground">
+                      {t('learningMemory.pendingApprovals')}
+                    </h3>
+                    <div className="mt-2 grid grid-cols-1 gap-2 lg:grid-cols-3">
+                      {pendingLearningApprovals.map((candidate) => {
+                        const sourceLearning = learningById.get(candidate.sourceLearningId);
+                        const targetLearning = learningById.get(candidate.targetLearningId);
+                        return (
+                          <div
+                            className="rounded-md border bg-muted/20 p-3 text-xs"
+                            key={`${candidate.sourceLearningId}-${candidate.targetLearningId}`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="font-medium">
+                                {sourceLearning
+                                  ? t(`learningMemory.kind.${sourceLearning.kind}`)
+                                  : candidate.sourceLearningId}
+                              </p>
+                              <div className="flex shrink-0 gap-1">
+                                <button
+                                  className="rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-muted/30 disabled:opacity-60"
+                                  disabled={governLearning.isPending}
+                                  onClick={() =>
+                                    governLearning.mutate({
+                                      params: { learningId: candidate.sourceLearningId },
+                                      body: {
+                                        action: 'approve-merge',
+                                        actor: 'dashboard',
+                                        targetLearningId: candidate.targetLearningId,
+                                        reason: 'Approved from dashboard learning queue',
+                                      },
+                                    })
+                                  }
+                                  type="button"
+                                >
+                                  {t('learningMemory.approve')}
+                                </button>
+                                <button
+                                  className="rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-muted/30 disabled:opacity-60"
+                                  disabled={governLearning.isPending}
+                                  onClick={() =>
+                                    governLearning.mutate({
+                                      params: { learningId: candidate.sourceLearningId },
+                                      body: {
+                                        action: 'reject-merge',
+                                        actor: 'dashboard',
+                                        targetLearningId: candidate.targetLearningId,
+                                        reason: 'Rejected from dashboard learning queue',
+                                      },
+                                    })
+                                  }
+                                  type="button"
+                                >
+                                  {t('learningMemory.reject')}
+                                </button>
+                              </div>
+                            </div>
+                            <p className="mt-2 line-clamp-2">
+                              {sourceLearning?.summary ?? candidate.sourceLearningId}
+                            </p>
+                            <p className="mt-2 line-clamp-1 text-muted-foreground">
+                              {t('learningMemory.mergeTarget', {
+                                target: targetLearning?.summary ?? candidate.targetLearningId,
+                              })}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             )}
           </div>
@@ -2114,6 +2670,15 @@ export default function LoopsPage() {
                               <span className="shrink-0 text-xs">{item.label}</span>
                             </div>
                             <p className="mt-1 truncate text-xs opacity-80">{item.meta}</p>
+                            {item.owner || item.slaHours !== undefined ? (
+                              <p className="mt-1 truncate text-xs opacity-80">
+                                {t('reviewInbox.slaMeta', {
+                                  owner: item.owner ?? 'human',
+                                  age: item.ageHours ?? 0,
+                                  sla: item.slaHours ?? 0,
+                                })}
+                              </p>
+                            ) : null}
                           </Link>
                           {isConflict ? (
                             <div className="rounded-md rounded-t-none border border-t-0 bg-muted/20 px-3 py-1.5 flex items-center gap-2 text-xs">
@@ -2327,6 +2892,46 @@ export default function LoopsPage() {
               </div>
             </div>
           ) : null}
+          <div className="mt-4 border-t pt-4">
+            <div className="flex flex-col gap-1">
+              <h3 className="text-xs font-semibold text-muted-foreground">
+                {t('capabilities.assetPermissions.title')}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                {assetPermissions
+                  ? t('capabilities.assetPermissions.summary', assetPermissions.summary)
+                  : t('capabilities.assetPermissions.loading')}
+              </p>
+            </div>
+            {!assetPermissions ? (
+              <EmptyLine>{t('capabilities.assetPermissions.loading')}</EmptyLine>
+            ) : (
+              <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+                {assetPermissions.assets.map((asset) => (
+                  <div
+                    className={`rounded-md border p-3 text-xs ${
+                      asset.granted
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100'
+                        : 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100'
+                    }`}
+                    key={`${asset.assetKind}-${asset.assetId}`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium">{asset.label}</span>
+                      <span className="rounded-md border bg-background/70 px-2 py-0.5">
+                        {asset.granted
+                          ? t('capabilities.assetPermissions.granted')
+                          : t('capabilities.assetPermissions.blocked')}
+                      </span>
+                    </div>
+                    <p className="mt-2 truncate opacity-80">
+                      {asset.sourcePermission} · {asset.scope}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           {agentToolRegistry ? (
             <div className="mt-4 border-t pt-4">
               <div className="flex flex-col gap-1">

@@ -8,9 +8,13 @@ import LoopIssueDetailPage from './page';
 const runBrowserQa = vi.fn();
 const runSecondOpinion = vi.fn();
 const requireSecondOpinion = vi.fn();
+const acceptPrimaryFindings = vi.fn();
+const acceptSecondaryFindings = vi.fn();
+const waiveSecondOpinion = vi.fn();
 const recordReleaseCanary = vi.fn();
 const setBrowserQaSessionPolicy = vi.fn();
 const recordRuntimeOverride = vi.fn();
+const setRequiredReviewGates = vi.fn();
 
 const detail: LoopDetail = {
   issue: {
@@ -197,6 +201,27 @@ const detail: LoopDetail = {
     appliesTo: ['feature'],
     capturedAt: '2026-06-20T00:10:00.000Z',
     source: 'default',
+    baselineEvidence: [
+      {
+        id: 'issue-1-baseline-blueprint',
+        kind: 'blueprint',
+        label: 'Blueprint version',
+        value: 'default-feature@v1',
+        evidenceRef: '.loops/intakes/issue-1.raw.json',
+      },
+      {
+        id: 'issue-1-baseline-runtime',
+        kind: 'runtime',
+        label: 'Runtime plan',
+        value: 'Codex review/control + Claude Code implementation',
+      },
+      {
+        id: 'issue-1-baseline-eval',
+        kind: 'eval',
+        label: 'Eval suite',
+        value: 'architecture, delivery, runtime, test, cost hard gates',
+      },
+    ],
     steps: [
       {
         id: 'issue-1-spec-review',
@@ -276,6 +301,52 @@ const detail: LoopDetail = {
     blocker: 'Loop is paused',
     updated: '2026-06-20T00:10:00.000Z',
   },
+  browserQaReports: [
+    {
+      id: 'browser-qa-1',
+      issueId: 'issue-1',
+      runner: 'playwright-cli',
+      status: 'failed',
+      targetUrl: 'https://example.com/qa',
+      title: 'QA target',
+      screenshots: [
+        {
+          path: '.loops/runs/issue-1/browser-qa/browser-qa-1/screenshot-desktop.png',
+          label: 'page-load · desktop 1440x900',
+        },
+      ],
+      traces: [
+        {
+          path: '.loops/runs/issue-1/browser-qa/browser-qa-1/trace-desktop.zip',
+          label: 'page-load · desktop',
+        },
+      ],
+      visualDiffs: [
+        {
+          baselinePath: '.loops/runs/issue-1/browser-qa/baseline-desktop.png',
+          actualPath: '.loops/runs/issue-1/browser-qa/browser-qa-1/screenshot-desktop.png',
+          diffPath: '.loops/runs/issue-1/browser-qa/browser-qa-1/visual-diff-desktop.png',
+          status: 'changed',
+          changedPixels: 12,
+          label: 'page-load · desktop 1440x900',
+          viewport: { name: 'desktop', width: 1440, height: 900 },
+        },
+      ],
+      viewports: [{ name: 'desktop', width: 1440, height: 900 }],
+      handoffs: [
+        {
+          path: '.loops/runs/issue-1/browser-qa/browser-qa-1/handoff-desktop.json',
+          label: 'playwright-context · desktop',
+        },
+      ],
+      consoleErrors: ['Hydration warning'],
+      networkFailures: [{ url: 'https://example.com/api', status: 500 }],
+      checkedFlows: ['page-load'],
+      command: 'pnpm --filter @repo/web exec node -e <browser-qa-worker>',
+      durationMs: 1200,
+      created: '2026-06-20T00:25:00.000Z',
+    },
+  ],
   secondOpinion: {
     id: 'issue-1-second-opinion',
     status: 'not_required',
@@ -298,24 +369,52 @@ const detail: LoopDetail = {
     secondary: {
       role: 'secondary',
       reviewer: 'claude-code',
-      status: 'pending',
-      findingsCount: 0,
-      findings: [],
-      evidenceIds: [],
-      summary: 'Claude Code secondary review is waiting for the second-opinion worker.',
+      status: 'needs_changes',
+      findingsCount: 1,
+      findings: [
+        {
+          fingerprint: 'review-1-finding',
+          severity: 'critical',
+          desc: 'Secondary reviewer found the same issue as release critical.',
+          sourceEvidenceId: 'issue-1-second-opinion',
+        },
+      ],
+      evidenceIds: ['issue-1-second-opinion'],
+      summary: 'Claude Code secondary review found one conflicting release risk.',
     },
     comparison: {
       agreementCount: 0,
-      primaryOnlyCount: 1,
+      primaryOnlyCount: 0,
       secondaryOnlyCount: 0,
-      conflictCount: 0,
+      conflictCount: 1,
       agreementFingerprints: [],
-      primaryOnlyFingerprints: ['review-1-finding'],
+      primaryOnlyFingerprints: [],
       secondaryOnlyFingerprints: [],
-      conflictFingerprints: [],
+      conflictFingerprints: ['review-1-finding'],
     },
-    requiredForRelease: false,
+    requiredForRelease: true,
     updated: '2026-06-20T00:10:00.000Z',
+  },
+  deliveryGovernance: {
+    workflowDefaults: [],
+    reviewGateOverrides: [],
+    requiredReviewGates: {
+      gateKinds: ['product', 'code'],
+      actor: 'human',
+      reason: 'Only product and code gates are required.',
+      updated: '2026-06-20T00:20:00.000Z',
+    },
+    releaseCanary: {
+      status: 'passed',
+      environment: 'staging-us',
+      environmentOwner: 'release-manager',
+      targetUrl: 'https://example.com/canary',
+      rollbackNote: 'Revert the release branch',
+      actor: 'human',
+      updated: '2026-06-20T00:30:00.000Z',
+    },
+    runtimeOverrides: [],
+    secondOpinionResolutions: [],
   },
 };
 
@@ -408,6 +507,8 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
       },
     },
   }),
+  getBrowserQaArtifactUrl: (_issueId: string, artifactPath: string) =>
+    `http://localhost:13100/loops/${_issueId}/browser-qa/artifact/${artifactPath}`,
 }));
 
 vi.mock('./use-loop-operations', () => ({
@@ -425,8 +526,12 @@ vi.mock('./use-loop-operations', () => ({
     runBrowserQa,
     runSecondOpinion,
     requireSecondOpinion,
+    acceptPrimaryFindings,
+    acceptSecondaryFindings,
+    waiveSecondOpinion,
     recordReleaseCanary,
     setBrowserQaSessionPolicy,
+    setRequiredReviewGates,
     recordRuntimeOverride,
   }),
 }));
@@ -489,6 +594,10 @@ describe('LoopIssueDetailPage', () => {
     expect(screen.getByText('Delivery Actions')).toBeInTheDocument();
     expect(screen.getByText('Default Codex / Claude Code delivery')).toBeInTheDocument();
     expect(screen.getByText('Workflow Timeline')).toBeInTheDocument();
+    expect(screen.getByText('Baseline evidence')).toBeInTheDocument();
+    expect(screen.getByText('Blueprint version')).toBeInTheDocument();
+    expect(screen.getByText('default-feature@v1')).toBeInTheDocument();
+    expect(screen.getByText('Eval suite')).toBeInTheDocument();
     expect(screen.getByText('Review Gates')).toBeInTheDocument();
     expect(screen.getAllByText('Release Gate').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Implementation').length).toBeGreaterThan(0);
@@ -496,8 +605,22 @@ describe('LoopIssueDetailPage', () => {
     expect(screen.getByText('Loop is paused')).toBeInTheDocument();
     expect(screen.getAllByText('Browser QA').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Run Browser QA' })).toBeInTheDocument();
+    expect(screen.getByText('Latest QA artifacts')).toBeInTheDocument();
+    expect(screen.getByText('QA target')).toBeInTheDocument();
+    expect(screen.getByText('Visual diffs')).toBeInTheDocument();
+    expect(screen.getByText('12 changed pixels')).toBeInTheDocument();
+    expect(screen.getByText('desktop 1440x900')).toBeInTheDocument();
+    expect(screen.getByText(/visual-diff-desktop\.png/)).toBeInTheDocument();
+    expect(screen.getByText('Browser handoff')).toBeInTheDocument();
+    expect(screen.getByText(/handoff-desktop\.json/)).toBeInTheDocument();
+    expect(screen.getByText('Required review gates')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save required gates' })).toBeInTheDocument();
     expect(screen.getAllByText('Second Opinion').length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Run second opinion' })).toBeInTheDocument();
+    expect(screen.getByText('Conflict fingerprints')).toBeInTheDocument();
+    expect(screen.getByText('review-1-finding')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('staging-us')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('release-manager')).toBeInTheDocument();
     expect(screen.getByText('Primary')).toBeInTheDocument();
     expect(screen.getByText('Secondary')).toBeInTheDocument();
     expect(screen.getAllByText('Codex').length).toBeGreaterThan(0);
@@ -519,16 +642,31 @@ describe('LoopIssueDetailPage', () => {
   it('submits Browser QA and second-opinion delivery actions', () => {
     runBrowserQa.mockClear();
     runSecondOpinion.mockClear();
+    setRequiredReviewGates.mockClear();
     renderWithIntl(<LoopIssueDetailPage />);
 
     fireEvent.change(screen.getByLabelText('Target URL'), {
       target: { value: 'https://example.com/qa' },
     });
     fireEvent.submit(screen.getByRole('button', { name: 'Run Browser QA' }).closest('form')!);
+    fireEvent.submit(screen.getByRole('button', { name: 'Save required gates' }).closest('form')!);
     fireEvent.click(screen.getByRole('button', { name: 'Run second opinion' }));
 
     expect(runBrowserQa).toHaveBeenCalledTimes(1);
+    expect(setRequiredReviewGates).toHaveBeenCalledTimes(1);
     expect(runSecondOpinion).toHaveBeenCalledTimes(1);
+  });
+
+  it('submits batched second-opinion conflict decisions from the drilldown', () => {
+    acceptSecondaryFindings.mockClear();
+    waiveSecondOpinion.mockClear();
+    renderWithIntl(<LoopIssueDetailPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Accept secondary conflicts' }));
+    expect(acceptSecondaryFindings).toHaveBeenCalledWith(['review-1-finding']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Waive all conflicts' }));
+    expect(waiveSecondOpinion).toHaveBeenCalledWith(undefined, ['review-1-finding']);
   });
 
   it('renders timeline entries with duplicate event identities without React key collisions', () => {

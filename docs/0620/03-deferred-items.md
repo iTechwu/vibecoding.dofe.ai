@@ -128,21 +128,25 @@ round 3 已完成非真实 SSO 范围的矩阵固化：
 
 ## v1.3 · 远端协作与执行能力
 
-| 项                | 当前状态 | 下一步                                                             |
-| ----------------- | -------- | ------------------------------------------------------------------ |
-| 真实远端 PR 打开  | partial  | GitHub/GitLab/Gitea provider client 已落地；缺真实 token/仓库验收  |
-| 多 Loop 并行队列  | partial  | 同进程 issue/repo 写锁已落地；缺跨进程队列、幂等和部署拓扑确认     |
-| 独立 worker 池    | blocked  | 缺 worker 运行边界、队列协议和资源隔离方案                         |
-| 生产级 agent 告警 | partial  | notification webhook sender 已落地；缺真实告警通道、SLO 和升级策略 |
+| 项                | 当前状态 | 下一步                                                                                                                                                  |
+| ----------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 真实远端 PR 打开  | done     | ✅ R6/R29: GitHub/GitLab/Gitea provider client + PR comment 自动发布 + GitHub App token exchange + Checks API + evidence backlink + publication history |
+| 多 Loop 并行队列  | partial  | 同进程 issue/repo 写锁已落地；缺跨进程队列、幂等和部署拓扑确认                                                                                          |
+| 独立 worker 池    | blocked  | 缺 worker 运行边界、队列协议和资源隔离方案                                                                                                              |
+| 生产级 agent 告警 | partial  | notification webhook sender 已落地；缺真实告警通道、SLO 和升级策略                                                                                      |
 
 ### 真实 PR 能力
 
-最小实现：
+✅ 已全面落地（R6/R17/R23/R28/R29/R29.1）：
 
 - provider client 层封装 GitHub/GitLab/Gitea：已完成，配置项为 `LOOPS_PR_PROVIDER`、`LOOPS_PR_API_BASE_URL`、`LOOPS_PR_REPOSITORY`、`LOOPS_PR_TOKEN`、`LOOPS_PR_REPOSITORY_ALLOWLIST`。
-- `GitAdapter` 从 convergence PR record 真实创建 PR：已完成；push 后 provider 成功返回 `OPENED + provider + url`，失败时保留 `PUSHED/DRAFT` 本地 record。
-- repo allowlist：已完成 `LOOPS_PR_REPOSITORY_ALLOWLIST`；branch sanitizer 仍沿用 `loops/<issue-id>` 受 issue id 生成规则约束。
-- 失败时保留本地 record，不影响 CLOSED 判定：已完成。
+- `GitAdapter` 从 convergence PR record 真实创建 PR：已完成；push 后 provider 成功返回 `OPENED + provider + url`。
+- PR comment 自动发布：`LoopsPrProviderClient.createPrComment()` 在 `finalize()` 中自动调用。
+- GitHub App installation token exchange：支持 `LOOPS_GITHUB_APP_ID` + JWT → installation access token。
+- GitHub Checks API check-run 发布：`publishGithubCheckRun()` 支持真实 check-run 创建。
+- CI publication artifact + history index：`.loops/ci-checks/` 下持久化 publication + index.json。
+- PR evidence backlink + Work Package commit map：convergence PR / Delivery Evidence / CI publication 均记录 commit/evidence 映射。
+- repo allowlist：已完成 `LOOPS_PR_REPOSITORY_ALLOWLIST`。
 
 ### 多 Loop 并行
 

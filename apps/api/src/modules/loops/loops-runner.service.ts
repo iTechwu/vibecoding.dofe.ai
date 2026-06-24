@@ -11,6 +11,10 @@ import type {
 } from '@repo/contracts';
 import { resolveAllowedTargetRepo } from './loops-path-policy.util';
 import { readLoopsRuntimeConfig } from './loops-runtime-config.util';
+import {
+  LoopsDockerSandboxService,
+  type DockerSandboxRunOptions,
+} from './loops-docker-sandbox.service';
 
 const execFileAsync = promisify(execFile);
 const OUTPUT_LIMIT = 12000;
@@ -68,6 +72,8 @@ export class LoopsRunnerService {
     @Optional()
     @Inject(WINSTON_MODULE_PROVIDER)
     private readonly logger?: Logger,
+    @Optional()
+    private readonly dockerSandbox?: LoopsDockerSandboxService,
   ) {}
 
   /** Winston-backed structured log; no-op for standalone (non-Nest) consumers. */
@@ -98,9 +104,12 @@ export class LoopsRunnerService {
     const blockedNetworkTools: string[] = [];
     const blockedWritePatterns: string[] = [];
     let executedCommands = 0;
+    const sandboxProfile = input.sandboxProfile;
+    const effectiveAllowedCommands =
+      sandboxProfile?.allowedCommands ?? config.tests.allowedCommands;
 
     for (const command of commands) {
-      const policy = this.evaluateCommandPolicy(command, config.tests.allowedCommands);
+      const policy = this.evaluateCommandPolicy(command, effectiveAllowedCommands, sandboxProfile);
       if (!policy.allowed) {
         if (policy.networkTool) blockedNetworkTools.push(policy.networkTool);
         if (policy.writePattern) blockedWritePatterns.push(policy.writePattern);
@@ -108,7 +117,7 @@ export class LoopsRunnerService {
         continue;
       }
       executedCommands += 1;
-      const commandResult = await this.runCommand(command, input.cwd, canaryToken);
+      const commandResult = await this.runCommand(command, input.cwd, canaryToken, sandboxProfile);
       const inspected = this.inspectCanary(commandResult, canaryToken);
       if (inspected.leaked) {
         leakedCanaryCommands.push(command);
@@ -133,10 +142,6 @@ export class LoopsRunnerService {
     ];
     const status = failed.length === 0 ? 'TEST-PASS' : 'TEST-FAIL';
     const created = new Date().toISOString();
-    // gstack/0 P0-1: Apply workspace sandbox profile to runtime enforcement.
-    const sandboxProfile = input.sandboxProfile;
-    const effectiveAllowedCommands =
-      sandboxProfile?.allowedCommands ?? config.tests.allowedCommands;
     const runtimeSecurityPolicy = this.buildPolicySnapshot(
       input.shardId,
       input.round,
@@ -180,13 +185,15 @@ export class LoopsRunnerService {
     capturedAt: string,
     sandboxProfile?: LoopsSandboxProfile,
   ): LoopRuntimeSecurityPolicySnapshot {
+    const dockerActive = sandboxProfile?.shellEnforcement === 'strict-allowlist';
     return {
       id: `runtime-security-${shardId}-r${round}`,
       mode: 'test-command',
+      sandboxBackend: dockerActive ? ('docker' as const) : ('local-shell' as const),
       shell: {
         strategy:
           sandboxProfile?.shellEnforcement === 'strict-allowlist'
-            ? ('allowlist' as const)
+            ? ('strict-allowlist' as const)
             : ('allowlist' as const),
         allowedCommands,
         blockedOperators: ['&&', '||', ';', '|', '<', '>', '`', '$(', 'newline'],
@@ -203,11 +210,13 @@ export class LoopsRunnerService {
               ? ('allowed-by-override' as const)
               : ('not-requested' as const),
         blockedTools: [...new Set(blockedNetworkTools)],
+        sandboxEnforced: dockerActive,
       },
       write: {
         strategy: 'workspace-scoped',
         scope: 'target-repo' as const,
         blockedPatterns: [...new Set(blockedWritePatterns)],
+        sandboxEnforced: dockerActive && sandboxProfile?.writeScope === 'artifact-only',
       },
       approvals: {
         override: 'not-supported',
@@ -236,7 +245,11 @@ export class LoopsRunnerService {
     return leakedCommands.length > 0 ? 'leaked' : 'armed';
   }
 
-  private evaluateCommandPolicy(command: string, allowedCommands: string[]): CommandPolicyDecision {
+  private evaluateCommandPolicy(
+    command: string,
+    allowedCommands: string[],
+    sandboxProfile?: LoopsSandboxProfile,
+  ): CommandPolicyDecision {
     const normalized = command.trim();
     if (SHELL_CONTROL_OPERATOR_PATTERN.test(normalized)) {
       return {
@@ -255,7 +268,14 @@ export class LoopsRunnerService {
         reason: 'Command is not allowed by .loops/config.yaml tests.allowed_commands.',
       };
     }
-    const networkMatch = NETWORK_COMMAND_PATTERNS.find((item) => item.pattern.test(normalized));
+    const networkPatterns = [
+      ...NETWORK_COMMAND_PATTERNS,
+      ...(sandboxProfile?.extraBlockedTools ?? []).map((tool) => ({
+        label: tool,
+        pattern: new RegExp(`\\b${this.escapeRegExp(tool)}\\b`),
+      })),
+    ];
+    const networkMatch = networkPatterns.find((item) => item.pattern.test(normalized));
     if (networkMatch) {
       return {
         allowed: false,
@@ -263,7 +283,14 @@ export class LoopsRunnerService {
         networkTool: networkMatch.label,
       };
     }
-    const writeMatch = WRITE_ESCAPE_PATTERNS.find((item) => item.pattern.test(normalized));
+    const writePatterns = [
+      ...WRITE_ESCAPE_PATTERNS,
+      ...(sandboxProfile?.extraBlockedPatterns ?? []).map((pattern) => ({
+        label: pattern,
+        pattern: new RegExp(pattern),
+      })),
+    ];
+    const writeMatch = writePatterns.find((item) => item.pattern.test(normalized));
     if (writeMatch) {
       return {
         allowed: false,
@@ -272,6 +299,10 @@ export class LoopsRunnerService {
       };
     }
     return { allowed: true };
+  }
+
+  private escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   private blockedCommand(command: string, reason: string): CommandResult {
@@ -289,6 +320,91 @@ export class LoopsRunnerService {
   }
 
   private async runCommand(
+    command: string,
+    cwd: string,
+    canaryToken: string,
+    sandboxProfile?: LoopsSandboxProfile,
+  ): Promise<CommandResult> {
+    const useDocker = sandboxProfile?.shellEnforcement === 'strict-allowlist' && this.dockerSandbox;
+    if (useDocker) {
+      return this.runCommandInDocker(command, cwd, canaryToken, sandboxProfile!);
+    }
+    return this.runCommandLocal(command, cwd, canaryToken);
+  }
+
+  /** Execute a command inside a Docker container with the configured sandbox profile. */
+  private async runCommandInDocker(
+    command: string,
+    cwd: string,
+    canaryToken: string,
+    sandboxProfile: LoopsSandboxProfile,
+  ): Promise<CommandResult> {
+    const started = Date.now();
+    const sandbox = this.dockerSandbox!;
+    const safeCwd = await resolveAllowedTargetRepo(cwd);
+
+    const dockerOpts: DockerSandboxRunOptions = {
+      image: 'node:22-alpine',
+      command,
+      workdir: '/workspace',
+      mountPath: safeCwd,
+      networkMode: sandboxProfile.network === 'deny' ? 'none' : 'bridge',
+      readonlyRootfs: sandboxProfile.writeScope === 'artifact-only',
+      capDrop: ['ALL'],
+      capAdd: [],
+      memoryLimitMb: 512,
+      cpuLimit: 1,
+      timeoutSec: 120,
+      envVars: { LOOPS_RUNTIME_CANARY: canaryToken },
+    };
+
+    const validation = sandbox.validateProfile(dockerOpts);
+    if (!validation.valid) {
+      this.log('warn', '[Loops] Docker sandbox profile validation warnings', {
+        command,
+        warnings: validation.warnings,
+      });
+    }
+
+    const { command: dockerCommand, args } = sandbox.buildSandboxedExec(dockerOpts);
+    try {
+      const result = await execFileAsync(dockerCommand, args, {
+        cwd: safeCwd,
+        timeout: (dockerOpts.timeoutSec ?? 120) * 1000,
+        maxBuffer: 1024 * 1024 * 8,
+      });
+      return {
+        command,
+        exitCode: 0,
+        durationMs: Date.now() - started,
+        stdout: this.truncate(result.stdout),
+        stderr: this.truncate(result.stderr),
+      };
+    } catch (error) {
+      const err = error as {
+        code?: number;
+        signal?: string;
+        stdout?: string;
+        stderr?: string;
+        message?: string;
+      };
+      this.log('warn', '[Loops] Docker sandbox command exited non-zero', {
+        command,
+        exitCode: typeof err.code === 'number' ? err.code : null,
+        signal: err.signal,
+      });
+      return {
+        command,
+        exitCode: typeof err.code === 'number' ? err.code : null,
+        durationMs: Date.now() - started,
+        stdout: this.truncate(err.stdout ?? ''),
+        stderr: this.truncate(err.stderr ?? err.message ?? err.signal ?? ''),
+      };
+    }
+  }
+
+  /** Execute a command locally via /bin/sh (existing behavior). */
+  private async runCommandLocal(
     command: string,
     cwd: string,
     canaryToken: string,

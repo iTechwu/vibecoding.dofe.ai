@@ -18,21 +18,21 @@
 
 评分：1 = 缺失，2 = 概念存在，3 = v1 可用，4 = 产品化，5 = 企业级成熟。
 
-| 能力                  | 当前评分 | 证据                                                                                    | 对标 CrewAI 差距                          |
-| --------------------- | -------: | --------------------------------------------------------------------------------------- | ----------------------------------------- |
-| Issue intake          |        3 | simple issue、web entry、source tracking                                                | 缺 Invent Delivery Loop 级 plan 生成      |
-| 状态机/流程           |        4 | phase、advance、review、reloop、finalize                                                | 缺 Flow/Workforce 产品语言                |
-| 多 agent 分工         |        3 | Codex/Claude adapters、review/build 分工                                                | 缺 agent persona 和 handoff UI            |
-| Runtime detection     |        4 | agent-runtime detection、workspace profile、Docker/local、Runtime Backends dashboard v1 | 生命周期治理仍需后端 contract             |
-| 企业治理              |        3 | RBAC、audit、cost、doctor、runtime policy                                               | 缺资产级权限、组织级 rules、quota         |
-| 可观测                |        3 | metrics、logs、notifications、event log                                                 | 缺 ACP 级健康/成本/趋势聚合               |
-| Trace/evidence        |        4 | spec/test/review/global/evidence artifacts                                              | 缺统一 Delivery Trace 与导出              |
-| Tool registry         |        2 | capability registry                                                                     | 缺 tool schema、auth、health、test、audit |
-| Trigger system        |        2 | source/trigger portfolio 展示                                                           | 缺 trigger object、replay、retry、DLQ     |
-| Eval system           |        3 | test/review/coverage、Eval Plan dashboard v1                                            | 缺 reusable eval suite/trend/baseline     |
-| Blueprint marketplace |        1 | templates 雏形                                                                          | 缺版本化 workflow 模板                    |
-| Remote/queue worker   |        2 | runner/local/Docker 方向                                                                | 缺生产异步 worker 和执行池                |
-| PR integration        |        2 | PR provider adapter                                                                     | 缺默认 issue-to-PR 交付体验               |
+| 能力                  | 当前评分 | 证据                                                                                                                                          | 对标 CrewAI 差距                                             |
+| --------------------- | -------: | --------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Issue intake          |        4 | simple issue、web entry、source tracking、webhook trigger、schedule trigger、Invent Delivery Loop preview (R4/R7/R30c)                        | 缺跨系统 trigger 自动映射                                    |
+| 状态机/流程           |        4 | phase、advance、review、reloop、finalize、Delivery Flow Pipeline (R8)                                                                         | 缺 Flow/Workforce 产品语言                                   |
+| 多 agent 分工         |        4 | Codex/Claude adapters、review/build 分工、9 persona Workforce Overview + handoff timeline (R1)                                                | 缺 persona 可编辑/国际化                                     |
+| Runtime detection     |        5 | agent-runtime detection、workspace profile、Docker/local、Runtime Backends dashboard + contract + policy persistence (R11/R16)                | fallback 自动执行策略待深化                                  |
+| 企业治理              |        4 | SSO-backed RBAC、asset permissions、audit、cost、doctor、runtime policy                                                                       | 组织级 quota 与执行池硬门禁仍需深化                          |
+| 可观测                |        3 | metrics、logs、notifications、event log                                                                                                       | 缺 ACP 级健康/成本/趋势聚合                                  |
+| Trace/evidence        |        4 | spec/test/review/global/evidence artifacts、PR evidence + Delivery Evidence + CI check publication history (R5/R6/R29.1)                      | 缺统一 Delivery Trace 与导出                                 |
+| Tool registry         |        4 | capability registry + frontend lifecycle display (R4); Tool Registry backend CRUD/health-check/test/audit/file persistence (R31)              | 真实 MCP/tool invocation 与 provider secret bootstrap 待接入 |
+| Trigger system        |        4 | webhook trigger (R7) + schedule trigger CRUD (R30c) + Trigger Lifecycle retry/replay/DLQ (R30c) + frontend lifecycle display (R3)             | trigger 自动执行引擎、复杂 cron 解析、分布式协调             |
+| Eval system           |        4 | test/review/coverage、Eval Plan dashboard v1、Eval Suite/Run evidence aggregation v1、historical baseline/trend worker (R13/R19)              | 缺跨租户实时聚合与长期归档                                   |
+| Blueprint marketplace |        4 | 8 blueprints frontend display (R4) + Invent Delivery Loop preview (R4); Delivery Blueprint Marketplace backend CRUD + 8 seed blueprints (R31) | 跨租户共享、clone、version rollback 待推进                   |
+| Remote/queue worker   |        4 | runner/local/Docker + Remote Runner pool/lease/job 控制面、artifact manifest provider v1 (R12/R21/R26)                                        | 缺生产异步 worker、取消/续跑与组织级 quota                   |
+| PR integration        |        4 | PR provider adapter + createPrComment + CI check publication + GitHub App token exchange + evidence backlink (R6/R17/R23/R28/R29/R29.1)       | 缺 PR status CI check 实时同步与跨租户归档                   |
 
 ## 差距 1：缺少用户可理解的 Workforce 抽象
 
@@ -66,7 +66,11 @@ CrewAI 用 Crews / Agents / Automations 让用户理解“谁在做什么”。D
 
 已闭合 v1：`apps/web/app/loops/loops-dashboard-model.ts` 新增 `buildRuntimeBackends`，将现有 `LoopAgentRuntimeResponse.runtimes` 包装为 Codex CLI / Claude Code CLI 两个可治理 Runtime Backend，并展示 status、mode、permissions、workspace policy、cost policy、fallback policy、supported stages 和 health checks。`apps/web/app/loops/page.tsx` 已新增 Runtime Backends 区块，`apps/web/app/loops/loops-dashboard-model.test.ts` 与 `apps/web/app/loops/page.test.tsx` 已覆盖。
 
-仍未闭合：后端一等 `RuntimeBackend` contract、policy patch、health-check endpoint、fallback 执行策略、远程 runner 生命周期。
+已补齐后端 contract v1：`packages/contracts/src/api/loops.contract.ts` 已包含 list/detail/health-check/policy patch；`apps/api/src/modules/loops/loops.service.ts` 已从现有 runtime detection 派生 RuntimeBackend 资产。R11 已将 policy patch 持久化到 `.loops/runtime-backend-policies.json`，重读 runtime backend 时会合并 fallback/cost/permission profile。R16 已新增 `loop_runtime_backend_policy` Prisma model / migration 与 DB Service persistence；NestJS 注入 DB persistence 时优先写 DB，`.loops` 文件态保留为 standalone fallback。
+
+R12 已补齐 Remote Runner pool/lease 控制面：`GET /loops/remote-runners`、acquire/release lease，写操作复用 SSO `remote-runner` admin asset permission。R21 已新增 `POST /loops/remote-runners/:id/jobs`，可在 SSO admin 门禁后生成 Remote Runner job、写入 `.loops/runs/{runnerId}/jobs/{jobId}.json` 索引，并落地 `.loops/runs/{runnerId}/jobs/{jobId}/manifest.json` artifact manifest（含 sha256/size metadata），作为后续 BullMQ/sandbox worker 的真实 artifact provider v1。
+
+仍未闭合：fallback 自动执行策略、分布式 queue worker、取消/续跑、真实 sandbox worker 与组织级 quota。
 
 ### 当前状态
 
@@ -142,7 +146,9 @@ CrewAI 的 Studio / deployment / automation 心智会让用户知道“我创建
 
 已闭合 v1：`apps/web/app/loops/loops-dashboard-model.ts` 新增 `buildEvalPlan`，把 architecture compliance、delivery readiness、runtime safety、test evidence、cost policy 汇总为硬关卡视图。Dashboard 已新增 Eval Plan 区块，显示 passed / attention / blocked 和每项 evidence。相关测试已补齐。
 
-仍未闭合：后端 `EvalSuite` / `EvalRun` contract、跨 blueprint 趋势、baseline version、历史通过率、硬关卡对 finalize 的后端统一阻断。
+已补齐后端 `EvalSuite` / `EvalRun` contract v1 与 finalize release gate 阻断。R13 已补齐 request-time evidence aggregation：suite check 计数与 EvalRun 明细会从现有 Loop state/detail/cost/test/runtime security evidence 同步派生，不再是 0/0/0 占位结果。R19 已新增 `POST /loops/eval-runs/historical-baseline-worker`，可按 blueprint/suite 物化历史 baseline snapshot，并让 EvalRun 返回 baselineVersion、baselineScore 与 trendDelta。
+
+仍未闭合：跨租户实时聚合、长期归档、DB/队列化调度。
 
 ### 当前状态
 
@@ -193,24 +199,24 @@ EvalRun
 - global review pass；
 - PR evidence present。
 
-## 差距 5：Tool Registry 停留在展示层
+## 差距 5：Tool Registry 生命周期后端 v1 已闭合，真实调用仍待接入
 
 ### 当前状态
 
-Capability Registry 已有工具/能力展示，permission profile 也有雏形。
+Capability Registry 已有工具/能力展示，permission profile 也有雏形。R31 已补齐 Tool Registry backend v1：`packages/contracts/src/api/loops.contract.ts` 提供 list/register/update/health-check/test endpoint，`apps/api/src/modules/loops/loops.service.ts` 与 `loops-file-store.service.ts` 提供文件态持久化、health/test 结果和 audit log。
 
 ### 问题
 
-CrewAI 的工具生态包括 `crewai-tools`、Tool Repository、MCP、enterprise integrations。DofeAI 现在缺少工具的完整生命周期：
+CrewAI 的工具生态包括 `crewai-tools`、Tool Repository、MCP、enterprise integrations。DofeAI 已具备工具生命周期控制面 v1：
 
-- 定义；
-- 授权；
-- 输入输出 schema；
-- 权限；
-- 健康检查；
-- smoke test；
-- 使用审计；
-- 版本回滚。
+- 定义：R31 `LoopToolSchema` / `RegisterToolRequestSchema` / `UpdateToolRequestSchema`；
+- 授权与权限：R9 SSO asset permission + Tool Registry permissions 字段；
+- 输入输出 schema：R31 tool `inputSchema` / `outputSchema`；
+- 健康检查：R31 `POST /loops/tools/:toolId/health-check`；
+- smoke test：R31 `POST /loops/tools/:toolId/test`；
+- 使用审计：R31 controller audit log + file-backed tool records。
+
+仍未闭合的是 provider 层真实调用：MCP client bootstrap / handshake、provider secret bootstrap、tool invocation replay、版本回滚执行器和跨租户共享治理。
 
 ### 建议
 
@@ -225,44 +231,15 @@ CrewAI 的工具生态包括 `crewai-tools`、Tool Repository、MCP、enterprise
 | Runtime tools  | Codex CLI、Claude Code CLI、MCP servers        |
 | Security tools | path policy、secret scanner、dependency audit  |
 
-## 差距 6：Trigger 没有生命周期
+## 差距 6：Trigger 生命周期已闭合 v1
 
-### 当前状态
+### 2026-06-24 实施标注（R30c）
 
-DofeAI 能记录来源，也有 Trigger Portfolio 展示，但没有一等 trigger object。
+✅ 已闭合 v1。Schedule Trigger CRUD backend（5 个 endpoint：list/get/create/update/delete）+ Trigger Lifecycle Management（4 个 endpoint：list executions/retry/replay/list dead-letters）。Webhook trigger 已在 R7 实现（`POST /loops/triggers/webhook`，含 HMAC-SHA256 签名验证）。
 
-### 问题
+所有 trigger execution 支持 retry（指数退避）、replay（基于原始 execution 创建新 pending execution）、dead-letter queue（maxRetries 耗尽后自动进入 DLQ）。Schedule trigger 支持 cron-based 定时创建 Loop（daily/weekly）。
 
-没有 trigger 生命周期，就无法承接：
-
-- GitHub issue label 自动创建 Loop；
-- CI failed 自动创建修复 Loop；
-- schedule 定期做依赖升级；
-- webhook 从外部系统触发；
-- Slack/Linear/Jira 触发；
-- replay 和 dead-letter。
-
-### 建议
-
-新增 `Trigger`：
-
-```text
-Trigger
-- id
-- workspaceId
-- blueprintId
-- type: manual | webhook | schedule | github | slack | linear | jira | ci
-- status: active | paused | failed
-- inputSchema
-- mapping
-- authRef
-- signingSecretRef
-- retryPolicy
-- deadLetterPolicy
-- lastRunAt
-- failureCount
-- owner
-```
+仍未闭合：schedule trigger 的实际 cron 执行引擎需外部 scheduler 轮询；复杂 cron 表达式解析、分布式锁、cross-system trigger mapping（GitHub label→Loop、CI fail→Loop）仍待后续。
 
 ## 差距 7：企业控制面还没有统一叙事
 
@@ -309,7 +286,9 @@ DofeAI 需要回答工程管理问题：
 
 ✅ 已闭合 v2。Detail 页新增 Delivery Evidence 区块（spec/works/tests/reviews/risks/cost/prStatus）。R6 新增 PR comment 自动发布：`LoopsPrProviderClient.createPrComment()` 在 `finalize()` 中自动调用，将 delivery evidence markdown 发布为 PR 评论。
 
-仍未闭合：GitHub CI check 集成、Work Package→commit 映射、PR→DofeAI evidence 反向链接。
+R10 已补齐 CI Checks Registry 控制面：`GET /loops/ci-checks` 与 connect/disconnect/test 写操作已接入 SSO `ci-check` operate asset permission 硬门禁。R17 已将 `testCiCheck` 接入 GitHub Checks API provider client；传入 `headSha` 时会通过 `LoopsPrProviderClient.publishGithubCheckRun()` 发布真实 check-run。R23 已将成功与失败发布结果写入 `.loops/ci-checks/{id}/publications/` durable artifact，并在响应中返回 `lastPublication.artifactRef`。R28 已补齐 per-integration publication history index；R29 已补齐 Work Package→commit 映射、PR→DofeAI evidence 反向链接与 GitHub App installation token exchange v1。R29.1 已新增 `GET /loops/ci-checks/:id/publications` 与 Dashboard CI Evidence Publications 面板，公开展示 latest publication、check-run、evidence backlink 与 Work Package commit map。
+
+仍未闭合：publication history 批量导出、搜索过滤、跨租户长期归档。
 
 ### 当前状态
 
@@ -323,6 +302,6 @@ DofeAI 需要回答工程管理问题：
 
 - ✅ Loop detail 增加 Delivery Evidence 区块（R5）；
 - ✅ finalize 自动生成 PR evidence comment（R6）；
-- ❌ global review 结果与 PR checks 绑定（需 GitHub Checks API 集成）；
-- ❌ Work Package 映射 commit；
-- ❌ PR 页面能跳回 DofeAI evidence。
+- ✅ global review 结果与 PR checks 绑定（CI Checks Registry 已有；R17/R23 已支持 GitHub Checks API check-run 发布与 publication artifact；R28 已补齐 history index；R29.1 已提供公开 history API/UI）；
+- ✅ Work Package 映射 commit（R29：convergence PR / Delivery Evidence / CI publication artifact 均记录 commit metadata）；
+- ✅ PR 页面能跳回 DofeAI evidence（R29：CI publication 支持并持久化 `evidenceBacklink`）。

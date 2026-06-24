@@ -14,18 +14,18 @@
 
 ## 2. 深度能力矩阵
 
-| 维度             | gstack                                 | DofeAI Loops 当前                                          | Cline                          | OpenHands                       | Aider                    | Goose                        | SWE-agent               |
-| ---------------- | -------------------------------------- | ---------------------------------------------------------- | ------------------------------ | ------------------------------- | ------------------------ | ---------------------------- | ----------------------- |
-| 运行时           | 包装 Claude Code、Codex CLI 等多 host  | Codex CLI + Claude Code CLI 为核心边界                     | VS Code extension + model/tool | sandbox/container agent runtime | CLI + git + LLM          | local agent + extensions/MCP | benchmark agent runtime |
-| 工作流编排       | slash command workflow pack            | Loop phase、recipe、gate、dashboard                        | chat/task loop                 | task session + environment      | edit/test/commit loop    | extensions/workflows         | task solve loop         |
-| 团队治理         | 轻量 team install                      | contract/API/UI/审计更强                                   | 主要个人 IDE                   | 偏平台但治理需集成              | 个人/小团队 CLI          | 本地/企业扩展视具体部署      | 研究为主                |
-| 浏览器 QA        | 强，persistent browser 是亮点          | report-only + trace/evidence + visual artifacts 基础       | 可通过 browser/tool 扩展       | 可在环境中运行浏览器类任务      | 弱                       | 可扩展                       | 弱                      |
-| Memory           | local learnings/GBrain 思路            | LoopLearning + governance + pending approval               | 上下文/规则文件为主            | session/project memory 取决实现 | repo map 强，长期决策弱  | memory/extension 可扩展      | 弱                      |
-| Second Opinion   | 多 agent/model 审查心智                | Codex primary + Claude secondary worker 已成形             | 可手动多模型                   | 可多 agent，但需设计            | 手动复审为主             | 可扩展                       | 不主打                  |
-| Release/canary   | ship/canary/land 命令心智强            | Release Gate + PR evidence + canary checklist 基础         | 不主打                         | 可接 CI/CD                      | git commit/PR 强，发布弱 | 可扩展                       | 不主打                  |
-| Runtime Security | guard/freeze/careful，命令层安全意识强 | shell/network/write policy + canary，OS/container 隔离待补 | 用户审批和工具权限             | sandbox 更原生                  | Git/CLI 透明但隔离弱     | 本地权限需治理               | sandbox 取决评测环境    |
-| Evidence         | local artifacts/JSONL/浏览器输出       | evidence-first，API/detail/dashboard 可聚合                | chat/history                   | logs/artifacts                  | git diff/commit          | logs/tool traces             | benchmark logs          |
-| 差异风险         | host sprawl、命令膨胀                  | worker/runtime 深度仍需补                                  | IDE 绑定                       | 部署/复杂度较高                 | 流程广度不足             | 方向较泛                     | 产品化弱                |
+| 维度             | gstack                                 | DofeAI Loops 当前                                               | Cline                          | OpenHands                       | Aider                    | Goose                        | SWE-agent               |
+| ---------------- | -------------------------------------- | --------------------------------------------------------------- | ------------------------------ | ------------------------------- | ------------------------ | ---------------------------- | ----------------------- |
+| 运行时           | 包装 Claude Code、Codex CLI 等多 host  | Codex CLI + Claude Code CLI 为核心边界                          | VS Code extension + model/tool | sandbox/container agent runtime | CLI + git + LLM          | local agent + extensions/MCP | benchmark agent runtime |
+| 工作流编排       | slash command workflow pack            | Loop phase、recipe、gate、dashboard                             | chat/task loop                 | task session + environment      | edit/test/commit loop    | extensions/workflows         | task solve loop         |
+| 团队治理         | 轻量 team install                      | contract/API/UI/审计更强                                        | 主要个人 IDE                   | 偏平台但治理需集成              | 个人/小团队 CLI          | 本地/企业扩展视具体部署      | 研究为主                |
+| 浏览器 QA        | 强，persistent browser 是亮点          | report-only + trace/evidence + visual artifacts 基础            | 可通过 browser/tool 扩展       | 可在环境中运行浏览器类任务      | 弱                       | 可扩展                       | 弱                      |
+| Memory           | local learnings/GBrain 思路            | LoopLearning + governance + pending approval                    | 上下文/规则文件为主            | session/project memory 取决实现 | repo map 强，长期决策弱  | memory/extension 可扩展      | 弱                      |
+| Second Opinion   | 多 agent/model 审查心智                | Codex primary + Claude secondary worker 已成形                  | 可手动多模型                   | 可多 agent，但需设计            | 手动复审为主             | 可扩展                       | 不主打                  |
+| Release/canary   | ship/canary/land 命令心智强            | Release Gate + PR evidence + canary checklist 基础              | 不主打                         | 可接 CI/CD                      | git commit/PR 强，发布弱 | 可扩展                       | 不主打                  |
+| Runtime Security | guard/freeze/careful，命令层安全意识强 | shell/network/write policy + canary + R7 Docker sandbox backend | 用户审批和工具权限             | sandbox 更原生                  | Git/CLI 透明但隔离弱     | 本地权限需治理               | sandbox 取决评测环境    |
+| Evidence         | local artifacts/JSONL/浏览器输出       | evidence-first，API/detail/dashboard 可聚合                     | chat/history                   | logs/artifacts                  | git diff/commit          | logs/tool traces             | benchmark logs          |
+| 差异风险         | host sprawl、命令膨胀                  | provider webhook、自动 rollback、长期指标仍可增强               | IDE 绑定                       | 部署/复杂度较高                 | 流程广度不足             | 方向较泛                     | 产品化弱                |
 
 ## 3. gstack vs DofeAI Loops
 
@@ -83,18 +83,18 @@ SWE-agent 的强项是可评测性。它回答的是“agent 是否能在 benchm
 
 gstack 回答的是“真实开发者如何把 agent 纳入日常交付流程”。
 
-DofeAI 的机会是把两者结合：在 Loops 里建设 Loop Bench，把 gstack 式流程产生的 evidence 转换为可度量的质量指标，例如首次通过率、返工率、review conflict rate、browser QA regression rate、release rollback rate。
+DofeAI 的机会是把两者结合：在 Loops 里把已落地的 Loop Bench dashboard 继续趋势化，把 gstack 式流程产生的 evidence 转换为可度量、可回归检测的质量指标，例如首次通过率、返工率、review conflict rate、browser QA regression rate、release rollback rate。
 
 ## 9. DofeAI 差异化路线
 
-| 差异化方向             | 为什么重要                | 近期落点                                             |
-| ---------------------- | ------------------------- | ---------------------------------------------------- |
-| 结构化 workflow        | 避免 prompt-only 流程失真 | Workspace recipe admin、新建 Loop 默认应用           |
-| Evidence control plane | 让团队相信 agent 结果     | PR summary、trace、browser handoff、release evidence |
-| Runtime governance     | 让 agent 执行进入可控范围 | network/write sandbox、override approval、canary     |
-| Human gates            | 把高风险判断交还给人      | Review Inbox、conflict queues、release hard gate     |
-| Learning governance    | 让经验复利但不过期污染    | dedupe、merge approval、cross-workspace index        |
-| Browser/product QA     | 从代码正确走向用户可用    | multi-viewport visual regression、auth profile       |
+| 差异化方向             | 为什么重要                | 近期落点                                                         |
+| ---------------------- | ------------------------- | ---------------------------------------------------------------- |
+| 结构化 workflow        | 避免 prompt-only 流程失真 | Workspace recipe admin、新建 Loop 默认应用                       |
+| Evidence control plane | 让团队相信 agent 结果     | PR summary、trace、browser handoff、release evidence             |
+| Runtime governance     | 让 agent 执行进入可控范围 | network/write sandbox、override approval、canary                 |
+| Human gates            | 把高风险判断交还给人      | Review Inbox、conflict queues、release hard gate                 |
+| Learning governance    | 让经验复利但不过期污染    | dedupe、merge approval、cross-workspace index                    |
+| Browser/product QA     | 从代码正确走向用户可用    | auth profile、ignore/mask、embedded screenshot/trace/diff viewer |
 
 ## 10. 竞品结论
 

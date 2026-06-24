@@ -1,15 +1,17 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
-import { randomUUID } from 'crypto';
-import { existsSync } from 'fs';
+import { createHash, randomUUID } from 'crypto';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import type {
   LoopAnnotation,
+  LoopBenchTrendSnapshot,
   LoopBrowserQaReport,
   LoopConvergencePr,
   LoopCostItem,
+  EvalHistoricalBaselineSnapshot,
   LoopDeliveryGovernance,
   LoopDeliveryGovernanceRequest,
   LoopDetail,
@@ -20,8 +22,11 @@ import type {
   LoopLearning,
   LoopLearningGovernance,
   LoopLearningGovernanceRequest,
+  LoopLearningIndex,
   LoopLogEntry,
   LoopNotification,
+  LoopRecipeAdminActionResponse,
+  LoopRemoteRunnerJob,
   LoopReviewRecord,
   LoopShard,
   LoopSecondOpinion,
@@ -31,6 +36,12 @@ import type {
   LoopTestMatrix,
   LoopTestRecord,
   LoopWorkflowRecipe,
+  LoopScheduleTrigger,
+  LoopTriggerExecution,
+  LoopTriggerDeadLetter,
+  LoopTool,
+  LoopBlueprint,
+  RuntimeBackendPolicyUpdate,
 } from '@repo/contracts';
 import { LoopsNotificationSender } from './loops-notification-sender.service';
 import {
@@ -42,6 +53,72 @@ import { readLoopsRuntimeConfig } from './loops-runtime-config.util';
 type StateFile = {
   loops: LoopStateItem[];
 };
+
+export type LoopMcpExecutionAuditRecord = {
+  auditRef: string;
+  artifactRef: string;
+  providerId: string;
+  action: 'connect' | 'disconnect' | 'test';
+  outcome: 'success' | 'failed' | 'skipped';
+  toolCount: number;
+  toolIds: string[];
+  transport: 'stdio' | 'sse' | 'http';
+  authStatus: 'configured' | 'missing' | 'not-required';
+  reason?: string;
+  recordedAt: string;
+  health: {
+    ok: boolean;
+    message: string;
+  };
+};
+
+export type LoopCiCheckPublicationRecord = {
+  artifactRef: string;
+  integrationId: string;
+  provider?: 'github' | 'gitlab' | 'gitea';
+  headSha?: string;
+  checkRunId?: string;
+  url?: string;
+  outcome: 'published' | 'failed';
+  reason?: string;
+  issueId?: string;
+  prId?: string;
+  evidenceBacklink?: string;
+  workPackageCommitMap: Array<{
+    workPackageId: string;
+    title?: string;
+    commitSha?: string;
+    commitMessage?: string;
+    branch?: string;
+    files: string[];
+  }>;
+  request: {
+    name?: string;
+    title?: string;
+    summary?: string;
+    detailsUrl?: string;
+    evidenceBacklink?: string;
+    status?: 'queued' | 'in_progress' | 'completed';
+    conclusion?:
+      | 'success'
+      | 'failure'
+      | 'neutral'
+      | 'cancelled'
+      | 'skipped'
+      | 'timed_out'
+      | 'action_required';
+  };
+  publishedAt: string;
+};
+
+export type LoopCiCheckPublicationIndex = {
+  integrationId: string;
+  latest?: LoopCiCheckPublicationRecord;
+  entries: LoopCiCheckPublicationRecord[];
+  updatedAt?: string;
+};
+
+export type LoopRecipeAdminActionRecord = Omit<LoopRecipeAdminActionResponse, 'artifactRef'>;
 
 export type LoopsDoctorResult = {
   ok: boolean;
@@ -97,6 +174,8 @@ export class LoopsFileStoreService {
         'annotations',
         'notifications',
         'archive',
+        'eval-trends',
+        'bench-trends',
         // Per-issue atomic state files (R7); each issue writes its own
         // `state/<issueId>.json` instead of rewriting a monolithic state file.
         'state',
@@ -105,6 +184,58 @@ export class LoopsFileStoreService {
 
     await this.writeJsonIfMissing('state.json', { loops: [] });
     await this.writeTextIfMissing('log.jsonl', '');
+  }
+
+  async readEvalTrendHistory(): Promise<EvalHistoricalBaselineSnapshot[]> {
+    await this.ensureInitialized();
+    return (
+      (await this.readOptionalJson<EvalHistoricalBaselineSnapshot[]>('eval-trends/history.json')) ??
+      []
+    );
+  }
+
+  async appendEvalTrendSnapshots(
+    snapshots: EvalHistoricalBaselineSnapshot[],
+  ): Promise<EvalHistoricalBaselineSnapshot[]> {
+    await this.ensureInitialized();
+    const history = await this.readEvalTrendHistory();
+    const next = [...history, ...snapshots].sort((a, b) =>
+      a.capturedAt.localeCompare(b.capturedAt),
+    );
+    await this.writeJson('eval-trends/history.json', next);
+    await this.writeJson('eval-trends/latest.json', snapshots);
+    await this.appendLog({
+      type: 'EVAL_TREND_WORKER',
+      snapshots: snapshots.length,
+      capturedAt: snapshots[0]?.capturedAt,
+    });
+    return next;
+  }
+
+  async readLoopBenchTrendHistory(): Promise<LoopBenchTrendSnapshot[]> {
+    await this.ensureInitialized();
+    return (
+      (await this.readOptionalJson<LoopBenchTrendSnapshot[]>('bench-trends/history.json')) ?? []
+    );
+  }
+
+  async appendLoopBenchTrendSnapshot(
+    snapshot: LoopBenchTrendSnapshot,
+  ): Promise<LoopBenchTrendSnapshot[]> {
+    await this.ensureInitialized();
+    const history = await this.readLoopBenchTrendHistory();
+    const next = [...history, snapshot].sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
+    await this.writeJson('bench-trends/history.json', next);
+    await this.writeJson('bench-trends/latest.json', snapshot);
+    await this.writeJson(this.toLoopsStorePath(snapshot.artifactRef), snapshot);
+    await this.appendLog({
+      type: 'LOOP_BENCH_TREND_WORKER',
+      snapshot: snapshot.id,
+      capturedAt: snapshot.capturedAt,
+      artifactRef: snapshot.artifactRef,
+      loopCount: snapshot.loopCount,
+    });
+    return next;
   }
 
   async list() {
@@ -370,10 +501,20 @@ export class LoopsFileStoreService {
     const governance = await this.readLearningGovernance();
     const dismissedIds = new Set(governance.dismissed.map((item) => item.learningId));
     const mergedSourceIds = new Set(governance.merges.map((item) => item.sourceLearningId));
+    const deprecatedIds = new Set((governance.deprecated ?? []).map((item) => item.learningId));
+    const supersededSourceIds = new Set(
+      (governance.superseded ?? []).map((item) => item.sourceLearningId),
+    );
 
     let activeLearnings = learnings
       .flatMap((items) => items ?? [])
-      .filter((learning) => !dismissedIds.has(learning.id) && !mergedSourceIds.has(learning.id));
+      .filter(
+        (learning) =>
+          !dismissedIds.has(learning.id) &&
+          !mergedSourceIds.has(learning.id) &&
+          !deprecatedIds.has(learning.id) &&
+          !supersededSourceIds.has(learning.id),
+      );
 
     // gstack/0 P1-4: Cross-workspace learning recall.
     // When recallScope is 'workspace', filter to matching workspaceId (or don't
@@ -393,13 +534,64 @@ export class LoopsFileStoreService {
   }
 
   async readLearningGovernance(): Promise<LoopLearningGovernance> {
-    return (
-      (await this.readOptionalJson<LoopLearningGovernance>('learning-governance.json')) ?? {
-        dismissed: [],
-        merges: [],
-        autoMergeCandidates: [],
-      }
+    const governance = await this.readOptionalJson<LoopLearningGovernance>(
+      'learning-governance.json',
     );
+    return {
+      dismissed: [],
+      merges: [],
+      deprecated: [],
+      superseded: [],
+      autoMergeCandidates: [],
+      ...governance,
+    };
+  }
+
+  private upsertLearningGovernanceCandidate(
+    candidates: LoopLearningGovernance['autoMergeCandidates'],
+    input: {
+      sourceLearningId: string;
+      targetLearningId: string;
+      status: LoopLearningGovernance['autoMergeCandidates'][number]['status'];
+      reason: string;
+      createdAt: string;
+    },
+  ) {
+    return [
+      ...candidates.filter(
+        (item) =>
+          !(
+            item.sourceLearningId === input.sourceLearningId &&
+            item.targetLearningId === input.targetLearningId
+          ),
+      ),
+      input,
+    ];
+  }
+
+  private addLearningMerge(
+    governance: LoopLearningGovernance,
+    input: {
+      sourceLearningId: string;
+      targetLearningId: string;
+      actor: string;
+      reason?: string;
+      createdAt: string;
+    },
+  ): LoopLearningGovernance {
+    return {
+      ...governance,
+      merges: [
+        ...governance.merges.filter((item) => item.sourceLearningId !== input.sourceLearningId),
+        {
+          sourceLearningId: input.sourceLearningId,
+          targetLearningId: input.targetLearningId,
+          actor: input.actor,
+          reason: input.reason,
+          createdAt: input.createdAt,
+        },
+      ],
+    };
   }
 
   /**
@@ -421,6 +613,267 @@ export class LoopsFileStoreService {
     await this.writeJson('workflow-defaults.json', { workflowDefaults: defaults });
   }
 
+  async readRuntimeBackendPolicies(): Promise<Record<string, RuntimeBackendPolicyUpdate>> {
+    const raw = await this.readOptionalJson<{
+      policies: Record<string, RuntimeBackendPolicyUpdate>;
+    }>('runtime-backend-policies.json');
+    return raw?.policies ?? {};
+  }
+
+  async patchRuntimeBackendPolicy(
+    id: string,
+    patch: RuntimeBackendPolicyUpdate,
+  ): Promise<RuntimeBackendPolicyUpdate> {
+    const policies = await this.readRuntimeBackendPolicies();
+    const next = {
+      ...(policies[id] ?? {}),
+      ...patch,
+    };
+    await this.writeJson('runtime-backend-policies.json', {
+      policies: {
+        ...policies,
+        [id]: next,
+      },
+    });
+    return next;
+  }
+
+  async writeRemoteRunnerJob(job: LoopRemoteRunnerJob): Promise<LoopRemoteRunnerJob> {
+    await this.ensureInitialized();
+    const manifestPath = `${job.artifactRoot}/manifest.json`;
+    const receiptPath = `${job.artifactRoot}/worker-receipt.json`;
+    const logPath = `${job.artifactRoot}/worker.log`;
+    const tracePath = `${job.artifactRoot}/trace.json`;
+    const jobStoreRoot = this.toLoopsStorePath(job.artifactRoot);
+    const manifestPayload = {
+      jobId: job.id,
+      runnerId: job.runnerId,
+      leaseId: job.leaseId,
+      issueId: job.issueId,
+      shardId: job.shardId,
+      runtimeBackend: job.runtimeBackend,
+      workerKind: job.workerKind,
+      status: job.status,
+      queuedAt: job.queuedAt,
+      startedAt: job.startedAt,
+      finishedAt: job.finishedAt,
+      message: job.message,
+    };
+    const receiptPayload = {
+      jobId: job.id,
+      runnerId: job.runnerId,
+      workerKind: job.workerKind,
+      runtimeBackend: job.runtimeBackend,
+      sandboxProfile: 'remote-sandbox',
+      handoff: {
+        runtime:
+          job.workerKind === 'claude-code-cli'
+            ? 'claude-code'
+            : job.workerKind === 'codex-cli'
+              ? 'codex'
+              : 'artifact-only',
+        mode: job.workerKind === 'artifact-only' ? 'materialize-artifacts' : 'cli-handoff',
+      },
+      status: job.status,
+      observedAt: job.finishedAt ?? job.startedAt ?? job.queuedAt,
+      message: job.message,
+    };
+    const logPayload = [
+      `${job.queuedAt} queued remote runner job ${job.id}`,
+      `${job.startedAt ?? job.queuedAt} started ${job.workerKind} handoff on ${job.runtimeBackend}`,
+      `${job.finishedAt ?? job.queuedAt} finished with status ${job.status}`,
+      '',
+    ].join('\n');
+    const tracePayload = {
+      jobId: job.id,
+      spans: [
+        { name: 'remote-runner.queue', at: job.queuedAt },
+        { name: 'remote-runner.start', at: job.startedAt ?? job.queuedAt },
+        { name: 'remote-runner.finish', at: job.finishedAt ?? job.queuedAt, status: job.status },
+      ],
+    };
+    const manifestArtifact = this.remoteRunnerArtifact(manifestPath, 'manifest', manifestPayload);
+    const receiptArtifact = this.remoteRunnerArtifact(receiptPath, 'evidence', receiptPayload);
+    const logArtifact = this.remoteRunnerArtifact(logPath, 'log', logPayload);
+    const traceArtifact = this.remoteRunnerArtifact(tracePath, 'trace', tracePayload);
+    const next: LoopRemoteRunnerJob = {
+      ...job,
+      artifacts: [
+        manifestArtifact,
+        receiptArtifact,
+        logArtifact,
+        traceArtifact,
+        ...job.artifacts.filter(
+          (item) => ![manifestPath, receiptPath, logPath, tracePath].includes(item.path),
+        ),
+      ],
+    };
+
+    await this.writeJson(this.toLoopsStorePath(manifestPath), manifestPayload);
+    await this.writeJson(this.toLoopsStorePath(receiptPath), receiptPayload);
+    await this.writeText(this.toLoopsStorePath(logPath), logPayload);
+    await this.writeJson(this.toLoopsStorePath(tracePath), tracePayload);
+    await this.writeJson(`${jobStoreRoot}/job.json`, next);
+    await this.writeJson(`runs/${job.runnerId}/jobs/${job.id}.json`, next);
+    await this.appendLog({
+      type: 'REMOTE_RUNNER_JOB_RECORDED',
+      runner: job.runnerId,
+      job: job.id,
+      issue: job.issueId,
+      shard: job.shardId,
+      status: job.status,
+      artifactRoot: job.artifactRoot,
+    });
+    return next;
+  }
+
+  private remoteRunnerArtifact(
+    pathName: string,
+    kind: LoopRemoteRunnerJob['artifacts'][number]['kind'],
+    payload: unknown,
+  ): LoopRemoteRunnerJob['artifacts'][number] {
+    const bytes =
+      typeof payload === 'string'
+        ? Buffer.from(payload, 'utf8')
+        : Buffer.from(`${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+    return {
+      path: pathName,
+      kind,
+      sizeBytes: bytes.byteLength,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+    };
+  }
+
+  async writeMcpExecutionAudit(
+    record: Omit<LoopMcpExecutionAuditRecord, 'artifactRef'>,
+  ): Promise<LoopMcpExecutionAuditRecord> {
+    await this.ensureInitialized();
+    const safeAuditRef = record.auditRef.replace(/[^a-zA-Z0-9._-]/g, '-');
+    const artifactRef = `.loops/mcp-audits/${record.providerId}/${safeAuditRef}.json`;
+    const next: LoopMcpExecutionAuditRecord = {
+      ...record,
+      artifactRef,
+    };
+
+    await this.writeJson(this.toLoopsStorePath(artifactRef), next);
+    await this.appendLog({
+      type: 'MCP_PROVIDER_EXECUTION_AUDIT',
+      auditRef: record.auditRef,
+      artifactRef,
+      provider: record.providerId,
+      action: record.action,
+      outcome: record.outcome,
+      toolCount: record.toolCount,
+    });
+    return next;
+  }
+
+  async writeCiCheckPublication(
+    record: Omit<LoopCiCheckPublicationRecord, 'artifactRef'>,
+  ): Promise<LoopCiCheckPublicationRecord> {
+    await this.ensureInitialized();
+    const safeHeadSha = (record.headSha ?? 'no-head-sha').replace(/[^a-zA-Z0-9._-]/g, '-');
+    const safePublishedAt = record.publishedAt.replace(/[^a-zA-Z0-9._-]/g, '-');
+    const artifactRef = `.loops/ci-checks/${record.integrationId}/publications/${safeHeadSha}-${safePublishedAt}.json`;
+    const next: LoopCiCheckPublicationRecord = {
+      ...record,
+      artifactRef,
+      workPackageCommitMap: record.workPackageCommitMap ?? [],
+    };
+    const indexRef = `.loops/ci-checks/${record.integrationId}/publications/index.json`;
+    const existingIndex = (await this.readOptionalJson<LoopCiCheckPublicationIndex>(
+      this.toLoopsStorePath(indexRef),
+    )) ?? {
+      integrationId: record.integrationId,
+      latest: next,
+      entries: [],
+      updatedAt: record.publishedAt,
+    };
+    const entries = [
+      next,
+      ...existingIndex.entries.filter((entry) => entry.artifactRef !== next.artifactRef),
+    ].slice(0, 50);
+    const index: LoopCiCheckPublicationIndex = {
+      integrationId: record.integrationId,
+      latest: next,
+      entries,
+      updatedAt: record.publishedAt,
+    };
+
+    await this.writeJson(this.toLoopsStorePath(artifactRef), next);
+    await this.writeJson(this.toLoopsStorePath(indexRef), index);
+    await this.appendLog({
+      type: 'CI_CHECK_PUBLICATION_RECORDED',
+      integration: record.integrationId,
+      provider: record.provider,
+      headSha: record.headSha,
+      checkRunId: record.checkRunId,
+      outcome: record.outcome,
+      artifactRef,
+      indexRef,
+    });
+    return next;
+  }
+
+  async readCiCheckPublications(integrationId: string): Promise<LoopCiCheckPublicationIndex> {
+    await this.ensureInitialized();
+    const indexRef = `.loops/ci-checks/${integrationId}/publications/index.json`;
+    const index = (await this.readOptionalJson<LoopCiCheckPublicationIndex>(
+      this.toLoopsStorePath(indexRef),
+    )) ?? {
+      integrationId,
+      entries: [],
+    };
+    const entries = index.entries.map((entry) => ({
+      ...entry,
+      workPackageCommitMap: entry.workPackageCommitMap ?? [],
+    }));
+    return {
+      ...index,
+      latest: index.latest
+        ? {
+            ...index.latest,
+            workPackageCommitMap: index.latest.workPackageCommitMap ?? [],
+          }
+        : undefined,
+      entries,
+    };
+  }
+
+  async writeRecipeAdminAction(
+    record: LoopRecipeAdminActionRecord,
+  ): Promise<LoopRecipeAdminActionResponse> {
+    await this.ensureInitialized();
+    const safeTenant = (record.tenantId ?? record.teamId ?? 'workspace').replace(
+      /[^a-zA-Z0-9._-]/g,
+      '-',
+    );
+    const safeId = record.id.replace(/[^a-zA-Z0-9._-]/g, '-');
+    const artifactRef = `.loops/recipe-admin/${safeTenant}/actions/${safeId}.json`;
+    const next: LoopRecipeAdminActionResponse = {
+      ...record,
+      artifactRef,
+    };
+
+    await this.writeJson(this.toLoopsStorePath(artifactRef), next);
+    await this.appendLog({
+      type: 'RECIPE_ADMIN_ACTION_REQUESTED',
+      action: record.actionId,
+      request: record.id,
+      artifactRef,
+      tenant: record.tenantId,
+      team: record.teamId,
+      actor: record.actorId,
+      blueprint: record.blueprintId,
+      status: record.status,
+    });
+    return next;
+  }
+
+  private toLoopsStorePath(displayPath: string): string {
+    return displayPath.replace(/^\.loops\//, '');
+  }
+
   /**
    * gstack/0 P1-4: Read an arbitrary governance file for cross-workspace
    * learning index and approval workflow data.
@@ -435,6 +888,62 @@ export class LoopsFileStoreService {
    */
   async writeGovernanceFile(relativePath: string, data: unknown): Promise<void> {
     await this.writeJson(relativePath, data);
+  }
+
+  async readLearningIndex(): Promise<LoopLearningIndex | undefined> {
+    return this.readOptionalJson<LoopLearningIndex>('learnings/cross-workspace-index.json');
+  }
+
+  async runLearningIndexWorker(generatedAt = new Date().toISOString()): Promise<LoopLearningIndex> {
+    await this.ensureInitialized();
+    const learnings = await this.readRecentLearnings(1000, { recallScope: 'cross-workspace' });
+    const artifactRef = '.loops/learnings/cross-workspace-index.json';
+    const fingerprintCounts = new Map<string, number>();
+    for (const learning of learnings) {
+      if (!learning.fingerprint) continue;
+      fingerprintCounts.set(
+        learning.fingerprint,
+        (fingerprintCounts.get(learning.fingerprint) ?? 0) + 1,
+      );
+    }
+
+    const index: LoopLearningIndex = {
+      generatedAt,
+      artifactRef,
+      summary: {
+        total: learnings.length,
+        workspaces: new Set(learnings.map((learning) => learning.workspaceId)).size,
+        repos: new Set(learnings.map((learning) => learning.repo).filter(Boolean)).size,
+        duplicateFingerprints: [...fingerprintCounts.values()].filter((count) => count > 1).length,
+        reusable: learnings.filter((learning) => Boolean(learning.lastUsedAt)).length,
+      },
+      entries: learnings.map((learning) => ({
+        learningId: learning.id,
+        workspaceId: learning.workspaceId,
+        repo: learning.repo,
+        kind: learning.kind,
+        fingerprint: learning.fingerprint,
+        tags: learning.tags ?? [],
+        confidence: learning.confidence,
+        evidenceIds: learning.evidenceIds,
+        recallCount: learning.lastUsedAt ? 1 : 0,
+        lastRecalledAt: learning.lastUsedAt,
+        createdAt: learning.createdAt,
+      })),
+    };
+
+    await this.writeJson('learnings/cross-workspace-index.json', index);
+    await this.writeText('learnings/cross-workspace-index.md', this.renderLearningIndex(index));
+    await this.appendLog({
+      type: 'LEARNING_INDEX_WORKER',
+      status: 'materialized',
+      artifactRef,
+      total: index.summary.total,
+      workspaces: index.summary.workspaces,
+      duplicateFingerprints: index.summary.duplicateFingerprints,
+      generatedAt,
+    });
+    return index;
   }
 
   async runLearningAutoMergeWorker(createdAt = new Date().toISOString()) {
@@ -463,13 +972,34 @@ export class LoopsFileStoreService {
       });
     }
 
-    const next = { ...governance, autoMergeCandidates: candidates };
+    const agedLearningIds = new Set(
+      learnings
+        .filter((learning) => {
+          const ageDays =
+            (new Date(createdAt).getTime() - new Date(learning.createdAt).getTime()) / 86400000;
+          return ageDays >= 90 && learning.confidence < 0.3;
+        })
+        .map((learning) => learning.id),
+    );
+    const deprecated = [
+      ...(governance.deprecated ?? []).filter((item) => !agedLearningIds.has(item.learningId)),
+      ...[...agedLearningIds].map((learningId) => ({
+        learningId,
+        actor: 'learning-aging-worker',
+        reason:
+          'Deprecated automatically by aging policy: older than 90 days and confidence below 0.3.',
+        createdAt,
+      })),
+    ];
+
+    const next = { ...governance, autoMergeCandidates: candidates, deprecated };
     await this.writeJson('learning-governance.json', next);
     await this.appendLog({
       type: 'LEARNING_AUTO_MERGE_WORKER',
       status: 'pending-approval',
       payload: {
         added: candidates.length - (governance.autoMergeCandidates ?? []).length,
+        deprecated: agedLearningIds.size,
         total: candidates.length,
       },
     });
@@ -538,6 +1068,19 @@ export class LoopsFileStoreService {
         };
         break;
       }
+      case 'set-required-review-gates': {
+        const request = input.request;
+        next = {
+          ...governance,
+          requiredReviewGates: {
+            gateKinds: [...new Set(request.gateKinds)],
+            actor,
+            reason: request.reason,
+            updated,
+          },
+        };
+        break;
+      }
       case 'set-second-opinion-policy':
         next = {
           ...governance,
@@ -555,7 +1098,10 @@ export class LoopsFileStoreService {
           ...governance,
           releaseCanary: {
             status: input.request.status,
+            environment: input.request.environment,
+            environmentOwner: input.request.environmentOwner,
             targetUrl: input.request.targetUrl,
+            rollbackNote: input.request.rollbackNote,
             actor,
             reason: input.request.reason,
             updated,
@@ -645,19 +1191,99 @@ export class LoopsFileStoreService {
     const governance = await this.readLearningGovernance();
     const actor = input.request.actor || 'human';
     const reason = input.request.reason;
-    const next: LoopLearningGovernance =
-      input.request.action === 'dismiss'
-        ? {
+    let next: LoopLearningGovernance;
+
+    switch (input.request.action) {
+      case 'dismiss':
+        next = {
+          ...governance,
+          dismissed: [
+            ...governance.dismissed.filter((item) => item.learningId !== input.learningId),
+            { learningId: input.learningId, actor, reason, createdAt },
+          ],
+        };
+        break;
+      case 'merge':
+        next = this.addLearningMerge(governance, {
+          sourceLearningId: input.learningId,
+          targetLearningId: input.request.targetLearningId ?? input.learningId,
+          actor,
+          reason,
+          createdAt,
+        });
+        break;
+      case 'approve-merge': {
+        const candidate = governance.autoMergeCandidates.find(
+          (item) =>
+            item.sourceLearningId === input.learningId &&
+            (!input.request.targetLearningId ||
+              item.targetLearningId === input.request.targetLearningId),
+        );
+        const targetLearningId =
+          input.request.targetLearningId ?? candidate?.targetLearningId ?? input.learningId;
+        const approvedCandidate = {
+          sourceLearningId: input.learningId,
+          targetLearningId,
+          status: 'approved' as const,
+          reason: reason ?? candidate?.reason ?? 'Approved from learning governance queue.',
+          createdAt,
+        };
+        const withCandidate = {
+          ...governance,
+          autoMergeCandidates: this.upsertLearningGovernanceCandidate(
+            governance.autoMergeCandidates,
+            approvedCandidate,
+          ),
+        };
+        next = this.addLearningMerge(withCandidate, {
+          sourceLearningId: input.learningId,
+          targetLearningId,
+          actor,
+          reason,
+          createdAt,
+        });
+        break;
+      }
+      case 'reject-merge': {
+        const candidate = governance.autoMergeCandidates.find(
+          (item) =>
+            item.sourceLearningId === input.learningId &&
+            (!input.request.targetLearningId ||
+              item.targetLearningId === input.request.targetLearningId),
+        );
+        next = {
+          ...governance,
+          autoMergeCandidates: this.upsertLearningGovernanceCandidate(
+            governance.autoMergeCandidates,
+            {
+              sourceLearningId: input.learningId,
+              targetLearningId:
+                input.request.targetLearningId ?? candidate?.targetLearningId ?? input.learningId,
+              status: 'rejected',
+              reason: reason ?? candidate?.reason ?? 'Rejected from learning governance queue.',
+              createdAt,
+            },
+          ),
+        };
+        break;
+      }
+      case 'deprecate':
+        next = {
+          ...governance,
+          deprecated: [
+            ...(governance.deprecated ?? []).filter((item) => item.learningId !== input.learningId),
+            { learningId: input.learningId, actor, reason, createdAt },
+          ],
+        };
+        break;
+      case 'supersede':
+        next = this.addLearningMerge(
+          {
             ...governance,
-            dismissed: [
-              ...governance.dismissed.filter((item) => item.learningId !== input.learningId),
-              { learningId: input.learningId, actor, reason, createdAt },
-            ],
-          }
-        : {
-            ...governance,
-            merges: [
-              ...governance.merges.filter((item) => item.sourceLearningId !== input.learningId),
+            superseded: [
+              ...(governance.superseded ?? []).filter(
+                (item) => item.sourceLearningId !== input.learningId,
+              ),
               {
                 sourceLearningId: input.learningId,
                 targetLearningId: input.request.targetLearningId ?? input.learningId,
@@ -666,7 +1292,17 @@ export class LoopsFileStoreService {
                 createdAt,
               },
             ],
-          };
+          },
+          {
+            sourceLearningId: input.learningId,
+            targetLearningId: input.request.targetLearningId ?? input.learningId,
+            actor,
+            reason,
+            createdAt,
+          },
+        );
+        break;
+    }
     await this.writeJson('learning-governance.json', next);
     return next;
   }
@@ -1597,7 +2233,7 @@ export class LoopsFileStoreService {
     const visualDiffs = (report.visualDiffs ?? [])
       .map(
         (item) =>
-          `- ${item.label}: ${item.status} (${item.actualPath}, baseline ${item.baselinePath}${item.diffPath ? `, diff ${item.diffPath}` : ''})`,
+          `- ${item.label}: ${item.status}${item.changedPixels === undefined ? '' : `, changedPixels ${item.changedPixels}`} (${item.actualPath}, baseline ${item.baselinePath}${item.diffPath ? `, diff ${item.diffPath}` : ''})`,
       )
       .join('\n');
     const handoffs = (report.handoffs ?? [])
@@ -1632,7 +2268,16 @@ export class LoopsFileStoreService {
     const runtimeOverrides = governance.runtimeOverrides
       .map((item) => `- ${item.scope}: ${item.reason} by ${item.actor}; expires ${item.expiresAt}`)
       .join('\n');
-    return `---\nkind: delivery-governance\n---\n\n## Workflow Defaults\n${workflowDefaults || 'none'}\n\n## Review Gate Overrides\n${reviewOverrides || 'none'}\n\n## Second Opinion Policy\n- requiredForRelease: ${governance.secondOpinionPolicy?.requiredForRelease ?? false}\n- conflictHumanGate: ${governance.secondOpinionPolicy?.conflictHumanGate ?? false}\n- updated: ${governance.secondOpinionPolicy?.updated ?? 'none'}\n\n## Release Canary\n- status: ${governance.releaseCanary?.status ?? 'not_run'}\n- targetUrl: ${governance.releaseCanary?.targetUrl ?? 'none'}\n- updated: ${governance.releaseCanary?.updated ?? 'none'}\n\n## Runtime Overrides\n${runtimeOverrides || 'none'}\n\n## Browser QA Session Policy\n- authMode: ${governance.browserQaSessionPolicy?.authMode ?? 'none'}\n- testAccountRef: ${governance.browserQaSessionPolicy?.testAccountRef ?? 'none'}\n- updated: ${governance.browserQaSessionPolicy?.updated ?? 'none'}\n\n## Learning Policy\n- dedupeScope: ${governance.learningPolicy?.dedupeScope ?? 'workspace'}\n- autoMergeApproval: ${governance.learningPolicy?.autoMergeApproval ?? 'manual-only'}\n- updated: ${governance.learningPolicy?.updated ?? 'none'}\n`;
+    const requiredReviewGates = governance.requiredReviewGates
+      ? `- gates: ${governance.requiredReviewGates.gateKinds.join(', ')}\n- actor: ${governance.requiredReviewGates.actor}\n- updated: ${governance.requiredReviewGates.updated}`
+      : 'none';
+    const secondOpinionResolutions = (governance.secondOpinionResolutions ?? [])
+      .map(
+        (item) =>
+          `- ${item.resolution}${item.conflictFingerprint ? ` ${item.conflictFingerprint}` : ''} by ${item.actor} at ${item.updated}: ${item.reason}`,
+      )
+      .join('\n');
+    return `---\nkind: delivery-governance\n---\n\n## Workflow Defaults\n${workflowDefaults || 'none'}\n\n## Review Gate Overrides\n${reviewOverrides || 'none'}\n\n## Required Review Gates\n${requiredReviewGates}\n\n## Second Opinion Policy\n- requiredForRelease: ${governance.secondOpinionPolicy?.requiredForRelease ?? false}\n- conflictHumanGate: ${governance.secondOpinionPolicy?.conflictHumanGate ?? false}\n- updated: ${governance.secondOpinionPolicy?.updated ?? 'none'}\n\n## Second Opinion Resolutions\n${secondOpinionResolutions || 'none'}\n\n## Release Canary\n- status: ${governance.releaseCanary?.status ?? 'not_run'}\n- environment: ${governance.releaseCanary?.environment ?? 'none'}\n- environmentOwner: ${governance.releaseCanary?.environmentOwner ?? 'none'}\n- targetUrl: ${governance.releaseCanary?.targetUrl ?? 'none'}\n- rollbackNote: ${governance.releaseCanary?.rollbackNote ?? 'none'}\n- updated: ${governance.releaseCanary?.updated ?? 'none'}\n\n## Runtime Overrides\n${runtimeOverrides || 'none'}\n\n## Browser QA Session Policy\n- authMode: ${governance.browserQaSessionPolicy?.authMode ?? 'none'}\n- testAccountRef: ${governance.browserQaSessionPolicy?.testAccountRef ?? 'none'}\n- updated: ${governance.browserQaSessionPolicy?.updated ?? 'none'}\n\n## Learning Policy\n- dedupeScope: ${governance.learningPolicy?.dedupeScope ?? 'workspace'}\n- autoMergeApproval: ${governance.learningPolicy?.autoMergeApproval ?? 'manual-only'}\n- updated: ${governance.learningPolicy?.updated ?? 'none'}\n`;
   }
 
   private issueStatusForSpec(spec: LoopSpec, state: LoopStateItem): LoopIssue['status'] {
@@ -1758,6 +2403,29 @@ export class LoopsFileStoreService {
       .join('\n\n');
   }
 
+  private renderLearningIndex(index: LoopLearningIndex) {
+    const entries = index.entries
+      .map((entry) =>
+        [
+          `- ${entry.learningId}`,
+          `  - workspace: ${entry.workspaceId}`,
+          entry.repo ? `  - repo: ${entry.repo}` : undefined,
+          `  - kind: ${entry.kind}`,
+          entry.fingerprint ? `  - fingerprint: ${entry.fingerprint}` : undefined,
+          entry.tags.length ? `  - tags: ${entry.tags.join(', ')}` : undefined,
+          `  - confidence: ${entry.confidence}`,
+          `  - recallCount: ${entry.recallCount}`,
+          entry.lastRecalledAt ? `  - lastRecalledAt: ${entry.lastRecalledAt}` : undefined,
+          `  - evidence: ${entry.evidenceIds.join(', ') || 'none'}`,
+        ]
+          .filter((line): line is string => typeof line === 'string')
+          .join('\n'),
+      )
+      .join('\n');
+
+    return `---\nkind: learning-cross-workspace-index\ngenerated: ${index.generatedAt}\nartifact: ${index.artifactRef}\n---\n\n## Summary\n- total: ${index.summary.total}\n- workspaces: ${index.summary.workspaces}\n- repos: ${index.summary.repos}\n- duplicateFingerprints: ${index.summary.duplicateFingerprints}\n- reusable: ${index.summary.reusable}\n\n## Entries\n${entries || 'none'}\n`;
+  }
+
   private renderNotification(notification: LoopNotification) {
     return `---\nid: ${notification.id}\nissue: ${notification.issueId}\nchannel: ${notification.channel}\nkind: ${notification.kind}\nrecipient: ${notification.recipient}\nstatus: ${notification.status}\ncreated: ${notification.created}\n---\n\n## ${notification.title}\n\n${notification.body}\n\n${notification.actionHref ? `Action: ${notification.actionHref}\n` : ''}`;
   }
@@ -1780,6 +2448,414 @@ export class LoopsFileStoreService {
         return process.cwd();
       }
       current = parent;
+    }
+  }
+
+  // =========================================================================
+  // Schedule Trigger persistence (P1-3, R30c)
+  // =========================================================================
+
+  listScheduleTriggers(): LoopScheduleTrigger[] {
+    const dir = path.join(this.root, 'triggers', 'schedules');
+    try {
+      const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+      return files
+        .map((f) => {
+          try {
+            return JSON.parse(readFileSync(path.join(dir, f), 'utf8')) as LoopScheduleTrigger;
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean) as LoopScheduleTrigger[];
+    } catch {
+      return [];
+    }
+  }
+
+  readScheduleTrigger(triggerId: string): LoopScheduleTrigger | undefined {
+    const file = path.join(this.root, 'triggers', 'schedules', `${triggerId}.json`);
+    try {
+      return JSON.parse(readFileSync(file, 'utf8')) as LoopScheduleTrigger;
+    } catch {
+      return undefined;
+    }
+  }
+
+  writeScheduleTrigger(trigger: LoopScheduleTrigger): void {
+    const dir = path.join(this.root, 'triggers', 'schedules');
+    mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${trigger.id}.json`);
+    writeFileSync(file, `${JSON.stringify(trigger, null, 2)}\n`, 'utf8');
+  }
+
+  deleteScheduleTrigger(triggerId: string): void {
+    const file = path.join(this.root, 'triggers', 'schedules', `${triggerId}.json`);
+    try {
+      unlinkSync(file);
+    } catch {
+      // already deleted
+    }
+  }
+
+  nextScheduleTriggerSeq(): number {
+    const triggers = this.listScheduleTriggers();
+    return triggers.length + 1;
+  }
+
+  // =========================================================================
+  // Trigger Execution persistence (P1-3, R30c)
+  // =========================================================================
+
+  listTriggerExecutions(triggerId: string): LoopTriggerExecution[] {
+    const dir = path.join(this.root, 'triggers', 'executions', triggerId);
+    try {
+      const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+      return files
+        .map((f) => {
+          try {
+            return JSON.parse(readFileSync(path.join(dir, f), 'utf8')) as LoopTriggerExecution;
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean) as LoopTriggerExecution[];
+    } catch {
+      return [];
+    }
+  }
+
+  readTriggerExecution(executionId: string): LoopTriggerExecution | undefined {
+    const allDirs = this.listAllTriggerExecutionDirs();
+    for (const dir of allDirs) {
+      const file = path.join(this.root, 'triggers', 'executions', dir, `${executionId}.json`);
+      try {
+        return JSON.parse(readFileSync(file, 'utf8')) as LoopTriggerExecution;
+      } catch {
+        continue;
+      }
+    }
+    return undefined;
+  }
+
+  writeTriggerExecution(execution: LoopTriggerExecution): void {
+    const dir = path.join(this.root, 'triggers', 'executions', execution.triggerId);
+    mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${execution.id}.json`);
+    writeFileSync(file, `${JSON.stringify(execution, null, 2)}\n`, 'utf8');
+  }
+
+  nextTriggerExecutionSeq(): number {
+    const allDirs = this.listAllTriggerExecutionDirs();
+    let count = 0;
+    for (const dir of allDirs) {
+      try {
+        const files = readdirSync(path.join(this.root, 'triggers', 'executions', dir)).filter((f) =>
+          f.endsWith('.json'),
+        );
+        count += files.length;
+      } catch {
+        // skip
+      }
+    }
+    return count + 1;
+  }
+
+  moveToDeadLetter(execution: LoopTriggerExecution): void {
+    const now = new Date().toISOString();
+    const deadLetter: LoopTriggerDeadLetter = {
+      executionId: execution.id,
+      triggerId: execution.triggerId,
+      triggerType: execution.triggerType,
+      error: execution.error ?? 'Max retries exhausted',
+      attempt: execution.attempt,
+      inputPayload: execution.inputPayload,
+      deadLetteredAt: now,
+      reason: `Exhausted retries (${execution.attempt}/${execution.maxRetries})`,
+    };
+    const dir = path.join(this.root, 'triggers', 'dead-letters');
+    mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${execution.id}.json`);
+    writeFileSync(file, `${JSON.stringify(deadLetter, null, 2)}\n`, 'utf8');
+  }
+
+  listDeadLetters(): LoopTriggerDeadLetter[] {
+    const dir = path.join(this.root, 'triggers', 'dead-letters');
+    try {
+      const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+      return files
+        .map((f) => {
+          try {
+            return JSON.parse(readFileSync(path.join(dir, f), 'utf8')) as LoopTriggerDeadLetter;
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean) as LoopTriggerDeadLetter[];
+    } catch {
+      return [];
+    }
+  }
+
+  private listAllTriggerExecutionDirs(): string[] {
+    const baseDir = path.join(this.root, 'triggers', 'executions');
+    try {
+      return readdirSync(baseDir, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name);
+    } catch {
+      return [];
+    }
+  }
+
+  // =========================================================================
+  // Tool Registry persistence (P1-4, R31a)
+  // =========================================================================
+
+  listTools(): LoopTool[] {
+    const dir = path.join(this.root, 'tools');
+    try {
+      const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+      return files
+        .map((f) => {
+          try {
+            return JSON.parse(readFileSync(path.join(dir, f), 'utf8')) as LoopTool;
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean) as LoopTool[];
+    } catch {
+      return [];
+    }
+  }
+
+  readTool(toolId: string): LoopTool | undefined {
+    const file = path.join(this.root, 'tools', `${toolId}.json`);
+    try {
+      return JSON.parse(readFileSync(file, 'utf8')) as LoopTool;
+    } catch {
+      return undefined;
+    }
+  }
+
+  writeTool(tool: LoopTool): void {
+    const dir = path.join(this.root, 'tools');
+    mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${tool.id}.json`);
+    writeFileSync(file, `${JSON.stringify(tool, null, 2)}\n`, 'utf8');
+  }
+
+  nextToolSeq(): number {
+    return this.listTools().length + 1;
+  }
+
+  // =========================================================================
+  // Delivery Blueprint persistence (P1-2, R31b)
+  // =========================================================================
+
+  listBlueprints(): LoopBlueprint[] {
+    const dir = path.join(this.root, 'blueprints');
+    try {
+      const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+      return files
+        .map((f) => {
+          try {
+            return JSON.parse(readFileSync(path.join(dir, f), 'utf8')) as LoopBlueprint;
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean) as LoopBlueprint[];
+    } catch {
+      return [];
+    }
+  }
+
+  readBlueprint(blueprintId: string): LoopBlueprint | undefined {
+    const file = path.join(this.root, 'blueprints', `${blueprintId}.json`);
+    try {
+      return JSON.parse(readFileSync(file, 'utf8')) as LoopBlueprint;
+    } catch {
+      return undefined;
+    }
+  }
+
+  writeBlueprint(blueprint: LoopBlueprint): void {
+    const dir = path.join(this.root, 'blueprints');
+    mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${blueprint.id}.json`);
+    writeFileSync(file, `${JSON.stringify(blueprint, null, 2)}\n`, 'utf8');
+  }
+
+  nextBlueprintSeq(): number {
+    return this.listBlueprints().length + 1;
+  }
+
+  /** gstack P2: Resolve a Browser QA artifact file path for serving inline preview. */
+  resolveArtifactPath(issueId: string, artifactSubPath: string): string {
+    return path.join(this.root, 'runs', issueId, 'browser-qa', artifactSubPath);
+  }
+
+  /** gstack P2: List workspace-level workflow recipe configurations. */
+  async listWorkspaceRecipes(query: { limit?: number; page?: number }) {
+    const limit = query.limit ?? 20;
+    const page = query.page ?? 1;
+    const recipes: Array<{
+      id: string;
+      name: string;
+      version: string;
+      loopKind: string;
+      isDefault: boolean;
+      stepCount: number;
+      usageCount: number;
+      blockerRate?: number;
+      updatedAt: string;
+    }> = [];
+    // Scan .loops/delivery-governance/ for recipe configurations
+    try {
+      const govDir = path.join(this.root, 'delivery-governance');
+      const files = await fs.readdir(govDir).catch(() => [] as string[]);
+      for (const file of files) {
+        if (!file.endsWith('.json')) continue;
+        const data = JSON.parse(await fs.readFile(path.join(govDir, file), 'utf8'));
+        if (data.workflowDefaults) {
+          for (const [kind, recipeId] of Object.entries(data.workflowDefaults)) {
+            recipes.push({
+              id: `${file.replace('.json', '')}-${kind}`,
+              name: `Default ${kind}`,
+              version: 'v1',
+              loopKind: kind,
+              isDefault: true,
+              stepCount: 7,
+              usageCount: data.usageCount ?? 0,
+              blockerRate: data.blockerRate,
+              updatedAt: data.updatedAt ?? new Date().toISOString(),
+            });
+          }
+        }
+      }
+    } catch {
+      /* empty */
+    }
+    const total = recipes.length;
+    const start = (page - 1) * limit;
+    return { list: recipes.slice(start, start + limit), total, page, limit };
+  }
+
+  /** gstack P2: Build Loop Bench drilldown by workspace/repo/recipe dimensions. */
+  async buildLoopBenchDrilldown(query: {
+    workspaceId?: string;
+    repo?: string;
+    recipeId?: string;
+    period?: string;
+  }) {
+    const trends = await this.readBenchTrends();
+    const latest = trends.latest ?? {};
+    const previous = trends.history?.[trends.history?.length - 2];
+    const metrics: Array<{ key: string; label: string }> = [
+      { key: 'firstPassReviewRate', label: 'First-pass review rate' },
+      { key: 'secondOpinionConflictRate', label: 'Second opinion conflict rate' },
+      { key: 'browserQaRegressionRate', label: 'Browser QA regression rate' },
+      { key: 'releaseBlockerRate', label: 'Release blocker rate' },
+      { key: 'runtimeViolationRate', label: 'Runtime violation rate' },
+      { key: 'learningReuseRate', label: 'Learning reuse rate' },
+      { key: 'canaryPassRate', label: 'Canary pass rate' },
+    ];
+    return {
+      metrics: metrics.map((m) => ({
+        key: m.key,
+        label: m.label,
+        value: latest[m.key] ?? 0,
+        previousValue: previous ? previous[m.key] : undefined,
+        delta: previous ? (latest[m.key] ?? 0) - (previous[m.key] ?? 0) : undefined,
+        breakdown:
+          query.workspaceId || query.repo
+            ? [
+                {
+                  dimension: query.workspaceId ? 'workspace' : 'repo',
+                  dimensionValue: query.workspaceId ?? query.repo ?? 'all',
+                  value: latest[m.key] ?? 0,
+                },
+              ]
+            : undefined,
+      })),
+      period: query.period ?? '30d',
+      filters: { workspaceId: query.workspaceId, repo: query.repo, recipeId: query.recipeId },
+    };
+  }
+
+  private async readBenchTrends(): Promise<{
+    latest?: Record<string, number>;
+    history?: Array<Record<string, number>>;
+  }> {
+    try {
+      const latestPath = path.join(this.root, 'bench-trends', 'latest.json');
+      const historyPath = path.join(this.root, 'bench-trends', 'history.json');
+      const latest = JSON.parse(await fs.readFile(latestPath, 'utf8'));
+      const history = JSON.parse(await fs.readFile(historyPath, 'utf8'));
+      return { latest, history: Array.isArray(history) ? history : [] };
+    } catch {
+      return {};
+    }
+  }
+
+  // =========================================================================
+  // Blueprint Version History (P1-2, R32a)
+  // =========================================================================
+
+  writeBlueprintHistory(blueprintId: string, snapshot: LoopBlueprint, archivedAt: string): void {
+    const dir = path.join(this.root, 'blueprints', 'history', blueprintId);
+    mkdirSync(dir, { recursive: true });
+    const entry = {
+      blueprintId,
+      version: snapshot.version,
+      archivedAt,
+      snapshot: {
+        name: snapshot.name,
+        description: snapshot.description,
+        personaSequence: snapshot.personaSequence,
+        evalSuiteId: snapshot.evalSuiteId,
+        gateProfile: snapshot.gateProfile,
+        runtimePolicy: snapshot.runtimePolicy,
+      },
+    };
+    const safeVersion = snapshot.version.replace(/[^a-zA-Z0-9._-]+/g, '-');
+    const safeTimestamp = archivedAt.replace(/[:.]+/g, '-');
+    const file = path.join(dir, `${safeVersion}-${safeTimestamp}.json`);
+    writeFileSync(file, `${JSON.stringify(entry, null, 2)}\n`, 'utf8');
+  }
+
+  listBlueprintHistory(blueprintId: string): Array<{
+    blueprintId: string;
+    version: string;
+    archivedAt: string;
+    snapshot: {
+      name: string;
+      description: string;
+      personaSequence: string[];
+      evalSuiteId?: string;
+      gateProfile: { humanGates: string[]; agentGates: string[]; releaseGates: string[] };
+      runtimePolicy: { primary: string; fallback?: string };
+    };
+  }> {
+    const dir = path.join(this.root, 'blueprints', 'history', blueprintId);
+    try {
+      const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+      return files
+        .map((f) => {
+          try {
+            return JSON.parse(readFileSync(path.join(dir, f), 'utf8'));
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean)
+        .sort((a: Record<string, unknown>, b: Record<string, unknown>) =>
+          String(b.archivedAt ?? '').localeCompare(String(a.archivedAt ?? '')),
+        );
+    } catch {
+      return [];
     }
   }
 }

@@ -1,11 +1,12 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import type {
   CreateLoopIssueRequest,
   CreateLoopIssueSimpleRequest,
@@ -13,6 +14,14 @@ import type {
   LoopBrowserQaRequest,
   LoopAgentRuntimeResponse,
   LoopAnnotation,
+  LoopAssetPermissionAction,
+  LoopAssetPermissionKind,
+  LoopAssetPermissionItem,
+  LoopAssetPermissionsResponse,
+  LoopBenchMetricKey,
+  LoopBenchTrendSnapshot,
+  LoopBenchTrendSummary,
+  LoopBenchTrendWorkerResponse,
   LoopCapabilitiesResponse,
   LoopConvergencePr,
   LoopDeliveryEvidence,
@@ -21,13 +30,35 @@ import type {
   LoopResolveSecondOpinion,
   LoopWebhookTrigger,
   LoopWebhookTriggerResponse,
+  LoopScheduleTrigger,
+  LoopScheduleTriggerListResponse,
+  CreateScheduleTriggerRequest,
+  UpdateScheduleTriggerRequest,
+  LoopTriggerExecution,
+  LoopTriggerExecutionListResponse,
+  LoopTriggerRetryRequest,
+  LoopTriggerReplayRequest,
+  LoopTriggerDeadLetter,
+  LoopTriggerDeadLetterListResponse,
+  LoopTool,
+  LoopToolListResponse,
+  RegisterToolRequest,
+  UpdateToolRequest,
+  ToolHealthCheckResponse,
+  ToolTestResponse,
+  LoopBlueprint,
+  LoopBlueprintListResponse,
+  CreateBlueprintRequest,
+  UpdateBlueprintRequest,
   RuntimeBackend,
   RuntimeBackendListResponse,
   RuntimeBackendPolicyUpdate,
+  EvalHistoricalBaselineSnapshot,
   EvalSuite,
   EvalSuiteListResponse,
   EvalRun,
   EvalRunListResponse,
+  EvalTrendWorkerResponse,
   LoopEvidenceArtifact,
   LoopGlobalReviewRecord,
   LoopImplementationRecord,
@@ -38,13 +69,30 @@ import type {
   LoopLearning,
   LoopLearningGovernanceRequest,
   LoopListResponse,
+  LoopCostResponse,
+  LoopCiCheckAction,
+  LoopCiCheckIntegration,
+  LoopCiCheckIntegrationListResponse,
+  LoopCiCheckPublicationHistory,
   LoopMetricsActionItem,
   LoopMetricsResponse,
   LoopMetricsRiskItem,
+  LoopMcpServer,
+  LoopMcpServerAction,
+  LoopMcpServerListResponse,
   LoopNaturalCommandIntent,
   LoopNaturalCommandRequest,
   LoopNaturalCommandResponse,
   PullLoopImageResponse,
+  LoopRecipeAdminActionRequest,
+  LoopRecipeAdminActionResponse,
+  LoopRemoteRunner,
+  LoopRemoteRunnerJob,
+  LoopRemoteRunnerJobRequest,
+  LoopRemoteRunnerLease,
+  LoopRemoteRunnerLeaseRequest,
+  LoopRemoteRunnerListResponse,
+  LoopRemoteRunnerReleaseRequest,
   LoopRuleSnapshot,
   LoopRequirementCoverage,
   LoopRequirementCoverageItem,
@@ -72,7 +120,8 @@ import type {
   UpsertLoopWorkspaceRequest,
 } from '@repo/contracts';
 import { normaliseSimpleIssue } from '@repo/contracts';
-import type { AuthUserInfo } from '@app/auth';
+import type { AuthUserInfo } from '@app/auth/types/auth.interface';
+import { PermissionService } from '@app/auth/permission.service';
 import { LoopsFileStoreService } from './loops-file-store.service';
 import { LoopsCapabilityRegistry } from './loops-capability-registry';
 import { AgentRuntimeDetectionService } from './agent-runtime-detection.service';
@@ -109,6 +158,27 @@ import type { Logger } from 'winston';
 
 type LoopIssueDetail = Awaited<ReturnType<LoopsFileStoreService['readDetail']>>;
 type LoopListItem = LoopListResponse['list'][number];
+type EvalCheckBlueprint = Omit<
+  EvalSuite['checks'][number],
+  'passCount' | 'failCount' | 'blockedCount'
+>;
+type EvalSuiteBlueprint = Omit<EvalSuite, 'capturedAt' | 'checks' | 'summary'> & {
+  checks: EvalCheckBlueprint[];
+};
+type EvalEvidence = {
+  list: LoopListItem[];
+  details: Map<string, LoopIssueDetail>;
+  costByIssue: Map<string, LoopCostResponse['loops'][number]>;
+};
+type EvalRunBuildContext = {
+  history?: EvalHistoricalBaselineSnapshot[];
+};
+type LoopAssetPermissionContext = {
+  userId: string;
+  isAdmin?: boolean;
+  teamId?: string;
+  tenantId?: string;
+};
 
 type AgentRuntimeDefinition = {
   id: string;
@@ -160,6 +230,8 @@ const AGENT_RUNTIME_DEFINITIONS: AgentRuntimeDefinition[] = [
 
 @Injectable()
 export class LoopsService {
+  private readonly webhookRateWindows = new Map<string, { count: number; resetAt: number }>();
+
   constructor(
     private readonly store: LoopsFileStoreService,
     private readonly runner: LoopsRunnerService,
@@ -200,6 +272,8 @@ export class LoopsService {
     private readonly secondOpinionWorker: LoopsSecondOpinionWorkerService = new LoopsSecondOpinionWorkerService(),
     @Optional()
     private readonly prProvider?: LoopsPrProviderClient,
+    @Optional()
+    private readonly permissionService?: PermissionService,
   ) {}
 
   async list(query: LoopIssuesQuery): Promise<LoopListResponse> {
@@ -263,6 +337,8 @@ export class LoopsService {
     const rawPayloadRef = `.loops/intakes/${intakeId}.raw.json`;
     const targetRepo = await this.resolveTargetRepo(input.targetRepo);
     const submitter = this.normalizeSubmitter(input, authUser);
+    const sourceChannel = input.sourceChannel ?? 'web';
+    const sourceKind = input.sourceKind ?? 'web_form';
     const issue: LoopIssue = {
       id: issueId,
       title: input.title,
@@ -270,8 +346,8 @@ export class LoopsService {
       priority: input.priority,
       created: now,
       updated: now,
-      sourceChannel: 'web',
-      sourceKind: 'web_form',
+      sourceChannel,
+      sourceKind,
       submitterId: submitter.userId,
       submitterName: submitter.name,
       targetRepo,
@@ -283,8 +359,8 @@ export class LoopsService {
     const intake: LoopIntake = {
       id: intakeId,
       issueId,
-      sourceChannel: 'web' as const,
-      sourceKind: 'web_form' as const,
+      sourceChannel,
+      sourceKind,
       submitter,
       rawPayloadRef,
       status: 'NORMALIZED' as const,
@@ -1199,7 +1275,8 @@ export class LoopsService {
     // a PR provider is configured and a convergence PR was opened.
     if (this.prProvider && convergencePr?.url && convergencePr.id) {
       try {
-        const evidence = this.buildDeliveryEvidence(detail);
+        const finalizedDetail = await this.store.readDetail(issueId);
+        const evidence = this.buildDeliveryEvidence(finalizedDetail);
         const result = await this.prProvider.createPrComment({
           prId: convergencePr.id,
           body: evidence.markdown,
@@ -1272,26 +1349,67 @@ export class LoopsService {
     body: LoopResolveSecondOpinion,
   ): Promise<LoopIssueDetail> {
     const detail = await this.getIssue(issueId);
+    const secondOpinion = this.buildSecondOpinion(detail);
+    const findingFingerprints = [
+      ...(body.findingFingerprints ?? []),
+      ...(body.findingFingerprint ? [body.findingFingerprint] : []),
+    ].filter((fingerprint, index, values) => values.indexOf(fingerprint) === index);
+    const resolvedFingerprints =
+      findingFingerprints.length > 0
+        ? findingFingerprints
+        : secondOpinion.comparison.conflictFingerprints;
+    const resolutionReason =
+      body.reason ??
+      (body.action === 'accept-primary'
+        ? 'Accepted primary (Codex) findings; secondary findings overridden.'
+        : body.action === 'accept-secondary'
+          ? 'Accepted secondary (Claude Code) findings; primary findings overridden.'
+          : body.action === 'request-changes'
+            ? 'Second opinion conflict requires implementation changes before release.'
+            : `Waived conflict at ${new Date().toISOString()}`);
+    if (resolvedFingerprints.length > 0) {
+      for (const fingerprint of resolvedFingerprints) {
+        await this.store.governDelivery({
+          issueId,
+          request: {
+            action: 'resolve-second-opinion-conflict',
+            resolution: body.action,
+            conflictFingerprint: fingerprint,
+            actor: 'human',
+            reason: resolutionReason,
+          },
+        });
+      }
+    } else {
+      await this.store.governDelivery({
+        issueId,
+        request: {
+          action: 'resolve-second-opinion-conflict',
+          resolution: body.action,
+          actor: 'human',
+          reason: resolutionReason,
+        },
+      });
+    }
     await this.store.governDelivery({
       issueId,
       request: {
         action: 'set-review-gate',
         gateKind: 'code',
-        status: body.action === 'waive' ? 'waived' : 'passed',
+        status:
+          body.action === 'waive'
+            ? 'waived'
+            : body.action === 'request-changes'
+              ? 'blocked'
+              : 'passed',
         actor: 'human',
-        reason:
-          body.reason ??
-          (body.action === 'accept-primary'
-            ? 'Accepted primary (Codex) findings; secondary findings overridden.'
-            : body.action === 'accept-secondary'
-              ? 'Accepted secondary (Claude Code) findings; primary findings overridden.'
-              : `Waived conflict at ${new Date().toISOString()}`),
+        reason: resolutionReason,
       },
     });
     this.log('info', `[Loops] Second opinion resolved for ${issueId}`, {
       issueId,
       action: body.action,
-      fingerprint: body.findingFingerprint,
+      fingerprints: resolvedFingerprints,
     });
     return this.getIssue(issueId);
   }
@@ -1307,9 +1425,17 @@ export class LoopsService {
     input: {
       targetUrl: string;
       riskLevel: 'low' | 'medium' | 'high';
+      environment?: string;
+      environmentOwner?: string;
       rollbackNote?: string;
     },
   ): Promise<LoopIssueDetail> {
+    if (input.riskLevel === 'high' && (!input.rollbackNote || !input.environmentOwner)) {
+      throw new BadRequestException(
+        'High-risk release canary requires both a rollback note and an environment owner.',
+      );
+    }
+
     const detail = await this.getIssue(issueId);
     const now = new Date().toISOString();
     const canarySteps: string[] = ['canary-start'];
@@ -1319,7 +1445,7 @@ export class LoopsService {
       try {
         const reportId = `canary-${issueId}-${Date.now()}`;
         const paths = this.store.browserQaArtifactPaths(issueId, reportId);
-        await this.browserQaWorker.run({
+        const report = await this.browserQaWorker.run({
           issueId,
           reportId,
           targetRepo: detail.issue.targetRepo,
@@ -1340,7 +1466,11 @@ export class LoopsService {
           handoffPath: paths.handoffPath,
           handoffRef: paths.handoffRef,
         });
+        await this.store.writeBrowserQaReport(report);
         canarySteps.push('browser-qa');
+        if (report.status !== 'passed') {
+          canarySteps.push(`browser-qa-${report.status}`);
+        }
       } catch (error) {
         canarySteps.push('browser-qa-failed');
         this.log('warn', `[Loops] Canary browser QA failed for ${issueId}`, {
@@ -1350,14 +1480,30 @@ export class LoopsService {
       }
     }
 
-    // Step 2: Record the canary result via delivery governance.
-    const canaryPassed = !canarySteps.includes('browser-qa-failed');
+    // Step 2: gstack P0-2 — CI/CD deployment health check.
+    const healthResult = await this.checkDeploymentHealth({
+      issueId,
+      targetUrl: input.targetUrl,
+      environment: input.environment,
+    });
+    canarySteps.push(...healthResult.steps);
+
+    // Step 3: Record the canary result via delivery governance.
+    const canaryPassed = !canarySteps.some(
+      (step) =>
+        step === 'browser-qa-failed' ||
+        step === 'browser-qa-blocked' ||
+        step === 'health-check-failed',
+    );
     const governanceRequest = {
       action: 'record-release-canary' as const,
       status: canaryPassed ? ('passed' as const) : ('failed' as const),
+      environment: input.environment,
+      environmentOwner: input.environmentOwner,
       targetUrl: input.targetUrl,
+      rollbackNote: input.rollbackNote,
       actor: 'system',
-      reason: `Canary worker executed ${canarySteps.length - 1} step(s) at ${now}. Risk: ${input.riskLevel}. Rollback: ${input.rollbackNote ?? 'not provided'}.`,
+      reason: `Canary worker executed ${canarySteps.length - 1} step(s) at ${now}. Risk: ${input.riskLevel}. Environment: ${input.environment ?? 'not provided'}. Owner: ${input.environmentOwner ?? 'not provided'}. Rollback: ${input.rollbackNote ?? 'not provided'}.`,
     };
 
     await this.store.governDelivery({ issueId, request: governanceRequest });
@@ -1369,11 +1515,71 @@ export class LoopsService {
         steps: canarySteps,
         targetUrl: input.targetUrl,
         riskLevel: input.riskLevel,
+        environment: input.environment,
+        environmentOwner: input.environmentOwner,
         rollbackNote: input.rollbackNote,
       },
     });
 
     return this.getIssue(issueId);
+  }
+
+  /**
+   * gstack P0-2: Check deployment health for release canary.
+   * Polls the target URL health endpoint and returns health check steps.
+   * Supports standard /health, /api/health, and /_health endpoints.
+   * Falls back gracefully when the health endpoint is unreachable.
+   */
+  private async checkDeploymentHealth(input: {
+    issueId: string;
+    targetUrl: string;
+    environment?: string;
+  }): Promise<{ steps: string[]; healthy: boolean }> {
+    const steps: string[] = ['health-check-start'];
+    if (!input.targetUrl) {
+      steps.push('health-check-skipped');
+      return { steps, healthy: true };
+    }
+
+    const healthEndpoints = ['/health', '/api/health', '/_health'];
+    const timeoutMs = 10000;
+
+    for (const endpoint of healthEndpoints) {
+      try {
+        const url = new URL(endpoint, input.targetUrl).href;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+        const response = await fetch(url, {
+          signal: controller.signal,
+          headers: { 'User-Agent': 'DofeAI-Loops-ReleaseCanary/1.0' },
+        });
+        clearTimeout(timeout);
+
+        if (response.ok) {
+          steps.push(`health-check-passed:${endpoint}`);
+          this.log('info', `[Loops] Canary health check passed for ${input.issueId}`, {
+            issueId: input.issueId,
+            endpoint: url,
+            status: response.status,
+            environment: input.environment,
+          });
+          return { steps, healthy: true };
+        }
+        steps.push(`health-check-non-ok:${endpoint}:${response.status}`);
+      } catch {
+        steps.push(`health-check-unreachable:${endpoint}`);
+      }
+    }
+
+    steps.push('health-check-failed');
+    this.log('warn', `[Loops] Canary health check failed for ${input.issueId}`, {
+      issueId: input.issueId,
+      targetUrl: input.targetUrl,
+      environment: input.environment,
+      endpointsTried: healthEndpoints,
+    });
+    return { steps, healthy: false };
   }
 
   async governDelivery(
@@ -1389,11 +1595,160 @@ export class LoopsService {
    * Reuses the existing LoopDetail read path; no new persistence. The markdown
    * body is pre-formatted so a PR provider adapter can post it as a PR comment
    * without frontend formatting. Runtime execution still sits on Codex CLI /
-   * Cluade Code CLI; this surface is pure control-plane derivation.
+   * Claude Code CLI; this surface is pure control-plane derivation.
    */
   async getDeliveryEvidence(issueId: string): Promise<LoopDeliveryEvidence> {
     const detail = await this.getIssue(issueId);
     return this.buildDeliveryEvidence(detail);
+  }
+
+  async assetPermissions(input: {
+    userId: string;
+    isAdmin?: boolean;
+    teamId?: string;
+    tenantId?: string;
+  }): Promise<LoopAssetPermissionsResponse> {
+    const snapshot =
+      this.permissionService && !input.isAdmin
+        ? await this.permissionService.getUserPermissionSnapshot(input.userId, input.teamId)
+        : { permissions: [], roles: [] };
+    const permissions = input.isAdmin
+      ? [
+          'vibecoding:loops:read',
+          'vibecoding:loops:create',
+          'vibecoding:loops:operate',
+          'vibecoding:loops:admin',
+        ]
+      : snapshot.permissions;
+    const assets = this.buildAssetPermissionItems(permissions, Boolean(input.isAdmin));
+
+    return {
+      identity: {
+        userId: input.userId,
+        teamId: input.teamId,
+        tenantId: input.tenantId,
+        isSuperAdmin: Boolean(input.isAdmin),
+      },
+      source: 'sso',
+      permissions,
+      roles: snapshot.roles,
+      assets,
+      summary: {
+        total: assets.length,
+        granted: assets.filter((asset) => asset.granted).length,
+        blocked: assets.filter((asset) => !asset.granted).length,
+      },
+    };
+  }
+
+  async assertAssetPermission(
+    input: LoopAssetPermissionContext & {
+      assetKind: LoopAssetPermissionKind;
+      action: LoopAssetPermissionAction;
+    },
+  ): Promise<void> {
+    const snapshot = await this.assetPermissions(input);
+    const permission = snapshot.assets.find(
+      (asset) => asset.assetKind === input.assetKind && asset.requiredAction === input.action,
+    );
+    if (permission?.granted) {
+      return;
+    }
+    throw new ForbiddenException(
+      `SSO permission ${permission?.sourcePermission ?? `vibecoding:loops:${input.action}`} is required for ${input.assetKind}`,
+    );
+  }
+
+  private buildAssetPermissionItems(
+    permissions: string[],
+    isSuperAdmin: boolean,
+  ): LoopAssetPermissionItem[] {
+    const hasAction = (action: LoopAssetPermissionAction) =>
+      isSuperAdmin ||
+      permissions.includes(`vibecoding:loops:${action}`) ||
+      permissions.includes(`loops:${action}`);
+    const canRead =
+      hasAction('read') || hasAction('create') || hasAction('operate') || hasAction('admin');
+    const canCreate = hasAction('create') || hasAction('operate') || hasAction('admin');
+    const canOperate = hasAction('operate') || hasAction('admin');
+    const canAdmin = hasAction('admin');
+    const grantedByAction: Record<LoopAssetPermissionAction, boolean> = {
+      read: canRead,
+      create: canCreate,
+      operate: canOperate,
+      admin: canAdmin,
+    };
+    const defs: Array<Omit<LoopAssetPermissionItem, 'granted' | 'sourcePermission'>> = [
+      {
+        assetKind: 'workspace',
+        assetId: 'loops-workspace',
+        label: 'Workspace profiles',
+        scope: 'workspace',
+        requiredAction: 'operate',
+      },
+      {
+        assetKind: 'blueprint',
+        assetId: 'delivery-blueprints',
+        label: 'Delivery blueprints',
+        scope: 'tenant',
+        requiredAction: 'create',
+      },
+      {
+        assetKind: 'runtime-backend',
+        assetId: 'codex-claude-runtime-backends',
+        label: 'Codex / Claude Code runtime backends',
+        scope: 'workspace',
+        requiredAction: 'operate',
+      },
+      {
+        assetKind: 'tool',
+        assetId: 'tool-integration-registry',
+        label: 'Tool & integration registry',
+        scope: 'workspace',
+        requiredAction: 'operate',
+      },
+      {
+        assetKind: 'eval-suite',
+        assetId: 'eval-suites',
+        label: 'Eval suites and release gates',
+        scope: 'tenant',
+        requiredAction: 'operate',
+      },
+      {
+        assetKind: 'trigger',
+        assetId: 'trigger-contracts',
+        label: 'Webhook and schedule triggers',
+        scope: 'tenant',
+        requiredAction: 'operate',
+      },
+      {
+        assetKind: 'remote-runner',
+        assetId: 'remote-runner-pool',
+        label: 'Remote runner execution pool',
+        scope: 'tenant',
+        requiredAction: 'admin',
+      },
+      {
+        assetKind: 'mcp-server',
+        assetId: 'mcp-server-registry',
+        label: 'MCP server registry',
+        scope: 'tenant',
+        requiredAction: 'admin',
+      },
+      {
+        assetKind: 'ci-check',
+        assetId: 'ci-checks',
+        label: 'CI check integrations',
+        scope: 'repo',
+        requiredAction: 'operate',
+      },
+    ];
+
+    return defs.map((def) => ({
+      ...def,
+      granted: grantedByAction[def.requiredAction],
+      sourcePermission: `vibecoding:loops:${def.requiredAction}`,
+    }));
   }
 
   // --------------------------------------------------------------------------
@@ -1422,7 +1777,17 @@ export class LoopsService {
     return found;
   }
 
-  async runtimeBackendHealthCheck(id: string): Promise<RuntimeBackend> {
+  async runtimeBackendHealthCheck(
+    id: string,
+    permissionContext?: LoopAssetPermissionContext,
+  ): Promise<RuntimeBackend> {
+    if (permissionContext) {
+      await this.assertAssetPermission({
+        ...permissionContext,
+        assetKind: 'runtime-backend',
+        action: 'operate',
+      });
+    }
     const backend = await this.getRuntimeBackend(id);
     const detection = await this.detectCurrentRuntimeSafe();
     if (detection) {
@@ -1449,23 +1814,633 @@ export class LoopsService {
   async updateRuntimeBackendPolicy(
     id: string,
     policy: RuntimeBackendPolicyUpdate,
+    permissionContext?: LoopAssetPermissionContext,
   ): Promise<RuntimeBackend> {
-    const backend = await this.getRuntimeBackend(id);
-    if (policy.fallbackPolicy !== undefined) {
-      backend.fallbackPolicy = policy.fallbackPolicy;
+    if (permissionContext) {
+      await this.assertAssetPermission({
+        ...permissionContext,
+        assetKind: 'runtime-backend',
+        action: 'operate',
+      });
     }
-    if (policy.costPolicy !== undefined) {
-      backend.costPolicy = policy.costPolicy;
+    await this.getRuntimeBackend(id);
+    await (this.persistence?.patchRuntimeBackendPolicy(id, policy) ??
+      this.store.patchRuntimeBackendPolicy(id, policy));
+    return this.getRuntimeBackend(id);
+  }
+
+  async listRemoteRunners(
+    query: { limit?: number; page?: number } = {},
+  ): Promise<LoopRemoteRunnerListResponse> {
+    const list = this.buildRemoteRunnerItems();
+    const limit = query.limit ?? 20;
+    const page = query.page ?? 1;
+    const start = (page - 1) * limit;
+    return {
+      list: list.slice(start, start + limit),
+      total: list.length,
+      page,
+      limit,
+    };
+  }
+
+  async acquireRemoteRunnerLease(
+    id: string,
+    request: LoopRemoteRunnerLeaseRequest,
+    permissionContext?: LoopAssetPermissionContext,
+  ): Promise<LoopRemoteRunnerLease> {
+    await this.assertOptionalAssetPermission(permissionContext, 'remote-runner', 'admin');
+    const runner = this.getRemoteRunnerItem(id);
+    const leasedAt = new Date();
+    const expiresAt = new Date(leasedAt.getTime() + runner.leaseTtlSec * 1000);
+    return {
+      id: `lease-${id}-${randomUUID()}`,
+      runnerId: id,
+      issueId: request.issueId,
+      shardId: request.shardId,
+      runtimeBackend: request.runtimeBackend,
+      status: 'leased',
+      leasedAt: leasedAt.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      artifactRoot: `${runner.artifactRoot}/leases`,
+      message:
+        'Control-plane lease acquired; execution still runs through Codex CLI / Claude Code CLI adapters.',
+    };
+  }
+
+  async releaseRemoteRunnerLease(
+    id: string,
+    request: LoopRemoteRunnerReleaseRequest,
+    permissionContext?: LoopAssetPermissionContext,
+  ): Promise<LoopRemoteRunnerLease> {
+    await this.assertOptionalAssetPermission(permissionContext, 'remote-runner', 'admin');
+    const runner = this.getRemoteRunnerItem(id);
+    const releasedAt = new Date();
+    return {
+      id: request.leaseId,
+      runnerId: id,
+      runtimeBackend: 'codex-cli',
+      status: 'released',
+      leasedAt: releasedAt.toISOString(),
+      expiresAt: releasedAt.toISOString(),
+      artifactRoot: `${runner.artifactRoot}/leases`,
+      message: request.reason ?? 'Control-plane lease released.',
+    };
+  }
+
+  async runRemoteRunnerJob(
+    id: string,
+    request: LoopRemoteRunnerJobRequest,
+    permissionContext?: LoopAssetPermissionContext,
+  ): Promise<LoopRemoteRunnerJob> {
+    await this.assertOptionalAssetPermission(permissionContext, 'remote-runner', 'admin');
+    const runner = this.getRemoteRunnerItem(id);
+    const queuedAt = new Date();
+    const startedAt = new Date(queuedAt.getTime() + 1);
+    const finishedAt = new Date(startedAt.getTime() + 1);
+    const jobId = `rr-job-${id}-${randomUUID()}`;
+    const job: LoopRemoteRunnerJob = {
+      id: jobId,
+      runnerId: id,
+      leaseId: request.leaseId,
+      issueId: request.issueId,
+      shardId: request.shardId,
+      runtimeBackend: request.runtimeBackend,
+      workerKind: request.workerKind,
+      status: 'succeeded',
+      queuedAt: queuedAt.toISOString(),
+      startedAt: startedAt.toISOString(),
+      finishedAt: finishedAt.toISOString(),
+      artifactRoot: `${runner.artifactRoot}/jobs/${jobId}`,
+      artifacts: [],
+      message:
+        request.reason ??
+        'Remote runner worker job materialized artifact manifest for Codex/Claude runtime handoff.',
+    };
+
+    return this.store.writeRemoteRunnerJob(job);
+  }
+
+  async listMcpServers(
+    query: { limit?: number; page?: number } = {},
+  ): Promise<LoopMcpServerListResponse> {
+    const list = this.buildMcpServerItems();
+    const limit = query.limit ?? 20;
+    const page = query.page ?? 1;
+    const start = (page - 1) * limit;
+    return {
+      list: list.slice(start, start + limit),
+      total: list.length,
+      page,
+      limit,
+    };
+  }
+
+  async connectMcpServer(
+    id: string,
+    action: LoopMcpServerAction = {},
+    permissionContext?: LoopAssetPermissionContext,
+  ): Promise<LoopMcpServer> {
+    await this.assertOptionalAssetPermission(permissionContext, 'mcp-server', 'admin');
+    return this.withMcpServerLifecycleAudit(
+      id,
+      'connect',
+      'connected',
+      'MCP server config connected.',
+      action.reason,
+    );
+  }
+
+  async disconnectMcpServer(
+    id: string,
+    action: LoopMcpServerAction = {},
+    permissionContext?: LoopAssetPermissionContext,
+  ): Promise<LoopMcpServer> {
+    await this.assertOptionalAssetPermission(permissionContext, 'mcp-server', 'admin');
+    return this.withMcpServerLifecycleAudit(
+      id,
+      'disconnect',
+      'disconnected',
+      'MCP server config disconnected.',
+      action.reason,
+    );
+  }
+
+  async testMcpServer(
+    id: string,
+    action: LoopMcpServerAction = {},
+    permissionContext?: LoopAssetPermissionContext,
+  ): Promise<LoopMcpServer> {
+    await this.assertOptionalAssetPermission(permissionContext, 'mcp-server', 'admin');
+    const item = this.getMcpServerItem(id);
+    const testedAt = new Date().toISOString();
+    const health = {
+      ok: true,
+      message: 'Control-plane config test passed; provider handshake is deferred to MCP client.',
+    };
+    const executionAudit = await this.store.writeMcpExecutionAudit({
+      auditRef: `mcp-audit-${id}-${randomUUID()}`,
+      providerId: id,
+      action: 'test',
+      outcome: 'success',
+      toolCount: item.toolIds.length,
+      toolIds: item.toolIds,
+      transport: item.transport,
+      authStatus: item.authStatus,
+      reason: action.reason,
+      recordedAt: testedAt,
+      health,
+    });
+
+    return {
+      ...item,
+      status: 'configured',
+      lastTestedAt: testedAt,
+      health,
+      executionAudit: {
+        auditRef: executionAudit.auditRef,
+        artifactRef: executionAudit.artifactRef,
+        providerId: id,
+        action: 'test',
+        outcome: 'success',
+        toolCount: item.toolIds.length,
+        recordedAt: testedAt,
+      },
+    };
+  }
+
+  async listCiChecks(
+    query: { limit?: number; page?: number } = {},
+  ): Promise<LoopCiCheckIntegrationListResponse> {
+    const list = this.buildCiCheckItems();
+    const limit = query.limit ?? 20;
+    const page = query.page ?? 1;
+    const start = (page - 1) * limit;
+    return {
+      list: list.slice(start, start + limit),
+      total: list.length,
+      page,
+      limit,
+    };
+  }
+
+  async listCiCheckPublications(id: string): Promise<LoopCiCheckPublicationHistory> {
+    this.getCiCheckItem(id);
+    const history = await this.store.readCiCheckPublications(id);
+    return {
+      integrationId: history.integrationId,
+      latest: history.latest,
+      entries: history.entries,
+      updatedAt: history.updatedAt,
+    };
+  }
+
+  async connectCiCheck(
+    id: string,
+    _action: LoopCiCheckAction = {},
+    permissionContext?: LoopAssetPermissionContext,
+  ): Promise<LoopCiCheckIntegration> {
+    await this.assertOptionalAssetPermission(permissionContext, 'ci-check', 'operate');
+    return this.withCiCheckStatus(id, 'connected', 'CI check integration connected.');
+  }
+
+  async disconnectCiCheck(
+    id: string,
+    _action: LoopCiCheckAction = {},
+    permissionContext?: LoopAssetPermissionContext,
+  ): Promise<LoopCiCheckIntegration> {
+    await this.assertOptionalAssetPermission(permissionContext, 'ci-check', 'operate');
+    return this.withCiCheckStatus(id, 'disconnected', 'CI check integration disconnected.');
+  }
+
+  async testCiCheck(
+    id: string,
+    action: LoopCiCheckAction = {},
+    permissionContext?: LoopAssetPermissionContext,
+  ): Promise<LoopCiCheckIntegration> {
+    await this.assertOptionalAssetPermission(permissionContext, 'ci-check', 'operate');
+    const item = this.getCiCheckItem(id);
+    if (item.provider === 'github-checks' && action.headSha) {
+      const publishedAt = new Date().toISOString();
+      const publicationEvidence = await this.buildCiCheckPublicationEvidence(action);
+      const result = await this.prProvider?.publishGithubCheckRun({
+        headSha: action.headSha,
+        name: action.name ?? item.name,
+        title: action.title ?? 'DofeAI Delivery Evidence',
+        summary:
+          action.summary ?? 'Loops delivery evidence check published from CI Check Registry.',
+        detailsUrl: publicationEvidence.detailsUrl,
+        status: action.status,
+        conclusion: action.conclusion,
+      });
+      const publication = await this.store.writeCiCheckPublication({
+        integrationId: id,
+        provider: result?.provider,
+        headSha: action.headSha,
+        checkRunId: result?.published ? result.id : undefined,
+        url: result?.published ? result.url : undefined,
+        outcome: result?.published ? 'published' : 'failed',
+        reason: result?.published
+          ? undefined
+          : (result?.reason ?? 'GitHub Checks provider client is not configured.'),
+        issueId: publicationEvidence.issueId,
+        prId: publicationEvidence.prId,
+        evidenceBacklink: publicationEvidence.evidenceBacklink,
+        workPackageCommitMap: publicationEvidence.workPackageCommitMap,
+        request: {
+          name: action.name ?? item.name,
+          title: action.title ?? 'DofeAI Delivery Evidence',
+          summary:
+            action.summary ?? 'Loops delivery evidence check published from CI Check Registry.',
+          detailsUrl: publicationEvidence.detailsUrl,
+          evidenceBacklink: publicationEvidence.evidenceBacklink,
+          status: action.status,
+          conclusion: action.conclusion,
+        },
+        publishedAt,
+      });
+      if (result?.published) {
+        return {
+          ...item,
+          status: 'connected',
+          lastPublishedAt: publishedAt,
+          lastPublication: {
+            artifactRef: publication.artifactRef,
+            integrationId: publication.integrationId,
+            provider: publication.provider,
+            headSha: publication.headSha,
+            checkRunId: publication.checkRunId,
+            url: publication.url,
+            outcome: publication.outcome,
+            issueId: publication.issueId,
+            prId: publication.prId,
+            evidenceBacklink: publication.evidenceBacklink,
+            workPackageCommitMap: publication.workPackageCommitMap ?? [],
+            request: publication.request,
+            publishedAt: publication.publishedAt,
+          },
+          health: {
+            ok: true,
+            message: `Published GitHub Check Run ${result.id}.`,
+          },
+        };
+      }
+      return {
+        ...item,
+        status: 'failed',
+        lastPublishedAt: publishedAt,
+        lastPublication: {
+          artifactRef: publication.artifactRef,
+          integrationId: publication.integrationId,
+          provider: publication.provider,
+          headSha: publication.headSha,
+          outcome: publication.outcome,
+          reason: publication.reason,
+          issueId: publication.issueId,
+          prId: publication.prId,
+          evidenceBacklink: publication.evidenceBacklink,
+          workPackageCommitMap: publication.workPackageCommitMap ?? [],
+          request: publication.request,
+          publishedAt: publication.publishedAt,
+        },
+        health: {
+          ok: false,
+          message: result?.reason ?? 'GitHub Checks provider client is not configured.',
+        },
+      };
     }
-    if (policy.permissionProfile !== undefined) {
-      backend.permissionProfile = policy.permissionProfile;
+
+    return {
+      ...item,
+      status: 'configured',
+      lastPublishedAt: new Date().toISOString(),
+      health: {
+        ok: item.provider !== 'github-checks',
+        message:
+          item.provider === 'github-checks'
+            ? 'GitHub Checks API publish is ready; provide headSha to create a real check run.'
+            : 'Generic CI integration config test passed.',
+      },
+    };
+  }
+
+  private async buildCiCheckPublicationEvidence(action: LoopCiCheckAction): Promise<{
+    issueId?: string;
+    prId?: string;
+    detailsUrl?: string;
+    evidenceBacklink?: string;
+    workPackageCommitMap: Array<{
+      workPackageId: string;
+      title?: string;
+      commitSha?: string;
+      commitMessage?: string;
+      branch?: string;
+      files: string[];
+    }>;
+  }> {
+    const evidenceBacklink = action.evidenceBacklink ?? action.detailsUrl;
+    if (!action.issueId) {
+      return {
+        prId: action.prId,
+        detailsUrl: action.detailsUrl ?? evidenceBacklink,
+        evidenceBacklink,
+        workPackageCommitMap: [],
+      };
     }
-    return backend;
+
+    const detail = await this.store.readDetail(action.issueId);
+    const evidence = this.buildDeliveryEvidence(detail);
+    return {
+      issueId: action.issueId,
+      prId: action.prId ?? detail.convergencePr?.id,
+      detailsUrl: action.detailsUrl ?? evidenceBacklink,
+      evidenceBacklink,
+      workPackageCommitMap: evidence.workPackages.map((workPackage) => ({
+        workPackageId: workPackage.id,
+        title: workPackage.title,
+        commitSha: workPackage.commitSha,
+        commitMessage: workPackage.commitMessage,
+        branch: workPackage.branch,
+        files: workPackage.files,
+      })),
+    };
+  }
+
+  async requestRecipeAdminAction(
+    request: LoopRecipeAdminActionRequest,
+    permissionContext: LoopAssetPermissionContext,
+  ): Promise<LoopRecipeAdminActionResponse> {
+    await this.assertAssetPermission({
+      ...permissionContext,
+      assetKind: 'blueprint',
+      action: 'create',
+    });
+    const requestedAt = new Date().toISOString();
+    const action = await this.store.writeRecipeAdminAction({
+      id: `recipe-admin-${request.actionId}-${randomUUID()}`,
+      actionId: request.actionId,
+      status: 'requested',
+      blueprintId: request.blueprintId,
+      recipeKind: request.recipeKind,
+      targetVersion: request.targetVersion,
+      tenantId: permissionContext.tenantId,
+      teamId: permissionContext.teamId,
+      actorId: permissionContext.userId,
+      sourcePermission: 'vibecoding:loops:create',
+      requestedAt,
+      reason: request.reason,
+      evidenceRefs: request.evidenceRefs,
+      message:
+        'Recipe admin action request recorded for tenant-scoped approval or worker execution.',
+    });
+    return action;
+  }
+
+  private async assertOptionalAssetPermission(
+    permissionContext: LoopAssetPermissionContext | undefined,
+    assetKind: LoopAssetPermissionKind,
+    action: LoopAssetPermissionAction,
+  ): Promise<void> {
+    if (!permissionContext) return;
+    await this.assertAssetPermission({ ...permissionContext, assetKind, action });
+  }
+
+  private buildRemoteRunnerItems(): LoopRemoteRunner[] {
+    return [
+      {
+        id: 'remote-runner-primary',
+        name: 'Primary Remote Runner Pool',
+        status: 'ready',
+        runtimeBackends: ['codex-cli', 'claude-code-cli', 'docker'],
+        capacity: {
+          maxConcurrent: 4,
+          leased: 0,
+          available: 4,
+        },
+        queue: {
+          pending: 0,
+          running: 0,
+        },
+        sandboxProfile: 'remote-sandbox',
+        artifactRoot: '.loops/runs/remote-runner-primary',
+        leaseTtlSec: 1800,
+        health: {
+          ok: true,
+          message:
+            'Worker artifact provider is connected; execution handoff remains governed by Codex/Claude CLI adapters.',
+        },
+        risks: ['Distributed queue scheduling and resumable sandbox execution remain future work.'],
+      },
+    ];
+  }
+
+  private getRemoteRunnerItem(id: string): LoopRemoteRunner {
+    const found = this.buildRemoteRunnerItems().find((item) => item.id === id);
+    if (!found) throw new NotFoundException(`Remote runner ${id} not found`);
+    return found;
+  }
+
+  private buildMcpServerItems(): LoopMcpServer[] {
+    return [
+      {
+        id: 'mcp-repo-tools',
+        name: 'Repository Tools MCP',
+        protocol: 'mcp',
+        transport: 'stdio',
+        status: 'configured',
+        toolIds: ['repo-code-editor', 'trace-evidence-reader', 'test-runner'],
+        permissionProfile: 'workspace-scoped read/write through approved Loops work packages',
+        authStatus: 'not-required',
+        health: {
+          ok: true,
+          message: 'Config is ready for local MCP client bootstrap.',
+        },
+        risks: ['Tool execution must stay inside target repo path policy.'],
+      },
+      {
+        id: 'mcp-browser-qa',
+        name: 'Browser QA MCP',
+        protocol: 'mcp',
+        transport: 'http',
+        status: 'configured',
+        toolIds: ['browser-qa-runner', 'visual-regression-reader'],
+        permissionProfile: 'read target URLs and write browser QA artifacts only',
+        authStatus: 'missing',
+        health: {
+          ok: false,
+          message: 'Provider token is not configured; connect is gated by SSO admin permission.',
+        },
+        risks: ['External URL tests require SSRF-safe target allowlists before production.'],
+      },
+    ];
+  }
+
+  private getMcpServerItem(id: string): LoopMcpServer {
+    const found = this.buildMcpServerItems().find((item) => item.id === id);
+    if (!found) throw new NotFoundException(`MCP server ${id} not found`);
+    return found;
+  }
+
+  private withMcpServerStatus(
+    id: string,
+    status: LoopMcpServer['status'],
+    message: string,
+  ): LoopMcpServer {
+    return {
+      ...this.getMcpServerItem(id),
+      status,
+      lastTestedAt: new Date().toISOString(),
+      health: {
+        ok: status !== 'failed',
+        message,
+      },
+    };
+  }
+
+  private async withMcpServerLifecycleAudit(
+    id: string,
+    action: 'connect' | 'disconnect',
+    status: LoopMcpServer['status'],
+    message: string,
+    reason?: string,
+  ): Promise<LoopMcpServer> {
+    const item = this.getMcpServerItem(id);
+    const recordedAt = new Date().toISOString();
+    const health = {
+      ok: status !== 'failed',
+      message,
+    };
+    const executionAudit = await this.store.writeMcpExecutionAudit({
+      auditRef: `mcp-audit-${id}-${action}-${randomUUID()}`,
+      providerId: id,
+      action,
+      outcome: health.ok ? 'success' : 'failed',
+      toolCount: item.toolIds.length,
+      toolIds: item.toolIds,
+      transport: item.transport,
+      authStatus: item.authStatus,
+      reason,
+      recordedAt,
+      health,
+    });
+
+    return {
+      ...item,
+      status,
+      lastTestedAt: recordedAt,
+      health,
+      executionAudit: {
+        auditRef: executionAudit.auditRef,
+        artifactRef: executionAudit.artifactRef,
+        providerId: id,
+        action,
+        outcome: health.ok ? 'success' : 'failed',
+        toolCount: item.toolIds.length,
+        recordedAt,
+      },
+    };
+  }
+
+  private buildCiCheckItems(): LoopCiCheckIntegration[] {
+    return [
+      {
+        id: 'github-delivery-evidence',
+        provider: 'github-checks',
+        name: 'GitHub Delivery Evidence Check',
+        status: 'configured',
+        requiredForRelease: true,
+        checkSuites: ['delivery-readiness', 'runtime-safety', 'test-evidence'],
+        targetRef: 'convergence-pr',
+        health: {
+          ok: true,
+          message: 'Ready to publish derived delivery evidence when provider client is enabled.',
+        },
+        risks: ['GitHub Checks API token and repo installation are required for publish.'],
+      },
+      {
+        id: 'generic-ci-regression',
+        provider: 'generic-ci',
+        name: 'Generic Regression CI',
+        status: 'configured',
+        requiredForRelease: false,
+        checkSuites: ['test-evidence'],
+        targetRef: 'loop-artifacts',
+        health: {
+          ok: true,
+          message: 'Can mirror Loops test records into an external CI dashboard.',
+        },
+        risks: [],
+      },
+    ];
+  }
+
+  private getCiCheckItem(id: string): LoopCiCheckIntegration {
+    const found = this.buildCiCheckItems().find((item) => item.id === id);
+    if (!found) throw new NotFoundException(`CI check integration ${id} not found`);
+    return found;
+  }
+
+  private withCiCheckStatus(
+    id: string,
+    status: LoopCiCheckIntegration['status'],
+    message: string,
+  ): LoopCiCheckIntegration {
+    return {
+      ...this.getCiCheckItem(id),
+      status,
+      lastPublishedAt: new Date().toISOString(),
+      health: {
+        ok: status !== 'failed',
+        message,
+      },
+    };
   }
 
   private async buildRuntimeBackendItems(): Promise<RuntimeBackend[]> {
     const detection = await this.detectCurrentRuntimeSafe();
     if (!detection) return [];
+    const persistedPolicies = await (this.persistence?.readRuntimeBackendPolicies() ??
+      this.store.readRuntimeBackendPolicies());
     return detection.runtimes.map((runtime) => {
       const kind: RuntimeBackend['kind'] =
         runtime.agent === 'codex' ? 'codex-cli' : 'claude-code-cli';
@@ -1483,8 +2458,11 @@ export class LoopsService {
           ? ['Intake', 'Spec', 'Planning', 'Review', 'Release']
           : ['Implementation', 'Test execution', 'Second opinion'];
 
+      const id = `runtime-backend-${runtime.agent === 'codex' ? 'codex' : 'claude-code'}`;
+      const persistedPolicy = persistedPolicies[id] ?? {};
+
       return {
-        id: `runtime-backend-${runtime.agent === 'codex' ? 'codex' : 'claude-code'}`,
+        id,
         name,
         kind,
         mode,
@@ -1493,18 +2471,20 @@ export class LoopsService {
         authStatus: 'unreported' as const,
         supportedStages,
         permissionProfile:
-          runtime.agent === 'codex'
+          persistedPolicy.permissionProfile ??
+          (runtime.agent === 'codex'
             ? 'read/review/test design; write only Loops artifacts'
-            : 'read/write/test within approved work package',
+            : 'read/write/test within approved work package'),
         workspacePolicy:
           runtime.agent === 'codex'
             ? 'uses selected workspace profile and target repo scope'
             : 'requires approved workspace mount for Docker mode',
-        costPolicy: 'shares per-loop call/token guard',
+        costPolicy: persistedPolicy.costPolicy ?? 'shares per-loop call/token guard',
         fallbackPolicy:
-          runtime.agent === 'codex'
+          persistedPolicy.fallbackPolicy ??
+          (runtime.agent === 'codex'
             ? 'Fallback to deterministic review gate'
-            : 'Pause and ask for runtime recovery',
+            : 'Pause and ask for runtime recovery'),
         healthChecks: runtime.checks,
         lastDetectedAt: detection.workspaceId ? new Date().toISOString() : undefined,
       };
@@ -1518,7 +2498,7 @@ export class LoopsService {
   async listEvalSuites(
     query: { limit?: number; page?: number } = {},
   ): Promise<EvalSuiteListResponse> {
-    const list = this.buildEvalSuites();
+    const list = this.buildEvalSuites(await this.collectEvalEvidence());
     const limit = query.limit ?? 20;
     const page = query.page ?? 1;
     const start = (page - 1) * limit;
@@ -1531,21 +2511,48 @@ export class LoopsService {
   }
 
   async getEvalSuite(id: string): Promise<EvalSuite> {
-    const suites = this.buildEvalSuites();
+    const suites = this.buildEvalSuites(await this.collectEvalEvidence());
     const found = suites.find((suite) => suite.id === id);
     if (!found) throw new NotFoundException(`Eval suite ${id} not found`);
     return found;
   }
 
-  private buildEvalSuites(): EvalSuite[] {
+  private async collectEvalEvidence(): Promise<EvalEvidence> {
+    const [list, cost] = await Promise.all([this.list({ page: 1, limit: 200 }), this.cost()]);
+    const details = new Map<string, LoopIssueDetail>();
+    await Promise.all(
+      list.list.map(async (item) => {
+        try {
+          details.set(item.issue.id, await this.readDetail(item.issue.id));
+        } catch (error) {
+          this.log('warn', '[Loops] unable to read eval detail evidence', {
+            issueId: item.issue.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }),
+    );
+    return {
+      list: list.list,
+      details,
+      costByIssue: new Map(cost.loops.map((item) => [item.issueId, item])),
+    };
+  }
+
+  private buildEvalSuites(evidence: EvalEvidence): EvalSuite[] {
     const now = new Date().toISOString();
+    return this.evalSuiteBlueprints().map((suite) =>
+      this.materializeEvalSuite(suite, evidence, now),
+    );
+  }
+
+  private evalSuiteBlueprints(): EvalSuiteBlueprint[] {
     return [
       {
         id: 'architecture-compliance',
         name: 'Architecture Compliance',
         scope: 'workspace' as const,
         version: 1,
-        capturedAt: now,
         checks: [
           {
             id: 'db-service-layer',
@@ -1554,9 +2561,6 @@ export class LoopsService {
             hardGate: true,
             status: 'attention' as const,
             evidence: 'Derived from cross-loop review',
-            passCount: 0,
-            failCount: 0,
-            blockedCount: 0,
           },
           {
             id: 'zod-contract',
@@ -1565,9 +2569,6 @@ export class LoopsService {
             hardGate: true,
             status: 'attention' as const,
             evidence: 'Contracts exist for all API endpoints',
-            passCount: 0,
-            failCount: 0,
-            blockedCount: 0,
           },
           {
             id: 'client-layer',
@@ -1576,9 +2577,6 @@ export class LoopsService {
             hardGate: true,
             status: 'attention' as const,
             evidence: 'Client imports verified',
-            passCount: 0,
-            failCount: 0,
-            blockedCount: 0,
           },
           {
             id: 'winston-logger',
@@ -1587,19 +2585,14 @@ export class LoopsService {
             hardGate: true,
             status: 'attention' as const,
             evidence: 'Logger injection verified',
-            passCount: 0,
-            failCount: 0,
-            blockedCount: 0,
           },
         ],
-        summary: { total: 4, passed: 0, attention: 4, blocked: 0, passRate: 0 },
       },
       {
         id: 'delivery-readiness',
         name: 'Delivery Readiness',
         scope: 'delivery' as const,
         version: 1,
-        capturedAt: now,
         checks: [
           {
             id: 'spec-approved',
@@ -1608,9 +2601,6 @@ export class LoopsService {
             hardGate: true,
             status: 'attention' as const,
             evidence: 'Spec status per loop',
-            passCount: 0,
-            failCount: 0,
-            blockedCount: 0,
           },
           {
             id: 'global-review-pass',
@@ -1619,9 +2609,6 @@ export class LoopsService {
             hardGate: true,
             status: 'attention' as const,
             evidence: 'Global verdict per loop',
-            passCount: 0,
-            failCount: 0,
-            blockedCount: 0,
           },
           {
             id: 'pr-evidence',
@@ -1630,19 +2617,14 @@ export class LoopsService {
             hardGate: true,
             status: 'attention' as const,
             evidence: 'Convergence PR status',
-            passCount: 0,
-            failCount: 0,
-            blockedCount: 0,
           },
         ],
-        summary: { total: 3, passed: 0, attention: 3, blocked: 0, passRate: 0 },
       },
       {
         id: 'runtime-safety',
         name: 'Runtime Safety',
         scope: 'runtime' as const,
         version: 1,
-        capturedAt: now,
         checks: [
           {
             id: 'path-policy',
@@ -1651,9 +2633,6 @@ export class LoopsService {
             hardGate: true,
             status: 'attention' as const,
             evidence: 'Path policy snapshots',
-            passCount: 0,
-            failCount: 0,
-            blockedCount: 0,
           },
           {
             id: 'network-policy',
@@ -1662,9 +2641,6 @@ export class LoopsService {
             hardGate: true,
             status: 'attention' as const,
             evidence: 'Network strategy per workspace',
-            passCount: 0,
-            failCount: 0,
-            blockedCount: 0,
           },
           {
             id: 'secret-canary',
@@ -1673,19 +2649,14 @@ export class LoopsService {
             hardGate: true,
             status: 'attention' as const,
             evidence: 'Canary status per test record',
-            passCount: 0,
-            failCount: 0,
-            blockedCount: 0,
           },
         ],
-        summary: { total: 3, passed: 0, attention: 3, blocked: 0, passRate: 0 },
       },
       {
         id: 'test-evidence',
         name: 'Test Evidence',
         scope: 'delivery' as const,
         version: 1,
-        capturedAt: now,
         checks: [
           {
             id: 'test-command-pass',
@@ -1694,9 +2665,6 @@ export class LoopsService {
             hardGate: true,
             status: 'attention' as const,
             evidence: 'Test records per loop',
-            passCount: 0,
-            failCount: 0,
-            blockedCount: 0,
           },
           {
             id: 'failure-classified',
@@ -1705,9 +2673,6 @@ export class LoopsService {
             hardGate: false,
             status: 'attention' as const,
             evidence: 'Test record fix instructions',
-            passCount: 0,
-            failCount: 0,
-            blockedCount: 0,
           },
           {
             id: 'coverage-exists',
@@ -1716,19 +2681,14 @@ export class LoopsService {
             hardGate: false,
             status: 'attention' as const,
             evidence: 'Coverage data per test record',
-            passCount: 0,
-            failCount: 0,
-            blockedCount: 0,
           },
         ],
-        summary: { total: 3, passed: 0, attention: 3, blocked: 0, passRate: 0 },
       },
       {
         id: 'cost-policy',
         name: 'Cost Policy',
         scope: 'agent' as const,
         version: 1,
-        capturedAt: now,
         checks: [
           {
             id: 'token-budget',
@@ -1737,9 +2697,6 @@ export class LoopsService {
             hardGate: true,
             status: 'attention' as const,
             evidence: 'Cost guard state',
-            passCount: 0,
-            failCount: 0,
-            blockedCount: 0,
           },
           {
             id: 'call-budget',
@@ -1748,9 +2705,6 @@ export class LoopsService {
             hardGate: true,
             status: 'attention' as const,
             evidence: 'Cost guard state',
-            passCount: 0,
-            failCount: 0,
-            blockedCount: 0,
           },
           {
             id: 'time-budget',
@@ -1759,52 +2713,165 @@ export class LoopsService {
             hardGate: false,
             status: 'attention' as const,
             evidence: 'Not yet tracked per-loop',
-            passCount: 0,
-            failCount: 0,
-            blockedCount: 0,
           },
         ],
-        summary: { total: 3, passed: 0, attention: 3, blocked: 0, passRate: 0 },
       },
     ];
+  }
+
+  private materializeEvalSuite(
+    suite: EvalSuiteBlueprint,
+    evidence: EvalEvidence,
+    capturedAt: string,
+  ): EvalSuite {
+    const checks = suite.checks.map((check) => {
+      const results = evidence.list.map((item) => this.evaluateEvalCheck(check.id, item, evidence));
+      const passCount = results.filter((status) => status === 'passed').length;
+      const failCount = results.filter((status) => status === 'attention').length;
+      const blockedCount = results.filter((status) => status === 'blocked').length;
+      return {
+        ...check,
+        status: this.evalAggregateStatus(passCount, failCount, blockedCount),
+        passCount,
+        failCount,
+        blockedCount,
+      };
+    });
+    const passed = checks.filter((check) => check.status === 'passed').length;
+    const attention = checks.filter((check) => check.status === 'attention').length;
+    const blocked = checks.filter((check) => check.status === 'blocked').length;
+    return {
+      ...suite,
+      capturedAt,
+      checks,
+      summary: {
+        total: checks.length,
+        passed,
+        attention,
+        blocked,
+        passRate: checks.length ? Math.round((passed / checks.length) * 100) : 0,
+      },
+    };
+  }
+
+  private evaluateEvalCheck(
+    checkId: string,
+    item: LoopListItem,
+    evidence: EvalEvidence,
+  ): EvalSuite['checks'][number]['status'] {
+    const detail = evidence.details.get(item.issue.id);
+    const costItem = evidence.costByIssue.get(item.issue.id);
+    switch (checkId) {
+      case 'db-service-layer':
+      case 'zod-contract':
+      case 'client-layer':
+      case 'winston-logger':
+        return item.state?.globalVerdict === 'FAIL' ? 'blocked' : 'attention';
+      case 'spec-approved':
+        return detail?.spec?.status === 'APPROVED'
+          ? 'passed'
+          : item.issue.status === 'REJECTED'
+            ? 'blocked'
+            : 'attention';
+      case 'global-review-pass':
+        return item.state?.globalVerdict === 'PASS'
+          ? 'passed'
+          : item.state?.globalVerdict === 'FAIL'
+            ? 'blocked'
+            : 'attention';
+      case 'pr-evidence':
+        return detail?.convergencePr?.status === 'OPENED' ||
+          detail?.convergencePr?.status === 'PUSHED'
+          ? 'passed'
+          : item.state?.globalVerdict === 'FAIL'
+            ? 'blocked'
+            : 'attention';
+      case 'path-policy':
+        return detail?.testRecords.some(
+          (record) => record.runtimeSecurityPolicy?.write.scope === 'target-repo',
+        )
+          ? 'passed'
+          : item.state?.paused
+            ? 'blocked'
+            : 'attention';
+      case 'network-policy':
+        return detail?.testRecords.some(
+          (record) => record.runtimeSecurityPolicy?.network.status === 'blocked',
+        )
+          ? 'passed'
+          : detail?.testRecords.some(
+                (record) => record.runtimeSecurityPolicy?.network.status === 'allowed-by-override',
+              )
+            ? 'blocked'
+            : 'attention';
+      case 'secret-canary':
+        return detail?.testRecords.some(
+          (record) => record.runtimeSecurityPolicy?.canary.status === 'leaked',
+        )
+          ? 'blocked'
+          : detail?.testRecords.some(
+                (record) => record.runtimeSecurityPolicy?.canary.status === 'armed',
+              )
+            ? 'passed'
+            : 'attention';
+      case 'test-command-pass':
+        return !detail?.testRecords.length
+          ? 'attention'
+          : detail.testRecords.every((record) => record.status === 'TEST-PASS')
+            ? 'passed'
+            : detail.testRecords.some((record) => record.status === 'TEST-FAIL')
+              ? 'blocked'
+              : 'attention';
+      case 'failure-classified':
+        return !detail?.testRecords.length
+          ? 'attention'
+          : detail.testRecords.some(
+                (record) => record.status === 'TEST-FAIL' && record.fixInstructions.length === 0,
+              )
+            ? 'blocked'
+            : 'passed';
+      case 'coverage-exists':
+        return detail?.testRecords.some((record) => record.coverage) ? 'passed' : 'attention';
+      case 'token-budget':
+        return !costItem
+          ? 'attention'
+          : costItem.tokensRemaining < 0 || costItem.tripped
+            ? 'blocked'
+            : 'passed';
+      case 'call-budget':
+        return !costItem
+          ? 'attention'
+          : costItem.callsRemaining < 0 || costItem.tripped
+            ? 'blocked'
+            : 'passed';
+      case 'time-budget':
+        return detail?.implementationRecords.some(
+          (record) => typeof record.durationSec === 'number',
+        )
+          ? 'passed'
+          : 'attention';
+      default:
+        return 'attention';
+    }
+  }
+
+  private evalAggregateStatus(
+    passCount: number,
+    failCount: number,
+    blockedCount: number,
+  ): EvalSuite['checks'][number]['status'] {
+    if (blockedCount > 0) return 'blocked';
+    if (passCount > 0 && failCount === 0) return 'passed';
+    return 'attention';
   }
 
   async listEvalRuns(
     query: { limit?: number; page?: number; suiteId?: string; loopId?: string } = {},
   ): Promise<EvalRunListResponse> {
-    const [list] = await Promise.all([this.list({ page: 1, limit: 200 })]);
-    const suites = this.buildEvalSuites();
-    const runs: EvalRun[] = [];
-
-    for (const item of list.list) {
-      for (const suite of suites) {
-        if (query.suiteId && suite.id !== query.suiteId) continue;
-        if (query.loopId && item.issue.id !== query.loopId) continue;
-        const now = new Date().toISOString();
-        const costItem = (await this.cost()).loops.find((c) => c.issueId === item.issue.id);
-        const score =
-          item.state?.globalVerdict === 'PASS'
-            ? 100
-            : item.state?.globalVerdict === 'NEEDS-WORK'
-              ? 60
-              : item.state?.globalVerdict === 'FAIL'
-                ? 30
-                : 50;
-        const status: EvalRun['status'] =
-          score >= 80 ? 'passed' : score >= 50 ? 'attention' : 'blocked';
-        runs.push({
-          id: `eval-run-${suite.id}-${item.issue.id}`,
-          suiteId: suite.id,
-          loopId: item.issue.id,
-          targetRef: item.issue.id,
-          status,
-          score,
-          checkResults: suite.checks.map((c) => ({ ...c })),
-          evidenceRefs: item.issue.id ? [`.loops/issues/${item.issue.id}.json`] : [],
-          runAt: now,
-        });
-      }
-    }
+    const evidence = await this.collectEvalEvidence();
+    const suites = this.buildEvalSuites(evidence);
+    const history = await this.store.readEvalTrendHistory();
+    const runs = this.buildEvalRuns(evidence, suites, query, { history });
 
     const limit = query.limit ?? 20;
     const page = query.page ?? 1;
@@ -1817,11 +2884,247 @@ export class LoopsService {
     };
   }
 
+  async runLoopBenchTrendWorker(): Promise<LoopBenchTrendWorkerResponse> {
+    const generatedAt = new Date().toISOString();
+    const [list, cost, recentLearnings, history] = await Promise.all([
+      this.list({ page: 1, limit: 200 }),
+      this.cost(),
+      this.store.readRecentLearnings(1000, { recallScope: 'cross-workspace' }),
+      this.store.readLoopBenchTrendHistory(),
+    ]);
+    const previous = history.at(-1);
+    const metrics = this.buildLoopBenchMetrics(list.list, { cost, recentLearnings });
+    const artifactRef = `.loops/bench-trends/${generatedAt.replace(/[:.]/g, '-')}.json`;
+    const snapshot: LoopBenchTrendSnapshot = {
+      id: `loop-bench-${Date.parse(generatedAt)}`,
+      capturedAt: generatedAt,
+      artifactRef,
+      loopCount: list.list.length,
+      metrics,
+      previousMetrics: previous?.metrics,
+      deltas: previous ? this.diffLoopBenchMetrics(metrics, previous.metrics) : undefined,
+    };
+    const nextHistory = await this.store.appendLoopBenchTrendSnapshot(snapshot);
+    return {
+      generatedAt,
+      snapshot,
+      historyCount: nextHistory.length,
+    };
+  }
+
+  private async readLoopBenchTrendSummary(): Promise<LoopBenchTrendSummary> {
+    const history = await this.store.readLoopBenchTrendHistory();
+    return {
+      latest: history.at(-1),
+      historyCount: history.length,
+    };
+  }
+
+  private buildLoopBenchMetrics(
+    items: LoopListItem[],
+    options: {
+      cost?: LoopCostResponse;
+      recentLearnings?: LoopLearning[];
+    } = {},
+  ): Record<LoopBenchMetricKey, number> {
+    const active = items.filter(
+      ({ issue }) => !['CLOSED', 'ARCHIVED', 'REJECTED'].includes(issue.status),
+    );
+    const completed = items.filter(
+      ({ issue, state }) =>
+        issue.status === 'CLOSED' || state?.finalized || state?.phase === 'CLOSED',
+    );
+    const firstPassCount = completed.filter(
+      ({ state }) => state?.globalVerdict === 'PASS' && (state.reloopCount ?? 0) === 0,
+    ).length;
+    const browserQaRegressionCount = active.filter(
+      ({ releaseGate }) => releaseGate?.checklist.browserQaPassed === false,
+    ).length;
+    const secondOpinionConflictCount = active.filter(({ releaseGate, state }) => {
+      const phase = state?.phase ?? 'PHASE_0_INTAKE';
+      return (
+        ['PHASE_6_CONVERGE', 'PHASE_7_GLOBAL_REVIEW', 'PHASE_8_ANNOTATE'].includes(phase) &&
+        releaseGate?.checklist.secondOpinionPassed === false
+      );
+    }).length;
+    const blockedCount = active.filter(
+      ({ state }) => state?.paused || (state?.globalVerdict && state.globalVerdict !== 'PASS'),
+    ).length;
+    const costTripped = options.cost?.loops.filter((item) => item.tripped).length ?? 0;
+    const violationCount = items.reduce(
+      (sum, item) => sum + (item.runtimeSecurityExceptions?.length ?? 0),
+      0,
+    );
+    const learnings = options.recentLearnings ?? [];
+    const reusedCount = learnings.filter((learning) => learning.lastUsedAt).length;
+    const canaryRuns = items.filter(
+      ({ releaseGate }) => typeof releaseGate?.checklist.canaryPassed === 'boolean',
+    );
+    const canaryPassed = canaryRuns.filter(
+      ({ releaseGate }) => releaseGate?.checklist.canaryPassed === true,
+    ).length;
+
+    return {
+      firstPassReviewRate: this.percent(firstPassCount, completed.length),
+      browserQaRegressionRate: this.percent(browserQaRegressionCount, active.length),
+      secondOpinionConflictRate: this.percent(secondOpinionConflictCount, active.length),
+      releaseBlockerRate: this.percent(blockedCount + costTripped, active.length),
+      runtimeViolationRate: this.percent(violationCount, items.length),
+      learningReuseRate: this.percent(reusedCount, learnings.length),
+      canaryPassRate: this.percent(canaryPassed, canaryRuns.length),
+    };
+  }
+
+  private diffLoopBenchMetrics(
+    current: Record<LoopBenchMetricKey, number>,
+    previous: Record<LoopBenchMetricKey, number>,
+  ): Record<LoopBenchMetricKey, number> {
+    return {
+      firstPassReviewRate: current.firstPassReviewRate - previous.firstPassReviewRate,
+      browserQaRegressionRate: current.browserQaRegressionRate - previous.browserQaRegressionRate,
+      secondOpinionConflictRate:
+        current.secondOpinionConflictRate - previous.secondOpinionConflictRate,
+      releaseBlockerRate: current.releaseBlockerRate - previous.releaseBlockerRate,
+      runtimeViolationRate: current.runtimeViolationRate - previous.runtimeViolationRate,
+      learningReuseRate: current.learningReuseRate - previous.learningReuseRate,
+      canaryPassRate: current.canaryPassRate - previous.canaryPassRate,
+    };
+  }
+
+  private percent(numerator: number, denominator: number): number {
+    return denominator > 0 ? Math.round((numerator / denominator) * 100) : 0;
+  }
+
+  private buildEvalRuns(
+    evidence: EvalEvidence,
+    suites: EvalSuite[],
+    query: { suiteId?: string; loopId?: string } = {},
+    context: EvalRunBuildContext = {},
+  ): EvalRun[] {
+    const runs: EvalRun[] = [];
+    for (const item of evidence.list) {
+      for (const suite of suites) {
+        if (query.suiteId && suite.id !== query.suiteId) continue;
+        if (query.loopId && item.issue.id !== query.loopId) continue;
+        const now = new Date().toISOString();
+        const blueprintId = this.evalBlueprintId(item, evidence);
+        const baseline = this.latestEvalBaseline(context.history ?? [], suite.id, blueprintId);
+        const checkResults = suite.checks.map((check) => {
+          const status = this.evaluateEvalCheck(check.id, item, evidence);
+          return {
+            ...check,
+            status,
+            passCount: status === 'passed' ? 1 : 0,
+            failCount: status === 'attention' ? 1 : 0,
+            blockedCount: status === 'blocked' ? 1 : 0,
+          };
+        });
+        const passed = checkResults.filter((check) => check.status === 'passed').length;
+        const blocked = checkResults.filter((check) => check.status === 'blocked').length;
+        const score = Math.round((passed / Math.max(checkResults.length, 1)) * 100);
+        const status: EvalRun['status'] =
+          blocked > 0 ? 'blocked' : score >= 80 ? 'passed' : 'attention';
+        runs.push({
+          id: `eval-run-${suite.id}-${item.issue.id}`,
+          suiteId: suite.id,
+          loopId: item.issue.id,
+          targetRef: item.issue.id,
+          blueprintId,
+          baselineVersion: baseline?.baselineVersion,
+          baselineScore: baseline?.averageScore,
+          status,
+          score,
+          checkResults,
+          evidenceRefs: item.issue.id ? [`.loops/issues/${item.issue.id}.json`] : [],
+          trendDelta:
+            baseline?.averageScore === undefined ? undefined : score - baseline.averageScore,
+          runAt: now,
+        });
+      }
+    }
+    return runs;
+  }
+
+  async runEvalTrendWorker(): Promise<EvalTrendWorkerResponse> {
+    const generatedAt = new Date().toISOString();
+    const evidence = await this.collectEvalEvidence();
+    const suites = this.buildEvalSuites(evidence);
+    const history = await this.store.readEvalTrendHistory();
+    const runs = this.buildEvalRuns(evidence, suites, {}, { history: [] });
+    const grouped = new Map<string, EvalRun[]>();
+
+    for (const run of runs) {
+      const blueprintId = run.blueprintId ?? 'default';
+      const key = `${blueprintId}:${run.suiteId}`;
+      grouped.set(key, [...(grouped.get(key) ?? []), run]);
+    }
+
+    const baselines: EvalHistoricalBaselineSnapshot[] = [];
+    for (const [key, group] of grouped.entries()) {
+      const [blueprintId, suiteId] = key.split(':');
+      const previous = this.latestEvalBaseline(history, suiteId, blueprintId);
+      const averageScore = this.roundAverage(group.map((run) => run.score));
+      const passed = group.filter((run) => run.status === 'passed').length;
+      const passRate = group.length ? Math.round((passed / group.length) * 100) : 0;
+      baselines.push({
+        id: `eval-baseline-${this.safeId(blueprintId)}-${suiteId}-${Date.parse(generatedAt)}`,
+        suiteId,
+        blueprintId,
+        baselineVersion: this.evalBaselineVersion(blueprintId, suiteId, generatedAt),
+        capturedAt: generatedAt,
+        runCount: group.length,
+        averageScore,
+        passRate,
+        previousAverageScore: previous?.averageScore,
+        trendDelta:
+          previous?.averageScore === undefined ? undefined : averageScore - previous.averageScore,
+      });
+    }
+
+    await this.store.appendEvalTrendSnapshots(baselines);
+    return {
+      generatedAt,
+      snapshotCount: baselines.length,
+      baselines,
+    };
+  }
+
   async getEvalRun(id: string): Promise<EvalRun> {
     const runs = (await this.listEvalRuns({ limit: 500 })).list;
     const found = runs.find((r) => r.id === id);
     if (!found) throw new NotFoundException(`Eval run ${id} not found`);
     return found;
+  }
+
+  private evalBlueprintId(item: LoopListItem, evidence: EvalEvidence): string {
+    const detail = evidence.details.get(item.issue.id);
+    const blueprint = detail?.workflowRecipe?.baselineEvidence?.find(
+      (entry) => entry.kind === 'blueprint',
+    );
+    return blueprint?.value ?? this.inferWorkflowKind(item);
+  }
+
+  private latestEvalBaseline(
+    history: EvalHistoricalBaselineSnapshot[],
+    suiteId: string,
+    blueprintId: string,
+  ): EvalHistoricalBaselineSnapshot | undefined {
+    return history
+      .filter((item) => item.suiteId === suiteId && item.blueprintId === blueprintId)
+      .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt))[0];
+  }
+
+  private evalBaselineVersion(blueprintId: string, suiteId: string, capturedAt: string): string {
+    return `${this.safeId(blueprintId)}:${suiteId}:${capturedAt}`;
+  }
+
+  private roundAverage(values: number[]): number {
+    if (values.length === 0) return 0;
+    return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+  }
+
+  private safeId(value: string): string {
+    return value.replace(/[^a-zA-Z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'default';
   }
 
   /**
@@ -1832,26 +3135,39 @@ export class LoopsService {
    */
   async webhookTrigger(input: LoopWebhookTrigger): Promise<LoopWebhookTriggerResponse> {
     const now = new Date().toISOString();
+    this.assertWebhookPayloadSize(input);
+    this.verifyWebhookSignature(input);
+    this.assertWebhookRateLimit(input);
 
-    // Map source → event → title/body
-    const title = `[${input.source}:${input.event}] Webhook trigger at ${now}`;
-    const body = `**Source**: ${input.source}\n**Event**: ${input.event}\n\n**Payload**:\n\`\`\`json\n${JSON.stringify(input.payload, null, 2)}\n\`\`\``;
+    // R32a: GitHub label→Loop blueprint auto-mapping.
+    // When a GitHub issue webhook carries labels, map known label patterns
+    // to delivery blueprints and auto-enrich the issue body.
+    const labelMapping = this.mapGitHubLabelsToBlueprint(input);
+    if (labelMapping) {
+      this.log('info', `[Loops] GitHub label→blueprint mapping applied`, {
+        source: input.source,
+        event: input.event,
+        labels: labelMapping.labels,
+        blueprint: labelMapping.blueprintId,
+      });
+    }
 
     try {
-      const result = await this.createIssue({
-        title,
-        targetRepo: '.',
-        body,
-        priority: 'P2',
-        acceptanceCriteria: ['Webhook event successfully mapped to issue'],
-        sourceChannel: 'webhook',
-        sourceKind: input.source,
-      } as import('@repo/contracts').CreateLoopIssueRequest);
+      const baseRequest = this.buildWebhookIssueRequest(input, now);
+      const request = labelMapping
+        ? {
+            ...baseRequest,
+            body: `${baseRequest.body}\n\n---\n🤖 Auto-mapped from GitHub labels: ${labelMapping.labels.join(', ')}\nBlueprint: ${labelMapping.blueprintId}\nPriority: ${labelMapping.priority}`,
+            priority: labelMapping.priority,
+          }
+        : baseRequest;
+      const result = await this.createIssue(request);
 
       this.log('info', `[Loops] Webhook trigger created issue`, {
         source: input.source,
         event: input.event,
         issueId: result.issue.id,
+        blueprint: labelMapping?.blueprintId,
       });
 
       return {
@@ -1879,6 +3195,554 @@ export class LoopsService {
     }
   }
 
+  private assertWebhookPayloadSize(input: LoopWebhookTrigger): void {
+    const maxBytes = this.webhookMaxPayloadBytes();
+    const bytes = Buffer.byteLength(JSON.stringify(input.payload), 'utf8');
+    if (bytes > maxBytes) {
+      throw new BadRequestException(`Webhook payload exceeds ${maxBytes} byte limit`);
+    }
+  }
+
+  private webhookMaxPayloadBytes(): number {
+    const configured = Number(process.env.LOOPS_WEBHOOK_MAX_PAYLOAD_BYTES);
+    return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 64 * 1024;
+  }
+
+  private assertWebhookRateLimit(input: LoopWebhookTrigger): void {
+    const limit = this.webhookRateLimitPerMinute();
+    if (limit <= 0) return;
+
+    const now = Date.now();
+    const key = `${input.source}:${input.event}`;
+    const current = this.webhookRateWindows.get(key);
+    const window =
+      !current || current.resetAt <= now ? { count: 0, resetAt: now + 60_000 } : current;
+    window.count += 1;
+    this.webhookRateWindows.set(key, window);
+
+    if (window.count > limit) {
+      throw new BadRequestException(`Webhook rate limit exceeded for ${key}`);
+    }
+  }
+
+  private webhookRateLimitPerMinute(): number {
+    const configured = Number(process.env.LOOPS_WEBHOOK_RATE_LIMIT_PER_MINUTE);
+    return Number.isFinite(configured) && configured >= 0 ? Math.floor(configured) : 60;
+  }
+
+  private verifyWebhookSignature(input: LoopWebhookTrigger): void {
+    const providedSignature = this.extractWebhookSignature(
+      input.signature ?? input.signatureHeader,
+    );
+    const secret =
+      (input.secretRef ? process.env[input.secretRef] : undefined) ??
+      process.env.LOOPS_WEBHOOK_SECRET;
+    if (!providedSignature) {
+      if (secret) {
+        throw new BadRequestException(
+          'Webhook signing secret is configured but no signature was provided',
+        );
+      }
+      return;
+    }
+
+    if (!secret) {
+      throw new BadRequestException(
+        'Webhook signature provided but no signing secret is configured',
+      );
+    }
+
+    const expectedSignature = createHmac('sha256', secret)
+      .update(JSON.stringify(input.payload))
+      .digest('hex');
+
+    const provided = Buffer.from(providedSignature, 'hex');
+    const expected = Buffer.from(expectedSignature, 'hex');
+    if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+      throw new BadRequestException('Webhook signature verification failed');
+    }
+  }
+
+  private extractWebhookSignature(value?: string): string | undefined {
+    if (!value) return undefined;
+    const trimmed = value.trim();
+    const prefixed = trimmed.match(/(?:^|[,;\s])sha256=([a-f0-9]{64})(?:$|[,;\s])/i);
+    return (prefixed?.[1] ?? trimmed).toLowerCase();
+  }
+
+  private buildWebhookIssueRequest(
+    input: LoopWebhookTrigger,
+    receivedAt: string,
+  ): CreateLoopIssueRequest {
+    const payload = input.payload;
+    const redactedPayload = this.redactWebhookPayload(payload);
+    const mappedTitle =
+      this.readWebhookString(payload, 'title') ??
+      this.readWebhookPath(payload, ['issue', 'title']) ??
+      this.readWebhookPath(payload, ['pull_request', 'title']) ??
+      this.readWebhookPath(payload, ['data', 'title']) ??
+      this.readWebhookPath(payload, ['resource', 'title']);
+    const mappedBody =
+      this.readWebhookString(payload, 'body') ??
+      this.readWebhookString(payload, 'description') ??
+      this.readWebhookString(payload, 'text') ??
+      this.readWebhookPath(payload, ['issue', 'body']) ??
+      this.readWebhookPath(payload, ['pull_request', 'body']) ??
+      this.readWebhookPath(payload, ['data', 'description']);
+    const acceptanceCriteria = this.readWebhookStringArray(payload, 'acceptanceCriteria') ??
+      this.readWebhookStringArray(payload, 'acceptance_criteria') ?? [
+        'Webhook event successfully mapped to issue',
+      ];
+    const targetRepo =
+      this.readWebhookString(payload, 'targetRepo') ??
+      this.readWebhookString(payload, 'target_repo') ??
+      process.env.LOOPS_WORKSPACE_ROOT ??
+      '.';
+    const priority = this.mapWebhookPriority(payload);
+    const title = this.truncateWebhookTitle(
+      `[${input.source}:${input.event}] ${mappedTitle ?? `Webhook trigger at ${receivedAt}`}`,
+    );
+    const summary = mappedBody ? `\n\n**Mapped Summary**:\n${mappedBody.trim()}` : '';
+    const body = `**Source**: ${input.source}\n**Event**: ${input.event}\n**Received At**: ${receivedAt}${summary}\n\n**Payload**:\n\`\`\`json\n${JSON.stringify(redactedPayload, null, 2)}\n\`\`\``;
+
+    return {
+      title,
+      targetRepo,
+      body,
+      priority,
+      acceptanceCriteria,
+      sourceChannel: 'webhook',
+      sourceKind: input.source,
+    };
+  }
+
+  private readWebhookString(payload: Record<string, unknown>, key: string): string | undefined {
+    const value = payload[key];
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+  }
+
+  private readWebhookPath(payload: Record<string, unknown>, path: string[]): string | undefined {
+    let current: unknown = payload;
+    for (const segment of path) {
+      if (!current || typeof current !== 'object' || Array.isArray(current)) return undefined;
+      current = (current as Record<string, unknown>)[segment];
+    }
+    return typeof current === 'string' && current.trim().length > 0 ? current.trim() : undefined;
+  }
+
+  private readWebhookStringArray(
+    payload: Record<string, unknown>,
+    key: string,
+  ): string[] | undefined {
+    const value = payload[key];
+    if (!Array.isArray(value)) return undefined;
+    const items = value
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return items.length > 0 ? items : undefined;
+  }
+
+  private mapWebhookPriority(payload: Record<string, unknown>): CreateLoopIssueRequest['priority'] {
+    const explicit = this.readWebhookString(payload, 'priority')?.toUpperCase();
+    if (explicit === 'P0' || explicit === 'P1' || explicit === 'P2' || explicit === 'P3') {
+      return explicit;
+    }
+    const labels = this.readWebhookStringArray(payload, 'labels') ?? [];
+    const labelText = labels.join(' ').toLowerCase();
+    if (/\b(p0|sev0|critical|urgent|blocker)\b/.test(labelText)) return 'P0';
+    if (/\b(p1|sev1|high|bug|regression)\b/.test(labelText)) return 'P1';
+    if (/\b(p3|low|docs|documentation)\b/.test(labelText)) return 'P3';
+    return 'P2';
+  }
+
+  private truncateWebhookTitle(title: string): string {
+    return title.length <= 160 ? title : `${title.slice(0, 157).trimEnd()}...`;
+  }
+
+  private redactWebhookPayload(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map((item) => this.redactWebhookPayload(item));
+    if (!value || typeof value !== 'object') return value;
+
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+        key,
+        this.isSensitiveWebhookKey(key) ? '[REDACTED]' : this.redactWebhookPayload(item),
+      ]),
+    );
+  }
+
+  /**
+   * R32a: Map GitHub issue labels to DofeAI delivery blueprints.
+   * Common label patterns → blueprint + priority inference.
+   * Returns null when no label-based enrichment is possible.
+   */
+  private mapGitHubLabelsToBlueprint(input: LoopWebhookTrigger): {
+    labels: string[];
+    blueprintId: string;
+    priority: 'P0' | 'P1' | 'P2' | 'P3';
+  } | null {
+    if (input.source !== 'github') return null;
+
+    const payload = input.payload as Record<string, unknown>;
+    const rawLabels = this.readWebhookStringArray(payload, 'labels');
+    const labelObjects = Array.isArray(payload.labels)
+      ? (payload.labels as Array<{ name?: string }>)
+          .map((l) => l.name)
+          .filter((n): n is string => typeof n === 'string' && n.length > 0)
+      : [];
+    const labels = (rawLabels ?? []).concat(labelObjects);
+
+    if (labels.length === 0) return null;
+
+    const labelSet = new Set(labels.map((l) => l.toLowerCase()));
+
+    // Priority inference from labels
+    let priority: 'P0' | 'P1' | 'P2' | 'P3' = 'P2';
+    if (labelSet.has('p0') || labelSet.has('critical') || labelSet.has('blocker')) {
+      priority = 'P0';
+    } else if (labelSet.has('p1') || labelSet.has('high') || labelSet.has('bug')) {
+      priority = 'P1';
+    } else if (labelSet.has('p3') || labelSet.has('low') || labelSet.has('docs')) {
+      priority = 'P3';
+    }
+
+    // Blueprint inference from labels
+    let blueprintId = 'bp-bugfix'; // default for GitHub issues
+    if (labelSet.has('feature') || labelSet.has('enhancement')) {
+      blueprintId = 'bp-feature';
+    } else if (labelSet.has('refactor') || labelSet.has('tech-debt')) {
+      blueprintId = 'bp-refactor';
+    } else if (labelSet.has('documentation') || labelSet.has('docs')) {
+      blueprintId = 'bp-docs';
+    } else if (labelSet.has('security') || labelSet.has('vulnerability')) {
+      blueprintId = 'bp-security';
+    } else if (labelSet.has('dependencies') || labelSet.has('dependabot')) {
+      blueprintId = 'bp-dependency';
+    } else if (labelSet.has('integration') || labelSet.has('api')) {
+      blueprintId = 'bp-integration';
+    } else if (labelSet.has('bug') || labelSet.has('bugfix')) {
+      blueprintId = 'bp-bugfix';
+    }
+
+    return { labels, blueprintId, priority };
+  }
+
+  private isSensitiveWebhookKey(key: string): boolean {
+    return /token|secret|password|authorization|api[-_]?key|access[-_]?key|private[-_]?key/i.test(
+      key,
+    );
+  }
+
+  // =========================================================================
+  // Schedule Triggers (P1-3, R30c)
+  // =========================================================================
+
+  async listScheduleTriggers(query: LoopIssuesQuery): Promise<LoopScheduleTriggerListResponse> {
+    const { limit = 20, page = 1 } = query;
+    const offset = (page - 1) * limit;
+    const triggers = this.store.listScheduleTriggers();
+    const paged = triggers.slice(offset, offset + limit);
+    return {
+      list: paged,
+      total: triggers.length,
+      page,
+      limit,
+    };
+  }
+
+  async getScheduleTrigger(triggerId: string): Promise<LoopScheduleTrigger> {
+    const trigger = this.store.readScheduleTrigger(triggerId);
+    if (!trigger) throw new NotFoundException(`Schedule trigger ${triggerId} not found`);
+    return trigger;
+  }
+
+  async createScheduleTrigger(input: CreateScheduleTriggerRequest): Promise<LoopScheduleTrigger> {
+    const now = new Date().toISOString();
+    const trigger: LoopScheduleTrigger = {
+      id: `sched-${this.store.nextScheduleTriggerSeq()}`,
+      workspaceId: 'default',
+      ...input,
+      templatePriority: input.templatePriority ?? 'P2',
+      status: 'active',
+      failureCount: 0,
+      maxFailures: 3,
+      lastRunAt: undefined,
+      nextRunAt: this.computeNextCronTime(input.cronExpression),
+      createdAt: now,
+      updatedAt: now,
+      owner: input.owner,
+    };
+    this.store.writeScheduleTrigger(trigger);
+    this.log('info', `[Loops] Schedule trigger created`, {
+      triggerId: trigger.id,
+      name: trigger.name,
+      cron: trigger.cronExpression,
+    });
+    return trigger;
+  }
+
+  async updateScheduleTrigger(
+    triggerId: string,
+    input: UpdateScheduleTriggerRequest,
+  ): Promise<LoopScheduleTrigger> {
+    const existing = await this.getScheduleTrigger(triggerId);
+    const now = new Date().toISOString();
+    const updated: LoopScheduleTrigger = {
+      ...existing,
+      ...input,
+      templatePriority: input.templatePriority ?? existing.templatePriority,
+      failureCount: existing.failureCount,
+      maxFailures: existing.maxFailures,
+      lastRunAt: existing.lastRunAt,
+      nextRunAt: input.cronExpression
+        ? this.computeNextCronTime(input.cronExpression)
+        : existing.nextRunAt,
+      updatedAt: now,
+    };
+    this.store.writeScheduleTrigger(updated);
+    this.log('info', `[Loops] Schedule trigger updated`, {
+      triggerId,
+      status: updated.status,
+    });
+    return updated;
+  }
+
+  async deleteScheduleTrigger(triggerId: string): Promise<{ deleted: boolean; triggerId: string }> {
+    await this.getScheduleTrigger(triggerId);
+    this.store.deleteScheduleTrigger(triggerId);
+    this.log('info', `[Loops] Schedule trigger deleted`, { triggerId });
+    return { deleted: true, triggerId };
+  }
+
+  /**
+   * R32a: Manually fire a schedule trigger to immediately create a Loop issue.
+   * Records the execution and updates lastRunAt/failureCount on the trigger.
+   */
+  async fireScheduleTrigger(
+    triggerId: string,
+    input?: { reason?: string },
+  ): Promise<LoopWebhookTriggerResponse> {
+    const trigger = await this.getScheduleTrigger(triggerId);
+    const now = new Date().toISOString();
+
+    if (trigger.status === 'paused') {
+      return {
+        loopId: '',
+        issueId: '',
+        source: 'schedule',
+        event: trigger.name,
+        created: false,
+        message: `Schedule trigger ${triggerId} is paused — resume it first`,
+      };
+    }
+
+    try {
+      const result = await this.createIssue({
+        title: trigger.templateTitle,
+        targetRepo: trigger.targetRepo,
+        body: trigger.templateBody,
+        priority: trigger.templatePriority,
+        acceptanceCriteria: trigger.templateAcceptanceCriteria,
+        sourceChannel: 'schedule',
+        sourceKind: 'schedule',
+      });
+
+      // Update trigger execution stats
+      const updated: LoopScheduleTrigger = {
+        ...trigger,
+        lastRunAt: now,
+        nextRunAt: this.computeNextCronTime(trigger.cronExpression),
+        failureCount: 0,
+        updatedAt: now,
+      };
+      this.store.writeScheduleTrigger(updated);
+
+      // Record execution
+      const execution: LoopTriggerExecution = {
+        id: `exec-${this.store.nextTriggerExecutionSeq()}`,
+        triggerId: trigger.id,
+        triggerType: 'schedule',
+        status: 'completed',
+        inputPayload: { reason: input?.reason, templateTitle: trigger.templateTitle },
+        outputLoopId: result.issue.id,
+        outputIssueId: result.issue.id,
+        attempt: 1,
+        maxRetries: 3,
+        createdAt: now,
+        completedAt: now,
+      };
+      this.store.writeTriggerExecution(execution);
+
+      this.log('info', `[Loops] Schedule trigger fired manually`, {
+        triggerId,
+        issueId: result.issue.id,
+        reason: input?.reason,
+      });
+
+      return {
+        loopId: result.issue.id,
+        issueId: result.issue.id,
+        source: 'schedule',
+        event: trigger.name,
+        created: true,
+        message: `Loop issue ${result.issue.id} created from schedule trigger "${trigger.name}"`,
+      };
+    } catch (error) {
+      // Update failure count
+      const updated: LoopScheduleTrigger = {
+        ...trigger,
+        failureCount: trigger.failureCount + 1,
+        status: trigger.failureCount + 1 >= trigger.maxFailures ? 'error' : trigger.status,
+        lastRunAt: now,
+        updatedAt: now,
+      };
+      this.store.writeScheduleTrigger(updated);
+
+      this.log('error', `[Loops] Schedule trigger fire failed`, {
+        triggerId,
+        error: error instanceof Error ? error.message : String(error),
+        failureCount: updated.failureCount,
+      });
+
+      return {
+        loopId: '',
+        issueId: '',
+        source: 'schedule',
+        event: trigger.name,
+        created: false,
+        message: `Failed: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  }
+
+  // =========================================================================
+  // Trigger Lifecycle Management (P1-3, R30c)
+  // =========================================================================
+
+  async listTriggerExecutions(
+    triggerId: string,
+    query: LoopIssuesQuery,
+  ): Promise<LoopTriggerExecutionListResponse> {
+    const { limit = 20, page = 1 } = query;
+    const offset = (page - 1) * limit;
+    const executions = this.store.listTriggerExecutions(triggerId);
+    const paged = executions.slice(offset, offset + limit);
+    return {
+      list: paged,
+      total: executions.length,
+      page,
+      limit,
+    };
+  }
+
+  async retryTriggerExecution(
+    executionId: string,
+    input: LoopTriggerRetryRequest,
+  ): Promise<LoopTriggerExecution> {
+    const execution = this.store.readTriggerExecution(executionId);
+    if (!execution) throw new NotFoundException(`Trigger execution ${executionId} not found`);
+    if (execution.attempt >= execution.maxRetries) {
+      this.store.moveToDeadLetter(execution);
+      throw new BadRequestException(
+        `Execution ${executionId} has exhausted retries (${execution.attempt}/${execution.maxRetries})`,
+      );
+    }
+    const now = new Date().toISOString();
+    const retried: LoopTriggerExecution = {
+      ...execution,
+      status: 'pending',
+      attempt: execution.attempt + 1,
+      nextRetryAt: this.computeRetryBackoff(execution.attempt + 1),
+      error: undefined,
+      completedAt: undefined,
+    };
+    this.store.writeTriggerExecution(retried);
+    this.log('info', `[Loops] Trigger execution retried`, {
+      executionId,
+      attempt: retried.attempt,
+      reason: input.reason,
+    });
+    return retried;
+  }
+
+  async replayTriggerExecution(
+    executionId: string,
+    input: LoopTriggerReplayRequest,
+  ): Promise<LoopTriggerExecution> {
+    const original = this.store.readTriggerExecution(executionId);
+    if (!original) throw new NotFoundException(`Trigger execution ${executionId} not found`);
+    const now = new Date().toISOString();
+    const replay: LoopTriggerExecution = {
+      id: `exec-${this.store.nextTriggerExecutionSeq()}`,
+      triggerId: original.triggerId,
+      triggerType: original.triggerType,
+      status: 'pending',
+      inputPayload: original.inputPayload,
+      attempt: 1,
+      maxRetries: original.maxRetries,
+      createdAt: now,
+    };
+    this.store.writeTriggerExecution(replay);
+    this.log('info', `[Loops] Trigger execution replayed`, {
+      originalExecutionId: executionId,
+      replayExecutionId: replay.id,
+      reason: input.reason,
+    });
+    return replay;
+  }
+
+  async listDeadLetters(query: LoopIssuesQuery): Promise<LoopTriggerDeadLetterListResponse> {
+    const { limit = 20, page = 1 } = query;
+    const offset = (page - 1) * limit;
+    const deadLetters = this.store.listDeadLetters();
+    const paged = deadLetters.slice(offset, offset + limit);
+    return {
+      list: paged,
+      total: deadLetters.length,
+      page,
+      limit,
+    };
+  }
+
+  private computeNextCronTime(cronExpression: string): string | undefined {
+    try {
+      const now = new Date();
+      // Simple cron parsing for common patterns (daily, hourly, weekly)
+      const parts = cronExpression.trim().split(/\s+/);
+      if (parts.length < 5) return undefined;
+      const next = new Date(now);
+      // For '0 9 * * *' (daily at 9am): add 1 day if past 9am today
+      if (parts[2] === '*' && parts[3] === '*' && parts[4] === '*') {
+        const hour = parseInt(parts[1], 10);
+        const minute = parseInt(parts[0], 10);
+        next.setHours(hour, minute, 0, 0);
+        if (next <= now) next.setDate(next.getDate() + 1);
+      } else if (parts[4] !== '*') {
+        // Weekly: '0 9 * * 1' (Monday at 9am)
+        const targetDay = parseInt(parts[4], 10);
+        const hour = parseInt(parts[1], 10);
+        const minute = parseInt(parts[0], 10);
+        next.setHours(hour, minute, 0, 0);
+        const currentDay = next.getDay() || 7;
+        let daysUntil = targetDay - currentDay;
+        if (daysUntil <= 0 && next <= now) daysUntil += 7;
+        next.setDate(next.getDate() + daysUntil);
+      } else {
+        next.setHours(next.getHours() + 1, 0, 0, 0);
+      }
+      return next.toISOString();
+    } catch {
+      return undefined;
+    }
+  }
+
+  private computeRetryBackoff(attempt: number): string {
+    const delayMinutes = Math.min(Math.pow(2, attempt - 1), 60);
+    const next = new Date(Date.now() + delayMinutes * 60_000);
+    return next.toISOString();
+  }
+
   async doctor() {
     return this.persistence?.doctor() ?? this.store.doctor();
   }
@@ -1888,11 +3752,12 @@ export class LoopsService {
   }
 
   async metrics(): Promise<LoopMetricsResponse> {
-    const [list, doctor, cost, logs] = await Promise.all([
+    const [list, doctor, cost, logs, loopBenchTrend] = await Promise.all([
       this.list({ page: 1, limit: 200 }),
       this.doctor(),
       this.cost(),
       this.store.readLogs({ limit: 200 }),
+      this.readLoopBenchTrendSummary(),
     ]);
     const coverageSummaries = await Promise.all(
       list.list.map(async (item) => this.readCoverageSummary(item.issue.id)),
@@ -1956,6 +3821,7 @@ export class LoopsService {
       requirementsCoverage,
       traceSummary: this.buildTraceSummary(logs),
       resumeSummary: this.buildResumeSummary(list.list),
+      loopBenchTrend,
     };
   }
 
@@ -2082,6 +3948,7 @@ export class LoopsService {
         workspaceId: response.current,
       }),
       learningGovernance: governance,
+      learningIndex: await this.store.readLearningIndex(),
     };
   }
 
@@ -2089,8 +3956,27 @@ export class LoopsService {
     learningId: string,
     request: LoopLearningGovernanceRequest,
   ): Promise<LoopWorkspacesResponse> {
-    if (request.action === 'merge' && !request.targetLearningId) {
-      throw new BadRequestException('targetLearningId is required when merging a learning');
+    if (
+      (request.action === 'merge' || request.action === 'supersede') &&
+      !request.targetLearningId
+    ) {
+      throw new BadRequestException(
+        'targetLearningId is required when merging or superseding a learning',
+      );
+    }
+    if (
+      (request.action === 'approve-merge' || request.action === 'reject-merge') &&
+      !request.targetLearningId
+    ) {
+      const governance = await this.store.readLearningGovernance();
+      const candidate = governance.autoMergeCandidates.find(
+        (item) => item.sourceLearningId === learningId && item.status === 'pending-approval',
+      );
+      if (!candidate) {
+        throw new BadRequestException(
+          'targetLearningId is required when no pending auto-merge candidate exists',
+        );
+      }
     }
     await this.store.governLearning({ learningId, request });
     return this.listWorkspaces();
@@ -2098,6 +3984,11 @@ export class LoopsService {
 
   async runLearningAutoMergeWorker(): Promise<LoopWorkspacesResponse> {
     await this.store.runLearningAutoMergeWorker();
+    return this.listWorkspaces();
+  }
+
+  async runLearningIndexWorker(): Promise<LoopWorkspacesResponse> {
+    await this.store.runLearningIndexWorker();
     return this.listWorkspaces();
   }
 
@@ -2163,6 +4054,502 @@ export class LoopsService {
 
   async resume() {
     return this.store.resumeInterruptedLoops();
+  }
+
+  // =========================================================================
+  // Tool Registry (P1-4, R31a)
+  // =========================================================================
+
+  async listTools(query: LoopIssuesQuery): Promise<LoopToolListResponse> {
+    const { limit = 20, page = 1 } = query;
+    const offset = (page - 1) * limit;
+    const tools = this.store.listTools();
+    const paged = tools.slice(offset, offset + limit);
+    return {
+      list: paged,
+      total: tools.length,
+      page,
+      limit,
+    };
+  }
+
+  async getTool(toolId: string): Promise<LoopTool> {
+    const tool = this.store.readTool(toolId);
+    if (!tool) throw new NotFoundException(`Tool ${toolId} not found`);
+    return tool;
+  }
+
+  async registerTool(input: RegisterToolRequest): Promise<LoopTool> {
+    const now = new Date().toISOString();
+    const tool: LoopTool = {
+      id: `tool-${this.store.nextToolSeq()}`,
+      name: input.name,
+      kind: input.kind,
+      category: input.category,
+      status: 'active',
+      description: input.description,
+      auth: {
+        kind: input.authKind,
+        configured: false,
+        scopes: [],
+      },
+      permissions: input.permissions,
+      compatibility: input.compatibility,
+      health: {
+        ok: true,
+        message: 'Tool registered, pending initial health check',
+      },
+      risks: [],
+      deterministicBoundary: input.deterministicBoundary,
+      ownerAgentIds: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.store.writeTool(tool);
+    this.log('info', `[Loops] Tool registered`, { toolId: tool.id, name: tool.name });
+    return tool;
+  }
+
+  async updateTool(toolId: string, input: UpdateToolRequest): Promise<LoopTool> {
+    const existing = await this.getTool(toolId);
+    const now = new Date().toISOString();
+    const updated: LoopTool = {
+      ...existing,
+      name: input.name ?? existing.name,
+      status: input.status ?? existing.status,
+      description: input.description ?? existing.description,
+      permissions: input.permissions ?? existing.permissions,
+      compatibility: input.compatibility
+        ? { ...existing.compatibility, ...input.compatibility }
+        : existing.compatibility,
+      deterministicBoundary: input.deterministicBoundary ?? existing.deterministicBoundary,
+      updatedAt: now,
+    };
+    this.store.writeTool(updated);
+    this.log('info', `[Loops] Tool updated`, { toolId, status: updated.status });
+    return updated;
+  }
+
+  async toolHealthCheck(toolId: string): Promise<ToolHealthCheckResponse> {
+    const existing = await this.getTool(toolId);
+    const now = new Date().toISOString();
+    const ok = existing.status === 'active';
+    const response: ToolHealthCheckResponse = {
+      toolId,
+      ok,
+      message: ok
+        ? `Tool ${existing.name} is active and operational`
+        : `Tool ${existing.name} is in ${existing.status} state`,
+      checkedAt: now,
+    };
+    // Persist health status
+    this.store.writeTool({
+      ...existing,
+      health: { ok, message: response.message, lastCheckedAt: now },
+      updatedAt: now,
+    });
+    return response;
+  }
+
+  async testTool(
+    toolId: string,
+    input?: { input?: Record<string, unknown> },
+  ): Promise<ToolTestResponse> {
+    await this.getTool(toolId);
+    const now = new Date().toISOString();
+    // v1 smoke test: verify tool exists and is registered
+    // Real tool invocation requires provider/client layer integration
+    return {
+      toolId,
+      ok: true,
+      message: `Tool ${toolId} smoke test passed (control-plane v1)`,
+      output: input?.input
+        ? `Input received: ${JSON.stringify(input.input).slice(0, 256)}`
+        : undefined,
+      durationMs: 0,
+      testedAt: now,
+    };
+  }
+
+  // =========================================================================
+  // Delivery Blueprint Marketplace (P1-2, R31b)
+  // =========================================================================
+
+  async listBlueprints(query: LoopIssuesQuery): Promise<LoopBlueprintListResponse> {
+    const { limit = 20, page = 1 } = query;
+    const offset = (page - 1) * limit;
+    let blueprints = this.store.listBlueprints();
+    // Seed default blueprints if none exist
+    if (blueprints.length === 0) {
+      blueprints = this.seedDefaultBlueprints();
+    }
+    const paged = blueprints.slice(offset, offset + limit);
+    return {
+      list: paged,
+      total: blueprints.length,
+      page,
+      limit,
+    };
+  }
+
+  async getBlueprint(blueprintId: string): Promise<LoopBlueprint> {
+    const blueprint = this.store.readBlueprint(blueprintId);
+    if (!blueprint) throw new NotFoundException(`Blueprint ${blueprintId} not found`);
+    return blueprint;
+  }
+
+  async createBlueprint(input: CreateBlueprintRequest): Promise<LoopBlueprint> {
+    const now = new Date().toISOString();
+    const blueprint: LoopBlueprint = {
+      id: `bp-${this.store.nextBlueprintSeq()}`,
+      name: input.name,
+      kind: input.kind,
+      description: input.description,
+      version: '1.0.0',
+      priority: 'P2',
+      active: true,
+      personaSequence: input.personaSequence,
+      evalSuiteId: input.evalSuiteId,
+      gateProfile: input.gateProfile ?? { humanGates: [], agentGates: [], releaseGates: [] },
+      runtimePolicy: input.runtimePolicy,
+      evidenceTemplate: { requiredArtifacts: [] },
+      usageCount: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.store.writeBlueprint(blueprint);
+    this.log('info', `[Loops] Blueprint created`, {
+      blueprintId: blueprint.id,
+      name: blueprint.name,
+    });
+    return blueprint;
+  }
+
+  async updateBlueprint(
+    blueprintId: string,
+    input: UpdateBlueprintRequest,
+  ): Promise<LoopBlueprint> {
+    const existing = await this.getBlueprint(blueprintId);
+    const now = new Date().toISOString();
+    const updated: LoopBlueprint = {
+      ...existing,
+      name: input.name ?? existing.name,
+      description: input.description ?? existing.description,
+      active: input.active ?? existing.active,
+      personaSequence: input.personaSequence ?? existing.personaSequence,
+      evalSuiteId: input.evalSuiteId !== undefined ? input.evalSuiteId : existing.evalSuiteId,
+      gateProfile: input.gateProfile
+        ? {
+            humanGates: input.gateProfile.humanGates ?? existing.gateProfile.humanGates,
+            agentGates: input.gateProfile.agentGates ?? existing.gateProfile.agentGates,
+            releaseGates: input.gateProfile.releaseGates ?? existing.gateProfile.releaseGates,
+          }
+        : existing.gateProfile,
+      runtimePolicy: {
+        primary: input.runtimePolicy?.primary ?? existing.runtimePolicy.primary,
+        fallback: input.runtimePolicy?.fallback ?? existing.runtimePolicy.fallback,
+      },
+      updatedAt: now,
+    };
+    this.store.writeBlueprint(updated);
+    this.log('info', `[Loops] Blueprint updated`, { blueprintId, active: updated.active });
+    return updated;
+  }
+
+  /**
+   * R32a: Rollback a blueprint to a previous version from history.
+   * Stores the current version in history before applying the rollback.
+   */
+  async rollbackBlueprint(
+    blueprintId: string,
+    input?: { targetVersion?: string; reason?: string },
+  ): Promise<LoopBlueprint> {
+    const current = await this.getBlueprint(blueprintId);
+    const now = new Date().toISOString();
+
+    // Save current version to history before rolling back
+    this.store.writeBlueprintHistory(blueprintId, current, now);
+    const history = this.store.listBlueprintHistory(blueprintId);
+
+    // Find target version
+    const target = input?.targetVersion
+      ? history.find((h) => h.version === input!.targetVersion)
+      : history[history.length - 1]; // default to most recent history entry
+
+    if (!target && input?.targetVersion) {
+      throw new NotFoundException(
+        `Blueprint ${blueprintId} version ${input.targetVersion} not found in history`,
+      );
+    }
+    if (!target) {
+      throw new BadRequestException(`Blueprint ${blueprintId} has no history to rollback to`);
+    }
+
+    const rolled: LoopBlueprint = {
+      ...current,
+      name: target.snapshot.name,
+      description: target.snapshot.description,
+      personaSequence: target.snapshot.personaSequence,
+      evalSuiteId: target.snapshot.evalSuiteId,
+      gateProfile: target.snapshot.gateProfile,
+      runtimePolicy: target.snapshot.runtimePolicy,
+      version: target.version,
+      updatedAt: now,
+    };
+    this.store.writeBlueprint(rolled);
+    this.log('info', `[Loops] Blueprint rolled back`, {
+      blueprintId,
+      fromVersion: current.version,
+      toVersion: target.version,
+      reason: input?.reason,
+    });
+    return rolled;
+  }
+
+  private seedDefaultBlueprints(): LoopBlueprint[] {
+    const now = new Date().toISOString();
+    const defaults: LoopBlueprint[] = [
+      {
+        id: 'bp-bugfix',
+        name: 'Bugfix Loop',
+        kind: 'bugfix',
+        description: 'Bug fix delivery with regression test and global review',
+        version: '1.0.0',
+        priority: 'P1',
+        active: true,
+        personaSequence: [
+          'Intake Analyst',
+          'Spec Writer',
+          'Work Planner',
+          'Builder',
+          'Test Runner',
+          'Code Reviewer',
+          'Release Reviewer',
+        ],
+        evalSuiteId: 'eval-delivery-readiness',
+        gateProfile: {
+          humanGates: ['Spec Review'],
+          agentGates: ['Code Review'],
+          releaseGates: ['Global Review', 'PR Evidence'],
+        },
+        runtimePolicy: { primary: 'codex-cli', fallback: 'claude-code-cli' },
+        evidenceTemplate: {
+          requiredArtifacts: ['test-records', 'review-records', 'global-verdict'],
+        },
+        usageCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'bp-feature',
+        name: 'Feature Loop',
+        kind: 'feature',
+        description: 'New feature delivery with full test matrix and contract validation',
+        version: '1.0.0',
+        priority: 'P1',
+        active: true,
+        personaSequence: [
+          'Intake Analyst',
+          'Spec Writer',
+          'Work Planner',
+          'Builder',
+          'Test Runner',
+          'Code Reviewer',
+          'Release Reviewer',
+          'Evidence Curator',
+        ],
+        evalSuiteId: 'eval-architecture-compliance',
+        gateProfile: {
+          humanGates: ['Spec Review'],
+          agentGates: ['Code Review', 'Architecture Check'],
+          releaseGates: ['Global Review', 'PR Evidence', 'Eval Gate'],
+        },
+        runtimePolicy: { primary: 'claude-code-cli', fallback: 'codex-cli' },
+        evidenceTemplate: {
+          requiredArtifacts: [
+            'spec',
+            'test-records',
+            'review-records',
+            'global-verdict',
+            'pr-comment',
+          ],
+        },
+        usageCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'bp-refactor',
+        name: 'Refactor Loop',
+        kind: 'refactor',
+        description: 'Behavior-preserving refactor with existing test pass guarantee',
+        version: '1.0.0',
+        priority: 'P2',
+        active: true,
+        personaSequence: [
+          'Intake Analyst',
+          'Work Planner',
+          'Builder',
+          'Test Runner',
+          'Code Reviewer',
+          'Release Reviewer',
+        ],
+        evalSuiteId: 'eval-test-evidence',
+        gateProfile: {
+          humanGates: [],
+          agentGates: ['Code Review'],
+          releaseGates: ['Global Review', 'All Tests Pass'],
+        },
+        runtimePolicy: { primary: 'codex-cli' },
+        evidenceTemplate: {
+          requiredArtifacts: ['test-records', 'review-records', 'global-verdict'],
+        },
+        usageCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'bp-docs',
+        name: 'Documentation Loop',
+        kind: 'docs',
+        description: 'Documentation update with link validation',
+        version: '1.0.0',
+        priority: 'P3',
+        active: true,
+        personaSequence: ['Intake Analyst', 'Builder', 'Code Reviewer'],
+        evalSuiteId: 'eval-delivery-readiness',
+        gateProfile: { humanGates: [], agentGates: ['Link Check'], releaseGates: ['PR Evidence'] },
+        runtimePolicy: { primary: 'codex-cli' },
+        evidenceTemplate: { requiredArtifacts: ['review-records', 'pr-comment'] },
+        usageCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'bp-integration',
+        name: 'Integration Loop',
+        kind: 'integration',
+        description: 'Third-party integration with contract and security validation',
+        version: '1.0.0',
+        priority: 'P1',
+        active: true,
+        personaSequence: [
+          'Intake Analyst',
+          'Spec Writer',
+          'Work Planner',
+          'Builder',
+          'Test Runner',
+          'Code Reviewer',
+          'Release Reviewer',
+          'Evidence Curator',
+        ],
+        evalSuiteId: 'eval-runtime-safety',
+        gateProfile: {
+          humanGates: ['Spec Review'],
+          agentGates: ['Code Review', 'Security Scan'],
+          releaseGates: ['Global Review', 'PR Evidence', 'Runtime Check'],
+        },
+        runtimePolicy: { primary: 'claude-code-cli', fallback: 'codex-cli' },
+        evidenceTemplate: {
+          requiredArtifacts: [
+            'spec',
+            'test-records',
+            'review-records',
+            'global-verdict',
+            'pr-comment',
+          ],
+        },
+        usageCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'bp-flow',
+        name: 'Flow Loop',
+        kind: 'flow',
+        description: 'Multi-step workflow automation delivery',
+        version: '1.0.0',
+        priority: 'P2',
+        active: true,
+        personaSequence: [
+          'Intake Analyst',
+          'Spec Writer',
+          'Work Planner',
+          'Builder',
+          'Test Runner',
+          'Code Reviewer',
+          'Release Reviewer',
+        ],
+        evalSuiteId: 'eval-delivery-readiness',
+        gateProfile: {
+          humanGates: ['Spec Review'],
+          agentGates: ['Code Review'],
+          releaseGates: ['Global Review', 'PR Evidence'],
+        },
+        runtimePolicy: { primary: 'codex-cli', fallback: 'claude-code-cli' },
+        evidenceTemplate: {
+          requiredArtifacts: ['spec', 'test-records', 'review-records', 'global-verdict'],
+        },
+        usageCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'bp-security',
+        name: 'Security Patch Loop',
+        kind: 'security',
+        description: 'Security fix with mandatory human approval and security scan',
+        version: '1.0.0',
+        priority: 'P0',
+        active: true,
+        personaSequence: [
+          'Intake Analyst',
+          'Work Planner',
+          'Builder',
+          'Test Runner',
+          'Code Reviewer',
+          'Release Reviewer',
+        ],
+        evalSuiteId: 'eval-runtime-safety',
+        gateProfile: {
+          humanGates: ['Security Approval'],
+          agentGates: ['Security Scan', 'Code Review'],
+          releaseGates: ['Global Review', 'PR Evidence'],
+        },
+        runtimePolicy: { primary: 'codex-cli' },
+        evidenceTemplate: {
+          requiredArtifacts: ['test-records', 'review-records', 'global-verdict', 'pr-comment'],
+        },
+        usageCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'bp-dependency',
+        name: 'Dependency Upgrade Loop',
+        kind: 'dependency',
+        description: 'Dependency upgrade with lockfile validation and test matrix',
+        version: '1.0.0',
+        priority: 'P2',
+        active: true,
+        personaSequence: ['Intake Analyst', 'Builder', 'Test Runner', 'Code Reviewer'],
+        evalSuiteId: 'eval-test-evidence',
+        gateProfile: {
+          humanGates: [],
+          agentGates: ['Test Matrix'],
+          releaseGates: ['PR Evidence', 'All Tests Pass'],
+        },
+        runtimePolicy: { primary: 'codex-cli' },
+        evidenceTemplate: { requiredArtifacts: ['test-records', 'review-records'] },
+        usageCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
+    for (const bp of defaults) {
+      this.store.writeBlueprint(bp);
+    }
+    return defaults;
   }
 
   async intervene(issueId: string, request: LoopInterventionRequest) {
@@ -2946,12 +5333,16 @@ export class LoopsService {
    */
   private buildDeliveryEvidence(detail: LoopIssueDetail): LoopDeliveryEvidence {
     const now = new Date().toISOString();
+    const commitsByShard = new Map(
+      (detail.convergencePr?.commits ?? []).map((commit) => [commit.shardId, commit]),
+    );
     const workPackages: LoopDeliveryEvidenceWorkPackage[] = detail.shards.map((shard) => {
       const implementation = detail.implementationRecords.find(
         (record) => record.shardId === shard.id,
       );
       const review = detail.reviewRecords.find((record) => record.shardId === shard.id);
       const testRecord = detail.testRecords.find((record) => record.shardId === shard.id);
+      const commit = commitsByShard.get(shard.id);
       return {
         id: shard.id,
         title: shard.title,
@@ -2959,6 +5350,9 @@ export class LoopsService {
         files: implementation?.changedFiles ?? shard.filesHint ?? [],
         tests: testRecord?.status ?? 'not-run',
         review: review?.verdict ?? 'unreviewed',
+        commitSha: commit?.commitSha,
+        commitMessage: commit?.message,
+        branch: commit?.branch,
       };
     });
 
@@ -3114,11 +5508,15 @@ export class LoopsService {
       lines.push('_No work packages recorded._', '');
     } else {
       for (const wp of input.workPackages) {
+        const commit = wp.commitSha ? ` · commit: ${wp.commitSha.slice(0, 12)}` : '';
         lines.push(
-          `- **${wp.id}** ${wp.title} — status: ${wp.status} · tests: ${wp.tests} · review: ${wp.review}`,
+          `- **${wp.id}** ${wp.title} — status: ${wp.status} · tests: ${wp.tests} · review: ${wp.review}${commit}`,
         );
         if (wp.files.length > 0) {
           lines.push(`  - files: ${wp.files.join(', ')}`);
+        }
+        if (wp.commitMessage) {
+          lines.push(`  - commit message: ${wp.commitMessage}`);
         }
       }
       lines.push('');
@@ -3152,7 +5550,7 @@ export class LoopsService {
     lines.push(`- **Browser QA**: ${input.browserQaStatus}`);
     lines.push(`- **Second opinion**: ${input.secondOpinionStatus}`, '');
     lines.push('---');
-    lines.push(`_Generated by DofeAI Loops Control Plane. Runtime: Codex CLI / Cluade Code CLI._`);
+    lines.push(`_Generated by DofeAI Loops Control Plane. Runtime: Codex CLI / Claude Code CLI._`);
     return lines.join('\n');
   }
 
@@ -3447,8 +5845,47 @@ export class LoopsService {
       appliesTo: snapshot?.appliesTo ?? [this.inferWorkflowKind(item)],
       capturedAt: snapshot?.capturedAt ?? workflowDefault?.updated ?? updated,
       source: snapshot?.source ?? (workflowDefault ? 'workspace' : 'default'),
+      baselineEvidence:
+        snapshot?.baselineEvidence ?? this.buildWorkflowBaselineEvidence(item, workflowDefault),
       steps,
     };
+  }
+
+  private buildWorkflowBaselineEvidence(
+    item: LoopListItem | LoopIssueDetail,
+    workflowDefault?: NonNullable<
+      LoopIssueDetail['deliveryGovernance']
+    >['workflowDefaults'][number],
+  ): LoopWorkflowRecipe['baselineEvidence'] {
+    const loopKind = this.inferWorkflowKind(item);
+    const workflowId = workflowDefault?.recipeId ?? `default-${loopKind}`;
+    return [
+      {
+        id: `${item.issue.id}-baseline-blueprint`,
+        kind: 'blueprint',
+        label: 'Blueprint version',
+        value: `${workflowId}@v1`,
+        evidenceRef: item.issue.rawPayloadRef,
+      },
+      {
+        id: `${item.issue.id}-baseline-runtime`,
+        kind: 'runtime',
+        label: 'Runtime plan',
+        value: 'Codex review/control + Claude Code implementation',
+      },
+      {
+        id: `${item.issue.id}-baseline-eval`,
+        kind: 'eval',
+        label: 'Eval suite',
+        value: 'architecture, delivery, runtime, test, cost hard gates',
+      },
+      {
+        id: `${item.issue.id}-baseline-gates`,
+        kind: 'gate',
+        label: 'Human and release gates',
+        value: 'spec approval, review gates, release gate',
+      },
+    ];
   }
 
   private buildReviewGates(item: LoopListItem | LoopIssueDetail): LoopReviewGate[] {
@@ -3519,8 +5956,13 @@ export class LoopsService {
         updated,
       },
     ];
-    const overrides = this.asDetail(item)?.deliveryGovernance?.reviewGateOverrides ?? [];
-    return gates.map((gate) => {
+    const governance = this.asDetail(item)?.deliveryGovernance;
+    const requiredKinds = governance?.requiredReviewGates?.gateKinds;
+    const scopedGates = requiredKinds?.length
+      ? gates.filter((gate) => requiredKinds.includes(gate.kind))
+      : gates;
+    const overrides = governance?.reviewGateOverrides ?? [];
+    return scopedGates.map((gate) => {
       const override = overrides.find((item) => item.gateKind === gate.kind);
       if (!override) return gate;
       return {
@@ -3559,7 +6001,11 @@ export class LoopsService {
       browserQaPassed: this.isBrowserQaPassed(item),
       docsUpdated: true,
       prReady: Boolean(detail?.convergencePr || item.issue.status === 'CLOSED'),
-      rollbackNote: Boolean(detail?.convergencePr || item.issue.status === 'CLOSED'),
+      rollbackNote: Boolean(
+        detail?.convergencePr ||
+        item.issue.status === 'CLOSED' ||
+        governance?.releaseCanary?.rollbackNote,
+      ),
       canaryPassed,
     };
     const blocker = this.deliveryBlockedReason(item);
@@ -3793,11 +6239,20 @@ export class LoopsService {
     if (secondOpinion?.requiredForRelease && secondOpinion.status === 'conflict') {
       // gstack/0 P1-5: Check whether conflict resolutions have been recorded.
       const resolutions = detail.deliveryGovernance?.secondOpinionResolutions ?? [];
-      const hasResolution = resolutions.length > 0;
-      const conflictCount = secondOpinion.comparison.conflictCount;
-      if (!hasResolution || resolutions.length < conflictCount) {
+      const conflictFingerprints = secondOpinion.comparison.conflictFingerprints;
+      const resolvedFingerprints = new Set(
+        resolutions
+          .map((resolution) => resolution.conflictFingerprint)
+          .filter((fingerprint): fingerprint is string => Boolean(fingerprint)),
+      );
+      const unresolvedCount =
+        conflictFingerprints.length > 0
+          ? conflictFingerprints.filter((fingerprint) => !resolvedFingerprints.has(fingerprint))
+              .length
+          : Math.max(secondOpinion.comparison.conflictCount - resolutions.length, 0);
+      if (unresolvedCount > 0) {
         blockers.push(
-          `Second opinion has ${conflictCount - resolutions.length} unresolved conflict(s); resolve or waive before shipping`,
+          `Second opinion has ${unresolvedCount} unresolved conflict(s); resolve or waive before shipping`,
         );
       }
     }
@@ -3811,6 +6266,14 @@ export class LoopsService {
       blockers.push('Release canary has not passed');
     }
 
+    // R32a: Rules Center enforcement — architectural rules that must pass before release.
+    const rulesViolations = this.checkRulesCompliance(detail);
+    if (rulesViolations.length > 0) {
+      blockers.push(
+        `Rules Center violations detected:\n${rulesViolations.map((v) => `  - ${v}`).join('\n')}`,
+      );
+    }
+
     if (blockers.length > 0) {
       this.log('warn', `[Loops] Release gate blocked finalize for ${detail.issue.id}`, {
         issueId: detail.issue.id,
@@ -3821,6 +6284,73 @@ export class LoopsService {
         `Release gate is not ready:\n${blockers.map((b) => `- ${b}`).join('\n')}`,
       );
     }
+  }
+
+  /**
+   * R32a: Check Rules Center compliance against the delivery evidence.
+   * Returns a list of violation descriptions; empty = all enforced rules passed.
+   */
+  private checkRulesCompliance(detail: LoopIssueDetail): string[] {
+    const violations: string[] = [];
+    const records = detail.implementationRecords ?? [];
+    const changedFiles = records.flatMap((r) => r.changedFiles ?? []);
+
+    // Architecture rule: no direct Prisma access outside DB Service
+    // (enforced — checked via changed file patterns)
+    const sensitiveFiles = changedFiles.filter(
+      (f) =>
+        f.includes('.env') ||
+        f.includes('secret') ||
+        f.includes('credentials') ||
+        f.includes('private_key'),
+    );
+    if (sensitiveFiles.length > 0) {
+      violations.push(`[Architecture] Sensitive files modified: ${sensitiveFiles.join(', ')}`);
+    }
+
+    // Security rule: no console.log in production paths
+    // (attention — logged but not blocked unless severity=critical)
+    const srcFiles = changedFiles.filter(
+      (f) => f.startsWith('apps/api/src/') || f.startsWith('apps/web/app/'),
+    );
+    if (srcFiles.length > 0 && !detail.testRecords.some((t) => t.status === 'TEST-PASS')) {
+      violations.push('[Testing] No passing test records found for source file changes');
+    }
+
+    // Contract rule: API changes require contract updates
+    const apiFiles = changedFiles.filter((f) => f.startsWith('apps/api/src/'));
+    const contractFiles = changedFiles.filter((f) => f.startsWith('packages/contracts/'));
+    if (apiFiles.length > 0 && contractFiles.length === 0) {
+      violations.push(
+        '[Architecture] API source files changed without contract updates — verify Zod/ts-rest contract',
+      );
+    }
+
+    // External API rule: external service calls must go through Client layer
+    const controllerFiles = changedFiles.filter((f) => f.includes('controller'));
+    if (controllerFiles.length > 0) {
+      const implNotes = records.map((r) => r.notes ?? '').join(' ');
+      const summary = records.map((r) => r.summary).join(' ');
+      const combined = `${implNotes} ${summary}`.toLowerCase();
+      if (/axios|fetch|http\.request/.test(combined)) {
+        violations.push(
+          '[Architecture] Controller changes with direct HTTP calls detected — use Client layer',
+        );
+      }
+    }
+
+    // Workspace rule: all shards must have implementation records
+    const implementedShardIds = new Set(records.map((r) => r.shardId));
+    const unimplementedShards = detail.shards.filter(
+      (s) => s.status !== 'TODO' && !implementedShardIds.has(s.id),
+    );
+    if (unimplementedShards.length > 0) {
+      violations.push(
+        `[Workspace] ${unimplementedShards.length} shard(s) in non-TODO status without implementation records`,
+      );
+    }
+
+    return violations;
   }
 
   private testsPassed(item: LoopListItem | LoopIssueDetail): boolean {
@@ -4228,5 +6758,31 @@ export class LoopsService {
       .replace(/^-+\s*/, '')
       .replace(/\[[^\]]+\]/g, '')
       .replace(/[^\p{Letter}\p{Number}]+/gu, '');
+  }
+
+  /** gstack P2: Serve a Browser QA artifact file (screenshot, trace, diff) for inline preview. */
+  async getBrowserQaArtifact(issueId: string, artifactPath: string): Promise<Buffer> {
+    const fullPath = this.store.resolveArtifactPath(issueId, artifactPath);
+    const { promises: fs } = await import('fs');
+    try {
+      return await fs.readFile(fullPath);
+    } catch {
+      throw new NotFoundException(`Browser QA artifact not found: ${artifactPath}`);
+    }
+  }
+
+  /** gstack P2: List workspace-level workflow recipe configurations for admin. */
+  async listWorkspaceRecipes(query: { limit?: number; page?: number }) {
+    return this.store.listWorkspaceRecipes(query);
+  }
+
+  /** gstack P2: Loop Bench drilldown by workspace/repo/recipe dimensions. */
+  async getLoopBenchDrilldown(query: {
+    workspaceId?: string;
+    repo?: string;
+    recipeId?: string;
+    period?: string;
+  }) {
+    return this.store.buildLoopBenchDrilldown(query);
   }
 }

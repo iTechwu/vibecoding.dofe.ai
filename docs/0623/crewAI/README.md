@@ -23,7 +23,7 @@ DofeAI 不应横向复制 CrewAI 的通用 agent framework，而应把 Loops 定
 | [04-optimization-recommendations.md](./04-optimization-recommendations.md)           | 对 DofeAI 的产品与工程优化建议                                                         |
 | [05-roadmap.md](./05-roadmap.md)                                                     | 30/60/90 天路线图与验收标准                                                            |
 | [06-sources.md](./06-sources.md)                                                     | 资料来源、可信度、分析边界                                                             |
-| [IMPLEMENTATION-ANNOTATIONS.md](./IMPLEMENTATION-ANNOTATIONS.md)                     | 基于六轮代码实施后的准确标注（R1-R6）                                                  |
+| [IMPLEMENTATION-ANNOTATIONS.md](./IMPLEMENTATION-ANNOTATIONS.md)                     | 基于 R31/R31.1 代码实施与回归后的准确标注                                              |
 | [07-product-iteration-recommendations.md](./07-product-iteration-recommendations.md) | 产品经理视角的深度对比审查与迭代建议（R7）                                             |
 
 ## 关键结论
@@ -41,9 +41,9 @@ DofeAI 不应横向复制 CrewAI 的通用 agent framework，而应把 Loops 定
 | P0     | 将 Loops 包装为 Software Delivery Workforce | 把 Phase/Shards 变成用户能理解的团队与交接流程                                |
 | P0     | 建立 Runtime Backend Registry               | 已闭合 Dashboard v1：将 Codex/Claude local/Docker 探测包装为 Runtime Backends |
 | P0     | 建立 Eval Suite v1                          | 已闭合 Eval Plan v1：把交付、运行时安全、测试证据和成本策略做成硬关卡视图     |
-| P1     | 建立 Blueprint Marketplace v1               | 沉淀 Bugfix/API/UI/Refactor/Security 等可复制交付模板                         |
+| P1     | 建立 Blueprint Marketplace v1               | 已闭合 backend CRUD v1：版本化 blueprint、8 个内置 seed、文件态持久化与 audit |
 | P1     | Trigger Contract v2                         | 从手动创建 Loop 扩展到 webhook、schedule、GitHub/Linear/Slack                 |
-| P1     | Tool & Integration Registry                 | 将 capability registry 产品化为工具、权限、健康、授权和审计中心               |
+| P1     | Tool & Integration Registry                 | 已闭合 backend CRUD v1：工具 schema、权限、健康检查、smoke test 与审计中心    |
 | P2     | Enterprise Control Plane                    | 组织级成本、运行时、规则、审计、事件流和资产权限                              |
 
 ## 对 DofeAI 的定位建议
@@ -69,7 +69,7 @@ DofeAI 不应横向复制 CrewAI 的通用 agent framework，而应把 Loops 定
 ## 最大产品缺口
 
 - 缺少 CrewAI 式一眼可懂的“团队/流程/部署/运行”心智。
-- 缺少可编辑、可复用、可版本化的 delivery blueprint。
+- 已有可编辑、可复用、可版本化的 delivery blueprint backend v1；跨租户共享、clone、version rollback 仍是后续基础设施 Epic。
 - 缺少可复用 eval suite 与组织级质量趋势。
-- 缺少 trigger、tool、runtime、rule 的生命周期管理。
+- trigger、tool、runtime、rule 均已有 lifecycle control-plane v1；真实分布式调度、provider invocation 与跨租户治理仍待深化。
 - 缺少企业采购语境下的 Agent Control Plane：组织级健康、成本、规则、权限、审计、事件流。

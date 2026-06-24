@@ -18,6 +18,7 @@ export type LoopsCommitShardResult = {
   committed: boolean;
   message: string;
   branch?: string;
+  commitSha?: string;
 };
 
 export type LoopsConvergencePrInput = {

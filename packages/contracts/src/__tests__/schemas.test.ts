@@ -237,6 +237,57 @@ describe('Schemas', () => {
                 createdAt: '2026-06-23T01:05:00.000Z',
               },
             ],
+            deprecated: [
+              {
+                learningId: 'learning-old',
+                actor: 'dashboard',
+                reason: 'Superseded by release gate guidance',
+                createdAt: '2026-06-23T01:10:00.000Z',
+              },
+            ],
+            superseded: [
+              {
+                sourceLearningId: 'learning-old-pattern',
+                targetLearningId: 'learning-new-pattern',
+                actor: 'dashboard',
+                reason: 'Replaced by newer guidance',
+                createdAt: '2026-06-23T01:12:00.000Z',
+              },
+            ],
+            autoMergeCandidates: [
+              {
+                sourceLearningId: 'learning-duplicate',
+                targetLearningId: 'learning-1',
+                status: 'pending-approval',
+                reason: 'Similar fingerprint',
+                createdAt: '2026-06-23T01:15:00.000Z',
+              },
+            ],
+          },
+          learningIndex: {
+            generatedAt: '2026-06-23T01:20:00.000Z',
+            artifactRef: '.loops/learnings/cross-workspace-index.json',
+            summary: {
+              total: 1,
+              workspaces: 1,
+              repos: 1,
+              duplicateFingerprints: 0,
+              reusable: 0,
+            },
+            entries: [
+              {
+                learningId: 'learning-1',
+                workspaceId: 'default',
+                repo: '/repo',
+                kind: 'test_policy',
+                fingerprint: 'learning-fingerprint',
+                tags: ['test', 'policy'],
+                confidence: 0.85,
+                evidenceIds: ['test-record-1'],
+                recallCount: 0,
+                createdAt: '2026-06-23T00:00:00.000Z',
+              },
+            ],
           },
           workspaces: [
             {
@@ -298,9 +349,243 @@ describe('Schemas', () => {
 
         expect(
           schemas.LoopLearningGovernanceRequestSchema.safeParse({
+            action: 'approve-merge',
+            targetLearningId: 'learning-target',
+          }).success,
+        ).toBe(true);
+
+        expect(
+          schemas.LoopLearningGovernanceRequestSchema.safeParse({
+            action: 'reject-merge',
+            targetLearningId: 'learning-target',
+          }).success,
+        ).toBe(true);
+
+        expect(
+          schemas.LoopLearningGovernanceRequestSchema.safeParse({
+            action: 'deprecate',
+            reason: 'Superseded',
+          }).success,
+        ).toBe(true);
+
+        expect(
+          schemas.LoopLearningGovernanceRequestSchema.safeParse({
+            action: 'supersede',
+            targetLearningId: 'learning-target',
+            reason: 'Replaced by newer guidance',
+          }).success,
+        ).toBe(true);
+
+        expect(
+          schemas.LoopLearningGovernanceRequestSchema.safeParse({
             action: 'archive',
           }).success,
         ).toBe(false);
+      });
+
+      it('should validate MCP server and CI check registry contracts', () => {
+        expect(
+          schemas.LoopRemoteRunnerListResponseSchema.safeParse({
+            list: [
+              {
+                id: 'remote-runner-primary',
+                name: 'Primary Remote Runner Pool',
+                status: 'ready',
+                runtimeBackends: ['codex-cli', 'claude-code-cli'],
+                capacity: { maxConcurrent: 4, leased: 0, available: 4 },
+                queue: { pending: 0, running: 0 },
+                sandboxProfile: 'remote-sandbox',
+                artifactRoot: '.loops/runs/remote-runner-primary',
+                leaseTtlSec: 1800,
+                health: { ok: true, message: 'Ready' },
+                risks: [],
+              },
+            ],
+            total: 1,
+            page: 1,
+            limit: 20,
+          }).success,
+        ).toBe(true);
+
+        expect(
+          schemas.LoopRemoteRunnerLeaseSchema.safeParse({
+            id: 'lease-1',
+            runnerId: 'remote-runner-primary',
+            issueId: 'issue-1',
+            shardId: 'shard-1',
+            runtimeBackend: 'codex-cli',
+            status: 'leased',
+            leasedAt: '2026-06-24T00:00:00.000Z',
+            expiresAt: '2026-06-24T00:30:00.000Z',
+            artifactRoot: '.loops/runs/remote-runner-primary/leases',
+            message: 'Lease acquired',
+          }).success,
+        ).toBe(true);
+
+        expect(
+          schemas.LoopRemoteRunnerJobSchema.safeParse({
+            id: 'rr-job-1',
+            runnerId: 'remote-runner-primary',
+            leaseId: 'lease-1',
+            issueId: 'issue-1',
+            shardId: 'shard-1',
+            runtimeBackend: 'codex-cli',
+            workerKind: 'artifact-only',
+            status: 'succeeded',
+            queuedAt: '2026-06-24T00:00:00.000Z',
+            startedAt: '2026-06-24T00:00:01.000Z',
+            finishedAt: '2026-06-24T00:00:02.000Z',
+            artifactRoot: '.loops/runs/remote-runner-primary/jobs/rr-job-1',
+            artifacts: [
+              {
+                path: '.loops/runs/remote-runner-primary/jobs/rr-job-1/manifest.json',
+                kind: 'manifest',
+                sizeBytes: 512,
+                sha256: 'abc123',
+              },
+              {
+                path: '.loops/runs/remote-runner-primary/jobs/rr-job-1/worker-receipt.json',
+                kind: 'evidence',
+                sizeBytes: 256,
+                sha256: 'def456',
+              },
+              {
+                path: '.loops/runs/remote-runner-primary/jobs/rr-job-1/worker.log',
+                kind: 'log',
+                sizeBytes: 128,
+                sha256: 'ghi789',
+              },
+              {
+                path: '.loops/runs/remote-runner-primary/jobs/rr-job-1/trace.json',
+                kind: 'trace',
+                sizeBytes: 256,
+                sha256: 'jkl012',
+              },
+            ],
+            message: 'Artifact manifest persisted',
+          }).success,
+        ).toBe(true);
+
+        expect(
+          schemas.LoopMcpServerListResponseSchema.safeParse({
+            list: [
+              {
+                id: 'mcp-repo-tools',
+                name: 'Repository Tools MCP',
+                protocol: 'mcp',
+                transport: 'stdio',
+                status: 'configured',
+                toolIds: ['repo-code-editor'],
+                permissionProfile: 'workspace-scoped',
+                authStatus: 'not-required',
+                health: { ok: true, message: 'Config ready' },
+                executionAudit: {
+                  auditRef: 'mcp-audit-mcp-repo-tools-2026-06-24T00:00:00.000Z',
+                  artifactRef:
+                    '.loops/mcp-audits/mcp-repo-tools/mcp-audit-mcp-repo-tools-2026-06-24T00-00-00.000Z.json',
+                  providerId: 'mcp-repo-tools',
+                  action: 'test',
+                  outcome: 'success',
+                  toolCount: 1,
+                  recordedAt: '2026-06-24T00:00:00.000Z',
+                },
+                risks: [],
+              },
+            ],
+            total: 1,
+            page: 1,
+            limit: 20,
+          }).success,
+        ).toBe(true);
+
+        expect(
+          schemas.LoopCiCheckIntegrationListResponseSchema.safeParse({
+            list: [
+              {
+                id: 'github-delivery-evidence',
+                provider: 'github-checks',
+                name: 'GitHub Delivery Evidence Check',
+                status: 'configured',
+                requiredForRelease: true,
+                checkSuites: ['delivery-readiness'],
+                targetRef: 'convergence-pr',
+                lastPublishedAt: '2026-06-24T00:00:00.000Z',
+                lastPublication: {
+                  artifactRef:
+                    '.loops/ci-checks/github-delivery-evidence/publications/abc1234567-2026-06-24T00-00-00.000Z.json',
+                  provider: 'github',
+                  headSha: 'abc1234567',
+                  checkRunId: 'check-run-11',
+                  url: 'https://github.com/dofe/repo/runs/11',
+                  outcome: 'published',
+                  publishedAt: '2026-06-24T00:00:00.000Z',
+                },
+                health: { ok: true, message: 'Ready' },
+                risks: ['GitHub App installation required'],
+              },
+            ],
+            total: 1,
+            page: 1,
+            limit: 20,
+          }).success,
+        ).toBe(true);
+
+        expect(
+          schemas.LoopCiCheckPublicationHistorySchema.safeParse({
+            integrationId: 'github-delivery-evidence',
+            latest: {
+              artifactRef:
+                '.loops/ci-checks/github-delivery-evidence/publications/abc1234567-2026-06-24T00-00-00.000Z.json',
+              integrationId: 'github-delivery-evidence',
+              provider: 'github',
+              headSha: 'abc1234567',
+              checkRunId: 'check-run-11',
+              url: 'https://github.com/dofe/repo/runs/11',
+              outcome: 'published',
+              issueId: 'issue-1',
+              prId: '42',
+              evidenceBacklink: 'https://vibecoding.dofe.ai/loops/issue-1/delivery-evidence',
+              workPackageCommitMap: [
+                {
+                  workPackageId: 'shard-1',
+                  title: 'Checkout fix',
+                  commitSha: 'abc123456789',
+                  commitMessage: 'loops(issue-1): shard-1 - Checkout fix',
+                  branch: 'loops/issue-1',
+                  files: ['apps/web/app/checkout/page.tsx'],
+                },
+              ],
+              request: {
+                name: 'DofeAI Delivery Evidence',
+                detailsUrl: 'https://dofe.ai/loops/issue-1/evidence',
+                evidenceBacklink: 'https://vibecoding.dofe.ai/loops/issue-1/delivery-evidence',
+              },
+              publishedAt: '2026-06-24T00:00:00.000Z',
+            },
+            entries: [],
+            updatedAt: '2026-06-24T00:00:00.000Z',
+          }).success,
+        ).toBe(true);
+
+        expect(
+          schemas.LoopRecipeAdminActionResponseSchema.safeParse({
+            id: 'recipe-admin-createVersion-1',
+            actionId: 'createVersion',
+            status: 'requested',
+            artifactRef: '.loops/recipe-admin/tenant-1/actions/recipe-admin-createVersion-1.json',
+            blueprintId: 'delivery-blueprints',
+            recipeKind: 'feature',
+            targetVersion: 'v2',
+            tenantId: 'tenant-1',
+            teamId: 'team-1',
+            actorId: 'sso-user-42',
+            sourcePermission: 'vibecoding:loops:create',
+            requestedAt: '2026-06-24T00:00:00.000Z',
+            reason: 'promote tenant recipe',
+            evidenceRefs: ['loop-1'],
+            message: 'Recipe admin action request recorded.',
+          }).success,
+        ).toBe(true);
       });
 
       it('should validate browser QA request and report contracts', () => {
@@ -496,10 +781,49 @@ describe('Schemas', () => {
           evidenceIds: ['global-review-1'],
           updated: '2026-06-23T00:00:00.000Z',
         });
+        const deliveryGovernance = schemas.LoopDeliveryGovernanceSchema.safeParse({
+          workflowDefaults: [],
+          reviewGateOverrides: [],
+          requiredReviewGates: {
+            gateKinds: ['product', 'code'],
+            actor: 'human',
+            reason: 'Only product and code gates are required for this loop.',
+            updated: '2026-06-23T01:20:00.000Z',
+          },
+          releaseCanary: {
+            status: 'passed',
+            environment: 'staging-us',
+            environmentOwner: 'release-manager',
+            targetUrl: 'https://example.com/canary',
+            rollbackNote: 'Revert the generated convergence branch.',
+            actor: 'human',
+            updated: '2026-06-23T01:30:00.000Z',
+          },
+          runtimeOverrides: [],
+          secondOpinionResolutions: [],
+        });
+        const requiredGateRequest = schemas.LoopDeliveryGovernanceRequestSchema.safeParse({
+          action: 'set-required-review-gates',
+          gateKinds: ['product', 'code'],
+          actor: 'human',
+          reason: 'Reduce this docs loop to human + code review gates.',
+        });
+        const releaseCanaryRequest = schemas.LoopDeliveryGovernanceRequestSchema.safeParse({
+          action: 'record-release-canary',
+          status: 'passed',
+          environment: 'staging-us',
+          environmentOwner: 'release-manager',
+          targetUrl: 'https://example.com/canary',
+          rollbackNote: 'Revert the generated convergence branch.',
+          actor: 'human',
+        });
 
         expect(workflow.success).toBe(true);
         expect(reviewGate.success).toBe(true);
         expect(releaseGate.success).toBe(true);
+        expect(deliveryGovernance.success).toBe(true);
+        expect(requiredGateRequest.success).toBe(true);
+        expect(releaseCanaryRequest.success).toBe(true);
         expect(
           schemas.LoopRuntimeSecurityExceptionSchema.safeParse({
             id: 'runtime-security-test-record-1-0',
@@ -555,6 +879,13 @@ describe('Schemas', () => {
             },
             requiredForRelease: false,
             updated: '2026-06-23T00:00:00.000Z',
+          }).success,
+        ).toBe(true);
+        expect(
+          schemas.LoopResolveSecondOpinionSchema.safeParse({
+            action: 'accept-secondary',
+            findingFingerprints: ['browser-qa-report', 'release-risk'],
+            reason: 'Batch accept Claude Code findings.',
           }).success,
         ).toBe(true);
         expect(
@@ -698,6 +1029,87 @@ describe('Schemas', () => {
         });
 
         expect(result.success).toBe(true);
+      });
+
+      it('should validate eval historical baseline and trend worker payloads', () => {
+        expect(
+          schemas.EvalRunSchema.safeParse({
+            id: 'eval-run-delivery-readiness-issue-1',
+            suiteId: 'delivery-readiness',
+            loopId: 'issue-1',
+            targetRef: 'issue-1',
+            blueprintId: 'default-feature@v1',
+            baselineVersion: 'default-feature-v1:delivery-readiness:2026-06-24T00:00:00.000Z',
+            baselineScore: 67,
+            status: 'attention',
+            score: 33,
+            trendDelta: -34,
+            checkResults: [],
+            evidenceRefs: ['.loops/issues/issue-1.json'],
+            runAt: '2026-06-24T00:10:00.000Z',
+          }).success,
+        ).toBe(true);
+
+        expect(
+          schemas.EvalTrendWorkerResponseSchema.safeParse({
+            generatedAt: '2026-06-24T00:10:00.000Z',
+            snapshotCount: 1,
+            baselines: [
+              {
+                id: 'eval-baseline-default-feature-v1-delivery-readiness-1',
+                suiteId: 'delivery-readiness',
+                blueprintId: 'default-feature@v1',
+                baselineVersion: 'default-feature-v1:delivery-readiness:2026-06-24T00:10:00.000Z',
+                capturedAt: '2026-06-24T00:10:00.000Z',
+                runCount: 3,
+                averageScore: 67,
+                passRate: 33,
+                previousAverageScore: 55,
+                trendDelta: 12,
+              },
+            ],
+          }).success,
+        ).toBe(true);
+
+        expect(
+          schemas.LoopBenchTrendWorkerResponseSchema.safeParse({
+            generatedAt: '2026-06-24T00:10:00.000Z',
+            historyCount: 2,
+            snapshot: {
+              id: 'loop-bench-20260624001000000',
+              capturedAt: '2026-06-24T00:10:00.000Z',
+              artifactRef: '.loops/bench-trends/2026-06-24T00-10-00-000Z.json',
+              loopCount: 4,
+              metrics: {
+                firstPassReviewRate: 50,
+                browserQaRegressionRate: 25,
+                secondOpinionConflictRate: 0,
+                releaseBlockerRate: 25,
+                runtimeViolationRate: 0,
+                learningReuseRate: 50,
+                canaryPassRate: 75,
+              },
+              previousMetrics: {
+                firstPassReviewRate: 40,
+                browserQaRegressionRate: 25,
+                secondOpinionConflictRate: 10,
+                releaseBlockerRate: 30,
+                runtimeViolationRate: 5,
+                learningReuseRate: 25,
+                canaryPassRate: 70,
+              },
+              deltas: {
+                firstPassReviewRate: 10,
+                browserQaRegressionRate: 0,
+                secondOpinionConflictRate: -10,
+                releaseBlockerRate: -5,
+                runtimeViolationRate: -5,
+                learningReuseRate: 25,
+                canaryPassRate: 5,
+              },
+            },
+          }).success,
+        ).toBe(true);
       });
     });
   });

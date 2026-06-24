@@ -54,12 +54,12 @@
 - `docs/0623/gstack/0/03-dofeai-optimization-recommendations.md`
 - `docs/0623/gstack/0/04-source-notes.md`
 
-## 6. 后续建议
+## 6. 复审后续建议
 
-下一轮若继续实施，不建议从新增文档或 UI 派生状态开始，而应优先选择以下真实 worker/runtime 项：
+2026-06-24 R7/R8 已闭合 gstack P0/P1/P2 主路径。若继续推进，不建议从新增文档或 UI 派生状态开始，而应优先选择以下非阻断的深度集成项：
 
-- Runtime Security 的 OS/container 级 network/write sandbox。
-- Release Gate 的 canary/rollback worker 和 hard gate。
-- Browser QA 的 authenticated session profile 与 multi-viewport visual regression。
-- Learning Memory 的审批 UI 和跨 workspace index。
-- Second Opinion 的 conflict human gate 队列。
+- CI/CD provider webhook 深度集成、自动 rollback proposal 和发布后指标。
+- Browser QA fail 自动生成 QA regression candidate。
+- Learning Memory 的 evidence drilldown、lifecycle 质量指标和 DB 查询路径替换 file-backed worker。
+- Second Opinion 的 finding 原文/evidence 工作台与更细粒度 conflict 分类。
+- Runtime Security 的 network allowlist、writeScope overlay/mount 和执行层 override 审批细化。

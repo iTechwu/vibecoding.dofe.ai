@@ -17,7 +17,7 @@
 
 ### 交付 2：Runtime Backend Panel v1
 
-状态：已实施。
+状态：✅ 已实施。前端 Eval Plan v1 已上线；后端 Eval Suite / Eval Run contract v1 已上线；R13 已补齐 request-time evidence aggregation，可从现有 Loop evidence 派生 suite 计数、run checkResults 与 score。
 
 范围：
 
@@ -45,8 +45,8 @@
 验收：
 
 - finalize 前能看到 hard gate；v1 已在 Dashboard 显示 hard gate；
-- 架构规则检查可以作为 check result 展示；
-- failed check 能进入 Exception Center；后续需要将 failed check 结构化接入 Exception Center。
+- 架构规则检查可以作为 check result 展示；v1 已按现有 Loop evidence 给出 attention/blocked 派生结果；
+- failed check 能进入 Exception Center；R14 已将 failed/attention eval hard gate 结构化接入 Dashboard Exception Center。
 
 ## 31-60 天：可复用自动化资产
 
@@ -63,17 +63,19 @@
 验收：
 
 - 不同 blueprint 有不同默认 eval checks；
-- blueprint version 写入 Loop baseline；
+- blueprint version 写入 Loop baseline；R15 已通过 workflowRecipe.baselineEvidence 写入创建时蓝图基线；
 - Dashboard 可按 blueprint 过滤成功率/失败率。
 
 ### 交付 5：Invent Delivery Loop v1
+
+状态：✅ 已部分完成。`/loops/new` 已显示 Workforce / Runtime / Eval / Risk-Gate preview；Dashboard 已新增 Delivery Flow Pipeline（P1-1）把完整 Loops 状态机产品化为 10 步交付管道。R15 已将创建时 baseline evidence 写入 workflowRecipe，并在 Loop detail Delivery Controls 中展示。
 
 范围：
 
 - 用户输入一句话；
 - 生成 Issue Summary、Workforce Plan、Runtime Plan、Tool Plan、Eval Plan、Risk/Gate Plan；
 - preview 可编辑；
-- 创建后写入 baseline evidence。
+- 创建后写入 baseline evidence；R15 已完成 blueprint/runtime/eval/gate baseline evidence。
 
 验收：
 
@@ -82,6 +84,8 @@
 - risk/gate 会影响后续流程。
 
 ### 交付 6：PR Evidence v1
+
+状态：✅ v2 已完成。已提供 Delivery Evidence detail 区块、后端 getDeliveryEvidence endpoint，以及 finalize 后 PR evidence comment 自动发布。R10 已新增 CI Checks Registry 控制面；R17/R23 已接入 GitHub Checks API check-run 发布与 publication artifact。
 
 范围：
 
@@ -151,14 +155,14 @@
 
 ## 后续 90 天之后
 
-| 方向                 | 内容                                                          |
-| -------------------- | ------------------------------------------------------------- |
-| Remote Runner        | 队列化 worker、执行池、sandbox、artifact upload               |
-| Enterprise RBAC      | workspace/repo/blueprint/tool/runtime/trigger/eval 资产级权限 |
-| Skills Ecosystem     | DofeAI Loops skills for Codex/Claude/Cursor                   |
-| Marketplace          | 内部 blueprint 分享、评分、版本、回滚                         |
-| Release Intelligence | merge 后质量、回滚、incident 关联                             |
-| Multi-repo Delivery  | 跨 repo spec、依赖图、PR 编排                                 |
+| 方向                 | 内容                                                                                                            |
+| -------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Remote Runner        | Pool/lease/job + artifact manifest provider v1 已完成；后续接分布式 queue、sandbox worker、外部 artifact upload |
+| Enterprise RBAC      | SSO Asset Permissions v1 已完成；runtime backend/MCP/CI/Remote Runner 写操作已接硬门禁                          |
+| Skills Ecosystem     | DofeAI Loops skills for Codex/Claude/Cursor                                                                     |
+| Marketplace          | 内部 blueprint 分享、评分、版本、回滚                                                                           |
+| Release Intelligence | merge 后质量、回滚、incident 关联                                                                               |
+| Multi-repo Delivery  | 跨 repo spec、依赖图、PR 编排                                                                                   |
 
 ## 风险和缓解
 
