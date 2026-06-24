@@ -280,3 +280,36 @@ enum AuditActionType {
 
   @@map("audit_action_type")
 }
+
+// ============================================================================
+// Eval Aggregation — cross-tenant quality trend snapshots (R33)
+// ============================================================================
+model LoopEvalAggregation {
+  id          String  @id @default(uuid()) @db.VarChar(36)
+  tenantId    String  @map("tenant_id") @db.VarChar(64)
+  workspaceId String  @map("workspace_id") @db.VarChar(64)
+  suiteId     String  @map("suite_id") @db.VarChar(64)
+  blueprintId String? @map("blueprint_id") @db.VarChar(64)
+
+  totalChecks   Int   @map("total_checks")
+  passedChecks  Int   @map("passed_checks")
+  failedChecks  Int   @map("failed_checks")
+  blockedChecks Int   @map("blocked_checks")
+  passRate      Float @map("pass_rate")
+  averageScore  Float @map("average_score")
+
+  loopCount  Int    @map("loop_count")
+  trendDelta Float? @map("trend_delta")
+
+  period     String    @map("period") @db.VarChar(10) // 7d, 30d, 90d, all
+  capturedAt DateTime  @map("captured_at") @db.Timestamptz(6)
+  expiresAt  DateTime? @map("expires_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tenantId, suiteId, capturedAt(sort: Desc)])
+  @@index([workspaceId, capturedAt(sort: Desc)])
+  @@index([blueprintId, capturedAt(sort: Desc)])
+  @@index([period, capturedAt(sort: Desc)])
+  @@map("loop_eval_aggregation")
+}

@@ -1264,6 +1264,32 @@ export class LoopsController {
     });
   }
 
+  // =========================================================================
+  // Cross-Tenant Eval Aggregation (R33: DB + Redis + BullMQ)
+  // =========================================================================
+
+  @TsRestHandler(c.getCrossTenantEvalAggregation)
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  async getCrossTenantEvalAggregation(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.getCrossTenantEvalAggregation, async ({ query }) => {
+      return success(await this.loopsService.getCrossTenantEvalAggregation(query));
+    });
+  }
+
+  @TsRestHandler(c.runEvalAggregationWorker)
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  async runEvalAggregationWorker(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.runEvalAggregationWorker, async ({ body }) => {
+      const result = await this.loopsService.runEvalAggregationWorker(body);
+      await this.auditLog(req, 'UPDATE', 'eval_aggregation', 'worker', 'runEvalAggregationWorker', {
+        processed: result.processed,
+        persisted: result.persisted,
+        period: result.period,
+      } as Prisma.InputJsonObject);
+      return success(result);
+    });
+  }
+
   private async auditLog(
     req: AuthenticatedRequest,
     action: 'CREATE' | 'UPDATE',

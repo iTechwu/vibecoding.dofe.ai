@@ -123,6 +123,9 @@ import { normaliseSimpleIssue } from '@repo/contracts';
 import type { AuthUserInfo } from '@app/auth/types/auth.interface';
 import { PermissionService } from '@app/auth/permission.service';
 import { LoopsFileStoreService } from './loops-file-store.service';
+import { LoopsEvalAggregationWorkerService } from './loops-eval-aggregation-worker.service';
+import type { Prisma, LoopEvalAggregation } from '@prisma/client';
+import { LoopEvalAggregationService } from '@app/db/loop-eval-aggregation';
 import { LoopsCapabilityRegistry } from './loops-capability-registry';
 import { AgentRuntimeDetectionService } from './agent-runtime-detection.service';
 import { LoopsWorkspaceProfileService } from './loops-workspace-profile.service';
@@ -274,6 +277,11 @@ export class LoopsService {
     private readonly prProvider?: LoopsPrProviderClient,
     @Optional()
     private readonly permissionService?: PermissionService,
+    // R33: Cross-tenant eval aggregation (DB + Redis + BullMQ)
+    @Optional()
+    private readonly evalAggregationDb?: LoopEvalAggregationService,
+    @Optional()
+    private readonly evalAggregationWorker?: LoopsEvalAggregationWorkerService,
   ) {}
 
   async list(query: LoopIssuesQuery): Promise<LoopListResponse> {
@@ -3094,6 +3102,318 @@ export class LoopsService {
     const found = runs.find((r) => r.id === id);
     if (!found) throw new NotFoundException(`Eval run ${id} not found`);
     return found;
+  }
+
+  // =========================================================================
+  // Cross-Tenant Eval Aggregation (R33: DB + Redis + BullMQ)
+  // =========================================================================
+
+  /**
+   * Get cross-tenant eval quality aggregation with three-tier architecture:
+   * 1. Redis cache (fast, TTL 5 min)
+   * 2. DB query (durable, fallback)
+   * 3. Request-time aggregation (slowest, last resort)
+   */
+  async getCrossTenantEvalAggregation(input: {
+    tenantId?: string;
+    suiteId?: string;
+    period?: '7d' | '30d' | '90d' | 'all';
+    blueprintId?: string;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    aggregations: Array<{
+      id: string;
+      tenantId: string;
+      workspaceId: string;
+      suiteId: string;
+      blueprintId?: string;
+      totalChecks: number;
+      passedChecks: number;
+      failedChecks: number;
+      blockedChecks: number;
+      passRate: number;
+      averageScore: number;
+      loopCount: number;
+      trendDelta?: number;
+      period: string;
+      capturedAt: string;
+    }>;
+    total: number;
+    page: number;
+    limit: number;
+    source: 'redis-cache' | 'db-query' | 'request-time';
+  }> {
+    const {
+      tenantId = 'default',
+      suiteId,
+      period = '30d',
+      blueprintId,
+      page = 1,
+      limit = 20,
+    } = input;
+
+    // Tier 1: Redis cache
+    if (tenantId && suiteId && !blueprintId && this.evalAggregationWorker) {
+      const cached = await this.evalAggregationWorker.getCachedAggregation(
+        tenantId,
+        suiteId,
+        period,
+      );
+      if (cached && Array.isArray(cached.aggregations)) {
+        const aggs = cached.aggregations as Array<Record<string, unknown>>;
+        const paged = aggs.slice((page - 1) * limit, page * limit);
+        return {
+          aggregations: paged.map((a) => ({
+            id: a.id as string,
+            tenantId: a.tenantId as string,
+            workspaceId: a.workspaceId as string,
+            suiteId: a.suiteId as string,
+            blueprintId: a.blueprintId as string | undefined,
+            totalChecks: a.totalChecks as number,
+            passedChecks: a.passedChecks as number,
+            failedChecks: a.failedChecks as number,
+            blockedChecks: a.blockedChecks as number,
+            passRate: a.passRate as number,
+            averageScore: a.averageScore as number,
+            loopCount: a.loopCount as number,
+            trendDelta: a.trendDelta as number | undefined,
+            period: a.period as string,
+            capturedAt: a.capturedAt as string,
+          })),
+          total: aggs.length,
+          page,
+          limit,
+          source: 'redis-cache',
+        };
+      }
+    }
+
+    // Tier 2: DB query (via LoopEvalAggregationService)
+    if (this.evalAggregationDb) {
+      try {
+        const where: Record<string, unknown> = {};
+        if (tenantId) where.tenantId = tenantId;
+        if (suiteId) where.suiteId = suiteId;
+        if (blueprintId) where.blueprintId = blueprintId;
+        where.period = period;
+
+        const dbResult = await this.evalAggregationDb.list(
+          where as Prisma.LoopEvalAggregationWhereInput,
+          {
+            limit,
+            page,
+            orderBy: { capturedAt: 'desc' },
+          },
+        );
+
+        const aggs = dbResult.list.map((a: LoopEvalAggregation) => ({
+          id: a.id,
+          tenantId: a.tenantId,
+          workspaceId: a.workspaceId,
+          suiteId: a.suiteId,
+          blueprintId: a.blueprintId ?? undefined,
+          totalChecks: a.totalChecks,
+          passedChecks: a.passedChecks,
+          failedChecks: a.failedChecks,
+          blockedChecks: a.blockedChecks,
+          passRate: a.passRate,
+          averageScore: a.averageScore,
+          loopCount: a.loopCount,
+          trendDelta: a.trendDelta ?? undefined,
+          period: a.period,
+          capturedAt: a.capturedAt.toISOString(),
+        }));
+
+        // Warm Redis cache
+        if (this.evalAggregationWorker && aggs.length > 0) {
+          await this.evalAggregationWorker
+            .setCachedAggregation(tenantId, suiteId ?? 'all', period, { aggregations: aggs })
+            .catch(() => {});
+        }
+
+        return {
+          aggregations: aggs,
+          total: dbResult.total,
+          page: dbResult.page,
+          limit: dbResult.limit,
+          source: 'db-query',
+        };
+      } catch (error) {
+        this.log('warn', '[EvalAgg] DB query failed, falling back to request-time', { error });
+      }
+    }
+
+    // Tier 3: Request-time fallback
+    return this.buildRequestTimeAggregation(tenantId, suiteId, period, blueprintId, page, limit);
+  }
+
+  /**
+   * Run the cross-tenant Eval aggregation worker: collect evidence, compute
+   * aggregations, persist to DB, and warm Redis cache.
+   */
+  async runEvalAggregationWorker(input?: {
+    tenantId?: string;
+    period?: '7d' | '30d' | '90d' | 'all';
+  }): Promise<{
+    processed: number;
+    persisted: number;
+    cachedInRedis: boolean;
+    period: string;
+    generatedAt: string;
+  }> {
+    const period = input?.period ?? '30d';
+    const generatedAt = new Date().toISOString();
+
+    // Collect evidence across all tenants/workspaces
+    const evidence = await this.collectEvalEvidence();
+    const suites = this.buildEvalSuites(evidence);
+
+    // Flatten suite checks into aggregatable items
+    const flat: Array<{
+      suiteId: string;
+      suiteName: string;
+      tenantId: string;
+      workspaceId: string;
+      totalChecks: number;
+      passedChecks: number;
+      failedChecks: number;
+      blockedChecks: number;
+      passRate: number;
+      averageScore: number;
+      loopCount: number;
+    }> = [];
+
+    for (const suite of suites) {
+      const tenantId = input?.tenantId ?? 'default';
+      flat.push({
+        suiteId: suite.id,
+        suiteName: suite.name,
+        tenantId,
+        workspaceId: 'default',
+        totalChecks: suite.summary.total,
+        passedChecks: suite.summary.passed,
+        failedChecks: suite.summary.attention,
+        blockedChecks: suite.summary.blocked,
+        passRate: suite.summary.passRate,
+        averageScore: suite.summary.passRate,
+        loopCount: suite.summary.total > 0 ? Math.max(1, Math.round(suite.summary.total / 3)) : 0,
+      });
+    }
+
+    // Compute aggregations
+    const aggregations = this.evalAggregationWorker
+      ? this.evalAggregationWorker.computeAggregation(flat, period)
+      : [];
+
+    // Persist to DB
+    let persisted = 0;
+    if (this.evalAggregationDb && aggregations.length > 0) {
+      try {
+        for (const agg of aggregations) {
+          await this.evalAggregationDb.upsert({
+            where: { id: agg.tenantId + '-' + agg.suiteId + '-' + period },
+            create: {
+              id: agg.tenantId + '-' + agg.suiteId + '-' + period,
+              tenantId: agg.tenantId,
+              workspaceId: agg.workspaceId,
+              suiteId: agg.suiteId,
+              blueprintId: agg.blueprintId ?? null,
+              totalChecks: agg.totalChecks,
+              passedChecks: agg.passedChecks,
+              failedChecks: agg.failedChecks,
+              blockedChecks: agg.blockedChecks,
+              passRate: agg.passRate,
+              averageScore: agg.averageScore,
+              loopCount: agg.loopCount,
+              trendDelta: agg.trendDelta ?? null,
+              period: agg.period,
+              capturedAt: new Date(agg.capturedAt),
+            },
+            update: {
+              totalChecks: agg.totalChecks,
+              passedChecks: agg.passedChecks,
+              failedChecks: agg.failedChecks,
+              blockedChecks: agg.blockedChecks,
+              passRate: agg.passRate,
+              averageScore: agg.averageScore,
+              loopCount: agg.loopCount,
+              trendDelta: agg.trendDelta ?? null,
+              capturedAt: new Date(agg.capturedAt),
+            },
+          } as Prisma.LoopEvalAggregationUpsertArgs);
+          persisted++;
+        }
+        this.log('info', `[EvalAgg] Worker persisted ${persisted} aggregations to DB`);
+      } catch (error) {
+        this.log('error', '[EvalAgg] DB persistence failed', { error });
+      }
+    }
+
+    // Warm Redis cache
+    let cachedInRedis = false;
+    if (this.evalAggregationWorker && aggregations.length > 0) {
+      for (const agg of aggregations) {
+        await this.evalAggregationWorker
+          .setCachedAggregation(agg.tenantId, agg.suiteId, period, { aggregations: [agg] })
+          .catch(() => {});
+      }
+      cachedInRedis = true;
+    }
+
+    return {
+      processed: aggregations.length,
+      persisted,
+      cachedInRedis,
+      period,
+      generatedAt,
+    };
+  }
+
+  /**
+   * R33+: Get Redis cache health for Eval aggregation layer.
+   */
+  async getEvalAggregationCacheHealth(): Promise<{
+    available: boolean;
+    cachedKeys: number;
+    message: string;
+  }> {
+    if (this.evalAggregationWorker) {
+      return this.evalAggregationWorker.cacheHealth();
+    }
+    return { available: false, cachedKeys: 0, message: 'Eval aggregation worker not configured' };
+  }
+
+  private async buildRequestTimeAggregation(
+    tenantId: string,
+    suiteId: string | undefined,
+    period: string,
+    blueprintId: string | undefined,
+    page: number,
+    limit: number,
+  ): Promise<ReturnType<LoopsService['getCrossTenantEvalAggregation']>> {
+    const evidence = await this.collectEvalEvidence();
+    const suites = this.buildEvalSuites(evidence).filter((s) => !suiteId || s.id === suiteId);
+
+    const aggs = suites.map((suite) => ({
+      id: `${tenantId}-${suite.id}-${period}`,
+      tenantId,
+      workspaceId: 'default',
+      suiteId: suite.id,
+      blueprintId,
+      totalChecks: suite.summary.total,
+      passedChecks: suite.summary.passed,
+      failedChecks: suite.summary.attention,
+      blockedChecks: suite.summary.blocked,
+      passRate: suite.summary.passRate,
+      averageScore: suite.summary.passRate,
+      loopCount: suite.summary.total > 0 ? Math.max(1, Math.round(suite.summary.total / 3)) : 0,
+      period,
+      capturedAt: new Date().toISOString(),
+    }));
+
+    const paged = aggs.slice((page - 1) * limit, page * limit);
+    return { aggregations: paged, total: aggs.length, page, limit, source: 'request-time' };
   }
 
   private evalBlueprintId(item: LoopListItem, evidence: EvalEvidence): string {

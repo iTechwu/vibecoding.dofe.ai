@@ -394,6 +394,108 @@ export const loopsContract = c.router(
       },
       summary: 'Materialize cross-blueprint eval historical baseline snapshots and trend deltas',
     },
+    // R33: Cross-tenant eval aggregation with DB + Redis cache.
+    getCrossTenantEvalAggregation: {
+      method: 'GET',
+      path: '/eval-aggregation',
+      query: z.object({
+        tenantId: z.string().trim().min(1).optional(),
+        suiteId: z.string().trim().min(1).optional(),
+        period: z.enum(['7d', '30d', '90d', 'all']).default('30d'),
+        blueprintId: z.string().trim().min(1).optional(),
+        page: z.coerce.number().positive().min(1).optional().default(1),
+        limit: z.coerce.number().positive().optional().default(20),
+      }),
+      responses: {
+        200: ApiResponseSchema(
+          z.object({
+            aggregations: z.array(
+              z.object({
+                id: z.string(),
+                tenantId: z.string(),
+                workspaceId: z.string(),
+                suiteId: z.string(),
+                blueprintId: z.string().optional(),
+                totalChecks: z.number(),
+                passedChecks: z.number(),
+                failedChecks: z.number(),
+                blockedChecks: z.number(),
+                passRate: z.number(),
+                averageScore: z.number(),
+                loopCount: z.number(),
+                trendDelta: z.number().optional(),
+                period: z.string(),
+                capturedAt: z.string(),
+              }),
+            ),
+            total: z.number(),
+            page: z.number(),
+            limit: z.number(),
+            source: z.enum(['redis-cache', 'db-query', 'request-time']),
+          }),
+        ),
+      },
+      summary: 'Get cross-tenant eval quality aggregation (Redis-cached + DB-persisted, R33)',
+    },
+    runEvalAggregationWorker: {
+      method: 'POST',
+      path: '/eval-aggregation/worker',
+      body: z
+        .object({
+          tenantId: z.string().trim().min(1).optional(),
+          period: z.enum(['7d', '30d', '90d', 'all']).default('30d'),
+        })
+        .optional(),
+      responses: {
+        200: ApiResponseSchema(
+          z.object({
+            processed: z.number(),
+            persisted: z.number(),
+            cachedInRedis: z.boolean(),
+            period: z.string(),
+            generatedAt: z.string(),
+          }),
+        ),
+      },
+      summary:
+        'Run the cross-tenant Eval aggregation worker synchronously (persists to DB + warms Redis cache, R33)',
+    },
+    enqueueEvalAggregationJob: {
+      method: 'POST',
+      path: '/eval-aggregation/enqueue',
+      body: z
+        .object({
+          type: z.enum(['aggregate-all', 'aggregate-tenant']).default('aggregate-all'),
+          tenantId: z.string().trim().min(1).optional(),
+          periods: z.array(z.enum(['7d', '30d', '90d', 'all'])).optional(),
+        })
+        .optional(),
+      responses: {
+        200: ApiResponseSchema(
+          z.object({
+            jobId: z.string(),
+            queueName: z.string(),
+            type: z.string(),
+            enqueuedAt: z.string(),
+          }),
+        ),
+      },
+      summary: 'Enqueue a cross-tenant Eval aggregation job via BullMQ (async, R33+)',
+    },
+    getEvalAggregationCacheHealth: {
+      method: 'GET',
+      path: '/eval-aggregation/cache-health',
+      responses: {
+        200: ApiResponseSchema(
+          z.object({
+            available: z.boolean(),
+            cachedKeys: z.number(),
+            message: z.string(),
+          }),
+        ),
+      },
+      summary: 'Check Redis cache health for Eval aggregation (R33+)',
+    },
     runLoopBenchTrendWorker: {
       method: 'POST',
       path: '/loop-bench/trend-worker',

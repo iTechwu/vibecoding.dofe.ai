@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
+import { BullModule } from '@nestjs/bullmq';
 import { LoopsDbModule } from '@app/db';
+import { LoopEvalAggregationModule } from '@app/db/loop-eval-aggregation';
 import { AuditLogModule } from '@app/audit-log';
 import { CliLoopsAgentAdapter } from './adapters/cli-loops-agent.adapter';
 import { CliLoopsClaudeAdapter } from './adapters/cli-loops-claude.adapter';
@@ -29,12 +31,23 @@ import { LoopsBrowserQaWorkerService } from './loops-browser-qa-worker.service';
 import { LoopsSecondOpinionWorkerService } from './loops-second-opinion-worker.service';
 import { LoopsDockerSandboxService } from './loops-docker-sandbox.service';
 import { LoopsLearningGovernanceService } from './loops-learning-governance.service';
+import { LoopsEvalAggregationWorkerService } from './loops-eval-aggregation-worker.service';
+import { LoopsEvalAggregationProcessor } from './loops-eval-aggregation.processor';
 
 @Module({
   // HttpModule provides HttpService to LoopsNotificationSender and
   // LoopsPrProviderClient so external HTTP goes through @nestjs/axios (Rule 3)
   // instead of global `fetch` on the production path.
-  imports: [HttpModule, LoopsDbModule, AuditLogModule],
+  imports: [
+    HttpModule,
+    LoopsDbModule,
+    LoopEvalAggregationModule,
+    AuditLogModule,
+    // R33+: BullMQ queue for periodic cross-tenant Eval aggregation.
+    // The queue is consumed by LoopsEvalAggregationProcessor.
+    // Repeatable jobs are scheduled via addRepeatableJob on module init.
+    BullModule.registerQueue({ name: 'loops-eval-aggregation' }),
+  ],
   controllers: [LoopsController],
   providers: [
     LoopsService,
@@ -58,6 +71,8 @@ import { LoopsLearningGovernanceService } from './loops-learning-governance.serv
     LoopsSecondOpinionWorkerService,
     LoopsDockerSandboxService,
     LoopsLearningGovernanceService,
+    LoopsEvalAggregationWorkerService,
+    LoopsEvalAggregationProcessor,
     LoopsWorkLockService,
     // Work-lock backend: in-memory by default (single-process, unchanged
     // behaviour). Swap to RedisLoopsLockBackend (bound to @dofe/infra-redis
