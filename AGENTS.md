@@ -1,50 +1,62 @@
 # AGENTS.md
 
-This file provides guidance to AI coding agents (Codex, Cursor, Copilot, etc.) when working with code in this repository.
+Entry point for Codex and other coding agents working in `vibecoding.dofe.ai`.
+Keep this file short; route detailed reading by task.
 
-> **Note**: The canonical and most up-to-date guidance is in [CLAUDE.md](./CLAUDE.md). This file serves as an entry point for agents that look for `AGENTS.md` by convention. Both files contain equivalent architectural rules and coding standards.
+## Project Role
 
-## Quick Reference
+`vibecoding.dofe.ai` owns issue-to-implementation loops, coding workflow
+orchestration, review evidence, execution UX, and the operator loop dashboard.
 
-This project is a **full-stack monorepo** (pnpm workspaces + Turborepo) containing:
+For cross-project ownership, read:
 
-- **apps/web/** — Next.js 16 frontend (React 19, App Router, Tailwind CSS 4)
-- **apps/api/** — NestJS 11 backend (Fastify, Prisma, PostgreSQL)
-- **packages/** — Shared packages (ui, utils, types, config, constants, validators, contracts)
+- [Dofe Project Matrix](../docs/PROJECT-MATRIX.md)
+- [CLAUDE.md](./CLAUDE.md) for full local conventions when needed
 
-## ⚠️ Core Architecture Rules
+## Red Lines
 
-Before making ANY code changes, you MUST follow these rules:
+- Early MVP flows should stay simple: Web issue intake and SSO are primary unless
+  a task explicitly asks for heavier external intake integrations.
+- Loop default user paths should use product-level actions such as
+  `Continue Loop`; granular internal stages belong in compatible APIs or
+  operator diagnostics.
+- DB access must go through the DB service layer; do not use raw
+  `prisma.write` / `prisma.read` in API or service code.
+- API contracts and external interfaces must be Zod-first and ts-rest aligned.
+- External API calls belong in client-layer code, not directly in business
+  services.
+- Consume SSO/models/infra through their published APIs or packages; do not copy
+  ownership into this repo.
 
-1. **Database access ONLY through DB Service layer** — Never use `prisma.write`/`prisma.read` directly in API or Service layers
-2. **Zod-first validation** — All API requests/responses must use Zod schemas (via ts-rest contracts)
-3. **External API calls ONLY through Client layer** — Service layer must call Client layer, not external APIs directly
-4. **Winston Logger only** — No NestJS built-in Logger, no `console.log` in production code
+## Task Routing
 
-## Required Reading
+| Task                              | Read First                                                                         |
+| --------------------------------- | ---------------------------------------------------------------------------------- |
+| Loop product flow or dashboard    | `CLAUDE.md`, relevant `docs/0622` or `docs/0623` plan, affected page/service/tests |
+| Frontend UI or interaction        | `CLAUDE.md`, affected page/component, related tests                                |
+| API or contract changes           | `CLAUDE.md`, `packages/contracts`, controller/service, related tests               |
+| DB or Prisma changes              | `CLAUDE.md`, Prisma schema, DB service code, related tests                         |
+| Cross-project dependency behavior | [Dofe Project Matrix](../docs/PROJECT-MATRIX.md)                                   |
 
-Before coding, read the full guidance in [CLAUDE.md](./CLAUDE.md), which covers:
-
-- Monorepo structure and import aliases
-- API list standardization pattern (PaginationQuerySchema / PaginatedResponseSchema)
-- Zod 4 usage guidelines
-- Architecture layering with concrete code examples
-- Environment variables and configuration
-
-## Quick Commands
+## Commands
 
 ```bash
-pnpm install          # Install dependencies
-pnpm dev              # Start all apps in dev mode
-pnpm build            # Build all apps and packages
-pnpm lint             # Lint all packages
-pnpm type-check       # Type-check all packages
-pnpm test             # Run all tests
-pnpm quality:gate     # Run architecture + code quality checks
+pnpm dev
+pnpm build
+pnpm lint
+pnpm type-check
+pnpm test
+pnpm quality:gate
 ```
 
-## Code Quality
+Use focused package commands while iterating; use `pnpm quality:gate` before
+shipping loop-engineer, cross-boundary, or release-facing changes.
 
-- Pre-commit hooks (Husky + lint-staged) enforce ESLint and Prettier on staged files
-- CI pipeline enforces lint, type-check, quality gate, tests, and security audit
-- Quality gate scripts run architecture boundary checks, API standardization checks, and sensitive data detection
+## Completion
+
+- Keep changes scoped to the requested loop/product surface.
+- Treat docs as implementation state: update them when task acceptance depends
+  on a plan, gap list, or loop status.
+- Run the narrowest meaningful validation first, then `pnpm quality:gate` for
+  release-facing or architecture-affecting changes.
+- Report unrelated existing worktree changes without reverting them.
