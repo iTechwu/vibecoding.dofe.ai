@@ -5,7 +5,6 @@ export * from './auth.guard';
 export * from './auth';
 export * from './user-sync.service';
 export * from './permission.service';
-export * from './sso-permission.client';
 export * from './dto/auth.dto';
 // RBAC exports
 export * from './decorators/rbac.decorator';

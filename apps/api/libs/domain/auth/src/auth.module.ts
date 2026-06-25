@@ -5,6 +5,7 @@ import { HttpModule } from '@nestjs/axios';
 import { JwtModule } from '@dofe/infra-jwt';
 import { RedisModule } from '@dofe/infra-redis';
 import { SsoClientModule as InfraSsoClientModule } from '@dofe/infra-clients/sso';
+import { SsoClientModule } from '@dofe/sso-nestjs';
 import { FileClient } from '@dofe/file-sdk';
 import { UserInfoModule } from '@app/db';
 import { AuthGuard } from './auth.guard';
@@ -12,7 +13,6 @@ import { AuthService } from './auth.service';
 import { AuthValidationService } from './auth-validation.service';
 import { PermissionGuard } from './guards/permission.guard';
 import { PermissionService } from './permission.service';
-import { SsoPermissionClient } from './sso-permission.client';
 import { UserSyncService } from './user-sync.service';
 
 @Global()
@@ -23,6 +23,16 @@ import { UserSyncService } from './user-sync.service';
     RedisModule,
     JwtModule,
     InfraSsoClientModule,
+    SsoClientModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        baseUrl:
+          config.get<string>('SSO_INTERNAL_API_URL') ?? config.getOrThrow<string>('SSO_API_URL'),
+        internalSecret: config.getOrThrow<string>('INTERNAL_API_SECRET'),
+        serviceName: config.get<string>('SSO_SERVICE_NAME') ?? 'vibecoding.dofe.ai',
+        timeoutMs: 5000,
+      }),
+    }),
     UserInfoModule,
   ],
   providers: [
@@ -39,7 +49,6 @@ import { UserSyncService } from './user-sync.service';
     },
     AuthValidationService,
     UserSyncService,
-    SsoPermissionClient,
     PermissionService,
     PermissionGuard,
     {
@@ -56,7 +65,6 @@ import { UserSyncService } from './user-sync.service';
     AuthService,
     AuthValidationService,
     UserSyncService,
-    SsoPermissionClient,
     PermissionService,
     PermissionGuard,
     JwtModule,

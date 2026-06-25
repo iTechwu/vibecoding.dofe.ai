@@ -1,13 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { SsoClientService } from '@dofe/sso-nestjs';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
 import type { ModulePermissionMeta } from './decorators/rbac.decorator';
-import { SsoPermissionClient } from './sso-permission.client';
 
 @Injectable()
 export class PermissionService {
   constructor(
-    private readonly ssoPermissionClient: SsoPermissionClient,
+    private readonly ssoClient: SsoClientService,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
   ) {}
 
@@ -21,7 +21,7 @@ export class PermissionService {
     const permission = `${module}:${resource}:${action}`;
 
     try {
-      return await this.ssoPermissionClient.checkPermission(userId, permission, teamId);
+      return await this.ssoClient.checkPermission(userId, permission, teamId);
     } catch (error) {
       this.logger.error('[PermissionService] SSO permission check failed', {
         userId,
@@ -74,7 +74,7 @@ export class PermissionService {
     teamId?: string,
   ): Promise<{ resource: string; action: string }[]> {
     try {
-      const permissions = await this.ssoPermissionClient.getUserPermissions(userId, teamId);
+      const permissions = await this.ssoClient.getUserPermissions(userId, teamId);
 
       return permissions.permissions.map((permission) => {
         const parts = permission.split(':');
@@ -101,7 +101,7 @@ export class PermissionService {
     teamId?: string,
   ): Promise<{ permissions: string[]; roles: string[] }> {
     try {
-      return await this.ssoPermissionClient.getUserPermissions(userId, teamId);
+      return await this.ssoClient.getUserPermissions(userId, teamId);
     } catch (error) {
       this.logger.error('[PermissionService] Get user permission snapshot failed', {
         userId,
