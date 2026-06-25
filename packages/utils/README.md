@@ -39,8 +39,8 @@ cn('text-red-500', condition && 'text-blue-500');
 ```typescript
 import { chunk, unique, groupBy } from '@repo/utils';
 
-chunk([1, 2, 3, 4, 5], 2);    // [[1, 2], [3, 4], [5]]
-unique([1, 2, 2, 3]);          // [1, 2, 3]
+chunk([1, 2, 3, 4, 5], 2); // [[1, 2], [3, 4], [5]]
+unique([1, 2, 2, 3]); // [1, 2, 3]
 ```
 
 ### 加密工具 (encrypt.ts)
@@ -65,8 +65,8 @@ const response = await fetchWithTimeout(url, { timeout: 5000 });
 ```typescript
 import { formatFileSize, getFileExtension } from '@repo/utils';
 
-formatFileSize(1024);           // '1 KB'
-getFileExtension('doc.pdf');    // 'pdf'
+formatFileSize(1024); // '1 KB'
+getFileExtension('doc.pdf'); // 'pdf'
 ```
 
 ### HTTP 头处理 (headers.ts)
@@ -80,8 +80,8 @@ import { parseHeaders, getContentType } from '@repo/utils';
 ```typescript
 import { safeJsonParse, safeJsonStringify } from '@repo/utils';
 
-safeJsonParse('{"a":1}');       // { a: 1 }
-safeJsonParse('invalid');       // null (不抛错)
+safeJsonParse('{"a":1}'); // { a: 1 }
+safeJsonParse('invalid'); // null (不抛错)
 ```
 
 ### 对象工具 (object.util.ts)
@@ -89,8 +89,8 @@ safeJsonParse('invalid');       // null (不抛错)
 ```typescript
 import { pick, omit, deepClone } from '@repo/utils';
 
-pick({ a: 1, b: 2 }, ['a']);    // { a: 1 }
-omit({ a: 1, b: 2 }, ['a']);    // { b: 2 }
+pick({ a: 1, b: 2 }, ['a']); // { a: 1 }
+omit({ a: 1, b: 2 }, ['a']); // { b: 2 }
 ```
 
 ### 字符串工具 (string.util.ts)
@@ -98,9 +98,9 @@ omit({ a: 1, b: 2 }, ['a']);    // { b: 2 }
 ```typescript
 import { truncate, capitalize, slugify } from '@repo/utils';
 
-truncate('hello world', 5);     // 'hello...'
-capitalize('hello');            // 'Hello'
-slugify('Hello World');         // 'hello-world'
+truncate('hello world', 5); // 'hello...'
+capitalize('hello'); // 'Hello'
+slugify('Hello World'); // 'hello-world'
 ```
 
 ### 定时器工具 (timer.util.ts)
@@ -118,8 +118,8 @@ await sleep(1000);
 ```typescript
 import { encodeQueryParams, parseQueryString } from '@repo/utils';
 
-encodeQueryParams({ a: 1, b: 2 });  // 'a=1&b=2'
-parseQueryString('a=1&b=2');        // { a: '1', b: '2' }
+encodeQueryParams({ a: 1, b: 2 }); // 'a=1&b=2'
+parseQueryString('a=1&b=2'); // { a: '1', b: '2' }
 ```
 
 ### 验证工具 (validate.util.ts)
@@ -127,8 +127,8 @@ parseQueryString('a=1&b=2');        // { a: '1', b: '2' }
 ```typescript
 import { isEmail, isUrl, isPhone } from '@repo/utils';
 
-isEmail('test@example.com');    // true
-isUrl('https://example.com');   // true
+isEmail('test@example.com'); // true
+isUrl('https://example.com'); // true
 ```
 
 ### BigInt 序列化 (bigint.util.ts)
