@@ -96,8 +96,8 @@ importers:
         specifier: ^1.0.4
         version: 1.0.4
       '@dofe/file-sdk':
-        specifier: 0.1.11
-        version: 0.1.11
+        specifier: 0.1.12
+        version: 0.1.12
       '@dofe/infra-clients':
         specifier: 0.1.71
         version: 0.1.71(6b104e7383b47ead2a39ea9b9f2334a0)
@@ -135,14 +135,14 @@ importers:
         specifier: 0.1.71
         version: 0.1.71(@dofe/infra-contracts@0.1.71)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)
       '@dofe/sso-contracts':
-        specifier: 0.1.67
-        version: 0.1.67(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
+        specifier: 0.1.68
+        version: 0.1.68(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
       '@dofe/sso-nestjs':
-        specifier: 0.1.51
-        version: 0.1.51(@nestjs/axios@4.0.1(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.18.1)(rxjs@7.8.2))(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2)
-      '@dofe/sso-node':
         specifier: 0.1.52
-        version: 0.1.52
+        version: 0.1.52(@nestjs/axios@4.0.1(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.18.1)(rxjs@7.8.2))(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2)
+      '@dofe/sso-node':
+        specifier: 0.1.53
+        version: 0.1.53
       '@fastify/compress':
         specifier: ^8.3.1
         version: 8.3.1
@@ -526,8 +526,8 @@ importers:
   apps/web:
     dependencies:
       '@dofe/file-sdk-web':
-        specifier: 0.1.11
-        version: 0.1.11
+        specifier: 0.1.12
+        version: 0.1.12
       '@dofe/infra-contracts':
         specifier: 0.1.71
         version: 0.1.71
@@ -535,17 +535,17 @@ importers:
         specifier: 0.1.71
         version: 0.1.71(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(clsx@2.1.1)(tailwind-merge@3.6.0)(zod@4.4.3)
       '@dofe/sso-browser':
-        specifier: ^0.1.71
+        specifier: 0.1.71
         version: 0.1.71(react@19.2.6)
       '@dofe/sso-contracts':
-        specifier: 0.1.67
-        version: 0.1.67(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
+        specifier: 0.1.68
+        version: 0.1.68(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
       '@dofe/sso-hooks':
-        specifier: 0.1.55
-        version: 0.1.55(@tanstack/react-query@5.101.1(react@19.2.6))(next-intl@4.13.0(next@16.2.9(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(react@19.2.6)(sonner@2.0.7(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(zod@4.4.3)
+        specifier: 0.1.56
+        version: 0.1.56(@tanstack/react-query@5.101.1(react@19.2.6))(next-intl@4.13.0(next@16.2.9(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(react@19.2.6)(sonner@2.0.7(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(zod@4.4.3)
       '@dofe/sso-ui':
-        specifier: 0.1.54
-        version: 0.1.54(@types/node@25.9.4)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@4.4.3)
+        specifier: 0.1.55
+        version: 0.1.55(@types/node@25.9.4)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@4.4.3)
       '@hookform/resolvers':
         specifier: ^5.4.0
         version: 5.4.0(react-hook-form@7.80.0(react@19.2.6))
@@ -758,6 +758,9 @@ importers:
 
   packages/contracts:
     dependencies:
+      '@dofe/infra-contracts':
+        specifier: 0.1.71
+        version: 0.1.71
       '@dofe/infra-contracts-base':
         specifier: 0.1.71
         version: 0.1.71(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
@@ -1488,11 +1491,11 @@ packages:
     resolution: {integrity: sha512-Xc3VhU02wqZ1HvHRJUwL09HkZSTvidqY5Ya0NXBSYOxAp+Ln9dcJr9fySI+CkONzP3PekQo9WdzCv0PGER/mOA==}
     engines: {node: '>=14.17.0'}
 
-  '@dofe/file-sdk-web@0.1.11':
-    resolution: {integrity: sha512-v1driJufmdO0aln7ZoKdYGy1sYufkvjfjeMriiRJcD1+wGcesl1/J6M+LsEVTgspGdOoKaXdsXcpAgzdx704KQ==}
+  '@dofe/file-sdk-web@0.1.12':
+    resolution: {integrity: sha512-jr5mkZOoDlxd2goghTqj18gwRSekkwkrgeblEZ+Q+xOWv8GFtyJb4i+4DJQPs0YF1Ij6YKuyQ9fRiSfC561GFg==}
 
-  '@dofe/file-sdk@0.1.11':
-    resolution: {integrity: sha512-egvHdlFZj6UFY72Ph/p65OPoQbsFL7AKavZuu8VgjUPakYP/+/RMQwgw/5nYuvMJwjkxVRAJWp5saEeDyNZZ0Q==}
+  '@dofe/file-sdk@0.1.12':
+    resolution: {integrity: sha512-N0qlzdjRw6qLkd0zlTX5UM4cviSRybeNjsaUVPE13WTBdnqLWjS98ufCMl0z4IRQFChU2t+mHbOAGKseFDPFXQ==}
 
   '@dofe/infra-clients@0.1.71':
     resolution: {integrity: sha512-fkkHZ2AoC+AkVTlHCR0bHCuKQwgZrZWWLUX/ppXyGdu7YHceYS59cbH34zqGXOvhEuPt3Pbwf39/9Om+JJ0/wg==}
@@ -1720,14 +1723,14 @@ packages:
     peerDependencies:
       react: '>=18'
 
-  '@dofe/sso-contracts@0.1.67':
-    resolution: {integrity: sha512-gTjv2SCKpoZjfRkE2YSaRFL0lEIpQMky9zu2/oEj2FEJXOKY7fistkV0EsHMNGfi5Mq7HlOrtHjEtbdbskuJlw==}
+  '@dofe/sso-contracts@0.1.68':
+    resolution: {integrity: sha512-QVfKwFH5qXL3IjDQkrcyrHNLr9zN6rqNkYGI//CxShY/mnJqAGg2GltSlI2x8/PNFA8hTW5qNIFs7RKSqbqNbQ==}
     peerDependencies:
       '@ts-rest/core': '>=3.53.0-rc.1'
       zod: ^4.4.3
 
-  '@dofe/sso-hooks@0.1.55':
-    resolution: {integrity: sha512-hASE+RTBRCPlR2E5EOM7tb7u1p0J2/CvGVtCYbQP87YgG0JyZ1UrT5YcDF+CsAq9381rP2nALVIArEfk1PyvCA==}
+  '@dofe/sso-hooks@0.1.56':
+    resolution: {integrity: sha512-grQj5FEilOgU6lJTi5uFyxo9jYqeQpaDtYHroFYXMT9/MqCwvCsNoMTSWs/22KAZNfCm+MMxKb9xgduNkEN7yg==}
     peerDependencies:
       '@tanstack/react-query': ^5.0.0
       next-intl: ^4.0.0
@@ -1735,20 +1738,20 @@ packages:
       sonner: ^2.0.0
       zod: ^3.24.0 || ^4.0.0
 
-  '@dofe/sso-nestjs@0.1.51':
-    resolution: {integrity: sha512-2lUbs5AzPCNu7aziaz6ivjylzOnmF7tOpy0/uS74wvy4TDpoJXDN5J17YcOIKT3d8Qgtayw8ok0AoURAkMeoPQ==}
+  '@dofe/sso-nestjs@0.1.52':
+    resolution: {integrity: sha512-ytz/5SWHnbafXm41dHmMhzm5LN7B+r6o51zOO5EgEv9AIoDaFJ4hvmvrMq+6eAhXAAs0OxNC5dO177VVPXqpzw==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@nestjs/axios': ^4.0.0
       '@nestjs/common': ^11.0.0
       rxjs: 7.8.2
 
-  '@dofe/sso-node@0.1.52':
-    resolution: {integrity: sha512-sPpIVM1a/WavSqvJbglOQVnfOgniNcNwnTvodpeRJggKznSQZmP8fdpqsfnIx4/FIL+VTVJqLMD6QSAmnJ/rkg==}
+  '@dofe/sso-node@0.1.53':
+    resolution: {integrity: sha512-vMjLd+2nZSM9o4xY7FNebdrUqq2n0y9HezaUOpN3rYXahlWDhfNAO3dYzK1qaAZhLFFx7qJexQ0oLMym6/2GZw==}
     engines: {node: '>=18.0.0'}
 
-  '@dofe/sso-ui@0.1.54':
-    resolution: {integrity: sha512-q8KzQAPIegLoyRhae84L7yND8aw1WBiY79Ppk2H5tEvMYKr4zJmgVmVZrRiR20dv2wYCsMLFHaeow2U8nGtf9Q==}
+  '@dofe/sso-ui@0.1.55':
+    resolution: {integrity: sha512-g2yRM9l5tcIOsonYZnssYrsi1oBxrn62RRJM0R4A2pMGCtbAQFnCFIeADEaI3LRgw23OljqlPyoZDW6x1TJ8oA==}
     peerDependencies:
       react: ^19.0.0
       react-dom: ^19.0.0
@@ -10950,9 +10953,9 @@ snapshots:
 
   '@discoveryjs/json-ext@1.1.0': {}
 
-  '@dofe/file-sdk-web@0.1.11': {}
+  '@dofe/file-sdk-web@0.1.12': {}
 
-  '@dofe/file-sdk@0.1.11': {}
+  '@dofe/file-sdk@0.1.12': {}
 
   '@dofe/infra-clients@0.1.71(6b104e7383b47ead2a39ea9b9f2334a0)':
     dependencies:
@@ -11299,14 +11302,14 @@ snapshots:
     dependencies:
       react: 19.2.6
 
-  '@dofe/sso-contracts@0.1.67(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)':
+  '@dofe/sso-contracts@0.1.68(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)':
     dependencies:
       '@dofe/infra-contracts': 0.1.71
       '@dofe/infra-contracts-base': 0.1.71(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
       '@ts-rest/core': 3.53.0-rc.1(@types/node@25.9.4)
       zod: 4.4.3
 
-  '@dofe/sso-hooks@0.1.55(@tanstack/react-query@5.101.1(react@19.2.6))(next-intl@4.13.0(next@16.2.9(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(react@19.2.6)(sonner@2.0.7(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(zod@4.4.3)':
+  '@dofe/sso-hooks@0.1.56(@tanstack/react-query@5.101.1(react@19.2.6))(next-intl@4.13.0(next@16.2.9(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(react@19.2.6)(sonner@2.0.7(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(zod@4.4.3)':
     dependencies:
       '@tanstack/react-query': 5.101.1(react@19.2.6)
       next-intl: 4.13.0(next@16.2.9(@opentelemetry/api@1.9.1)(@playwright/test@1.61.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)(typescript@6.0.3)
@@ -11314,16 +11317,16 @@ snapshots:
       sonner: 2.0.7(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       zod: 4.4.3
 
-  '@dofe/sso-nestjs@0.1.51(@nestjs/axios@4.0.1(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.18.1)(rxjs@7.8.2))(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2)':
+  '@dofe/sso-nestjs@0.1.52(@nestjs/axios@4.0.1(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.18.1)(rxjs@7.8.2))(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2)':
     dependencies:
-      '@dofe/sso-node': 0.1.52
+      '@dofe/sso-node': 0.1.53
       '@nestjs/axios': 4.0.1(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.18.1)(rxjs@7.8.2)
       '@nestjs/common': 11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       rxjs: 7.8.2
 
-  '@dofe/sso-node@0.1.52': {}
+  '@dofe/sso-node@0.1.53': {}
 
-  '@dofe/sso-ui@0.1.54(@types/node@25.9.4)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@4.4.3)':
+  '@dofe/sso-ui@0.1.55(@types/node@25.9.4)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(zod@4.4.3)':
     dependencies:
       '@dofe/infra-web-runtime': 0.1.71(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(clsx@2.1.1)(tailwind-merge@3.6.0)(zod@4.4.3)
       '@hookform/resolvers': 5.4.0(react-hook-form@7.80.0(react@19.2.6))

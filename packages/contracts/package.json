@@ -23,7 +23,8 @@
     "@repo/config": "workspace:*",
     "@ts-rest/core": "3.53.0-rc.1",
     "zod": "^4.4.3",
-    "@dofe/infra-contracts-base": "0.1.71"
+    "@dofe/infra-contracts-base": "0.1.71",
+    "@dofe/infra-contracts": "0.1.71"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

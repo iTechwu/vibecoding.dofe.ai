@@ -7,16 +7,15 @@
  * - YYY: HTTP status code hint
  */
 
+// Import from @dofe/infra-contracts as the single source of truth
 import {
   UserErrorCode,
   UserErrorTypes,
   UserErrorHttpStatus,
-} from './domains/user.errors';
-import {
   CommonErrorCode,
   CommonErrorTypes,
   CommonErrorHttpStatus,
-} from './domains/common.errors';
+} from '@dofe/infra-contracts/error-codes';
 
 // Unified ApiErrorCode (string enum)
 export const ApiErrorCode = {

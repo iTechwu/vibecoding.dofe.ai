@@ -11,6 +11,9 @@ const uploader = new FileUploader({
   apiBase: '/api/proxy/sso',
 });
 
+/** Track active uploads for cancellation */
+const activeUploads = new Map<string, AbortController>();
+
 export interface UploadProgress {
   loaded: number;
   total: number;
@@ -46,10 +49,16 @@ export async function uploadFile(params: UploadParams): Promise<UploadResult> {
 
   callbacks?.onCalculating?.(0);
 
+  // Create an AbortController for this upload
+  const controller = new AbortController();
+  const uploadKey = file.name;
+  activeUploads.set(uploadKey, controller);
+
   try {
     const result = await uploader.upload(file, {
       scope: 'general',
       metadata,
+      signal: controller.signal,
       onProgress: ({ percent, loaded, total }) => {
         callbacks?.onProgress?.({ percentage: percent, loaded, total });
       },
@@ -74,9 +83,15 @@ export async function uploadFile(params: UploadParams): Promise<UploadResult> {
       error instanceof UploadError ? error : new UploadError(UploadErrorCode.UPLOAD_FAILED);
     callbacks?.onError?.(uploadError);
     throw uploadError;
+  } finally {
+    activeUploads.delete(uploadKey);
   }
 }
 
-export async function cancelUpload(_filename: string, _fileId: string): Promise<void> {
-  // FileUploader does not support cancellation; no-op.
+export async function cancelUpload(filename: string, _fileId: string): Promise<void> {
+  const controller = activeUploads.get(filename);
+  if (controller) {
+    controller.abort();
+    activeUploads.delete(filename);
+  }
 }
