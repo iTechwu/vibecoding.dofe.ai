@@ -27,6 +27,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@dofe/infra-contracts": "0.1.78",
     "@repo/config": "workspace:*",
     "@repo/types": "workspace:*",
     "clsx": "^2.1.1",
@@ -34,8 +35,7 @@
     "lodash": "^4.18.1",
     "moment-timezone": "^0.6.2",
     "pinyin-pro": "^3.28.1",
-    "tailwind-merge": "^3.6.0",
-    "@dofe/infra-contracts": "0.1.71"
+    "tailwind-merge": "^3.6.0"
   },
   "optionalDependencies": {
     "bcrypt": "^6.0.0"

@@ -49,6 +49,54 @@ report_matches() {
   rm -f "$tmp"
 }
 
+section "Infra exact version boundary"
+if node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const expected = '0.1.78';
+const ignored = new Set(['node_modules', '.git', 'dist', '.next', 'coverage', '.turbo']);
+const bad = [];
+
+function walk(dir) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (ignored.has(entry.name)) continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      walk(full);
+      continue;
+    }
+    if (entry.name !== 'package.json') continue;
+    const json = JSON.parse(fs.readFileSync(full, 'utf8'));
+    const rel = path.relative(process.cwd(), full);
+    for (const section of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
+      for (const [name, version] of Object.entries(json[section] || {})) {
+        if (name.startsWith('@dofe/infra-') && version !== expected) {
+          bad.push(`${rel} ${section}.${name}=${version}`);
+        }
+      }
+    }
+    for (const [name, version] of Object.entries(json.pnpm?.overrides || {})) {
+      if (name.startsWith('@dofe/infra-') && version !== expected) {
+        bad.push(`${rel} pnpm.overrides.${name}=${version}`);
+      }
+    }
+  }
+}
+
+walk(process.cwd());
+if (bad.length > 0) {
+  console.error(`FAIL: @dofe/infra-* direct versions must be exact ${expected}`);
+  for (const item of bad) console.error(item);
+  process.exit(1);
+}
+console.log(`PASS: @dofe/infra-* direct versions are exact ${expected}`);
+NODE
+then
+  :
+else
+  failures=$((failures + 1))
+fi
+
 section "DB client boundary"
 check_no_matches \
   "Service/API/domain files must not call getReadClient/getWriteClient directly" \
