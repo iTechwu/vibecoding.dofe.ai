@@ -158,6 +158,52 @@ check_no_matches \
   apps/web \
   --glob '*.{ts,tsx}'
 
+section "SSO token contracts publish boundary"
+if node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const root = process.cwd();
+const failures = [];
+const extensions = new Set(['.ts', '.tsx', '.js', '.mjs', '.json']);
+function walk(dir) {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (!['node_modules', 'dist', '.next', 'coverage'].includes(entry.name)) walk(full);
+      continue;
+    }
+    if (!extensions.has(path.extname(entry.name))) continue;
+    const content = fs.readFileSync(full, 'utf8');
+    if (
+      /from\s+['"]@dofe\/sso-contracts\/token['"]/.test(content) ||
+      /import\(\s*['"]@dofe\/sso-contracts\/token['"]\s*\)/.test(content)
+    ) {
+      failures.push(path.relative(root, full).split(path.sep).join('/'));
+    }
+  }
+}
+walk(path.join(root, 'apps/api'));
+walk(path.join(root, 'apps/web'));
+let tokenExportAvailable = true;
+try {
+  require.resolve('@dofe/sso-contracts/token', { paths: [root] });
+} catch {
+  tokenExportAvailable = false;
+}
+if (!tokenExportAvailable && failures.length > 0) {
+  console.error('FAIL: @dofe/sso-contracts/token is not exported by the installed npm package yet');
+  for (const failure of failures) console.error(failure);
+  process.exit(1);
+}
+console.log('PASS: no premature @dofe/sso-contracts/token imports before npm export is available');
+NODE
+then
+  :
+else
+  failures=$((failures + 1))
+fi
+
 section "Web repo utils narrow boundary"
 check_no_matches \
   "Frontend code may only keep @repo/utils/headers until GAP-007 is resolved" \
