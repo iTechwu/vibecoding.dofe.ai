@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { SsoClientService } from '@dofe/sso-nestjs';
+import { formatPermission, parsePermission } from '@dofe/sso-node';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
 import type { ModulePermissionMeta } from './decorators/rbac.decorator';
@@ -18,7 +19,7 @@ export class PermissionService {
     action: string,
     teamId?: string,
   ): Promise<boolean> {
-    const permission = `${module}:${resource}:${action}`;
+    const permission = formatPermission({ module, resource, action });
 
     try {
       return await this.ssoClient.checkPermission(userId, permission, teamId);
@@ -77,14 +78,8 @@ export class PermissionService {
       const permissions = await this.ssoClient.getUserPermissions(userId, teamId);
 
       return permissions.permissions.map((permission) => {
-        const parts = permission.split(':');
-        if (parts.length === 3) {
-          return { resource: parts[1], action: parts[2] };
-        }
-        if (parts.length === 2) {
-          return { resource: parts[0], action: parts[1] };
-        }
-        return { resource: permission, action: 'unknown' };
+        const parsed = parsePermission(permission);
+        return { resource: parsed.resource, action: parsed.action };
       });
     } catch (error) {
       this.logger.error('[PermissionService] Get user permissions failed', {

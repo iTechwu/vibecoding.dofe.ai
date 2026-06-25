@@ -1,3 +1,12 @@
+/**
+ * OIDC URL Resolver
+ *
+ * @deprecated Prefer resolveOidcUrls() from @dofe/sso-nestjs for new code.
+ * This local resolver remains for backward compatibility with existing
+ * ConfigService-based configuration.
+ *
+ * @see @dofe/sso-nestjs/oidc-helpers
+ */
 import type { ConfigService } from '@nestjs/config';
 
 type AppUrlConfig = {

@@ -4,8 +4,14 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { HttpModule } from '@nestjs/axios';
 import { JwtModule } from '@dofe/infra-jwt';
 import { RedisModule } from '@dofe/infra-redis';
-import { SsoClientModule as InfraSsoClientModule } from '@dofe/infra-clients/sso';
+import { SsoClientModule as InfraSsoClientModule, SsoAuthClient } from '@dofe/infra-clients/sso';
 import { SsoClientModule } from '@dofe/sso-nestjs';
+import {
+  SSO_AUTH_HOOKS,
+  SSO_AUTH_OPTIONS,
+  SSO_TOKEN_VERIFIER,
+  type SsoTokenVerifier,
+} from '@dofe/sso-nestjs';
 import { FileClient } from '@dofe/file-sdk';
 import { UserInfoModule } from '@app/db';
 import { AuthGuard } from './auth.guard';
@@ -14,6 +20,8 @@ import { AuthValidationService } from './auth-validation.service';
 import { PermissionGuard } from './guards/permission.guard';
 import { PermissionService } from './permission.service';
 import { UserSyncService } from './user-sync.service';
+import { VibecodingSsoAuthHooks } from './sso-auth-hooks';
+import { IS_PUBLIC_KEY } from './auth';
 
 @Global()
 @Module({
@@ -47,6 +55,18 @@ import { UserSyncService } from './user-sync.service';
         }),
       inject: [ConfigService],
     },
+    // SDK AuthGuard base providers
+    VibecodingSsoAuthHooks,
+    { provide: SSO_AUTH_HOOKS, useClass: VibecodingSsoAuthHooks },
+    {
+      provide: SSO_TOKEN_VERIFIER,
+      inject: [SsoAuthClient],
+      useFactory: (ssoAuth: SsoAuthClient): SsoTokenVerifier => ({
+        verifyToken: (token) => ssoAuth.verifyToken(token),
+      }),
+    },
+    { provide: SSO_AUTH_OPTIONS, useValue: { publicKey: IS_PUBLIC_KEY, supportSse: true } },
+    // Existing providers
     AuthValidationService,
     UserSyncService,
     PermissionService,

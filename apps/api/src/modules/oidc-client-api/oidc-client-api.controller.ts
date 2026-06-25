@@ -8,13 +8,18 @@ import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { JwtService } from '@nestjs/jwt';
+import {
+  DOFE_RF_COOKIE,
+  DOFE_RF_MAX_AGE,
+  getCookieDomain,
+  isSecureCookieRequired,
+  classifyRefreshError,
+} from '@dofe/sso-nestjs';
 import { OidcClientApiService } from './oidc-client-api.service';
 import { CommonErrorCode } from '@repo/contracts/errors';
-import { ApiException } from '@dofe/infra-common/filter/exception/api.exception';
 import { apiError } from '@dofe/infra-common';
 
-const DOFE_RF_COOKIE = 'dofe_rf';
-const COOKIE_MAX_AGE = 30 * 24 * 60 * 60; // 30 days
+const nodeEnv = process.env.NODE_ENV;
 
 @Controller()
 @Public()
@@ -27,27 +32,15 @@ export class OidcClientApiController {
   ) {}
 
   // ==========================================================================
-  // Cookie helpers
+  // Cookie helpers — delegates to @dofe/sso-nestjs
   // ==========================================================================
-
-  private get cookieDomain(): string | undefined {
-    return this.isProductionLike ? '.dofe.ai' : undefined;
-  }
-
-  private get isProductionLike(): boolean {
-    return ['production', 'prod', 'produs', 'prodap'].includes(process.env.NODE_ENV ?? '');
-  }
-
-  private get isSecureCookieRequired(): boolean {
-    return this.isProductionLike;
-  }
 
   private setRefreshCookie(reply: FastifyReply, value: string, maxAge: number): void {
     reply.setCookie(DOFE_RF_COOKIE, value, {
       httpOnly: true,
-      secure: this.isSecureCookieRequired,
+      secure: isSecureCookieRequired(nodeEnv),
       sameSite: 'lax',
-      domain: this.cookieDomain,
+      domain: getCookieDomain(nodeEnv),
       path: '/',
       maxAge,
     });
@@ -130,7 +123,7 @@ export class OidcClientApiController {
       const result = await this.oidcClientService.exchangeCode(body.code);
 
       if (result.refresh_token) {
-        this.setRefreshCookie(reply, result.refresh_token, COOKIE_MAX_AGE);
+        this.setRefreshCookie(reply, result.refresh_token, DOFE_RF_MAX_AGE);
       }
 
       const { refresh_token: _, ...rest } = result;
@@ -170,17 +163,14 @@ export class OidcClientApiController {
 
         // Refresh is an active-session signal. Extend the RP HttpOnly cookie
         // even when SSO does not rotate the refresh token.
-        this.setRefreshCookie(reply, result.refresh_token ?? refreshTokenStr, COOKIE_MAX_AGE);
+        this.setRefreshCookie(reply, result.refresh_token ?? refreshTokenStr, DOFE_RF_MAX_AGE);
 
         const { refresh_token: _, ...rest } = result;
         return success(rest);
       } catch (err) {
-        // Clear the invalid refresh_token cookie when session expired
-        // This prevents repeated attempts with an invalid token
-        if (
-          err instanceof ApiException &&
-          (err.getErrorCode() as string) === CommonErrorCode.SessionExpired
-        ) {
+        // Use SDK error classification for consistent cookie cleanup
+        const classified = classifyRefreshError(err);
+        if (classified.isTokenInvalid) {
           this.setRefreshCookie(reply, '', 0); // Clear cookie
         }
         throw err; // Re-throw for ts-rest to handle error response
