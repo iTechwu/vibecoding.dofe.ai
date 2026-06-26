@@ -32,6 +32,10 @@ import { IS_PUBLIC_KEY } from './auth';
     JwtModule,
     InfraSsoClientModule,
     SsoClientModule.forRootAsync({
+      // ConfigModule is registered non-global (see app-module-imports.bootstrap.ts),
+      // so ConfigService must be imported into this dynamic module's context — same
+      // pattern as WinstonModule / I18nModule / BullModule forRootAsync below it.
+      imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         baseUrl:

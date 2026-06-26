@@ -1,9 +1,17 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Optional, forwardRef } from '@nestjs/common';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
 import { createHash, randomUUID } from 'crypto';
 import { LoopsFileStoreService } from './loops-file-store.service';
-import { LoopsService } from './loops.service';
+// NOTE: type-only import on purpose. `LoopsService` <-> `LoopsCrossTenantArchiveService`
+// is a same-package circular dependency. A value import here makes SWC emit a runtime
+// reference to `LoopsService` in this class' `design:paramtypes` decorator metadata,
+// which webpack turns into a live-binding getter read. When `loops.service.ts` loads
+// first and eagerly requires this module, that getter fires before the `LoopsService`
+// class is initialized -> `ReferenceError: Cannot access 'LoopsService' before
+// initialization` (dist/main.js bootstrap crash). Type-only import erases that metadata
+// read; the DI token is supplied lazily via `forwardRef` + `require` below.
+import type { LoopsService } from './loops.service';
 
 // ---------------------------------------------------------------------------
 // Minimal interface for file storage operations needed by the archive service.
@@ -46,6 +54,11 @@ export class LoopsCrossTenantArchiveService {
   constructor(
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
     private readonly store: LoopsFileStoreService,
+    // Circular DI (LoopsService <-> this service): `forwardRef` resolves the cycle at
+    // NestJS instantiation time. The lazy `require` keeps the class reference out of
+    // module-eval-time metadata (see the import note above) so it can't trigger the
+    // webpack TDZ; it is only dereferenced when NestJS resolves the dependency.
+    @Inject(forwardRef(() => require('./loops.service').LoopsService))
     private readonly loopsService: LoopsService,
     @Optional() @Inject(ARCHIVE_FILE_STORAGE) private readonly fileStorage?: ArchiveFileStorage,
   ) {}

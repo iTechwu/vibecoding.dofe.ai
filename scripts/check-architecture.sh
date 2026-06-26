@@ -97,6 +97,91 @@ else
   failures=$((failures + 1))
 fi
 
+section "PNPM workspace policy boundary"
+if node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const rootPackage = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+const workspace = fs.readFileSync('pnpm-workspace.yaml', 'utf8');
+const failures = [];
+
+if (rootPackage.packageManager !== 'pnpm@11.7.0') {
+  failures.push('package.json packageManager must stay pnpm@11.7.0');
+}
+if (rootPackage.pnpm) {
+  failures.push('package.json must not define pnpm settings; use pnpm-workspace.yaml for pnpm 11');
+}
+for (const marker of ['overrides:', 'patchedDependencies:', 'peerDependencyRules:', 'allowBuilds:', 'minimumReleaseAgeExclude:', "'@scarf/scarf': false"]) {
+  if (!workspace.includes(marker)) {
+    failures.push(`pnpm-workspace.yaml must include ${marker}`);
+  }
+}
+
+if (failures.length > 0) {
+  console.error('FAIL: pnpm workspace policy must stay in pnpm-workspace.yaml');
+  for (const failure of failures) console.error(failure);
+  process.exit(1);
+}
+
+console.log('PASS: pnpm 11 workspace policy is active');
+NODE
+then
+  :
+else
+  failures=$((failures + 1))
+fi
+
+section "SSO SDK exact version boundary"
+if node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const expected = {
+  '@dofe/sso-contracts': '0.1.71',
+  '@dofe/sso-node': '0.1.58',
+  '@dofe/sso-nestjs': '0.1.57',
+  '@dofe/sso-browser': '0.1.78',
+  '@dofe/sso-hooks': '0.1.59',
+  '@dofe/sso-ui': '0.1.58',
+};
+const ignored = new Set(['node_modules', '.git', 'dist', '.next', 'coverage', '.turbo']);
+const failures = [];
+
+function walk(dir) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (ignored.has(entry.name)) continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      walk(full);
+      continue;
+    }
+    if (entry.name !== 'package.json') continue;
+    const json = JSON.parse(fs.readFileSync(full, 'utf8'));
+    const rel = path.relative(process.cwd(), full);
+    for (const section of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
+      for (const [name, version] of Object.entries(json[section] || {})) {
+        if (expected[name] && version !== expected[name]) {
+          failures.push(`${rel} ${section}.${name} must be exact ${expected[name]}, found ${version}`);
+        }
+      }
+    }
+  }
+}
+
+walk(process.cwd());
+if (failures.length > 0) {
+  console.error('FAIL: @dofe/sso-* direct versions must match current latest baseline');
+  for (const failure of failures) console.error(failure);
+  process.exit(1);
+}
+
+console.log('PASS: @dofe/sso-* direct versions match current latest baseline');
+NODE
+then
+  :
+else
+  failures=$((failures + 1))
+fi
+
 section "DB client boundary"
 check_no_matches \
   "Service/API/domain files must not call getReadClient/getWriteClient directly" \

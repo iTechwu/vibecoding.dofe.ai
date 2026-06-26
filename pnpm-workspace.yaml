@@ -1,3 +1,101 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+overrides:
+  '@dofe/infra-clients': 0.1.78
+  '@dofe/infra-common': 0.1.78
+  '@dofe/infra-contracts': 0.1.78
+  '@dofe/infra-i18n': 0.1.78
+  '@dofe/infra-jwt': 0.1.78
+  '@dofe/infra-prisma': 0.1.78
+  '@dofe/infra-rabbitmq': 0.1.78
+  '@dofe/infra-redis': 0.1.78
+  '@dofe/infra-shared-db': 0.1.78
+  '@dofe/infra-shared-services': 0.1.78
+  '@dofe/infra-utils': 0.1.78
+  glob: ^13.0.1
+  openai: ^6.17.0
+  punycode: ^2.3.1
+  rimraf: ^6.0.1
+  rxjs: 7.8.2
+patchedDependencies:
+  eslint-plugin-react@7.37.5: patches/eslint-plugin-react@7.37.5.patch
+peerDependencyRules:
+  allowedVersions:
+    '@alicloud/dysmsapi20170525': '4'
+    amqplib: '0'
+    bcrypt: '6'
+    class-validator: '0.15'
+    dotenv: '17'
+    dotenv-expand: '13'
+    eslint: '10'
+    moment-timezone: '0.6'
+    music-metadata: '7 || 11'
+    nodemailer: '7'
+    openai: '6'
+    react: '19'
+    rxjs: 7.8.2
+    uuid: '11'
+  ignoreMissing:
+    - '@swc-node/register'
+    - '@swc/core'
+    - '@swc/wasm'
+    - encoding
+    - node-notifier
+    - openai
+    - ts-node
+    - webpack-cli
+allowBuilds:
+  '@alicloud/openapi-core': true
+  '@google/genai': true
+  '@nestjs/core': true
+  '@parcel/watcher': true
+  '@prisma/engines': true
+  '@scarf/scarf': false
+  '@swc/core': true
+  bcrypt: true
+  core-js-pure: true
+  cpu-features: true
+  esbuild: true
+  msgpackr-extract: true
+  prisma: true
+  protobufjs: true
+  sharp: true
+  ssh2: true
+  tos-crc64-js: true
+  unrs-resolver: true
+minimumReleaseAgeExclude:
+  - '@dofe/infra-clients@0.1.78'
+  - '@dofe/infra-common@0.1.78'
+  - '@dofe/infra-config@0.1.78'
+  - '@dofe/infra-contracts-base@0.1.78'
+  - '@dofe/infra-contracts@0.1.78'
+  - '@dofe/infra-docker@0.1.78'
+  - '@dofe/infra-i18n@0.1.78'
+  - '@dofe/infra-jwt@0.1.78'
+  - '@dofe/infra-module-registry@0.1.78'
+  - '@dofe/infra-prisma-crud-generator@0.1.78'
+  - '@dofe/infra-prisma@0.1.78'
+  - '@dofe/infra-rabbitmq@0.1.78'
+  - '@dofe/infra-redis@0.1.78'
+  - '@dofe/infra-shared-db@0.1.78'
+  - '@dofe/infra-shared-services@0.1.78'
+  - '@dofe/infra-utils@0.1.78'
+  - '@dofe/infra-vector@0.1.78'
+  - '@dofe/infra-web-runtime@0.1.78'
+  - '@dofe/sso-browser@0.1.78'
+  - '@dofe/sso-contracts@0.1.71'
+  - '@dofe/sso-hooks@0.1.59'
+  - '@dofe/sso-nestjs@0.1.57'
+  - '@dofe/sso-node@0.1.58'
+  - '@dofe/sso-ui@0.1.58'
+  - '@larksuiteoapi/node-sdk@1.68.0'
+  - '@shikijs/core@4.3.0'
+  - '@shikijs/engine-javascript@4.3.0'
+  - '@shikijs/engine-oniguruma@4.3.0'
+  - '@shikijs/langs@4.3.0'
+  - '@shikijs/primitive@4.3.0'
+  - '@shikijs/themes@4.3.0'
+  - '@shikijs/types@4.3.0'
+  - node-releases@2.0.50
+  - shiki@4.3.0

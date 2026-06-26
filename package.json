@@ -82,78 +82,7 @@
     "node": ">=18.0.0",
     "pnpm": ">=9.0.0"
   },
-  "packageManager": "pnpm@10.28.2",
-  "pnpm": {
-    "overrides": {
-      "openai": "^6.17.0",
-      "glob": "^13.0.1",
-      "rimraf": "^6.0.1",
-      "rxjs": "7.8.2",
-      "punycode": "^2.3.1",
-      "@dofe/infra-common": "0.1.78",
-      "@dofe/infra-contracts": "0.1.78",
-      "@dofe/infra-utils": "0.1.78",
-      "@dofe/infra-redis": "0.1.78",
-      "@dofe/infra-prisma": "0.1.78",
-      "@dofe/infra-clients": "0.1.78",
-      "@dofe/infra-rabbitmq": "0.1.78",
-      "@dofe/infra-shared-services": "0.1.78",
-      "@dofe/infra-jwt": "0.1.78",
-      "@dofe/infra-shared-db": "0.1.78",
-      "@dofe/infra-i18n": "0.1.78"
-    },
-    "patchedDependencies": {
-      "eslint-plugin-react@7.37.5": "patches/eslint-plugin-react@7.37.5.patch"
-    },
-    "peerDependencyRules": {
-      "allowedVersions": {
-        "openai": "6",
-        "rxjs": "7.8.2",
-        "uuid": "11",
-        "bcrypt": "6",
-        "music-metadata": "7 || 11",
-        "amqplib": "0",
-        "nodemailer": "7",
-        "@alicloud/dysmsapi20170525": "4",
-        "eslint": "10",
-        "react": "19",
-        "class-validator": "0.15",
-        "dotenv": "17",
-        "dotenv-expand": "13",
-        "moment-timezone": "0.6"
-      },
-      "ignoreMissing": [
-        "openai",
-        "@swc/core",
-        "@swc/wasm",
-        "@swc-node/register",
-        "node-notifier",
-        "ts-node",
-        "encoding",
-        "webpack-cli"
-      ]
-    },
-    "onlyBuiltDependencies": [
-      "@alicloud/openapi-core",
-      "@google/genai",
-      "@nestjs/core",
-      "@parcel/watcher",
-      "@prisma/engines",
-      "@scarf/scarf",
-      "@swc/core",
-      "bcrypt",
-      "core-js-pure",
-      "cpu-features",
-      "esbuild",
-      "msgpackr-extract",
-      "prisma",
-      "protobufjs",
-      "sharp",
-      "ssh2",
-      "tos-crc64-js",
-      "unrs-resolver"
-    ]
-  },
+  "packageManager": "pnpm@11.7.0",
   "dependencies": {
     "@swc/core": "^1.15.43",
     "zod": "^4.4.3"
