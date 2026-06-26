@@ -1,11 +1,18 @@
 /**
- * OIDC URL Resolver
+ * OIDC App Base URL Resolver
  *
- * @deprecated Prefer resolveOidcUrls() from @dofe/sso-nestjs for new code.
- * This local resolver remains for backward compatibility with existing
- * ConfigService-based configuration.
+ * Resolves THIS app's own API / frontend base URLs from `app.*` config
+ * (dynamic subdomain/port for dev vs prod). These are INPUTS to the SDK's
+ * `resolveOidcUrls()` (which constructs the SSO provider endpoints +
+ * redirect_uri/success_url from `issuerUrl`/`appBaseUrl`/`frontendOrigin`),
+ * not a duplicate of it. The two are complementary:
+ *   - this resolver  → "where is THIS app hosted?"  (app.apiBaseUrl / app.frontendBaseUrl)
+ *   - resolveOidcUrls → "where is the SSO provider, and what is the OAuth redirect_uri?"
  *
- * @see @dofe/sso-nestjs/oidc-helpers
+ * When adopting `SsoOidcRelyingPartyModule`, feed the values resolved here
+ * into `OidcRpModuleOptions.appBaseUrl` / `frontendOrigin`.
+ *
+ * @see resolveOidcUrls in @dofe/sso-nestjs
  */
 import type { ConfigService } from '@nestjs/config';
 

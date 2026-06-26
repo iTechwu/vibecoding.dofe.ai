@@ -23,7 +23,6 @@ COPY packages/utils/package.json packages/utils/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/types/package.json packages/types/
 COPY packages/ui/package.json packages/ui/
-COPY packages/config/package.json packages/config/
 COPY apps/api/package.json apps/api/
 
 # Install all dependencies (including devDependencies for build)
@@ -58,7 +57,6 @@ COPY packages/validators/package.json packages/validators/
 COPY packages/utils/package.json packages/utils/
 COPY packages/contracts/package.json packages/contracts/
 COPY packages/types/package.json packages/types/
-COPY packages/config/package.json packages/config/
 COPY apps/api/package.json apps/api/
 
 # Install only production dependencies

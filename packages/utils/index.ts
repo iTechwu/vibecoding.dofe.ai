@@ -1,4 +1,5 @@
-// Export all utilities
+// Legacy local-only utilities. Prefer @dofe/infra-utils/* or
+// @dofe/infra-web-runtime/cn for new shared helpers.
 export * from './file';
 export * from './encrypt';
 export * from './fetch';
@@ -17,5 +18,5 @@ export { default as serializeUtil } from './serialize.util';
 export { default as maskUtil } from './mask.util';
 export * from './mask.util';
 
-// Node.js only utils (use conditional import in backend)
-// bcryptUtil - available via '@repo/utils/bcrypt.util'
+// Node.js only utils (use conditional import in backend).
+// bcryptUtil is exposed through the existing './bcrypt' package subpath.

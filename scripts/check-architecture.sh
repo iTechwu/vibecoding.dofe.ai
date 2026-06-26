@@ -144,6 +144,232 @@ check_no_matches \
   packages/ui packages/utils packages/contracts \
   --glob '*.{ts,tsx,js,mjs,json}'
 
+section "Infra config boundary"
+check_no_matches \
+  "Local @repo/config or @repo/infra-config must not be reintroduced; use @dofe/infra-config for shared tsconfig/eslint/postcss/prettier baselines" \
+  "@repo/config|@repo/infra-config|packages/config" \
+  package.json apps packages scripts \
+  --glob '*.{json,js,mjs,ts,tsx,md}' \
+  --glob '!node_modules/**' \
+  --glob '!dist/**'
+
+section "Legacy local package README boundary"
+if node <<'NODE'
+const fs = require('fs');
+const requiredMarkers = [
+  [
+    'packages/utils/README.md',
+    ['legacy local package', '@dofe/infra-web-runtime/cn', '@repo/utils/headers', '@dofe/infra-utils/<name>.util'],
+  ],
+  ['packages/constants/README.md', ['legacy local package', '@dofe/infra-contracts', '@dofe/sso-contracts/token']],
+];
+const failures = [];
+
+for (const [file, markers] of requiredMarkers) {
+  if (!fs.existsSync(file)) {
+    failures.push(`${file} must exist and document legacy local package boundaries`);
+    continue;
+  }
+  const content = fs.readFileSync(file, 'utf8');
+  for (const marker of markers) {
+    if (!content.includes(marker)) {
+      failures.push(`${file} must include "${marker}"`);
+    }
+  }
+  if (
+    file === 'packages/constants/README.md' &&
+    /after that subpath is published|once published|发布后再迁移/.test(content)
+  ) {
+    failures.push(`${file} must not describe @dofe/sso-contracts/token as a future publish blocker`);
+  }
+}
+
+if (failures.length > 0) {
+  console.error('FAIL: legacy local package README markers are missing');
+  for (const failure of failures) console.error(failure);
+  process.exit(1);
+}
+
+console.log('PASS: legacy local package README markers are present');
+NODE
+then
+  :
+else
+  failures=$((failures + 1))
+fi
+
+section "Contracts error re-export boundary"
+if node <<'NODE'
+const fs = require('fs');
+const requiredFiles = [
+  ['packages/contracts/src/errors/domains/common.errors.ts', 'CommonErrorCode'],
+  ['packages/contracts/src/errors/domains/user.errors.ts', 'UserErrorCode'],
+];
+const failures = [];
+
+for (const [file, symbol] of requiredFiles) {
+  if (!fs.existsSync(file)) {
+    failures.push(`${file} must exist as a compatibility re-export`);
+    continue;
+  }
+  const content = fs.readFileSync(file, 'utf8');
+  if (!content.includes('@dofe/infra-contracts/error-codes')) {
+    failures.push(`${file} must re-export ${symbol} from @dofe/infra-contracts/error-codes`);
+  }
+  const localDefinitionPattern = new RegExp(
+    `export\\s+(?:const|enum)\\s+${symbol}\\b|${symbol}\\s*=\\s*\\{`,
+  );
+  if (localDefinitionPattern.test(content)) {
+    failures.push(`${file} must not restore local ${symbol} definitions; keep infra re-export only`);
+  }
+}
+
+const messagesFile = 'packages/contracts/src/errors/messages.ts';
+if (!fs.existsSync(messagesFile)) {
+  failures.push(`${messagesFile} must keep infra-backed standard error messages plus vibecoding domain extensions`);
+} else {
+  const content = fs.readFileSync(messagesFile, 'utf8');
+  if (!content.includes("ErrorMessages as InfraErrorMessages")) {
+    failures.push(`${messagesFile} must import infra ErrorMessages as the standard domain source`);
+  }
+  for (const domain of ['user', 'common', 'auth', 'tenant']) {
+    const pattern = new RegExp(`${domain}:\\s*InfraErrorMessages\\.${domain}\\s*\\?\\?\\s*\\{\\}`);
+    if (!pattern.test(content)) {
+      failures.push(`${messagesFile} must keep ${domain} messages sourced from InfraErrorMessages.${domain}`);
+    }
+  }
+  for (const domain of ['space', 'folder', 'file', 'payment']) {
+    const pattern = new RegExp(`${domain}:\\s*\\{`);
+    if (!pattern.test(content)) {
+      failures.push(`${messagesFile} must keep local ${domain} domain extension messages`);
+    }
+  }
+}
+
+if (failures.length > 0) {
+  console.error('FAIL: contracts error files must keep infra-backed standard domains and local extensions');
+  for (const failure of failures) console.error(failure);
+  process.exit(1);
+}
+
+console.log('PASS: contracts common/user error files and messages stay infra-backed');
+NODE
+then
+  :
+else
+  failures=$((failures + 1))
+fi
+
+section "App repo constants residual boundary"
+if node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const root = process.cwd();
+const allowed = new Set([
+  'apps/api/package.json',
+  'apps/api/tsconfig.json',
+  'apps/api/test/jest-e2e.config.ts',
+  'apps/web/package.json',
+  'apps/web/tsconfig.json',
+  'apps/web/vitest.config.ts',
+  'apps/web/next.config.ts',
+]);
+const ignored = new Set(['node_modules', 'dist', 'coverage', '.turbo', '.next']);
+const extensions = new Set(['.ts', '.tsx', '.js', '.mjs', '.json']);
+const failures = [];
+
+function walk(dir) {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (ignored.has(entry.name)) continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      walk(full);
+      continue;
+    }
+    if (!extensions.has(path.extname(entry.name))) continue;
+    const rel = path.relative(root, full).split(path.sep).join('/');
+    const content = fs.readFileSync(full, 'utf8');
+    const hasRepoConstants =
+      /from\s+['"]@repo\/constants['"]/.test(content) ||
+      /import\(\s*['"]@repo\/constants['"]\s*\)/.test(content) ||
+      /['"]@repo\/constants['"]\s*:/.test(content) ||
+      /['"]@repo\/constants['"]\s*,/.test(content);
+    if (hasRepoConstants && !allowed.has(rel)) {
+      failures.push(rel);
+    }
+  }
+}
+
+walk(path.join(root, 'apps/api'));
+walk(path.join(root, 'apps/web'));
+
+if (failures.length > 0) {
+  console.error(
+    'FAIL: @repo/constants is only allowed for documented GAP-009/GAP-011 residues; migrate shared constants to @dofe/infra-contracts or @dofe/sso-contracts after publish',
+  );
+  for (const failure of failures) console.error(failure);
+  process.exit(1);
+}
+
+console.log('PASS: app @repo/constants residues are limited to package/config aliases only');
+NODE
+then
+  :
+else
+  failures=$((failures + 1))
+fi
+
+section "SSO token contracts consumed boundary"
+if node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const root = process.cwd();
+const requiredFiles = [
+  'apps/api/src/modules/oidc-client-api/oidc-client-api.service.ts',
+  'apps/api/libs/domain/auth/src/sso-auth-hooks.ts',
+  'apps/web/app/[locale]/auth/oidc/success/page.tsx',
+  'apps/web/lib/storage/index.ts',
+];
+const failures = [];
+
+for (const file of requiredFiles) {
+  const fullPath = path.join(root, file);
+  if (!fs.existsSync(fullPath)) {
+    failures.push(`${file}: expected token/OIDC consumer file to exist`);
+    continue;
+  }
+  const content = fs.readFileSync(fullPath, 'utf8');
+  if (!content.includes('@dofe/sso-contracts/token')) {
+    failures.push(`${file}: must consume token/OIDC constants from @dofe/sso-contracts/token`);
+  }
+  if (content.includes('@repo/constants')) {
+    failures.push(`${file}: must not keep token/OIDC constants from @repo/constants after @dofe/sso-contracts@0.1.70`);
+  }
+}
+
+for (const packageDir of ['apps/api', 'apps/web']) {
+  try {
+    require.resolve('@dofe/sso-contracts/token', { paths: [path.join(root, packageDir)] });
+  } catch (error) {
+    failures.push(`@dofe/sso-contracts/token must resolve from ${packageDir}`);
+  }
+}
+
+if (failures.length > 0) {
+  console.error('FAIL: SSO token/OIDC constants must stay on @dofe/sso-contracts/token');
+  for (const failure of failures) console.error(failure);
+  process.exit(1);
+}
+
+console.log('PASS: token/OIDC constants consume @dofe/sso-contracts/token');
+NODE
+then
+  :
+else
+  failures=$((failures + 1))
+fi
+
 section "UI infra utils boundary"
 check_no_matches \
   "packages/ui must not reintroduce @repo/utils; use @dofe/infra-web-runtime/cn for shared UI className helpers" \
@@ -157,52 +383,6 @@ check_no_matches \
   "from ['\"]@dofe/infra-utils['\"]|import\\(['\"]@dofe/infra-utils['\"]\\)" \
   apps/web \
   --glob '*.{ts,tsx}'
-
-section "SSO token contracts publish boundary"
-if node <<'NODE'
-const fs = require('fs');
-const path = require('path');
-const root = process.cwd();
-const failures = [];
-const extensions = new Set(['.ts', '.tsx', '.js', '.mjs', '.json']);
-function walk(dir) {
-  if (!fs.existsSync(dir)) return;
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (!['node_modules', 'dist', '.next', 'coverage'].includes(entry.name)) walk(full);
-      continue;
-    }
-    if (!extensions.has(path.extname(entry.name))) continue;
-    const content = fs.readFileSync(full, 'utf8');
-    if (
-      /from\s+['"]@dofe\/sso-contracts\/token['"]/.test(content) ||
-      /import\(\s*['"]@dofe\/sso-contracts\/token['"]\s*\)/.test(content)
-    ) {
-      failures.push(path.relative(root, full).split(path.sep).join('/'));
-    }
-  }
-}
-walk(path.join(root, 'apps/api'));
-walk(path.join(root, 'apps/web'));
-let tokenExportAvailable = true;
-try {
-  require.resolve('@dofe/sso-contracts/token', { paths: [root] });
-} catch {
-  tokenExportAvailable = false;
-}
-if (!tokenExportAvailable && failures.length > 0) {
-  console.error('FAIL: @dofe/sso-contracts/token is not exported by the installed npm package yet');
-  for (const failure of failures) console.error(failure);
-  process.exit(1);
-}
-console.log('PASS: no premature @dofe/sso-contracts/token imports before npm export is available');
-NODE
-then
-  :
-else
-  failures=$((failures + 1))
-fi
 
 section "Web repo utils narrow boundary"
 check_no_matches \

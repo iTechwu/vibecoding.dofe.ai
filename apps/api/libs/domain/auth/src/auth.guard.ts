@@ -45,6 +45,19 @@ export class AuthGuard extends DofeSsoAuthGuardBase {
     super(hooks, verifier, options, reflector);
   }
 
+  /**
+   * Override the SDK base's authError to throw the project's canonical
+   * `apiError(CommonErrorCode.UnAuthorized)` (ApiException → HTTP 401).
+   *
+   * The base's default generic Error would otherwise be mapped to 500 by the
+   * global exception filter (`@dofe/infra-common` HttpExceptionFilter), breaking
+   * the frontend 401→re-login flow. Keeps base-thrown failures (missing/invalid/
+   * revoked token, admin-required) consistent with the MODE_USER_ID/WeChat paths.
+   */
+  protected authError(_message: string): Error {
+    return apiError(CommonErrorCode.UnAuthorized);
+  }
+
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
 

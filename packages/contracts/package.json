@@ -22,7 +22,6 @@
   "dependencies": {
     "@dofe/infra-contracts": "0.1.78",
     "@dofe/infra-contracts-base": "0.1.78",
-    "@repo/config": "workspace:*",
     "@ts-rest/core": "3.53.0-rc.1",
     "zod": "^4.4.3"
   },

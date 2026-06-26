@@ -10,9 +10,6 @@
     "clean": "rimraf dist",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {
-    "@repo/config": "workspace:*"
-  },
   "devDependencies": {
     "typescript": "^6.0.3"
   }

@@ -12,9 +12,6 @@
     "./creative": "./creative.ts",
     "./task": "./task.ts"
   },
-  "dependencies": {
-    "@repo/config": "workspace:*"
-  },
   "devDependencies": {
     "typescript": "^6.0.3"
   }

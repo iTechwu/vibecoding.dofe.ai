@@ -16,7 +16,6 @@ COPY .nvmrc ./
 COPY packages/ui/package.json packages/ui/
 COPY packages/utils/package.json packages/utils/
 COPY packages/types/package.json packages/types/
-COPY packages/config/package.json packages/config/
 COPY packages/constants/package.json packages/constants/
 COPY packages/validators/package.json packages/validators/
 COPY packages/contracts/package.json packages/contracts/

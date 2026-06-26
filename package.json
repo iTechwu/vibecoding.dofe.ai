@@ -65,13 +65,18 @@
     "openssl:random": "openssl rand -hex 32"
   },
   "devDependencies": {
-    "@repo/config": "workspace:*",
+    "@eslint/js": "^10.0.1",
     "eslint": "^10.5.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-only-warn": "^1.2.1",
+    "eslint-plugin-turbo": "^2.10.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.0.8",
     "prettier": "^3.8.4",
     "turbo": "^2.10.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.62.0",
+    "@dofe/infra-config": "0.1.78"
   },
   "engines": {
     "node": ">=18.0.0",

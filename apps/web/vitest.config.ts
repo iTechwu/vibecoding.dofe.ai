@@ -30,12 +30,7 @@ export default defineConfig({
       reporter: ['text', 'json', 'html'],
       reportsDirectory: './coverage',
       include: ['stores/**/*.ts', 'hooks/**/*.ts', 'lib/**/*.ts'],
-      exclude: [
-        '**/node_modules/**',
-        '**/__tests__/**',
-        '**/*.test.{ts,tsx}',
-        '**/index.ts',
-      ],
+      exclude: ['**/node_modules/**', '**/__tests__/**', '**/*.test.{ts,tsx}', '**/index.ts'],
       thresholds: {
         statements: 50,
         branches: 50,
@@ -53,20 +48,10 @@ export default defineConfig({
       '@': path.resolve(__dirname, './'),
       '@repo/utils': path.resolve(__dirname, '../../packages/utils'),
       '@repo/types': path.resolve(__dirname, '../../packages/types'),
-      '@repo/config': path.resolve(__dirname, '../../packages/config'),
       '@repo/ui': path.resolve(__dirname, '../../packages/ui/src'),
-      '@repo/constants': path.resolve(
-        __dirname,
-        '../../packages/constants/src',
-      ),
-      '@repo/validators': path.resolve(
-        __dirname,
-        '../../packages/validators/src',
-      ),
-      '@repo/contracts': path.resolve(
-        __dirname,
-        '../../packages/contracts/src',
-      ),
+      '@repo/constants': path.resolve(__dirname, '../../packages/constants/src'),
+      '@repo/validators': path.resolve(__dirname, '../../packages/validators/src'),
+      '@repo/contracts': path.resolve(__dirname, '../../packages/contracts/src'),
     },
   },
 });

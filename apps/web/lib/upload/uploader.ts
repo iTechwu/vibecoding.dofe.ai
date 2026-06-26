@@ -11,6 +11,10 @@ const uploader = new FileUploader({
   apiBase: '/api/proxy/sso',
 });
 
+type UploadOptionsWithSignal = Parameters<FileUploader['upload']>[1] & {
+  signal: AbortSignal;
+};
+
 /** Track active uploads for cancellation */
 const activeUploads = new Map<string, AbortController>();
 
@@ -55,14 +59,16 @@ export async function uploadFile(params: UploadParams): Promise<UploadResult> {
   activeUploads.set(uploadKey, controller);
 
   try {
-    const result = await uploader.upload(file, {
+    const uploadOptions: UploadOptionsWithSignal = {
       scope: 'general',
       metadata,
       signal: controller.signal,
       onProgress: ({ percent, loaded, total }) => {
         callbacks?.onProgress?.({ percentage: percent, loaded, total });
       },
-    });
+    };
+
+    const result = await uploader.upload(file, uploadOptions);
 
     callbacks?.onCalculating?.(100);
     callbacks?.onStart?.(result.fileId);

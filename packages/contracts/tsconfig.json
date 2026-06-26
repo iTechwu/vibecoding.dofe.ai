@@ -1,13 +1,11 @@
 {
-  "extends": "@repo/config/tsconfig",
+  "extends": "@dofe/infra-config/tsconfig",
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
     "types": ["jest"]
   },
-  "paths": {
-    "@repo/config": ["../config"]
-  },
+  "paths": {},
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

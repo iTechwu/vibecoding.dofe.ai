@@ -88,10 +88,9 @@ dofe-ai/
 │
 └── packages/                   # Shared packages (frontend + backend)
     ├── ui/                     # @repo/ui - UI components (shadcn/ui)
-    ├── utils/                  # @repo/utils - Utility functions
+    ├── utils/                  # @repo/utils - legacy local-only vibecoding utilities
     ├── types/                  # @repo/types - TypeScript types
-    ├── config/                 # @repo/config - Shared configs (tsconfig, eslint)
-    ├── constants/              # @repo/constants - Shared constants
+    ├── constants/              # @repo/constants - legacy local-only vibecoding constants
     ├── validators/             # @repo/validators - Zod validation schemas
     └── contracts/              # @repo/contracts - API contracts (ts-rest)
 ```
@@ -102,10 +101,10 @@ dofe-ai/
 
 - `@/*` - App-internal imports
 - `@repo/ui` - UI components
-- `@repo/utils` - Utilities
+- `@repo/utils` - Legacy local-only vibecoding utilities; use `@dofe/infra-*` for shared helpers
 - `@repo/types` - Types
-- `@repo/config` - Configs
-- `@repo/constants` - Shared constants
+- `@dofe/infra-config` - Shared configs
+- `@repo/constants` - Legacy local-only vibecoding constants; use `@dofe/infra-contracts` or `@dofe/sso-contracts/token` when available
 - `@repo/validators` - Shared validators
 - `@repo/contracts` - API contracts and types
 
@@ -119,7 +118,7 @@ dofe-ai/
 - `@app/clients/internal/*` - Third-party API clients (→ `@dofe/infra-clients/src/internal/*`)
 - `@app/shared-services/*` - Shared services (→ `@dofe/infra-shared-services/src/*`)
 - `@app/auth`, `@app/db` - Domain libs (→ `libs/domain/auth`, `generated/db`)
-- `@repo/constants` - Shared constants
+- `@repo/constants` - Legacy local-only vibecoding constants; use `@dofe/infra-contracts` or domain-owned packages for shared values
 - `@repo/validators` - Shared validators
 - `@repo/contracts` - API contracts
 

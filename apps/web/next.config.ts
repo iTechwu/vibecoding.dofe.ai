@@ -103,7 +103,6 @@ const nextConfig: NextConfig = {
     '@repo/ui',
     '@repo/utils',
     '@repo/types',
-    '@repo/config',
     '@repo/constants',
     '@repo/validators',
     'lucide-react',

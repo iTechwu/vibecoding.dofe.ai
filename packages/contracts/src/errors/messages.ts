@@ -14,10 +14,10 @@ import { ErrorMessages as InfraErrorMessages } from '@dofe/infra-contracts/error
  */
 export const ErrorMessages: Record<string, Record<string, string>> = {
   // Standard domains from infra (single source of truth)
-  user: InfraErrorMessages.user,
-  common: InfraErrorMessages.common,
-  auth: InfraErrorMessages.auth,
-  tenant: InfraErrorMessages.tenant,
+  user: InfraErrorMessages.user ?? {},
+  common: InfraErrorMessages.common ?? {},
+  auth: InfraErrorMessages.auth ?? {},
+  tenant: InfraErrorMessages.tenant ?? {},
 
   // Vibecoding-specific domain messages (not in infra, or richer than infra's stripped versions)
   space: {

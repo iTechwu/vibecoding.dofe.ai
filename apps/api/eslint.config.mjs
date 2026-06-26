@@ -1,8 +1,19 @@
-import { config as nestJsConfig } from '@repo/config/eslint/nest-js';
+import nestJsConfig from '@dofe/infra-config/eslint/nest-js';
 import importPlugin from 'eslint-plugin-import';
 
 export default [
   ...nestJsConfig,
+  {
+    // The published nest-js config sets `parserOptions.project: './tsconfig.json'`,
+    // resolved relative to the ESLint cwd. lint-staged runs ESLint from the repo
+    // root, which has no tsconfig.json, so resolve the project per source file
+    // instead (finds apps/api/tsconfig.json regardless of cwd).
+    languageOptions: {
+      parserOptions: {
+        project: true,
+      },
+    },
+  },
   {
     plugins: {
       import: importPlugin,

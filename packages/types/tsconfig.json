@@ -1,10 +1,8 @@
 {
-  "extends": "@repo/config/tsconfig",
+  "extends": "@dofe/infra-config/tsconfig",
   "compilerOptions": {
     "jsx": "react-jsx",
-    "paths": {
-      "@repo/config": ["../config"]
-    }
+    "paths": {}
   },
   "include": ["**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules"]
