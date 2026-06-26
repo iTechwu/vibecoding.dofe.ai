@@ -1,5 +1,18 @@
 import { Injectable } from '@nestjs/common';
-import type { LoopIssueDetail, LoopListItem, LoopWorkflowRecipe } from '@repo/contracts';
+import type { LoopWorkflowRecipe } from '@repo/contracts';
+
+/**
+ * Structural input for {@link LoopsEvidenceService.inferWorkflowKind}. Only the
+ * issue's title/body/targetRepo are read, so any `LoopListItem`/`LoopIssueDetail`
+ * (both of which carry `issue.{title,body?,targetRepo}`) is assignable. The
+ * concrete detail/list types are derived locally in `LoopsService` (from
+ * `LoopsFileStoreService['readDetail']` / `LoopListResponse['list'][number]`)
+ * and are not exported from `@repo/contracts`, so a structural type keeps this
+ * domain service free of `src/modules/**` and of a store type import.
+ */
+type WorkflowKindInput = {
+  issue: { title: string; body?: string | null; targetRepo: string };
+};
 
 /**
  * Loops Evidence domain service — `@app/services/loops-evidence`.
@@ -20,7 +33,7 @@ import type { LoopIssueDetail, LoopListItem, LoopWorkflowRecipe } from '@repo/co
 @Injectable()
 export class LoopsEvidenceService {
   /** Infer the workflow kind from an issue's title/body/targetRepo text. */
-  inferWorkflowKind(item: LoopListItem | LoopIssueDetail): LoopWorkflowRecipe['appliesTo'][number] {
+  inferWorkflowKind(item: WorkflowKindInput): LoopWorkflowRecipe['appliesTo'][number] {
     const text =
       `${item.issue.title} ${item.issue.body ?? ''} ${item.issue.targetRepo}`.toLowerCase();
     if (text.includes('doc') || text.includes('文档')) return 'docs';

@@ -418,7 +418,7 @@ export class LoopsService {
     };
     // gstack/0 P2-6: Apply workspace-level workflow defaults on create.
     const workflowDefaults = await this.store.readWorkflowDefaults();
-    const loopKind = this.evidence.inferWorkflowKind({ issue, state });
+    const loopKind = this.evidence.inferWorkflowKind({ issue });
     const matchingDefault = workflowDefaults.find((entry) => entry.loopKind === loopKind);
     const workflowRecipe = {
       ...this.buildWorkflowRecipe({ issue, state }),
