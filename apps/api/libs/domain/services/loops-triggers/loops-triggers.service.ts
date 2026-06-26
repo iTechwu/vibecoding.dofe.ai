@@ -1,12 +1,36 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import type {
+  CreateLoopIssueRequest,
   CreateScheduleTriggerRequest,
   LoopIssuesQuery,
   LoopScheduleTrigger,
   LoopScheduleTriggerListResponse,
+  LoopTriggerExecution,
+  LoopWebhookTriggerResponse,
   UpdateScheduleTriggerRequest,
 } from '@repo/contracts';
 import { LoopsFileStoreService } from '@app/services/loops-store';
+
+/**
+ * Issue creation port for trigger fire. The full intake pipeline (id minting,
+ * submitter derivation, workflow recipe, persistence) stays in the API facade;
+ * the triggers domain only needs the resulting issue id. Bound in the API
+ * module via `useExisting: LoopsService` until the intake orchestration itself
+ * moves to `loops-issues`.
+ */
+export const LOOPS_ISSUE_CREATION_PORT = 'LOOPS_ISSUE_CREATION_PORT';
+
+export interface LoopsIssueCreationPort {
+  createIssue(input: CreateLoopIssueRequest): Promise<{ issue: { id: string } }>;
+}
+
+/**
+ * Optional log sink so the domain orchestration can emit the same `[Loops]`
+ * lifecycle logs the facade used to own, without depending on Winston directly.
+ */
+export interface LoopsTriggersLogSink {
+  log(level: 'info' | 'warn' | 'error', message: string, meta?: Record<string, unknown>): void;
+}
 
 @Injectable()
 export class LoopsTriggersService {
@@ -77,6 +101,111 @@ export class LoopsTriggersService {
     this.getScheduleTrigger(triggerId);
     this.store.deleteScheduleTrigger(triggerId);
     return { deleted: true, triggerId };
+  }
+
+  /**
+   * Fire a schedule trigger: read the trigger, create a Loop issue via the
+   * issue-creation port, then record the execution and update trigger stats
+   * (lastRunAt / nextRunAt / failureCount). Issue intake itself is delegated
+   * to the port; this method only owns the trigger-lifecycle orchestration.
+   *
+   * 行为与 legacy `LoopsService.fireScheduleTrigger` 一致，便于后续删除 facade wrapper。
+   */
+  async fireScheduleTrigger(
+    triggerId: string,
+    input: { reason?: string } | undefined,
+    issueCreationPort: LoopsIssueCreationPort,
+    logSink?: LoopsTriggersLogSink,
+  ): Promise<LoopWebhookTriggerResponse> {
+    const trigger = this.getScheduleTrigger(triggerId);
+    const now = new Date().toISOString();
+
+    if (trigger.status === 'paused') {
+      return {
+        loopId: '',
+        issueId: '',
+        source: 'schedule',
+        event: trigger.name,
+        created: false,
+        message: `Schedule trigger ${triggerId} is paused — resume it first`,
+      };
+    }
+
+    try {
+      const result = await issueCreationPort.createIssue({
+        title: trigger.templateTitle,
+        targetRepo: trigger.targetRepo,
+        body: trigger.templateBody,
+        priority: trigger.templatePriority,
+        acceptanceCriteria: trigger.templateAcceptanceCriteria,
+        sourceChannel: 'schedule',
+        sourceKind: 'schedule',
+      });
+
+      const updated: LoopScheduleTrigger = {
+        ...trigger,
+        lastRunAt: now,
+        nextRunAt: this.computeNextCronTime(trigger.cronExpression),
+        failureCount: 0,
+        updatedAt: now,
+      };
+      this.store.writeScheduleTrigger(updated);
+
+      const execution: LoopTriggerExecution = {
+        id: `exec-${this.store.nextTriggerExecutionSeq()}`,
+        triggerId: trigger.id,
+        triggerType: 'schedule',
+        status: 'completed',
+        inputPayload: { reason: input?.reason, templateTitle: trigger.templateTitle },
+        outputLoopId: result.issue.id,
+        outputIssueId: result.issue.id,
+        attempt: 1,
+        maxRetries: 3,
+        createdAt: now,
+        completedAt: now,
+      };
+      this.store.writeTriggerExecution(execution);
+
+      logSink?.log('info', `[Loops] Schedule trigger fired manually`, {
+        triggerId,
+        issueId: result.issue.id,
+        reason: input?.reason,
+      });
+
+      return {
+        loopId: result.issue.id,
+        issueId: result.issue.id,
+        source: 'schedule',
+        event: trigger.name,
+        created: true,
+        message: `Loop issue ${result.issue.id} created from schedule trigger "${trigger.name}"`,
+      };
+    } catch (error) {
+      const failureCount = trigger.failureCount + 1;
+      const updated: LoopScheduleTrigger = {
+        ...trigger,
+        failureCount,
+        status: failureCount >= trigger.maxFailures ? 'error' : trigger.status,
+        lastRunAt: now,
+        updatedAt: now,
+      };
+      this.store.writeScheduleTrigger(updated);
+
+      logSink?.log('error', `[Loops] Schedule trigger fire failed`, {
+        triggerId,
+        error: error instanceof Error ? error.message : String(error),
+        failureCount,
+      });
+
+      return {
+        loopId: '',
+        issueId: '',
+        source: 'schedule',
+        event: trigger.name,
+        created: false,
+        message: `Failed: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
   }
 
   computeNextCronTime(cronExpression: string): string | undefined {

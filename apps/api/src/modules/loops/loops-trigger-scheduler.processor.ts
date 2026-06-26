@@ -4,8 +4,13 @@ import { Job } from 'bullmq';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
 import { RedisService } from '@dofe/infra-redis';
-import { LoopsService } from './loops.service';
 import { LoopsFileStoreService } from '@app/services/loops-store';
+import {
+  LOOPS_ISSUE_CREATION_PORT,
+  type LoopsIssueCreationPort,
+  type LoopsTriggersLogSink,
+  LoopsTriggersService,
+} from '@app/services/loops-triggers';
 
 /**
  * R34b: Trigger auto-execution engine via BullMQ repeatable jobs.
@@ -15,14 +20,18 @@ import { LoopsFileStoreService } from '@app/services/loops-store';
  * Architecture:
  * - A repeatable BullMQ job fires every 60 seconds.
  * - It scans all active schedule triggers from the file store.
- * - For each trigger whose nextRunAt ≤ now, it fires the trigger (calls
- *   LoopsService.fireScheduleTrigger).
+ * - For each trigger whose nextRunAt ≤ now, it fires the trigger via the
+ *   `LoopsTriggersService` domain service (issue creation goes through the
+ *   `LOOPS_ISSUE_CREATION_PORT`, currently bound to the legacy facade).
  * - Success/failure is tracked on the trigger (lastRunAt, failureCount).
  * - A distributed lock via Redis ensures only one scheduler instance runs
  *   across multi-instance deployments.
  *
  * This replaces the gap where schedule triggers existed as CRUD objects
  * but had no actual cron execution engine.
+ *
+ * 结构优化 nextstep Step N2：fire 编排已下沉到 `LoopsTriggersService`，processor
+ * 不再注入 legacy `LoopsService`；只持有 thin domain service + issue creation port。
  */
 @Processor('loops-trigger-scheduler', {
   concurrency: 1, // Single scheduler — avoid duplicate fires
@@ -33,11 +42,27 @@ export class LoopsTriggerSchedulerProcessor extends WorkerHost {
 
   constructor(
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
-    private readonly loopsService: LoopsService,
+    private readonly triggersService: LoopsTriggersService,
     private readonly store: LoopsFileStoreService,
+    @Inject(LOOPS_ISSUE_CREATION_PORT) private readonly issueCreationPort: LoopsIssueCreationPort,
     @Optional() private readonly redis?: RedisService,
   ) {
     super();
+  }
+
+  /**
+   * Adapts the processor's Winston logger to the domain `LoopsTriggersLogSink`
+   * shape, so the domain fire orchestration emits the same `[Loops]` lifecycle
+   * logs it produced when the facade owned firing.
+   */
+  private get domainLogSink(): LoopsTriggersLogSink {
+    return {
+      log: (level, message, meta) => {
+        if (level === 'info') this.logger.info(message, meta);
+        else if (level === 'warn') this.logger.warn(message, meta);
+        else this.logger.error(message, meta);
+      },
+    };
   }
 
   async process(
@@ -99,9 +124,14 @@ export class LoopsTriggerSchedulerProcessor extends WorkerHost {
 
       // Fire the trigger
       try {
-        const result = await this.loopsService.fireScheduleTrigger(trigger.id, {
-          reason: `Auto-fired by trigger scheduler at ${now.toISOString()}`,
-        });
+        const result = await this.triggersService.fireScheduleTrigger(
+          trigger.id,
+          {
+            reason: `Auto-fired by trigger scheduler at ${now.toISOString()}`,
+          },
+          this.issueCreationPort,
+          this.domainLogSink,
+        );
 
         if (result.created) {
           fired++;

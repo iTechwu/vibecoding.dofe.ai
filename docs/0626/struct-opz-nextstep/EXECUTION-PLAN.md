@@ -361,6 +361,86 @@ rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\
 - API type-check 通过。
 - domain 反向依赖扫描无命中。
 
+### Cycle 58 · Step N2 Trigger Fire Issue Creation Port 实施
+
+#### 实施
+
+- `loops-triggers` 新增 issue creation port：
+  - `LOOPS_ISSUE_CREATION_PORT`（token）
+  - `LoopsIssueCreationPort`（`createIssue(input): Promise<{ issue: { id: string } }>`）
+  - `LoopsTriggersLogSink`（可选日志 sink，避免 domain 直接依赖 Winston）
+- `LoopsTriggersService` 新增 `fireScheduleTrigger(triggerId, input, issueCreationPort, logSink?)`，承接完整 fire 编排：trigger 读取、paused 早返回、issue creation 调用、execution 记录、成功/失败 stats（lastRunAt / nextRunAt / failureCount / status）。
+- `LoopsService` `implements LoopsIssueCreationPort`（既有 `createIssue` 结构兼容），`fireScheduleTrigger` 收敛为 thin wrapper：委托 `triggersService.fireScheduleTrigger(triggerId, input, this, this.adminLogSink())`。
+- `loops.module.ts` 绑定 `{ provide: LOOPS_ISSUE_CREATION_PORT, useExisting: LoopsService }`。
+- `LoopsTriggerSchedulerProcessor` 移除 `LoopsService` 注入，改为注入 `LoopsTriggersService` + `LOOPS_ISSUE_CREATION_PORT`，并提供 `domainLogSink` 适配 Winston。
+
+#### 标注文档
+
+- Step N2 进入部分完成：fire 编排已下沉到 `loops-triggers`，processor 不再注入 legacy facade 类。
+- 标注：issue creation port 当前仍由 legacy facade 实现（完整 intake 编排仍属 API 层），与 archive collection port 同构；待 issue intake 下沉后再换实现。
+
+#### 审查待实施项
+
+- 待继续：
+  - 补 `loops-triggers.service.spec.ts` 覆盖 paused / 成功 fire / issue creation 失败 / execution 记录。
+  - issue creation port 实现继续下沉到 `loops-issues`（intake 编排 port）。
+  - Step N7 时删除 facade fire wrapper。
+
+#### 再标注文档
+
+- Cycle 58 完成，下一轮补 trigger fire focused tests。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api type-check
+rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)|require\\(['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)" apps/api/libs/domain/services
+```
+
+结果：
+
+- API type-check 通过。
+- domain 反向依赖扫描无命中。
+
+### Cycle 59 · Step N2 Trigger Fire Focused Tests
+
+#### 实施
+
+- 新增 `loops-triggers.service.spec.ts`（standalone unit spec，mock store + port + log sink）。
+- 覆盖：
+  - CRUD：`getScheduleTrigger` 读取与 missing 抛 `NotFoundException`。
+  - paused trigger：早返回 `created:false`，不调用 issue creation port、不写 trigger/execution。
+  - 成功 fire：调用 issue creation port（透传 `sourceChannel/sourceKind='schedule'`），写入 failureCount=0 / lastRunAt / nextRunAt 的 trigger、写入 `status:completed` execution（attempt=1/maxRetries=3），logSink 记录 info。
+  - 失败 fire：failureCount 自增、未达 maxFailures 时 status 保持 active、不写 execution、logSink 记录 error、返回 `message: Failed: ...`。
+  - 达到 maxFailures：status 翻转为 `error`。
+  - missing trigger 抛 `NotFoundException`。
+  - log sink 可选：不传 sink 时编排仍正确完成。
+
+#### 标注文档
+
+- Step N2 的 fire 编排已有 domain service focused tests 覆盖主要成功/失败路径。
+
+#### 审查待实施项
+
+- 仍待：issue creation port 实现从 legacy facade 继续下沉到 `loops-issues` intake port。
+- 仍待：processor 端 e2e/focused 子集（schedule tick → fire）行为测试。
+
+#### 再标注文档
+
+- Cycle 59 完成，进入结构扫描。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api test -- loops-triggers.service.spec.ts --runInBand
+pnpm --filter @repo/api type-check
+```
+
+结果：
+
+- `loops-triggers.service.spec.ts` 通过，7 个测试通过。
+- API type-check 通过。
+
 ## Step N0 · 文档事实源校准
 
 ### 目标

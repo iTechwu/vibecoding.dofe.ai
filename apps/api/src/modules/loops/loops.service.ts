@@ -128,7 +128,7 @@ import { LoopsDockerSandboxService } from '@app/services/loops-runtime';
 import type { Prisma, LoopEvalAggregation } from '@prisma/client';
 import { LoopEvalAggregationService } from '@app/db/loop-eval-aggregation';
 import { LoopsAdminService, LoopsCapabilityRegistry } from '@app/services/loops-admin';
-import { LoopsTriggersService } from '@app/services/loops-triggers';
+import { LoopsTriggersService, type LoopsIssueCreationPort } from '@app/services/loops-triggers';
 import { LoopsRemoteRunnersService } from '@app/services/loops-remote-runners';
 import {
   AgentRuntimeDetectionService,
@@ -217,7 +217,7 @@ const AGENT_RUNTIME_DEFINITIONS: AgentRuntimeDefinition[] = [
 ];
 
 @Injectable()
-export class LoopsService {
+export class LoopsService implements LoopsIssueCreationPort {
   private readonly webhookRateWindows = new Map<string, { count: number; resetAt: number }>();
 
   constructor(
@@ -4087,102 +4087,17 @@ export class LoopsService {
   /**
    * R32a: Manually fire a schedule trigger to immediately create a Loop issue.
    * Records the execution and updates lastRunAt/failureCount on the trigger.
+   *
+   * 结构优化 nextstep Step N2：trigger fire 编排（trigger 读取、execution 记录、
+   * issue creation 调用、成功/失败 stats）已下沉到 `LoopsTriggersService.fireScheduleTrigger`。
+   * 本 facade 只保留兼容 wrapper：把自身作为 issue creation port、admin 日志 sink 透传，
+   * 以维持对外行为（manual fire 日志、execution 记录、stats 更新）完全一致。
    */
   async fireScheduleTrigger(
     triggerId: string,
     input?: { reason?: string },
   ): Promise<LoopWebhookTriggerResponse> {
-    const trigger = await this.getScheduleTrigger(triggerId);
-    const now = new Date().toISOString();
-
-    if (trigger.status === 'paused') {
-      return {
-        loopId: '',
-        issueId: '',
-        source: 'schedule',
-        event: trigger.name,
-        created: false,
-        message: `Schedule trigger ${triggerId} is paused — resume it first`,
-      };
-    }
-
-    try {
-      const result = await this.createIssue({
-        title: trigger.templateTitle,
-        targetRepo: trigger.targetRepo,
-        body: trigger.templateBody,
-        priority: trigger.templatePriority,
-        acceptanceCriteria: trigger.templateAcceptanceCriteria,
-        sourceChannel: 'schedule',
-        sourceKind: 'schedule',
-      });
-
-      // Update trigger execution stats
-      const updated: LoopScheduleTrigger = {
-        ...trigger,
-        lastRunAt: now,
-        nextRunAt: this.triggersService.computeNextCronTime(trigger.cronExpression),
-        failureCount: 0,
-        updatedAt: now,
-      };
-      this.store.writeScheduleTrigger(updated);
-
-      // Record execution
-      const execution: LoopTriggerExecution = {
-        id: `exec-${this.store.nextTriggerExecutionSeq()}`,
-        triggerId: trigger.id,
-        triggerType: 'schedule',
-        status: 'completed',
-        inputPayload: { reason: input?.reason, templateTitle: trigger.templateTitle },
-        outputLoopId: result.issue.id,
-        outputIssueId: result.issue.id,
-        attempt: 1,
-        maxRetries: 3,
-        createdAt: now,
-        completedAt: now,
-      };
-      this.store.writeTriggerExecution(execution);
-
-      this.log('info', `[Loops] Schedule trigger fired manually`, {
-        triggerId,
-        issueId: result.issue.id,
-        reason: input?.reason,
-      });
-
-      return {
-        loopId: result.issue.id,
-        issueId: result.issue.id,
-        source: 'schedule',
-        event: trigger.name,
-        created: true,
-        message: `Loop issue ${result.issue.id} created from schedule trigger "${trigger.name}"`,
-      };
-    } catch (error) {
-      // Update failure count
-      const updated: LoopScheduleTrigger = {
-        ...trigger,
-        failureCount: trigger.failureCount + 1,
-        status: trigger.failureCount + 1 >= trigger.maxFailures ? 'error' : trigger.status,
-        lastRunAt: now,
-        updatedAt: now,
-      };
-      this.store.writeScheduleTrigger(updated);
-
-      this.log('error', `[Loops] Schedule trigger fire failed`, {
-        triggerId,
-        error: error instanceof Error ? error.message : String(error),
-        failureCount: updated.failureCount,
-      });
-
-      return {
-        loopId: '',
-        issueId: '',
-        source: 'schedule',
-        event: trigger.name,
-        created: false,
-        message: `Failed: ${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
+    return this.triggersService.fireScheduleTrigger(triggerId, input, this, this.adminLogSink());
   }
 
   // =========================================================================

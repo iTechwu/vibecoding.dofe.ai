@@ -28,6 +28,7 @@ import {
   LOOPS_ARCHIVE_COLLECTION_PORT,
   LoopsArchiveCollectionService,
 } from '@app/services/loops-admin';
+import { LOOPS_ISSUE_CREATION_PORT } from '@app/services/loops-triggers';
 
 @Module({
   // HttpModule is kept for API-layer adapters; integration HTTP providers now
@@ -64,6 +65,13 @@ import {
     {
       provide: LOOPS_ARCHIVE_COLLECTION_PORT,
       useExisting: LoopsArchiveCollectionService,
+    },
+    // 结构优化 nextstep Step N2：trigger fire 的 issue creation port 当前由
+    // legacy facade 实现（完整 intake 编排仍属 API 层），`LoopsTriggerSchedulerProcessor`
+    // 与 facade 均经此 token 注入 port，待 issue intake 下沉后再换实现。
+    {
+      provide: LOOPS_ISSUE_CREATION_PORT,
+      useExisting: LoopsService,
     },
     LoopsCrossTenantArchiveService,
     // 结构优化 Step 1b：工作锁 service + LOOPS_LOCK_BACKEND backend 绑定已下沉到
