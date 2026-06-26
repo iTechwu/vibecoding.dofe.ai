@@ -4,10 +4,12 @@ import { useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { setTokens, setIdToken, setUser } from '@/lib/storage';
-import type { UserInfo } from '@repo/contracts';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { oidcAuthClient } from '@/lib/api/contracts/client';
-import { ACCESS_TOKEN_DEFAULT_EXPIRY_S, REFRESH_TOKEN_DEFAULT_EXPIRY_MS } from '@repo/constants';
+import {
+  ACCESS_TOKEN_DEFAULT_EXPIRY_S,
+  REFRESH_TOKEN_DEFAULT_EXPIRY_MS,
+} from '@dofe/sso-contracts/token';
 
 /**
  * OIDC Callback Page
@@ -25,8 +27,13 @@ export default function OidcCallbackPage() {
   const searchParams = useSearchParams();
   const t = useTranslations('auth.oidc.success');
   const processed = useRef(false);
-  const [error, setError] = useState<string | null>(null);
-  const [errorDescription, setErrorDescription] = useState<string | null>(null);
+  // Only exchange failures need component state; URL errors are derived
+  // directly from searchParams (avoids synchronous setState in effect).
+  const [exchangeFailed, setExchangeFailed] = useState(false);
+  const urlError = searchParams.get('error');
+  const urlErrorDesc = searchParams.get('error_description');
+  const error = exchangeFailed ? 'exchange_failed' : urlError;
+  const errorDescription = exchangeFailed ? t('errorDescription') : urlErrorDesc;
 
   // Extract current locale prefix from pathname (e.g. /zh-CN/... → /zh-CN)
   const getLocalePrefix = () => {
@@ -39,12 +46,8 @@ export default function OidcCallbackPage() {
     processed.current = true;
 
     const localePrefix = getLocalePrefix();
-    const oidcError = searchParams.get('error');
-    const oidcErrorDesc = searchParams.get('error_description');
 
-    if (oidcError) {
-      setError(oidcError);
-      setErrorDescription(oidcErrorDesc);
+    if (urlError) {
       // Clean URL for error case too
       window.history.replaceState(null, '', window.location.pathname);
       return;
@@ -112,11 +115,10 @@ export default function OidcCallbackPage() {
 
         window.location.href = `${localePrefix}${redirectTarget}`;
       } catch {
-        setError('exchange_failed');
-        setErrorDescription(t('errorDescription'));
+        setExchangeFailed(true);
       }
     })();
-  }, [searchParams, t]);
+  }, [searchParams, urlError]);
 
   // Error state
   if (error) {

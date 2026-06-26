@@ -31,7 +31,7 @@ import {
   ACCESS_TOKEN_DEFAULT_EXPIRY_S,
   TOKEN_BLACKLIST_PREFIX,
   isSsoRefreshTokenExpired,
-} from '@repo/constants';
+} from '@dofe/sso-contracts/token';
 import type { Configuration, CustomFetch } from 'openid-client';
 import type { Dispatcher } from 'undici';
 import { resolveOidcApiBaseUrl, resolveOidcFrontendBaseUrl } from './url-resolver';

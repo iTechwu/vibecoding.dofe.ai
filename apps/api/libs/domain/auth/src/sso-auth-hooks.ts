@@ -9,8 +9,8 @@
 import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { RedisService } from '@dofe/infra-redis';
-import { TOKEN_BLACKLIST_PREFIX } from '@repo/constants';
-import type { SsoAuthGuardHooks, LocalUser, TokenExtractionRequest } from '@dofe/sso-nestjs';
+import { TOKEN_BLACKLIST_PREFIX } from '@dofe/sso-contracts/token';
+import type { SsoAuthGuardHooks, LocalUser } from '@dofe/sso-nestjs';
 import { UserSyncService } from './user-sync.service';
 
 @Injectable()

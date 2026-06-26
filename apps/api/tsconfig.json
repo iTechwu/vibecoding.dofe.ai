@@ -97,6 +97,7 @@
       "@dofe/infra-shared-services/system-health": [
         "node_modules/@dofe/infra-shared-services/dist/system-health"
       ],
+      "@dofe/sso-contracts/token": ["node_modules/@dofe/sso-contracts/dist/token"],
 
       // === @app/tenant-management/*（stub：scaffold 无租户管理模块） ===
       "@app/tenant-management/*": ["./generated/stubs/tenant-management/*"]

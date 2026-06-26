@@ -6,7 +6,7 @@
  */
 
 import type { UserInfo, LoginSuccess } from '@repo/contracts';
-import { REFRESH_TOKEN_DEFAULT_EXPIRY_MS } from '@repo/constants';
+import { REFRESH_TOKEN_DEFAULT_EXPIRY_MS } from '@dofe/sso-contracts/token';
 
 // ============================================================================
 // Type Definitions

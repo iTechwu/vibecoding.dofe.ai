@@ -11,6 +11,9 @@ const uploader = new FileUploader({
   apiBase: '/api/proxy/sso',
 });
 
+// NOTE: @dofe/file-sdk-web@0.1.12 ships AbortSignal through upload() at runtime
+// but its published UploadOptions type omits `signal`. Drop this intersection
+// once @dofe/file-sdk-web@0.1.13+ is published and pinned here.
 type UploadOptionsWithSignal = Parameters<FileUploader['upload']>[1] & {
   signal: AbortSignal;
 };
@@ -94,7 +97,7 @@ export async function uploadFile(params: UploadParams): Promise<UploadResult> {
   }
 }
 
-export async function cancelUpload(filename: string, _fileId: string): Promise<void> {
+export async function cancelUpload(filename: string): Promise<void> {
   const controller = activeUploads.get(filename);
   if (controller) {
     controller.abort();
