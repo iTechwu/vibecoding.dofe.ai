@@ -948,7 +948,7 @@ export class LoopsController {
   /** gstack P2: List workspace-level workflow recipe configurations. */
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.listWorkspaceRecipes)
-  async listWorkspaceRecipes(@Req() req: AuthenticatedRequest) {
+  async listWorkspaceRecipes() {
     return tsRestHandler(c.listWorkspaceRecipes, async ({ query }) => {
       const result = await this.loopsService.listWorkspaceRecipes(query);
       return success(result);
@@ -958,7 +958,7 @@ export class LoopsController {
   /** gstack P2: Loop Bench drilldown by workspace/repo/recipe dimensions. */
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.getLoopBenchDrilldown)
-  async getLoopBenchDrilldown(@Req() req: AuthenticatedRequest) {
+  async getLoopBenchDrilldown() {
     return tsRestHandler(c.getLoopBenchDrilldown, async ({ query }) => {
       const result = await this.loopsService.getLoopBenchDrilldown(query);
       return success(result);
@@ -988,7 +988,7 @@ export class LoopsController {
 
   @TsRestHandler(c.listScheduleTriggers)
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
-  async listScheduleTriggers(@Req() req: AuthenticatedRequest) {
+  async listScheduleTriggers() {
     return tsRestHandler(c.listScheduleTriggers, async ({ query }) => {
       return success(await this.loopsService.listScheduleTriggers(query));
     });
@@ -996,7 +996,7 @@ export class LoopsController {
 
   @TsRestHandler(c.getScheduleTrigger)
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
-  async getScheduleTrigger(@Req() req: AuthenticatedRequest) {
+  async getScheduleTrigger() {
     return tsRestHandler(c.getScheduleTrigger, async ({ params }) => {
       return success(await this.loopsService.getScheduleTrigger(params.triggerId));
     });
@@ -1079,7 +1079,7 @@ export class LoopsController {
 
   @TsRestHandler(c.listTriggerExecutions)
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
-  async listTriggerExecutions(@Req() req: AuthenticatedRequest) {
+  async listTriggerExecutions() {
     return tsRestHandler(c.listTriggerExecutions, async ({ params, query }) => {
       return success(await this.loopsService.listTriggerExecutions(params.triggerId, query));
     });
@@ -1127,7 +1127,7 @@ export class LoopsController {
 
   @TsRestHandler(c.listDeadLetters)
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
-  async listDeadLetters(@Req() req: AuthenticatedRequest) {
+  async listDeadLetters() {
     return tsRestHandler(c.listDeadLetters, async ({ query }) => {
       return success(await this.loopsService.listDeadLetters(query));
     });
@@ -1139,7 +1139,7 @@ export class LoopsController {
 
   @TsRestHandler(c.listTools)
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
-  async listTools(@Req() req: AuthenticatedRequest) {
+  async listTools() {
     return tsRestHandler(c.listTools, async ({ query }) => {
       return success(await this.loopsService.listTools(query));
     });
@@ -1147,7 +1147,7 @@ export class LoopsController {
 
   @TsRestHandler(c.getTool)
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
-  async getTool(@Req() req: AuthenticatedRequest) {
+  async getTool() {
     return tsRestHandler(c.getTool, async ({ params }) => {
       return success(await this.loopsService.getTool(params.toolId));
     });
@@ -1208,7 +1208,7 @@ export class LoopsController {
 
   @TsRestHandler(c.listBlueprints)
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
-  async listBlueprints(@Req() req: AuthenticatedRequest) {
+  async listBlueprints() {
     return tsRestHandler(c.listBlueprints, async ({ query }) => {
       return success(await this.loopsService.listBlueprints(query));
     });
@@ -1216,7 +1216,7 @@ export class LoopsController {
 
   @TsRestHandler(c.getBlueprint)
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
-  async getBlueprint(@Req() req: AuthenticatedRequest) {
+  async getBlueprint() {
     return tsRestHandler(c.getBlueprint, async ({ params }) => {
       return success(await this.loopsService.getBlueprint(params.blueprintId));
     });
@@ -1274,7 +1274,7 @@ export class LoopsController {
 
   @TsRestHandler(c.getCrossTenantEvalAggregation)
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
-  async getCrossTenantEvalAggregation(@Req() req: AuthenticatedRequest) {
+  async getCrossTenantEvalAggregation() {
     return tsRestHandler(c.getCrossTenantEvalAggregation, async ({ query }) => {
       return success(await this.loopsService.getCrossTenantEvalAggregation(query));
     });
@@ -1332,7 +1332,7 @@ export class LoopsController {
 
   @TsRestHandler(c.getEvalAggregationCacheHealth)
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
-  async getEvalAggregationCacheHealth(@Req() req: AuthenticatedRequest) {
+  async getEvalAggregationCacheHealth() {
     return tsRestHandler(c.getEvalAggregationCacheHealth, async () => {
       return success(await this.loopsService.getEvalAggregationCacheHealth());
     });
@@ -1400,7 +1400,7 @@ export class LoopsController {
 
   @TsRestHandler(c.getTriggerSchedulerStatus)
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
-  async getTriggerSchedulerStatus(@Req() req: AuthenticatedRequest) {
+  async getTriggerSchedulerStatus() {
     return tsRestHandler(c.getTriggerSchedulerStatus, async () => {
       return success(await this.loopsService.getTriggerSchedulerStatus());
     });
@@ -1425,7 +1425,7 @@ export class LoopsController {
 
   @TsRestHandler(c.listArchives)
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
-  async listArchives(@Req() req: AuthenticatedRequest) {
+  async listArchives() {
     return tsRestHandler(c.listArchives, async ({ query }) => {
       return success(await this.loopsService.listArchives(query.tenantId));
     });
@@ -1433,7 +1433,7 @@ export class LoopsController {
 
   @TsRestHandler(c.refreshArchiveUrl)
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
-  async refreshArchiveUrl(@Req() req: AuthenticatedRequest) {
+  async refreshArchiveUrl() {
     return tsRestHandler(c.refreshArchiveUrl, async ({ params, body }) => {
       const result = await this.loopsService.refreshArchiveUrl(body.tenantId, params.archiveId);
       return success(result);
@@ -1474,7 +1474,7 @@ export class LoopsController {
 
   @TsRestHandler(c.getDockerSandboxHealth)
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
-  async getDockerSandboxHealth(@Req() req: AuthenticatedRequest) {
+  async getDockerSandboxHealth() {
     return tsRestHandler(c.getDockerSandboxHealth, async () => {
       return success(await this.loopsService.getDockerSandboxHealth());
     });

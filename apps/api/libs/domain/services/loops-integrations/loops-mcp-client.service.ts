@@ -113,18 +113,11 @@ export class LoopsMcpClientService {
 
     const result = await this.withProcessTimeout(child, timeoutMs, async (send, receive) => {
       // 1. initialize (JSON-RPC ids must be unique within a stdio session)
-      const initResp = await this.sendRequest(
-        1,
-        send,
-        receive,
-        'initialize',
-        {
-          protocolVersion: '2024-11-05',
-          capabilities: { tools: {} },
-          clientInfo: { name: 'dofeai-loops', version: '1.0.0' },
-        },
-        timeoutMs,
-      );
+      const initResp = await this.sendRequest(1, send, receive, 'initialize', {
+        protocolVersion: '2024-11-05',
+        capabilities: { tools: {} },
+        clientInfo: { name: 'dofeai-loops', version: '1.0.0' },
+      });
 
       const serverInfo = ((initResp.result as Record<string, unknown>)?.serverInfo as {
         name: string;
@@ -141,7 +134,7 @@ export class LoopsMcpClientService {
       send(this.buildNotification('notifications/initialized', {}));
 
       // 3. tools/list
-      const toolsResp = await this.sendRequest(2, send, receive, 'tools/list', {}, timeoutMs);
+      const toolsResp = await this.sendRequest(2, send, receive, 'tools/list', {});
       const tools = (toolsResp.result as { tools?: McpTool[] })?.tools ?? [];
 
       return { serverInfo, protocolVersion, capabilities, tools };
@@ -165,29 +158,18 @@ export class LoopsMcpClientService {
 
     const result = await this.withProcessTimeout(child, timeoutMs, async (send, receive) => {
       // Initialize first (JSON-RPC ids must be unique within a stdio session)
-      await this.sendRequest(
-        1,
-        send,
-        receive,
-        'initialize',
-        {
-          protocolVersion: '2024-11-05',
-          capabilities: { tools: {} },
-          clientInfo: { name: 'dofeai-loops', version: '1.0.0' },
-        },
-        timeoutMs,
-      );
+      await this.sendRequest(1, send, receive, 'initialize', {
+        protocolVersion: '2024-11-05',
+        capabilities: { tools: {} },
+        clientInfo: { name: 'dofeai-loops', version: '1.0.0' },
+      });
       send(this.buildNotification('notifications/initialized', {}));
 
       // Call the tool
-      const callResp = await this.sendRequest(
-        2,
-        send,
-        receive,
-        'tools/call',
-        { name: toolName, arguments: toolInput ?? {} },
-        timeoutMs,
-      );
+      const callResp = await this.sendRequest(2, send, receive, 'tools/call', {
+        name: toolName,
+        arguments: toolInput ?? {},
+      });
 
       return { toolName, result: callResp.result };
     });

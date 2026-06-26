@@ -4,7 +4,7 @@
  * Uses a mock child_process.spawn to simulate MCP server responses without
  * requiring a real MCP server on the test machine.
  */
-import { LoopsMcpClientService, McpClientOptions, McpTool } from './loops-mcp-client.service';
+import { LoopsMcpClientService } from './loops-mcp-client.service';
 
 // ---------------------------------------------------------------------------
 // Mock child_process — simulates a compliant MCP server over stdio
@@ -69,7 +69,7 @@ function mockMcpServer(
   }) as unknown as jest.Mock;
 
   // Emit 'close' after all responses are sent
-  child.on = jest.fn((event: string, handler: (...args: unknown[]) => void) => {
+  child.on = jest.fn((event: string, _handler: (...args: unknown[]) => void) => {
     if (event === 'close') {
       // close happens after all pending responses are consumed
       // For tests, we defer close to after responses

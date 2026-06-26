@@ -233,7 +233,7 @@ export class LoopsTriggerSchedulerProcessor extends WorkerHost {
   }
 
   @OnWorkerEvent('completed')
-  onCompleted(job: Job): void {
+  onCompleted(): void {
     // Tick completed — silent unless there were fires
   }
 

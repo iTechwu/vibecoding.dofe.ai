@@ -252,7 +252,6 @@ export class LoopsDockerSandboxService {
     }
 
     try {
-      const { execSync } = await import('child_process');
       // docker login uses stdin for password
       const { spawnSync } = await import('child_process');
       const result = spawnSync('docker', ['login', server, '-u', username, '--password-stdin'], {

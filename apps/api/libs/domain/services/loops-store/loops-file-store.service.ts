@@ -2750,7 +2750,7 @@ export class LoopsFileStoreService {
         if (!file.endsWith('.json')) continue;
         const data = JSON.parse(await fs.readFile(path.join(govDir, file), 'utf8'));
         if (data.workflowDefaults) {
-          for (const [kind, recipeId] of Object.entries(data.workflowDefaults)) {
+          for (const [kind] of Object.entries(data.workflowDefaults)) {
             recipes.push({
               id: `${file.replace('.json', '')}-${kind}`,
               name: `Default ${kind}`,

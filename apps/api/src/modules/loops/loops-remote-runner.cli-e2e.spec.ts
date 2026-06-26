@@ -517,11 +517,6 @@ describe('R34a · Remote Runner CLI End-to-End', () => {
           location: [],
         },
       ];
-      const annotations = detail.annotations.map((a: any) =>
-        a.target === shardId
-          ? { ...a, implStatus: 'pending' as const, verdict: 'unreviewed' as const }
-          : a,
-      );
       await svc.store.writeShardProgress({
         issueId,
         from: 'TODO',
@@ -534,6 +529,8 @@ describe('R34a · Remote Runner CLI End-to-End', () => {
           updated: new Date().toISOString(),
         },
         shards,
+        // Annotation updates are intentionally not persisted here; the worker
+        // re-derives implStatus/verdict from shard progress at run time.
       });
 
       artifactRoot = `.loops/runs/e2e-${Date.now()}`;

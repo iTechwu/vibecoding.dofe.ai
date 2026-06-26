@@ -24,7 +24,7 @@
     "@dofe/infra-contracts": "0.1.78",
     "@dofe/infra-web-runtime": "0.1.78",
     "@dofe/sso-browser": "0.1.78",
-    "@dofe/sso-contracts": "0.1.71",
+    "@dofe/sso-contracts": "0.1.72",
     "@hookform/resolvers": "^5.4.0",
     "@radix-ui/react-dialog": "^1.1.17",
     "@radix-ui/react-slot": "^1.3.0",

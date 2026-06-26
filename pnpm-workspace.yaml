@@ -99,3 +99,6 @@ minimumReleaseAgeExclude:
   - '@shikijs/types@4.3.0'
   - node-releases@2.0.50
   - shiki@4.3.0
+  - '@dofe/sso-contracts@0.1.72'
+  - '@dofe/sso-nestjs@0.1.58'
+  - '@dofe/sso-node@0.1.59'

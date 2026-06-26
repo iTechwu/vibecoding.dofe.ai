@@ -38,7 +38,6 @@ import type {
   LoopTriggerExecutionListResponse,
   LoopTriggerRetryRequest,
   LoopTriggerReplayRequest,
-  LoopTriggerDeadLetter,
   LoopTriggerDeadLetterListResponse,
   LoopToolListResponse,
   RegisterToolRequest,
@@ -91,7 +90,6 @@ import type {
   LoopRemoteRunnerLeaseRequest,
   LoopRemoteRunnerListResponse,
   LoopRemoteRunnerReleaseRequest,
-  LoopRuleSnapshot,
   LoopRequirementCoverage,
   LoopRequirementCoverageItem,
   LoopRequirementCoverageSummary,
@@ -111,9 +109,7 @@ import type {
   LoopSecondOpinion,
   LoopSpec,
   LoopStateItem,
-  LoopSubmitter,
   LoopWorkflowRecipe,
-  LoopWorkflowStep,
   LoopWorkspacesResponse,
   UpsertLoopWorkspaceRequest,
 } from '@repo/contracts';
@@ -1837,7 +1833,6 @@ export class LoopsService implements LoopsIssueCreationPort {
         const artifactKinds = ['manifest', 'worker-receipt', 'worker-log', 'trace'];
 
         for (const kind of artifactKinds) {
-          const localRef = `.loops/runs/${runnerId}/jobs/${jobId}/${kind}.json`;
           const storageKey = `loops/runs/${runnerId}/jobs/${jobId}/${kind}.json`;
           try {
             // Read local artifact content
@@ -4132,7 +4127,6 @@ export class LoopsService implements LoopsIssueCreationPort {
         `Execution ${executionId} has exhausted retries (${execution.attempt}/${execution.maxRetries})`,
       );
     }
-    const now = new Date().toISOString();
     const retried: LoopTriggerExecution = {
       ...execution,
       status: 'pending',
