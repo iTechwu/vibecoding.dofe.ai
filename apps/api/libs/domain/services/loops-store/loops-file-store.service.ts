@@ -43,7 +43,7 @@ import type {
   LoopBlueprint,
   RuntimeBackendPolicyUpdate,
 } from '@repo/contracts';
-import { LoopsNotificationSender } from './loops-notification-sender.service';
+import { LoopsNotificationSender } from '@app/services/loops-integrations';
 import {
   enrichLoopLearning,
   withLearningSimilaritySuggestions,

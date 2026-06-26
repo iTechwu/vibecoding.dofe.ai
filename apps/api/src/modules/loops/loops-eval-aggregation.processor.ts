@@ -3,8 +3,7 @@ import { Inject } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
-import { LoopsEvalAggregationWorkerService } from '@app/services/loops-eval';
-import { LoopsService } from './loops.service';
+import { LoopsEvalAggregationRunnerService, type LoopsEvalLogSink } from '@app/services/loops-eval';
 
 /**
  * R33+: BullMQ processor for periodic cross-tenant Eval aggregation.
@@ -32,10 +31,19 @@ import { LoopsService } from './loops.service';
 export class LoopsEvalAggregationProcessor extends WorkerHost {
   constructor(
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
-    private readonly aggregationWorker: LoopsEvalAggregationWorkerService,
-    private readonly loopsService: LoopsService,
+    private readonly aggregationRunner: LoopsEvalAggregationRunnerService,
   ) {
     super();
+  }
+
+  private get domainLogSink(): LoopsEvalLogSink {
+    return {
+      log: (level, message, meta) => {
+        if (level === 'info') this.logger.info(message, meta);
+        else if (level === 'warn') this.logger.warn(message, meta);
+        else this.logger.error(message, meta);
+      },
+    };
   }
 
   async process(
@@ -71,24 +79,26 @@ export class LoopsEvalAggregationProcessor extends WorkerHost {
     if (type === 'aggregate-tenant' && tenantId) {
       // Aggregate a single tenant across all periods
       for (const period of periods) {
-        const result = await this.loopsService.runEvalAggregationWorker({
+        const result = await this.aggregationRunner.runAggregation({
           tenantId,
           period: period as '7d' | '30d' | '90d' | 'all',
+          logSink: this.domainLogSink,
         });
         results.push(result);
       }
     } else {
       // Full sweep: aggregate default tenant for all periods
       for (const period of periods) {
-        const result = await this.loopsService.runEvalAggregationWorker({
+        const result = await this.aggregationRunner.runAggregation({
           period: period as '7d' | '30d' | '90d' | 'all',
+          logSink: this.domainLogSink,
         });
         results.push(result);
       }
     }
 
     // Also run cache health check
-    await this.aggregationWorker.cacheHealth().then((health) => {
+    await this.aggregationRunner.cacheHealth().then((health) => {
       this.logger.info(`[EvalAgg Processor] Redis cache health: ${health.message}`, health);
     });
 

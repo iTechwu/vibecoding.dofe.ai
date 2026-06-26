@@ -5,6 +5,7 @@ const email = process.env.E2E_SSO_EMAIL;
 const mobile = process.env.E2E_SSO_MOBILE;
 const password = process.env.E2E_SSO_PASSWORD;
 const callbackUrl = process.env.E2E_CALLBACK_URL ?? '/';
+const loginPath = process.env.E2E_LOGIN_PATH ?? '/login';
 const ssoOrigin = process.env.E2E_SSO_ORIGIN ?? 'http://127.0.0.1:3100';
 const ssoLoginOrigin = process.env.E2E_SSO_LOGIN_ORIGIN ?? 'http://127.0.0.1:3000';
 const apiOrigin =
@@ -151,7 +152,7 @@ test('login -> callback -> refresh -> logout and upload token/CDN metadata throu
 }) => {
   expect(baseURL, 'Playwright baseURL must be configured').toBeTruthy();
 
-  await page.goto(`/login?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+  await page.goto(`${loginPath}?callbackUrl=${encodeURIComponent(callbackUrl)}`);
 
   await expect
     .poll(

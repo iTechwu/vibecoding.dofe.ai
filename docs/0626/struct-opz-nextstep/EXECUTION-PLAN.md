@@ -766,6 +766,288 @@ rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\
 - API type-check 通过。
 - domain 反向依赖扫描无命中。
 
+### Cycle 69 · Step N6 CI Checks Registry re-home 实施
+
+#### 实施
+
+- `loops-integrations` 新增 `LoopsCiChecksService`：承接纯 CI checks registry（`listCiCheckItems`）、`getCiCheckItem`、`withCiCheckStatus`。
+- `LoopsIntegrationsModule` providers/exports `LoopsCiChecksService`；barrel 导出。
+- `LoopsService` 注入 `ciChecksService`（构造尾部 `@Optional`，避免移动既有 positional 参数），`buildCiCheckItems` / `getCiCheckItem` / `withCiCheckStatus` 改为委托。
+
+#### 标注文档
+
+- Step N6 CI checks registry 已下沉到 `loops-integrations`；facade 保留 permission/audit wrapper。
+
+#### 审查待实施项
+
+- 待继续：CI publication evidence builder 下沉；notification sender re-home；testCiCheck provider publish/persistence 编排 port 化。
+
+#### 再标注文档
+
+- Cycle 69 完成，进入 publication builder 下沉。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api type-check
+pnpm --filter @repo/api test -- loops.service.spec.ts --runInBand
+```
+
+结果：
+
+- API type-check 通过。
+- facade loops.service.spec.ts 68 个测试通过。
+
+### Cycle 70 · Step N6 CI Publication Evidence Builder re-home 实施
+
+#### 实施
+
+- `LoopsCiChecksService.buildCiCheckPublicationEvidence(action, evidencePort?)`：issueId 缺失或 port 未配时返回 backlink-only 记录，否则经 `LoopsCiDeliveryEvidencePort.buildPublicationEvidence` 取得 work-package commit map。
+- 定义 `LoopsCiDeliveryEvidencePort`（detail-read + delivery evidence 组装，两者仍在 facade）。
+- `LoopsService.buildCiCheckPublicationEvidence` 收敛为 thin wrapper：`ciDeliveryEvidencePort` getter 包装自身 `store.readDetail` + `buildDeliveryEvidence`，委托 domain service。
+
+#### 标注文档
+
+- Step N6 CI publication evidence builder 已下沉；delivery evidence 仍由 facade port 提供（待 `buildDeliveryEvidence` 迁到 `loops-evidence`）。
+
+#### 审查待实施项
+
+- 待继续：notification sender re-home；testCiCheck provider publish/persistence 编排 port 化。
+
+#### 再标注文档
+
+- Cycle 70 完成，进入 notification sender re-home。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api type-check
+pnpm --filter @repo/api test -- loops.service.spec.ts --runInBand
+```
+
+结果：
+
+- API type-check 通过。
+- facade loops.service.spec.ts 68 个测试通过。
+
+### Cycle 71 · Step N6 Notification Sender re-home 实施
+
+#### 实施
+
+- `LoopsNotificationSender` + spec 从 `loops-store` `git mv` 到 `loops-integrations`。
+- `LoopsIntegrationsModule` providers/exports `LoopsNotificationSender`；barrel 导出。
+- `LoopsStoreModule` 改为 `imports: [LoopsIntegrationsModule]` 取得 sender 单例（无环：integrations 不依赖 store），移除自身的 sender provider；store barrel 移除 sender 导出。
+- `LoopsFileStoreService` 改为 `import { LoopsNotificationSender } from '@app/services/loops-integrations'`。
+
+#### 标注文档
+
+- Step N6 notification sender re-home 完成；store 不再持有 sender，经 integrations module 注入。
+
+#### 审查待实施项
+
+- 待继续：testCiCheck provider publish/persistence 编排 port 化；CI publication history 读取 port 化。
+
+#### 再标注文档
+
+- Cycle 71 完成，进入 focused tests。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api type-check
+pnpm --filter @repo/api test -- loops-notification-sender.service.spec.ts loops.service.spec.ts --runInBand
+```
+
+结果：
+
+- API type-check 通过。
+- notification sender + facade 共 73 个测试通过。
+
+### Cycle 72 · Step N6 Integrations Focused Tests
+
+#### 实施
+
+- 新增 `loops-ci-checks.service.spec.ts`（standalone unit spec）。
+- 覆盖：registry catalog、`getCiCheckItem` 命中/missing 抛 `NotFoundException`、`withCiCheckStatus` connected/failed overlay；`buildCiCheckPublicationEvidence` backlink-only / port 委托 / port 缺失回退。
+
+#### 标注文档
+
+- Step N6 CI checks registry + publication builder 已有 domain focused tests 覆盖。
+
+#### 审查待实施项
+
+- 仍待：testCiCheck provider publish/persistence 编排 port 化与 focused 子集。
+
+#### 再标注文档
+
+- Cycle 72 完成，进入结构审查 + 文档 + 收敛。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api test -- loops-ci-checks.service.spec.ts --runInBand
+```
+
+结果：
+
+- `loops-ci-checks.service.spec.ts` 6 个测试通过。
+
+### Cycle 73 · Step N6 结构审查 + 文档同步 + 收敛验证
+
+#### 实施
+
+- 执行 domain 反向依赖扫描，无命中。
+- 确认 `loops-ci-checks.service.ts` 仅 import `@nestjs/common` + `@repo/contracts`。
+- 确认无残留 `loops-store/loops-notification-sender` import。
+- 更新 `struct-opz-nextstep/README.md` Step 7、`BACKLOG.md` N6、`struct-opz/EXECUTION.md` Step 7、`struct-opz/IMPLEMENTATION-ANNOTATIONS.md` 顶部 Step 7 + 总体状态表。
+- 汇总本批 Cycle 69-73。
+
+#### 标注文档
+
+- 本批已完成至少 5 次循环动作（69 CI registry / 70 publication builder / 71 notification re-home / 72 focused tests / 73 结构审查+文档+收敛）。
+- 准确标注 N6 integrations 当前状态，未改变对外 API contract / controller path / GitHub Checks provider contract。
+
+#### 审查待实施项
+
+- 待实施：
+  - N3：issue creation port 实现继续下沉到 `loops-issues` intake port。
+  - N2 收尾：evidence 收集 / DB/Redis 适配独立为 `loops-eval` adapter service；processor 解耦 facade。
+  - N6 收尾：testCiCheck provider publish / permission / publication persistence 编排 port 化。
+  - N4：remote shard execution pipeline 与 artifact IO port。
+  - N5：archive service re-home 评估。
+  - N1：engine 主流程。
+  - N7：facade/module 收敛。
+
+#### 再标注文档
+
+- Cycle 73 完成；CI checks registry + publication builder + notification sender 已 re-home 到 `loops-integrations`。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api test -- loops-ci-checks.service.spec.ts loops-notification-sender.service.spec.ts loops.service.spec.ts --runInBand
+pnpm --filter @repo/api type-check
+rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)|require\\(['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)" apps/api/libs/domain/services
+```
+
+结果：
+
+- CI checks + notification sender + facade focused tests 通过（6 + 5 + 68）。
+- API type-check 通过。
+- domain 反向依赖扫描无命中。
+
+### Cycle 74 · Step N3 Issue Creation Port 实现下沉实施
+
+#### 实施
+
+- `LoopsIssuesService` 新增 `createIssue(input, authUser?)`：完整 issue intake 编排（id/intake/targetRepo/submitter/ruleSnapshot/state 组装 + workflowDefaults 匹配 + `inferWorkflowKind`/`buildWorkflowRecipe` 派生 + `writeIssueRecord` 双写），返回值结构兼容 `LoopsIssueCreationPort`。
+- `LoopsIssuesService` 新增 `@Optional() evidence: LoopsEvidenceService` 构造参数（缺失时 `createIssue` 抛明确错误）。
+- `LoopsIssuesModule imports LoopsEvidenceModule`，使 Nest graph 内 issues service 获得 evidence。
+- `LoopsService.createIssue` 收敛为 thin wrapper：`return this.issues.createIssue(input, authUser)`；构造体改为先赋值 `evidence` 再透传给 standalone issues 构造。
+- `loops.module.ts`：`LOOPS_ISSUE_CREATION_PORT` 从 `useExisting: LoopsService` 改为 `useExisting: LoopsIssuesService`。
+
+#### 标注文档
+
+- Step N3 完成：issue creation port 实现已下沉到 `loops-issues`，facade 不再是 port 临时实现。
+- 标注：facade `createIssue` 仅保留兼容 wrapper（permission/audit 仍在 controller），对外行为不变。
+
+#### 审查待实施项
+
+- 待继续：processor schedule tick → fire focused 子集；Step N7 删除 facade createIssue wrapper。
+
+#### 再标注文档
+
+- Cycle 74 完成，进入 focused tests。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api type-check
+pnpm --filter @repo/api test -- loops.service.spec.ts loops-triggers.service.spec.ts --runInBand
+```
+
+结果：
+
+- API type-check 通过。
+- facade loops.service.spec.ts 68 个测试通过（含大量 createIssue 用例，行为一致）。
+- trigger fire spec 7 个测试通过（port 经 LoopsIssuesService 解析）。
+
+### Cycle 75 · Step N3 Issue Intake Focused Tests
+
+#### 实施
+
+- 新增 `loops-issues.service.spec.ts`（standalone unit spec，mock store + evidence + 三个 instance method spy）。
+- 覆盖：
+  - 组装 issue/intake/state + loop-snapshot recipe（无 workspace default 匹配）+ writeIssueRecord 委托。
+  - workspace default 匹配时 recipe `source='workspace'` + `id=workspace recipeId`。
+  - 显式 sourceChannel/sourceKind 透传到 issue + intake。
+  - evidence 未注入时抛明确错误。
+
+#### 标注文档
+
+- Step N3 issue intake 编排已有 domain focused tests 覆盖主要路径。
+
+#### 审查待实施项
+
+- 仍待：processor schedule tick → fire focused 子集。
+
+#### 再标注文档
+
+- Cycle 75 完成，进入结构审查 + 文档 + 收敛。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api test -- loops-issues.service.spec.ts --runInBand
+```
+
+结果：
+
+- `loops-issues.service.spec.ts` 4 个测试通过。
+
+### Cycle 76 · Step N3 结构审查 + 文档同步 + 收敛验证
+
+#### 实施
+
+- 执行 domain 反向依赖扫描，无命中。
+- 确认 `LOOPS_ISSUE_CREATION_PORT` 绑定到 `LoopsIssuesService`（不再依赖 facade 类）。
+- 确认 facade `createIssue` 仅 thin delegate（无内联编排）。
+- 更新 `struct-opz-nextstep/README.md` Step 2/8、`BACKLOG.md` N3（降为低风险收尾）、`struct-opz/EXECUTION.md` Step 2/8 总览行、`struct-opz/IMPLEMENTATION-ANNOTATIONS.md` 顶部 Step 2/8 剩余项 + 总体状态表。
+- 汇总本批 Cycle 74-76。
+
+#### 标注文档
+
+- 本批已完成至少 3 次循环动作（74 实施 / 75 focused tests / 76 结构审查+文档+收敛），完成 N3 issue creation port 下沉。
+- 准确标注 N3 当前状态，未改变对外 API contract / controller path / intake 行为。
+
+#### 审查待实施项
+
+- 待实施：
+  - N4：remote shard execution pipeline 与 artifact IO port。
+  - N2 收尾：evidence 收集 / DB/Redis 适配独立为 `loops-eval` adapter service；processor 解耦 facade。
+  - N6 收尾：testCiCheck provider publish / permission / publication persistence 编排 port 化。
+  - N5：archive service re-home 评估。
+  - N1：engine 主流程。
+  - N7：facade/module 收敛（含删除 facade createIssue wrapper）。
+
+#### 再标注文档
+
+- Cycle 76 完成；issue creation port 实现已从 facade 下沉到 `loops-issues`，`useExisting: LoopsService` 临时绑定已清偿。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api test -- loops-issues.service.spec.ts loops.service.spec.ts loops-triggers.service.spec.ts loops-eval.service.spec.ts loops-ci-checks.service.spec.ts --runInBand
+pnpm --filter @repo/api type-check
+rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)|require\\(['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)" apps/api/libs/domain/services
+```
+
+结果：
+
+- issues + facade + triggers + eval + ci-checks focused tests 通过（4 + 68 + 7 + 7 + 6）。
+- API type-check 通过。
+- domain 反向依赖扫描无命中。
+
 ## Step N0 · 文档事实源校准
 
 ### 目标

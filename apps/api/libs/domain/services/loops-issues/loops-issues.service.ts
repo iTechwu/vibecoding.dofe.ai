@@ -21,6 +21,7 @@ import {
   resolveAllowedTargetRepo,
 } from '@app/services/loops-store';
 import { LoopsWorkspaceProfileService } from '@app/services/loops-runtime';
+import { LoopsEvidenceService } from '@app/services/loops-evidence';
 
 /**
  * Loops Issues domain service — `@app/services/loops-issues`.
@@ -55,6 +56,11 @@ export class LoopsIssuesService {
     // standalone 消费者（无 Nest DI）由 LoopsService 自构造时传入。
     @Optional()
     private readonly workspaceProfile?: LoopsWorkspaceProfileService,
+    // 结构优化 nextstep Step N3：issue intake 完整编排（含 workflow recipe 派生）
+    // 下沉到本 service；evidence 提供 inferWorkflowKind / buildWorkflowRecipe。
+    // standalone 消费者由 LoopsService 自构造时传入。
+    @Optional()
+    private readonly evidence?: LoopsEvidenceService,
   ) {}
 
   /**
@@ -66,6 +72,90 @@ export class LoopsIssuesService {
     const date = now.slice(0, 10).replace(/-/g, '');
     const suffix = randomUUID().replace(/-/g, '').slice(0, 8);
     return `issue-${date}-${suffix}`;
+  }
+
+  /**
+   * 结构优化 nextstep Step N3：完整 issue intake 编排（原 `LoopsService.createIssue`）。
+   *
+   * 组装 issue / intake / state 记录，派生 workflow recipe（应用 workspace defaults），
+   * 经 `writeIssueRecord` 双写 `.loops` + DB persistence。返回值结构兼容
+   * `LoopsIssueCreationPort.createIssue`（`{ issue: { id } }`），故 trigger fire 等可经
+   * port 直接消费本 service，不再依赖 legacy facade。
+   */
+  async createIssue(
+    input: CreateLoopIssueRequest,
+    authUser?: AuthUserInfo,
+  ): Promise<{
+    issue: LoopIssue;
+    intake: LoopIntake;
+    state: LoopStateItem;
+  }> {
+    if (!this.evidence) {
+      throw new Error('LoopsEvidenceService is required for createIssue orchestration');
+    }
+    const now = new Date().toISOString();
+    const issueId = this.createIssueId(now);
+    const intakeId = this.store.intakeId(issueId);
+    const rawPayloadRef = `.loops/intakes/${intakeId}.raw.json`;
+    const targetRepo = await this.resolveTargetRepo(input.targetRepo);
+    const submitter = this.normalizeSubmitter(input, authUser);
+    const sourceChannel = input.sourceChannel ?? 'web';
+    const sourceKind = input.sourceKind ?? 'web_form';
+    const issue: LoopIssue = {
+      id: issueId,
+      title: input.title,
+      status: 'OPEN',
+      priority: input.priority,
+      created: now,
+      updated: now,
+      sourceChannel,
+      sourceKind,
+      submitterId: submitter.userId,
+      submitterName: submitter.name,
+      targetRepo,
+      body: input.body,
+      acceptanceCriteria: input.acceptanceCriteria,
+      rawPayloadRef,
+    };
+    const ruleSnapshot = await this.captureRuleSnapshot(targetRepo, now);
+    const intake: LoopIntake = {
+      id: intakeId,
+      issueId,
+      sourceChannel,
+      sourceKind,
+      submitter,
+      rawPayloadRef,
+      status: 'NORMALIZED' as const,
+      created: now,
+      ruleSnapshot,
+    };
+    const state: LoopStateItem = {
+      issueId,
+      phase: 'PHASE_1_SPEC',
+      round: 1,
+      specVersion: 'v0',
+      shardsTotal: 0,
+      shardsDone: 0,
+      shardsInProgress: 0,
+      reloopCount: 0,
+      costTokens: 0,
+      costCalls: 0,
+      updated: now,
+      paused: false,
+    };
+    // gstack/0 P2-6: Apply workspace-level workflow defaults on create.
+    const workflowDefaults = await this.store.readWorkflowDefaults();
+    const loopKind = this.evidence.inferWorkflowKind({ issue });
+    const matchingDefault = workflowDefaults.find((entry) => entry.loopKind === loopKind);
+    const workflowRecipe: LoopWorkflowRecipe = {
+      ...this.evidence.buildWorkflowRecipe({ issue, state }),
+      ...(matchingDefault ? { id: matchingDefault.recipeId } : {}),
+      capturedAt: now,
+      source: matchingDefault ? ('workspace' as const) : ('loop-snapshot' as const),
+    };
+
+    await this.writeIssueRecord({ issue, intake, state, rawPayload: input, workflowRecipe });
+    return { issue, intake, state };
   }
 
   /**

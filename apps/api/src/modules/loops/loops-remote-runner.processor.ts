@@ -4,7 +4,10 @@ import { Job } from 'bullmq';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
 import { RedisService } from '@dofe/infra-redis';
-import { LoopsService } from './loops.service';
+import {
+  LOOPS_REMOTE_SHARD_EXECUTION_PORT,
+  type LoopsRemoteShardExecutionPort,
+} from '@app/services/loops-remote-runners';
 
 /**
  * R34a: Remote Runner BullMQ distributed queue processor.
@@ -19,9 +22,12 @@ import { LoopsService } from './loops.service';
  *   enqueued → active → executing shard job → completed/failed
  *   failed jobs retry 3× with exponential backoff (5s → 25s → 125s)
  *
- * The actual CLI execution is delegated to LoopsService.executeRemoteShardJob,
- * which routes to the appropriate adapter (Claude/Codex CLI, Docker sandbox)
- * based on runtimeBackend and workerKind.
+ * The actual CLI execution is delegated to the `LOOPS_REMOTE_SHARD_EXECUTION_PORT`
+ * (currently the legacy facade, which routes to the appropriate adapter —
+ * Claude/Codex CLI, Docker sandbox — based on runtimeBackend and workerKind).
+ *
+ * 结构优化 nextstep Step N4：processor 经 shard execution port 注入，不再依赖
+ * `LoopsService` 类；port 实现待 Step N1（engine 状态机）下沉后迁入 domain。
  */
 @Processor('loops-remote-runner', {
   concurrency: 2, // Allow 2 concurrent runner jobs per worker
@@ -33,7 +39,8 @@ import { LoopsService } from './loops.service';
 export class LoopsRemoteRunnerProcessor extends WorkerHost {
   constructor(
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
-    private readonly loopsService: LoopsService,
+    @Inject(LOOPS_REMOTE_SHARD_EXECUTION_PORT)
+    private readonly shardExecutionPort: LoopsRemoteShardExecutionPort,
     @Optional() private readonly redis?: RedisService,
   ) {
     super();
@@ -108,7 +115,7 @@ export class LoopsRemoteRunnerProcessor extends WorkerHost {
       // Delegate execution to LoopsService which routes to the appropriate
       // CLI adapter (Claude/Codex), Docker sandbox, or agent adapter based
       // on workerKind and runtimeBackend.
-      const result = await this.loopsService.executeRemoteShardJob({
+      const result = await this.shardExecutionPort.executeRemoteShardJob({
         issueId,
         shardId,
         workerKind: workerKind === 'custom' ? 'implement' : workerKind,

@@ -834,6 +834,13 @@ export interface LoopsEvalEvidencePort {
 }
 
 /**
+ * 结构优化 nextstep Step N2 收尾：evidence port DI token. 绑定到 facade
+ *（evidence 收集依赖 list/readDetail/cost enrichment，尚未下沉），供 domain
+ * aggregation runner 与 trend worker 经 token 注入。
+ */
+export const LOOPS_EVAL_EVIDENCE_PORT = 'LOOPS_EVAL_EVIDENCE_PORT';
+
+/**
  * Port for trend history persistence. Mirrors the store methods the facade
  * previously called directly, so the domain orchestration can read history
  * and append snapshots without touching `LoopsFileStoreService`.

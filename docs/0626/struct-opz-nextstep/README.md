@@ -16,7 +16,7 @@
 
 - Step 0：`LoopsDomainModule` 骨架。
 - Step 1：store / locks / 基础 util。
-- Step 2：issue intake 与 query/read pipeline 已下沉，API facade 保留兼容 wrapper。
+- Step 2：issue intake 完整编排（`createIssue`，含 workflow recipe 派生）+ query/read pipeline 已下沉到 `loops-issues`；API facade 保留兼容 wrapper。
 - Step 4：runner/runtime 主体已下沉，adapter provider wiring 仍属于 API 装配。
 - Step 5：evidence/quality 主要 builder、gate、enricher 已下沉，API 保留兼容 wrapper。
 - Step 9：capability registry、tool registry、delivery blueprint marketplace 已下沉。
@@ -24,9 +24,9 @@
 仍需收紧：
 
 - Step 3：engine 主流程推进方法仍在 legacy `LoopsService`。
-- Step 6：Eval suite/run/bench builder + eval/bench trend worker IO + eval aggregation worker 编排已下沉到 `loops-eval`；evidence 收集与 DB/Redis 适配仍由 facade port 实现。
-- Step 7：CI publication builder 与 notification sender re-home 仍待处理。
-- Step 8：schedule trigger CRUD + `fireScheduleTrigger` 编排已下沉到 `loops-triggers`；remote execution pipeline 仍待拆；issue creation port 当前由 facade 临时实现。
+- Step 6：Eval suite/run/bench builder + trend worker IO + aggregation worker 编排 + DB/Redis 适配（`LoopsEvalAggregationRunnerService`）已下沉；processor 解耦 facade；evidence 收集仍由 `LOOPS_EVAL_EVIDENCE_PORT`（facade）提供。
+- Step 7：CI checks registry + CI publication evidence builder + notification sender（re-home 到 `loops-integrations`）已下沉；testCiCheck 的 provider publish / permission / publication persistence 仍属 facade。
+- Step 8：schedule trigger CRUD + `fireScheduleTrigger` 编排 + issue creation port 实现已下沉；remote runner list/lease/job + artifact IO（`uploadRemoteRunnerArtifacts` + `LoopsRemoteArtifactStoragePort`）+ shard execution port（`LOOPS_REMOTE_SHARD_EXECUTION_PORT`，processor 解耦 facade）已下沉/解耦；shard execution 实现仍由 facade 提供（阻塞于 N1 engine）。
 - Step 9：Archive control wrapper 与 collection port 已下沉到 `loops-admin`；eval aggregation 接入仍待 Step N4 收口。
 - Step 10：API module / facade wrapper 最终收敛仍未开始。
 

@@ -120,6 +120,7 @@ import { LoopsFileStoreService } from '@app/services/loops-store';
 import {
   LoopsEvalAggregationWorkerService,
   LoopsEvalService,
+  LoopsEvalAggregationRunnerService,
   type LoopsAggregation,
   type LoopsEvalEvidencePort,
   type LoopsEvalTrendStorePort,
@@ -132,7 +133,14 @@ import type { Prisma, LoopEvalAggregation } from '@prisma/client';
 import { LoopEvalAggregationService } from '@app/db/loop-eval-aggregation';
 import { LoopsAdminService, LoopsCapabilityRegistry } from '@app/services/loops-admin';
 import { LoopsTriggersService, type LoopsIssueCreationPort } from '@app/services/loops-triggers';
-import { LoopsRemoteRunnersService } from '@app/services/loops-remote-runners';
+import {
+  LoopsRemoteRunnersService,
+  type LoopsRemoteArtifactStoragePort,
+  type LoopsRemoteRunnersLogSink,
+  type LoopsRemoteShardExecutionJob,
+  type LoopsRemoteShardExecutionPort,
+  type LoopsRemoteShardExecutionResult,
+} from '@app/services/loops-remote-runners';
 import {
   AgentRuntimeDetectionService,
   LoopsWorkspaceProfileService,
@@ -145,7 +153,11 @@ import {
   type LoopsCommitShardResult,
   type LoopsGitAdapter,
 } from '@app/services/loops-runners';
-import { LoopsPrProviderClient } from '@app/services/loops-integrations';
+import {
+  LoopsPrProviderClient,
+  LoopsCiChecksService,
+  type LoopsCiDeliveryEvidencePort,
+} from '@app/services/loops-integrations';
 import type { LoopsPersistenceService } from '@app/services/loops-store';
 import { LOOPS_PERSISTENCE } from '@app/services/loops-store';
 import { LoopsIssuesService } from '@app/services/loops-issues';
@@ -220,7 +232,7 @@ const AGENT_RUNTIME_DEFINITIONS: AgentRuntimeDefinition[] = [
 ];
 
 @Injectable()
-export class LoopsService implements LoopsIssueCreationPort {
+export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExecutionPort {
   private readonly webhookRateWindows = new Map<string, { count: number; resetAt: number }>();
 
   constructor(
@@ -308,12 +320,27 @@ export class LoopsService implements LoopsIssueCreationPort {
     evidence?: LoopsEvidenceService,
     @Optional()
     evalService?: LoopsEvalService,
+    // 结构优化 nextstep Step N6：CI checks registry / publication evidence builder
+    // 已下沉到 `LoopsCiChecksService`（纯 registry + status helper + evidence 组装）。
+    // 放在构造尾部，避免移动既有 positional 参数（spec 经位置构造 LoopsService）。
+    @Optional()
+    ciChecksService?: LoopsCiChecksService,
+    // 结构优化 nextstep Step N2 收尾：eval aggregation runner 已承接 DB/Redis 适配，
+    // facade 经 runner 触发 aggregation；standalone（spec）不传时 facade 仍可走旧路径。
+    @Optional()
+    evalAggregationRunner?: LoopsEvalAggregationRunnerService,
   ) {
-    this.issues =
-      issues ?? new LoopsIssuesService(this.store, this.persistence, this.workspaceProfile);
-    this.engine = engine ?? new LoopsEngineService();
+    // evidence 先于 issues 赋值：nextstep Step N3 起 `LoopsIssuesService.createIssue`
+    // 编排依赖 evidence（inferWorkflowKind / buildWorkflowRecipe），standalone 构造时
+    // 由 facade 透传；Nest graph 内由 LoopsIssuesModule import LoopsEvidenceModule 提供。
     this.evidence = evidence ?? new LoopsEvidenceService();
+    this.issues =
+      issues ??
+      new LoopsIssuesService(this.store, this.persistence, this.workspaceProfile, this.evidence);
+    this.engine = engine ?? new LoopsEngineService();
     this.evalService = evalService ?? new LoopsEvalService();
+    this.ciChecksService = ciChecksService ?? new LoopsCiChecksService();
+    this.evalAggregationRunner = evalAggregationRunner;
   }
 
   private readonly issues: LoopsIssuesService;
@@ -324,13 +351,18 @@ export class LoopsService implements LoopsIssueCreationPort {
 
   private readonly evalService: LoopsEvalService;
 
+  private readonly ciChecksService: LoopsCiChecksService;
+
+  private readonly evalAggregationRunner?: LoopsEvalAggregationRunnerService;
+
   /**
    * 结构优化 nextstep Step N2：eval/bench trend worker 的 evidence 组装与 store
    * 编排已下沉到 `LoopsEvalService`。facade 在此暴露窄 port 适配器，把自身的
    * `collectEvalEvidence` / `buildEvalSuites` / `buildEvalRuns` 与 `store` 的
    * trend history 方法包装成 domain port，避免 domain 反向依赖 facade。
    */
-  private get evalEvidencePort(): LoopsEvalEvidencePort {
+  /** Public so the API module can bind `LOOPS_EVAL_EVIDENCE_PORT` to it via factory. */
+  get evalEvidencePort(): LoopsEvalEvidencePort {
     return {
       collectEvalEvidence: async () => {
         const evidence = await this.collectEvalEvidence();
@@ -402,69 +434,10 @@ export class LoopsService implements LoopsIssueCreationPort {
   }
 
   async createIssue(input: CreateLoopIssueRequest, authUser?: AuthUserInfo) {
-    const now = new Date().toISOString();
-    const issueId = this.issues.createIssueId(now);
-    const intakeId = this.store.intakeId(issueId);
-    const rawPayloadRef = `.loops/intakes/${intakeId}.raw.json`;
-    const targetRepo = await this.issues.resolveTargetRepo(input.targetRepo);
-    const submitter = this.issues.normalizeSubmitter(input, authUser);
-    const sourceChannel = input.sourceChannel ?? 'web';
-    const sourceKind = input.sourceKind ?? 'web_form';
-    const issue: LoopIssue = {
-      id: issueId,
-      title: input.title,
-      status: 'OPEN',
-      priority: input.priority,
-      created: now,
-      updated: now,
-      sourceChannel,
-      sourceKind,
-      submitterId: submitter.userId,
-      submitterName: submitter.name,
-      targetRepo,
-      body: input.body,
-      acceptanceCriteria: input.acceptanceCriteria,
-      rawPayloadRef,
-    };
-    const ruleSnapshot = await this.issues.captureRuleSnapshot(targetRepo, now);
-    const intake: LoopIntake = {
-      id: intakeId,
-      issueId,
-      sourceChannel,
-      sourceKind,
-      submitter,
-      rawPayloadRef,
-      status: 'NORMALIZED' as const,
-      created: now,
-      ruleSnapshot,
-    };
-    const state: LoopStateItem = {
-      issueId,
-      phase: 'PHASE_1_SPEC',
-      round: 1,
-      specVersion: 'v0',
-      shardsTotal: 0,
-      shardsDone: 0,
-      shardsInProgress: 0,
-      reloopCount: 0,
-      costTokens: 0,
-      costCalls: 0,
-      updated: now,
-      paused: false,
-    };
-    // gstack/0 P2-6: Apply workspace-level workflow defaults on create.
-    const workflowDefaults = await this.store.readWorkflowDefaults();
-    const loopKind = this.evidence.inferWorkflowKind({ issue });
-    const matchingDefault = workflowDefaults.find((entry) => entry.loopKind === loopKind);
-    const workflowRecipe = {
-      ...this.buildWorkflowRecipe({ issue, state }),
-      ...(matchingDefault ? { id: matchingDefault.recipeId } : {}),
-      capturedAt: now,
-      source: matchingDefault ? ('workspace' as const) : ('loop-snapshot' as const),
-    };
-
-    await this.issues.writeIssueRecord({ issue, intake, state, rawPayload: input, workflowRecipe });
-    return { issue, intake, state };
+    // 结构优化 nextstep Step N3：issue intake 完整编排已下沉到
+    // `LoopsIssuesService.createIssue`（含 workflow recipe 派生）。facade 仅保留
+    // permission/audit wrapper 与兼容入口，对外行为不变。
+    return this.issues.createIssue(input, authUser);
   }
 
   /**
@@ -1857,8 +1830,10 @@ export class LoopsService implements LoopsIssueCreationPort {
 
   /**
    * R36: Upload Remote Runner job artifacts to external object storage.
-   * Uses the cross-tenant archive infrastructure to push job artifacts
-   * (manifest, worker receipt, logs, trace) to OSS/S3.
+   *
+   * 结构优化 nextstep Step N4：artifact IO 编排已下沉到
+   * `LoopsRemoteRunnersService.uploadRemoteRunnerArtifacts`，facade 仅把
+   * `crossTenantArchive.fileStorage` 适配为 `LoopsRemoteArtifactStoragePort`。
    */
   async uploadRemoteRunnerArtifacts(
     runnerId: string,
@@ -1870,84 +1845,42 @@ export class LoopsService implements LoopsIssueCreationPort {
     artifacts: Array<{ kind: string; storageKey: string; uploadUrl?: string }>;
     message: string;
   }> {
-    const artifacts: Array<{ kind: string; storageKey: string; uploadUrl?: string }> = [];
-    let uploaded = 0;
-
-    if (this.crossTenantArchive) {
-      try {
-        const vendor = input?.vendor ?? (process.env['FILE_STORAGE_VENDOR'] as string) ?? 'oss';
-        const bucket = input?.bucket ?? 'dofe-public';
-        const artifactKinds = ['manifest', 'worker-receipt', 'worker-log', 'trace'];
-
-        for (const kind of artifactKinds) {
-          const storageKey = `loops/runs/${runnerId}/jobs/${jobId}/${kind}.json`;
-          try {
-            // Read local artifact content
-            const content = this.store.readRemoteRunnerArtifact(runnerId, jobId, kind);
-            if (content) {
-              // Upload via archive service's file storage
-              const archive = this.crossTenantArchive as unknown as {
-                fileStorage?: {
-                  fileDataUploader(v: string, b: string, k: string, b64: string): Promise<void>;
-                  getPrivateDownloadUrl(
-                    v: string,
-                    b: string,
-                    k: string,
-                    o: { expire: number },
-                  ): Promise<string>;
-                };
-              };
-              if (archive.fileStorage) {
-                await archive.fileStorage.fileDataUploader(
-                  vendor,
-                  bucket,
-                  storageKey,
-                  Buffer.from(content).toString('base64'),
-                );
-                const uploadUrl = await archive.fileStorage.getPrivateDownloadUrl(
-                  vendor,
-                  bucket,
-                  storageKey,
-                  { expire: 30 * 24 * 3600 },
-                );
-                artifacts.push({ kind, storageKey, uploadUrl });
-                uploaded++;
-              }
-            }
-          } catch {
-            // Skip individual artifacts that can't be uploaded
-          }
-        }
-
-        this.log('info', `[RemoteRunner] Uploaded ${uploaded} artifacts to external storage`, {
-          runnerId,
-          jobId,
-          uploaded,
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.log('error', `[RemoteRunner] External artifact upload failed`, {
-          runnerId,
-          jobId,
-          error: message,
-        });
-        return {
-          jobId,
-          uploaded,
-          artifacts,
-          message: `Upload partially failed: ${message}`,
-        };
-      }
-    }
-
-    return {
+    return this.remoteRunnersService.uploadRemoteRunnerArtifacts(
+      runnerId,
       jobId,
-      uploaded,
-      artifacts,
-      message:
-        uploaded > 0
-          ? `${uploaded} artifacts uploaded to external storage`
-          : 'External storage not configured — artifacts remain in .loops only',
+      input ?? {},
+      this.remoteArtifactStoragePort,
+      this.remoteRunnersLogSink,
+    );
+  }
+
+  /** Adapts `crossTenantArchive.fileStorage` to the domain artifact-storage port. */
+  private get remoteArtifactStoragePort(): LoopsRemoteArtifactStoragePort | undefined {
+    if (!this.crossTenantArchive) return undefined;
+    const archive = this.crossTenantArchive as unknown as {
+      fileStorage?: {
+        fileDataUploader(v: string, b: string, k: string, b64: string): Promise<void>;
+        getPrivateDownloadUrl(
+          v: string,
+          b: string,
+          k: string,
+          o: { expire: number },
+        ): Promise<string>;
+      };
+    };
+    if (!archive.fileStorage) return undefined;
+    const fs = archive.fileStorage;
+    return {
+      upload: (vendor, bucket, storageKey, contentBase64) =>
+        fs.fileDataUploader(vendor, bucket, storageKey, contentBase64),
+      privateDownloadUrl: (vendor, bucket, storageKey, options) =>
+        fs.getPrivateDownloadUrl(vendor, bucket, storageKey, options),
+    };
+  }
+
+  private get remoteRunnersLogSink(): LoopsRemoteRunnersLogSink {
+    return {
+      log: (level, message, meta) => this.log(level, message, meta),
     };
   }
 
@@ -2239,6 +2172,40 @@ export class LoopsService implements LoopsIssueCreationPort {
     };
   }
 
+  // 结构优化 nextstep Step N6：publication evidence 组装已下沉到
+  // `LoopsCiChecksService.buildCiCheckPublicationEvidence`，经 `ciDeliveryEvidencePort`
+  // 取得 issue detail + delivery evidence（两者仍在 facade），保持 domain 不反向依赖。
+  private get ciDeliveryEvidencePort(): LoopsCiDeliveryEvidencePort {
+    return {
+      buildPublicationEvidence: async (input) => {
+        if (!input.issueId) {
+          return {
+            prId: input.prId,
+            detailsUrl: input.detailsUrl ?? input.evidenceBacklink,
+            evidenceBacklink: input.evidenceBacklink,
+            workPackageCommitMap: [],
+          };
+        }
+        const detail = await this.store.readDetail(input.issueId);
+        const evidence = this.buildDeliveryEvidence(detail);
+        return {
+          issueId: input.issueId,
+          prId: input.prId ?? detail.convergencePr?.id,
+          detailsUrl: input.detailsUrl ?? input.evidenceBacklink,
+          evidenceBacklink: input.evidenceBacklink,
+          workPackageCommitMap: evidence.workPackages.map((workPackage) => ({
+            workPackageId: workPackage.id,
+            title: workPackage.title,
+            commitSha: workPackage.commitSha,
+            commitMessage: workPackage.commitMessage,
+            branch: workPackage.branch,
+            files: workPackage.files,
+          })),
+        };
+      },
+    };
+  }
+
   private async buildCiCheckPublicationEvidence(action: LoopCiCheckAction): Promise<{
     issueId?: string;
     prId?: string;
@@ -2253,32 +2220,10 @@ export class LoopsService implements LoopsIssueCreationPort {
       files: string[];
     }>;
   }> {
-    const evidenceBacklink = action.evidenceBacklink ?? action.detailsUrl;
-    if (!action.issueId) {
-      return {
-        prId: action.prId,
-        detailsUrl: action.detailsUrl ?? evidenceBacklink,
-        evidenceBacklink,
-        workPackageCommitMap: [],
-      };
-    }
-
-    const detail = await this.store.readDetail(action.issueId);
-    const evidence = this.buildDeliveryEvidence(detail);
-    return {
-      issueId: action.issueId,
-      prId: action.prId ?? detail.convergencePr?.id,
-      detailsUrl: action.detailsUrl ?? evidenceBacklink,
-      evidenceBacklink,
-      workPackageCommitMap: evidence.workPackages.map((workPackage) => ({
-        workPackageId: workPackage.id,
-        title: workPackage.title,
-        commitSha: workPackage.commitSha,
-        commitMessage: workPackage.commitMessage,
-        branch: workPackage.branch,
-        files: workPackage.files,
-      })),
-    };
+    return this.ciChecksService.buildCiCheckPublicationEvidence(
+      action,
+      this.ciDeliveryEvidencePort,
+    );
   }
 
   async requestRecipeAdminAction(
@@ -2429,43 +2374,16 @@ export class LoopsService implements LoopsIssueCreationPort {
     };
   }
 
+  // 结构优化 nextstep Step N6：CI checks registry / item / status helper 已下沉到
+  // `LoopsCiChecksService`（经 `this.ciChecksService.*` 委托）。publication evidence
+  // builder 见 `buildCiCheckPublicationEvidence`，亦委托 domain service + evidence port。
+
   private buildCiCheckItems(): LoopCiCheckIntegration[] {
-    return [
-      {
-        id: 'github-delivery-evidence',
-        provider: 'github-checks',
-        name: 'GitHub Delivery Evidence Check',
-        status: 'configured',
-        requiredForRelease: true,
-        checkSuites: ['delivery-readiness', 'runtime-safety', 'test-evidence'],
-        targetRef: 'convergence-pr',
-        health: {
-          ok: true,
-          message: 'Ready to publish derived delivery evidence when provider client is enabled.',
-        },
-        risks: ['GitHub Checks API token and repo installation are required for publish.'],
-      },
-      {
-        id: 'generic-ci-regression',
-        provider: 'generic-ci',
-        name: 'Generic Regression CI',
-        status: 'configured',
-        requiredForRelease: false,
-        checkSuites: ['test-evidence'],
-        targetRef: 'loop-artifacts',
-        health: {
-          ok: true,
-          message: 'Can mirror Loops test records into an external CI dashboard.',
-        },
-        risks: [],
-      },
-    ];
+    return this.ciChecksService.listCiCheckItems();
   }
 
   private getCiCheckItem(id: string): LoopCiCheckIntegration {
-    const found = this.buildCiCheckItems().find((item) => item.id === id);
-    if (!found) throw new NotFoundException(`CI check integration ${id} not found`);
-    return found;
+    return this.ciChecksService.getCiCheckItem(id);
   }
 
   private withCiCheckStatus(
@@ -2473,15 +2391,7 @@ export class LoopsService implements LoopsIssueCreationPort {
     status: LoopCiCheckIntegration['status'],
     message: string,
   ): LoopCiCheckIntegration {
-    return {
-      ...this.getCiCheckItem(id),
-      status,
-      lastPublishedAt: new Date().toISOString(),
-      health: {
-        ok: status !== 'failed',
-        message,
-      },
-    };
+    return this.ciChecksService.withCiCheckStatus(id, status, message);
   }
 
   private async buildRuntimeBackendItems(): Promise<RuntimeBackend[]> {
@@ -2848,6 +2758,10 @@ export class LoopsService implements LoopsIssueCreationPort {
   /**
    * Run the cross-tenant Eval aggregation worker: collect evidence, compute
    * aggregations, persist to DB, and warm Redis cache.
+   *
+   * 结构优化 nextstep Step N2 收尾：当 domain `LoopsEvalAggregationRunnerService`
+   * 可用时（Nest graph），facade 经 runner 触发（DB/Redis 适配已下沉）；standalone
+   *（spec）无 runner 时回退到原内联适配路径，行为不变。
    */
   async runEvalAggregationWorker(input?: {
     tenantId?: string;
@@ -2859,6 +2773,13 @@ export class LoopsService implements LoopsIssueCreationPort {
     period: string;
     generatedAt: string;
   }> {
+    if (this.evalAggregationRunner) {
+      return this.evalAggregationRunner.runAggregation({
+        tenantId: input?.tenantId,
+        period: input?.period,
+        logSink: this.evalLogSink,
+      });
+    }
     return this.evalService.runEvalAggregationWorker({
       tenantId: input?.tenantId,
       period: input?.period,
@@ -3046,26 +2967,9 @@ export class LoopsService implements LoopsIssueCreationPort {
    *   - test:      Run test commands via LoopsRunnerService, persist test record
    *   - review:    Run AI review via agent adapter, persist review verdict
    */
-  async executeRemoteShardJob(job: {
-    issueId: string;
-    shardId: string;
-    workerKind: 'implement' | 'test' | 'review';
-    runtimeBackend: 'codex-cli' | 'claude-code-cli' | 'docker';
-    artifactRoot: string;
-    command?: string;
-    sandboxProfile?: string;
-  }): Promise<{
-    status: 'completed' | 'failed';
-    artifacts: Array<{
-      kind: string;
-      ref: string;
-      sha256?: string;
-      sizeBytes?: number;
-    }>;
-    error?: string;
-    summary?: string;
-    durationMs: number;
-  }> {
+  async executeRemoteShardJob(
+    job: LoopsRemoteShardExecutionJob,
+  ): Promise<LoopsRemoteShardExecutionResult> {
     const start = Date.now();
     const { issueId, shardId, workerKind, runtimeBackend, artifactRoot, command, sandboxProfile } =
       job;

@@ -148,14 +148,14 @@ importers:
         specifier: 0.1.78
         version: 0.1.78(@dofe/infra-contracts@0.1.78)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)
       '@dofe/sso-contracts':
-        specifier: 0.1.72
-        version: 0.1.72(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
+        specifier: 0.1.73
+        version: 0.1.73(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
       '@dofe/sso-nestjs':
-        specifier: 0.1.58
-        version: 0.1.58(@nestjs/axios@4.0.1(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.18.1(debug@4.4.3))(rxjs@7.8.2))(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(rxjs@7.8.2)
-      '@dofe/sso-node':
         specifier: 0.1.59
-        version: 0.1.59
+        version: 0.1.59(@nestjs/axios@4.0.1(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.18.1(debug@4.4.3))(rxjs@7.8.2))(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(rxjs@7.8.2)
+      '@dofe/sso-node':
+        specifier: 0.1.60
+        version: 0.1.60
       '@fastify/compress':
         specifier: ^8.3.1
         version: 8.3.1
@@ -554,8 +554,8 @@ importers:
         specifier: 0.1.78
         version: 0.1.78(react@19.2.6)
       '@dofe/sso-contracts':
-        specifier: 0.1.72
-        version: 0.1.72(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
+        specifier: 0.1.73
+        version: 0.1.73(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
       '@hookform/resolvers':
         specifier: ^5.4.0
         version: 5.4.0(react-hook-form@7.80.0(react@19.2.6))
@@ -1674,14 +1674,14 @@ packages:
     peerDependencies:
       react: '>=18'
 
-  '@dofe/sso-contracts@0.1.72':
-    resolution: {integrity: sha512-rcVa5DXxbDq3kQDzS9R+fDmmhOBR6B0OZUeY3QPJ+zEiqWLojuyqKAKQ5XdV9/m1KcmzCim+dMV0nDce7gYIhA==}
+  '@dofe/sso-contracts@0.1.73':
+    resolution: {integrity: sha512-H8UXjadFprNcfZGZxAtRQrQnpM2jwMo7MkQhTBGDsP39g8tbHz0FKPRC4+wCYr7JuQOP6Yj0dHtEi08OExO3qA==}
     peerDependencies:
       '@ts-rest/core': '>=3.53.0-rc.1'
       zod: ^4.4.3
 
-  '@dofe/sso-nestjs@0.1.58':
-    resolution: {integrity: sha512-ObJuBQqF55mjoPi8F580Ic6uEMsQSwD09i1HQrQJfIjchEmedqqJi8M+u19twS5HGz6k2kYK0h38CVjunv2x6A==}
+  '@dofe/sso-nestjs@0.1.59':
+    resolution: {integrity: sha512-9mNZszUJZzJynajSE6RleXwfBuKWDLAksltGk/vDvcFl+OGHJE8YEv1PchIbxevnZ5yy3rJEfsOL2NkxcPQLJA==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@nestjs/axios': ^4.0.0
@@ -1689,8 +1689,8 @@ packages:
       '@nestjs/core': ^11.0.0
       rxjs: 7.8.2
 
-  '@dofe/sso-node@0.1.59':
-    resolution: {integrity: sha512-d5wMHycffyL5KwHltpStZCri00MQONCMaYE4TvNef/cBH3ODs0MftyUM036LjksMOOjEU5KrZL4ST4ZAbeM+5A==}
+  '@dofe/sso-node@0.1.60':
+    resolution: {integrity: sha512-8dLCOs03McEfEe2qn9FLzfyOp/gqjP8im/QnAGyTlmNaTB3G6i4oEkPot4iNaeJn4y5fADvJj5HITt9AQ8Czmw==}
     engines: {node: '>=18.0.0'}
 
   '@electric-sql/pglite-socket@0.1.1':
@@ -11026,22 +11026,22 @@ snapshots:
     dependencies:
       react: 19.2.6
 
-  '@dofe/sso-contracts@0.1.72(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)':
+  '@dofe/sso-contracts@0.1.73(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)':
     dependencies:
       '@dofe/infra-contracts': 0.1.78
       '@dofe/infra-contracts-base': 0.1.78(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
       '@ts-rest/core': 3.53.0-rc.1(@types/node@25.9.4)
       zod: 4.4.3
 
-  '@dofe/sso-nestjs@0.1.58(@nestjs/axios@4.0.1(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.18.1(debug@4.4.3))(rxjs@7.8.2))(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(rxjs@7.8.2)':
+  '@dofe/sso-nestjs@0.1.59(@nestjs/axios@4.0.1(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.18.1(debug@4.4.3))(rxjs@7.8.2))(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(rxjs@7.8.2)':
     dependencies:
-      '@dofe/sso-node': 0.1.59
+      '@dofe/sso-node': 0.1.60
       '@nestjs/axios': 4.0.1(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.18.1(debug@4.4.3))(rxjs@7.8.2)
       '@nestjs/common': 11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/core': 11.1.27(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/microservices@11.1.27)(@nestjs/websockets@11.1.27)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       rxjs: 7.8.2
 
-  '@dofe/sso-node@0.1.59': {}
+  '@dofe/sso-node@0.1.60': {}
 
   '@electric-sql/pglite-socket@0.1.1(@electric-sql/pglite@0.4.1)':
     dependencies:
