@@ -7,7 +7,7 @@ import type {
 } from './loops-git-adapter.interface';
 import { LoopsPrProviderClient } from './loops-pr-provider.client';
 import { runProcess } from './loops-process.util';
-import { resolveAllowedTargetRepo } from '../loops-path-policy.util';
+import { resolveAllowedTargetRepo } from '@app/services/loops-store';
 
 export type LoopsGitAdapterOptions = {
   commitPerShard: boolean;

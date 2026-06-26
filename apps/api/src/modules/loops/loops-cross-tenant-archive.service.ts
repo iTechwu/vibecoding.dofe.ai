@@ -2,7 +2,7 @@ import { Inject, Injectable, Optional, forwardRef } from '@nestjs/common';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
 import { createHash, randomUUID } from 'crypto';
-import { LoopsFileStoreService } from './loops-file-store.service';
+import { LoopsFileStoreService } from '@app/services/loops-store';
 // NOTE: type-only import on purpose. `LoopsService` <-> `LoopsCrossTenantArchiveService`
 // is a same-package circular dependency. A value import here makes SWC emit a runtime
 // reference to `LoopsService` in this class' `design:paramtypes` decorator metadata,

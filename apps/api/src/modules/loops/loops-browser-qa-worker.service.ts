@@ -8,7 +8,7 @@ import { tmpdir } from 'os';
 import * as path from 'path';
 import { promisify } from 'util';
 import type { LoopBrowserQaReport, LoopBrowserQaRequest } from '@repo/contracts';
-import { resolveAllowedTargetRepo } from './loops-path-policy.util';
+import { resolveAllowedTargetRepo } from '@app/services/loops-store';
 import { runVisualRegression } from './loops-visual-regression.util';
 
 const execFileAsync = promisify(execFile);

@@ -19,10 +19,7 @@ import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
 import { LoopsDockerClient } from './loops-docker.client';
 import { LOOPS_RUNTIME_IMAGES, LOOPS_RUNTIME_LOCAL_COMMAND } from './loops-runtime-images';
-import {
-  resolveLoopsRuntimeProfilePath,
-  findLoopsWorkspaceRoot,
-} from './loops-workspace-root.util';
+import { resolveLoopsRuntimeProfilePath, findLoopsWorkspaceRoot } from '@app/services/loops-store';
 
 const DEFAULT_WORKSPACE_ID = 'default';
 const DEFAULT_CONTAINER_WORKDIR = '/workspace';

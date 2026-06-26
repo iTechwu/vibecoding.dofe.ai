@@ -5,3 +5,4 @@
  * 这些服务依赖 domain/db 或其他 domain 模块，因此不能放在 infra 层
  */
 export * from './ip-info';
+export * from './loops';

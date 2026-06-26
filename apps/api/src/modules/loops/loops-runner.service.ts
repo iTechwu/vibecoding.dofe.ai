@@ -9,8 +9,8 @@ import type {
   LoopRuntimeSecurityPolicySnapshot,
   LoopTestRecord,
 } from '@repo/contracts';
-import { resolveAllowedTargetRepo } from './loops-path-policy.util';
-import { readLoopsRuntimeConfig } from './loops-runtime-config.util';
+import { resolveAllowedTargetRepo } from '@app/services/loops-store';
+import { readLoopsRuntimeConfig } from '@app/services/loops-store';
 import {
   LoopsDockerSandboxService,
   type DockerSandboxRunOptions,

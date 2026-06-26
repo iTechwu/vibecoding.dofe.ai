@@ -6,9 +6,9 @@ import { z } from 'zod';
 import type { LoopsClaudeAdapter, LoopsClaudeRunInput } from './loops-claude-adapter.interface';
 import { DeterministicLoopsClaudeAdapter } from './deterministic-loops-claude.adapter';
 import { extractJson, runProcess } from './loops-process.util';
-import { resolveAllowedTargetRepo } from '../loops-path-policy.util';
-import { readLoopsRuntimeConfig } from '../loops-runtime-config.util';
-import { LoopsWorkspaceProfileService } from '../loops-workspace-profile.service';
+import { resolveAllowedTargetRepo } from '@app/services/loops-store';
+import { readLoopsRuntimeConfig } from '@app/services/loops-store';
+import { LoopsWorkspaceProfileService } from '@app/services/loops-runtime';
 import { planAgentInvocation } from '../loops-runtime-command-builder.util';
 
 const ClaudeCliResultSchema = z.object({

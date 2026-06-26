@@ -5,8 +5,8 @@ import {
   LOOPS_RUNTIME_CONFIG_ENV,
   LOOPS_RUNTIME_IMAGES,
   LOOPS_RUNTIME_LOCAL_COMMAND,
-} from './loops-runtime-images';
-import { resolveLoopsRuntimeDir } from './loops-workspace-root.util';
+} from '@app/services/loops-runtime';
+import { resolveLoopsRuntimeDir } from '@app/services/loops-store';
 
 /** Where the agent's config/cache lives inside the container. */
 export const CONTAINER_WORKDIR = '/workspace';

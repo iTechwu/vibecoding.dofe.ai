@@ -4,6 +4,9 @@ import { BullModule } from '@nestjs/bullmq';
 import { LoopsDbModule } from '@app/db';
 import { LoopEvalAggregationModule } from '@app/db/loop-eval-aggregation';
 import { AuditLogModule } from '@app/audit-log';
+// 结构优化 Step 0：接入 loops domain 装配入口。后续子域 provider 下沉后，
+// API 层只通过此 module 消费 domain 能力（依赖方向 src -> domain -> infra）。
+import { LoopsDomainModule } from '@app/services/loops';
 import { CliLoopsAgentAdapter } from './adapters/cli-loops-agent.adapter';
 import { CliLoopsClaudeAdapter } from './adapters/cli-loops-claude.adapter';
 import { CliLoopsGitAdapter } from './adapters/cli-loops-git.adapter';
@@ -14,19 +17,10 @@ import { LOOPS_CLAUDE_ADAPTER } from './adapters/loops-claude-adapter.interface'
 import { LOOPS_GIT_ADAPTER } from './adapters/loops-git-adapter.interface';
 import { LoopsPrProviderClient } from './adapters/loops-pr-provider.client';
 import { AgentRuntimeDetectionService } from './agent-runtime-detection.service';
-import { LoopsDockerClient } from './loops-docker.client';
 import { LoopsController } from './loops.controller';
 import { LoopsCapabilityRegistry } from './loops-capability-registry';
-import { LoopsFileStoreService } from './loops-file-store.service';
-import { LoopsWorkspaceProfileService } from './loops-workspace-profile.service';
-import { InMemoryLoopsLockBackend } from './in-memory-loops-lock.backend';
-import { LOOPS_LOCK_BACKEND } from './loops-lock-backend.interface';
-import { LoopsNotificationSender } from './loops-notification-sender.service';
-import { LoopsPersistenceService } from './loops-persistence.service';
-import { LOOPS_PERSISTENCE } from './loops-persistence.token';
 import { LoopsRunnerService } from './loops-runner.service';
 import { LoopsService } from './loops.service';
-import { LoopsWorkLockService } from './loops-work-lock.service';
 import { LoopsBrowserQaWorkerService } from './loops-browser-qa-worker.service';
 import { LoopsSecondOpinionWorkerService } from './loops-second-opinion-worker.service';
 import { LoopsDockerSandboxService } from './loops-docker-sandbox.service';
@@ -40,9 +34,11 @@ import { LoopsMcpClientService } from './loops-mcp-client.service';
 import { LoopsMcpSecretService } from './loops-mcp-secret.service';
 
 @Module({
-  // HttpModule provides HttpService to LoopsNotificationSender and
-  // LoopsPrProviderClient so external HTTP goes through @nestjs/axios (Rule 3)
-  // instead of global `fetch` on the production path.
+  // HttpModule provides HttpService to LoopsPrProviderClient (and the
+  // LOOPS_GIT_ADAPTER factory) so external HTTP goes through @nestjs/axios
+  // (Rule 3) instead of global `fetch` on the production path.
+  // (LoopsNotificationSender now lives in LoopsStoreModule, which imports its
+  // own HttpModule — Step 1c.)
   imports: [
     HttpModule,
     LoopsDbModule,
@@ -54,25 +50,19 @@ import { LoopsMcpSecretService } from './loops-mcp-secret.service';
     BullModule.registerQueue({ name: 'loops-remote-runner' }),
     // R34b: BullMQ queue for trigger auto-execution scheduler.
     BullModule.registerQueue({ name: 'loops-trigger-scheduler' }),
+    // 结构优化 Step 0/1：domain 装配入口，re-export 已下沉的子域 module
+    // （loops-store / loops-locks / …），API 层 provider 经此注入 domain service。
+    LoopsDomainModule,
   ],
   controllers: [LoopsController],
   providers: [
     LoopsService,
     LoopsCapabilityRegistry,
-    LoopsNotificationSender,
-    LoopsFileStoreService,
-    // 0622 · B1/B2: workspace runtime profile (file-backed) + host runtime
-    // detection (local CLI + Docker). Consumed by LoopsService via optional DI.
-    LoopsWorkspaceProfileService,
+    // 0622 · B2: host runtime detection (local CLI + Docker). workspace profile
+    // + Docker client 已下沉到 `LoopsRuntimeModule`（经 LoopsDomainModule re-export）。
     AgentRuntimeDetectionService,
-    // Single Docker control point. It adapts @dofe/infra-docker Engine helpers
-    // to Loops-specific diagnostics and pull responses.
-    LoopsDockerClient,
-    LoopsPersistenceService,
-    // Alias the concrete persistence service to the injection token used by
-    // `LoopsService`, so the DB-backed implementation is only pulled into the
-    // NestJS graph and never into standalone `ts-node` consumers.
-    { provide: LOOPS_PERSISTENCE, useExisting: LoopsPersistenceService },
+    // 结构优化 Step 1c：file-store / persistence / LOOPS_PERSISTENCE /
+    // notification-sender 已下沉到 `LoopsStoreModule`（经 LoopsDomainModule re-export）。
     LoopsRunnerService,
     LoopsBrowserQaWorkerService,
     LoopsSecondOpinionWorkerService,
@@ -85,13 +75,8 @@ import { LoopsMcpSecretService } from './loops-mcp-secret.service';
     LoopsCrossTenantArchiveService,
     LoopsMcpClientService,
     LoopsMcpSecretService,
-    LoopsWorkLockService,
-    // Work-lock backend: in-memory by default (single-process, unchanged
-    // behaviour). Swap to RedisLoopsLockBackend (bound to @dofe/infra-redis
-    // via a factory) when multi-instance locking is enabled — see
-    // docs/0621/crewAI/04-optimization-recommendations.md (R9).
-    InMemoryLoopsLockBackend,
-    { provide: LOOPS_LOCK_BACKEND, useExisting: InMemoryLoopsLockBackend },
+    // 结构优化 Step 1b：工作锁 service + LOOPS_LOCK_BACKEND backend 绑定已下沉到
+    // `LoopsLocksModule`（经 `LoopsDomainModule` re-export 注入）。
     DeterministicLoopsAgentAdapter,
     DeterministicLoopsClaudeAdapter,
     CliLoopsAgentAdapter,

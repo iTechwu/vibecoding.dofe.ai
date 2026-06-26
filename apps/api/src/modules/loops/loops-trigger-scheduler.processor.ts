@@ -5,7 +5,7 @@ import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
 import { RedisService } from '@dofe/infra-redis';
 import { LoopsService } from './loops.service';
-import { LoopsFileStoreService } from './loops-file-store.service';
+import { LoopsFileStoreService } from '@app/services/loops-store';
 
 /**
  * R34b: Trigger auto-execution engine via BullMQ repeatable jobs.

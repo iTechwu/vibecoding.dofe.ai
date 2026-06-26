@@ -10,8 +10,8 @@ import type {
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
 import { runProcess } from './adapters/loops-process.util';
-import { LOOPS_RUNTIME_LOCAL_COMMAND } from './loops-runtime-images';
-import { LoopsDockerClient } from './loops-docker.client';
+import { LOOPS_RUNTIME_LOCAL_COMMAND } from '@app/services/loops-runtime';
+import { LoopsDockerClient } from '@app/services/loops-runtime';
 
 const AGENTS: LoopAgentKind[] = ['codex', 'claude-code'];
 const DEFAULT_DETECT_TIMEOUT_MS = 8000;

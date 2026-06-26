@@ -34,11 +34,11 @@ import type {
   LoopsCommitShardResult,
   LoopsGitAdapter,
 } from './adapters/loops-git-adapter.interface';
-import { LoopsFileStoreService } from './loops-file-store.service';
-import { LoopsPersistenceService } from './loops-persistence.service';
+import { LoopsFileStoreService } from '@app/services/loops-store';
+import { LoopsPersistenceService } from '@app/services/loops-store';
 import { LoopsRunnerService } from './loops-runner.service';
 import { LoopsService } from './loops.service';
-import { LoopsWorkLockService } from './loops-work-lock.service';
+import { LoopsWorkLockService } from '@app/services/loops-locks';
 
 const RUN = process.env.LOOPS_DB_SMOKE === '1';
 const describeDb = RUN ? describe : describe.skip;

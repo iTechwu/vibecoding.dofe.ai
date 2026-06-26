@@ -27,13 +27,13 @@ import type {
 } from './adapters/loops-git-adapter.interface';
 import { AgentRuntimeDetectionService } from './agent-runtime-detection.service';
 import { LoopsBrowserQaWorkerService } from './loops-browser-qa-worker.service';
-import { LoopsFileStoreService } from './loops-file-store.service';
-import type { LoopsPersistenceService } from './loops-persistence.service';
+import { LoopsFileStoreService } from '@app/services/loops-store';
+import type { LoopsPersistenceService } from '@app/services/loops-store';
 import { LoopsRunnerService } from './loops-runner.service';
 import { LoopsSecondOpinionWorkerService } from './loops-second-opinion-worker.service';
 import { LoopsService } from './loops.service';
-import { LoopsWorkLockService } from './loops-work-lock.service';
-import { LoopsWorkspaceProfileService } from './loops-workspace-profile.service';
+import { LoopsWorkLockService } from '@app/services/loops-locks';
+import { LoopsWorkspaceProfileService } from '@app/services/loops-runtime';
 import type { LoopsPrProviderClient } from './adapters/loops-pr-provider.client';
 
 function makePassTestRecord(issueId: string, shardId: string, round: number): LoopTestRecord {

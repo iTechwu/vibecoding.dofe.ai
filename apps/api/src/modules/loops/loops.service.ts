@@ -122,7 +122,7 @@ import type {
 import { normaliseSimpleIssue } from '@repo/contracts';
 import type { AuthUserInfo } from '@app/auth/types/auth.interface';
 import { PermissionService } from '@app/auth/permission.service';
-import { LoopsFileStoreService } from './loops-file-store.service';
+import { LoopsFileStoreService } from '@app/services/loops-store';
 import { LoopsEvalAggregationWorkerService } from './loops-eval-aggregation-worker.service';
 import { LoopsCrossTenantArchiveService } from './loops-cross-tenant-archive.service';
 import { LoopsMcpClientService } from './loops-mcp-client.service';
@@ -132,7 +132,7 @@ import type { Prisma, LoopEvalAggregation } from '@prisma/client';
 import { LoopEvalAggregationService } from '@app/db/loop-eval-aggregation';
 import { LoopsCapabilityRegistry } from './loops-capability-registry';
 import { AgentRuntimeDetectionService } from './agent-runtime-detection.service';
-import { LoopsWorkspaceProfileService } from './loops-workspace-profile.service';
+import { LoopsWorkspaceProfileService } from '@app/services/loops-runtime';
 import { LoopsRunnerService } from './loops-runner.service';
 import {
   LOOPS_AGENT_ADAPTER,
@@ -148,18 +148,20 @@ import {
   type LoopsGitAdapter,
 } from './adapters/loops-git-adapter.interface';
 import { LoopsPrProviderClient } from './adapters/loops-pr-provider.client';
-import type { LoopsPersistenceService } from './loops-persistence.service';
-import { LOOPS_PERSISTENCE } from './loops-persistence.token';
-import { resolveAllowedTargetRepo } from './loops-path-policy.util';
-import { readLoopsRuntimeConfig } from './loops-runtime-config.util';
-import { LoopsWorkLockService } from './loops-work-lock.service';
+import type { LoopsPersistenceService } from '@app/services/loops-store';
+import { LOOPS_PERSISTENCE } from '@app/services/loops-store';
+import { LoopsIssuesService } from '@app/services/loops-issues';
+import { LoopsEngineService } from '@app/services/loops-engine';
+import { LoopsEvidenceService } from '@app/services/loops-evidence';
+import { readLoopsRuntimeConfig } from '@app/services/loops-store';
+import { LoopsWorkLockService } from '@app/services/loops-locks';
 import { LoopsBrowserQaWorkerService } from './loops-browser-qa-worker.service';
 import { LoopsSecondOpinionWorkerService } from './loops-second-opinion-worker.service';
 import {
   buildPrimarySecondOpinionFindings,
   compareSecondOpinionFindings,
 } from './loops-second-opinion-comparison.util';
-import { enrichLoopLearning } from './loops-learning-memory.util';
+import { enrichLoopLearning } from '@app/services/loops-store';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
 
@@ -192,20 +194,6 @@ type AgentRuntimeDefinition = {
   label: string;
   phase: LoopPhase;
   supportedPhases: LoopPhase[];
-};
-
-const PHASE_LABELS: Record<string, string> = {
-  PHASE_0_INTAKE: 'Intake',
-  PHASE_1_SPEC: 'Spec',
-  PHASE_2_REVIEW: 'Review',
-  PHASE_3_DECOMPOSE: 'Decompose',
-  PHASE_4_IMPLEMENT: 'Implement',
-  PHASE_5_REVIEW: 'Shard Review',
-  PHASE_6_CONVERGE: 'Converge',
-  PHASE_7_GLOBAL_REVIEW: 'Global Review',
-  PHASE_8_ANNOTATE: 'Annotate',
-  CLOSED: 'Closed',
-  PAUSED: 'Paused',
 };
 
 const AGENT_RUNTIME_DEFINITIONS: AgentRuntimeDefinition[] = [
@@ -297,7 +285,31 @@ export class LoopsService {
     // R38: MCP secret management
     @Optional()
     private readonly mcpSecret?: LoopsMcpSecretService,
-  ) {}
+    // 结构优化 Step 2：issue intake 原语下沉到 `LoopsIssuesService`。@Optional 让
+    // standalone 构造（spec/e2e 用 `new LoopsService(...)`）不传时也能自构造（store +
+    // persistence 已在前序参数注入），Nest graph 内则由 LoopsIssuesModule 提供。
+    @Optional()
+    issues?: LoopsIssuesService,
+    // 结构优化 Step 3：loop 状态机纯推导原语下沉到 `LoopsEngineService`（无 DI 依赖，
+    // 自构造零成本）。Nest graph 内由 LoopsEngineModule 提供。
+    @Optional()
+    engine?: LoopsEngineService,
+    // 结构优化 Step 5：交付证据/delivery 派生原语下沉到 `LoopsEvidenceService`
+    //（纯函数，自构造零成本）。Nest graph 内由 LoopsEvidenceModule 提供。
+    @Optional()
+    evidence?: LoopsEvidenceService,
+  ) {
+    this.issues =
+      issues ?? new LoopsIssuesService(this.store, this.persistence, this.workspaceProfile);
+    this.engine = engine ?? new LoopsEngineService();
+    this.evidence = evidence ?? new LoopsEvidenceService();
+  }
+
+  private readonly issues: LoopsIssuesService;
+
+  private readonly engine: LoopsEngineService;
+
+  private readonly evidence: LoopsEvidenceService;
 
   async list(query: LoopIssuesQuery): Promise<LoopListResponse> {
     const result = await (this.persistence?.list(query) ?? this.listFromFile(query));
@@ -355,11 +367,11 @@ export class LoopsService {
 
   async createIssue(input: CreateLoopIssueRequest, authUser?: AuthUserInfo) {
     const now = new Date().toISOString();
-    const issueId = this.createIssueId(now);
+    const issueId = this.issues.createIssueId(now);
     const intakeId = this.store.intakeId(issueId);
     const rawPayloadRef = `.loops/intakes/${intakeId}.raw.json`;
-    const targetRepo = await this.resolveTargetRepo(input.targetRepo);
-    const submitter = this.normalizeSubmitter(input, authUser);
+    const targetRepo = await this.issues.resolveTargetRepo(input.targetRepo);
+    const submitter = this.issues.normalizeSubmitter(input, authUser);
     const sourceChannel = input.sourceChannel ?? 'web';
     const sourceKind = input.sourceKind ?? 'web_form';
     const issue: LoopIssue = {
@@ -378,7 +390,7 @@ export class LoopsService {
       acceptanceCriteria: input.acceptanceCriteria,
       rawPayloadRef,
     };
-    const ruleSnapshot = await this.captureRuleSnapshot(targetRepo, now);
+    const ruleSnapshot = await this.issues.captureRuleSnapshot(targetRepo, now);
     const intake: LoopIntake = {
       id: intakeId,
       issueId,
@@ -406,7 +418,7 @@ export class LoopsService {
     };
     // gstack/0 P2-6: Apply workspace-level workflow defaults on create.
     const workflowDefaults = await this.store.readWorkflowDefaults();
-    const loopKind = this.inferWorkflowKind({ issue, state });
+    const loopKind = this.evidence.inferWorkflowKind({ issue, state });
     const matchingDefault = workflowDefaults.find((entry) => entry.loopKind === loopKind);
     const workflowRecipe = {
       ...this.buildWorkflowRecipe({ issue, state }),
@@ -415,7 +427,7 @@ export class LoopsService {
       source: matchingDefault ? ('workspace' as const) : ('loop-snapshot' as const),
     };
 
-    await this.writeIssueRecord({ issue, intake, state, rawPayload: input, workflowRecipe });
+    await this.issues.writeIssueRecord({ issue, intake, state, rawPayload: input, workflowRecipe });
     return { issue, intake, state };
   }
 
@@ -426,7 +438,7 @@ export class LoopsService {
    * server-derived; the original `request` is preserved verbatim as `body`.
    */
   async createSimpleIssue(input: CreateLoopIssueSimpleRequest, authUser?: AuthUserInfo) {
-    const targetRepo = await this.resolveSimpleTargetRepo(input);
+    const targetRepo = await this.issues.resolveSimpleTargetRepo(input);
     const normalised = normaliseSimpleIssue({
       request: input.request,
       template: input.template,
@@ -447,72 +459,9 @@ export class LoopsService {
     );
   }
 
-  private async resolveSimpleTargetRepo(input: CreateLoopIssueSimpleRequest): Promise<string> {
-    if (input.targetRepo && input.targetRepo.trim().length > 0) {
-      return this.resolveTargetRepo(input.targetRepo);
-    }
-    if (this.workspaceProfile) {
-      const workspace = await this.workspaceProfile.resolve(input.workspaceId);
-      return this.resolveTargetRepo(workspace.root);
-    }
-    // Fallback for standalone consumers without a workspace profile: the repo
-    // root discovered by the path policy.
-    return this.resolveTargetRepo('.');
-  }
-
-  private normalizeSubmitter(
-    input: CreateLoopIssueRequest,
-    authUser?: AuthUserInfo,
-  ): LoopSubmitter {
-    // Authenticated HTTP path: the SSO user (set by AuthGuard) is the source of
-    // truth — client-supplied submitter fields are ignored to prevent spoofing.
-    if (authUser) {
-      return {
-        provider: 'dofe-sso',
-        userId: authUser.id,
-        name: authUser.nickname ?? authUser.code ?? authUser.id,
-      };
-    }
-    // CLI / internal / unauthenticated path: fall back to request-provided or
-    // deterministic dev defaults.
-    return {
-      provider: input.submitter?.provider ?? 'dev',
-      userId: input.submitter?.userId ?? input.submitterId ?? 'dev-user',
-      name: input.submitter?.name ?? input.submitterName ?? 'Developer',
-    };
-  }
-
-  private async captureRuleSnapshot(
-    targetRepo: string,
-    capturedAt: string,
-  ): Promise<LoopRuleSnapshot | undefined> {
-    if (!this.workspaceProfile) {
-      return undefined;
-    }
-
-    const workspace = await this.workspaceProfile.resolve();
-    const rules = await this.workspaceProfile.scanRules(workspace.root);
-    const agentReadableRules = rules.rules.filter(
-      (rule) => rule.status === 'present' && ['agents', 'claude', 'cline-rules'].includes(rule.id),
-    );
-    const evidence = agentReadableRules.map((rule) => rule.path);
-
-    return {
-      workspaceId: workspace.workspaceId,
-      root: workspace.root || targetRepo,
-      capturedAt,
-      present: rules.present,
-      total: rules.total,
-      rules: rules.rules,
-      diagnostics: rules.diagnostics,
-      enforcement: {
-        policy: 'snapshot-required',
-        status: agentReadableRules.length > 0 ? 'enforced' : 'attention',
-        agentReadable: agentReadableRules.length > 0,
-        evidence,
-      },
-    };
-  }
+  // 结构优化 Step 2 + Loop 9：issue intake 全部原语（createIssueId /
+  // normalizeSubmitter / resolveTargetRepo / writeIssueRecord / captureRuleSnapshot /
+  // resolveSimpleTargetRepo）已下沉到 `LoopsIssuesService`（经 `this.issues.*` 委托）。
 
   private async syncAndRead(issueId: string): Promise<LoopIssueDetail> {
     const detail = await this.store.readDetail(issueId);
@@ -528,21 +477,6 @@ export class LoopsService {
     return this.persistence?.readDetail(issueId) ?? this.store.readDetail(issueId);
   }
 
-  private async writeIssueRecord(input: {
-    issue: LoopIssue;
-    intake: LoopIntake;
-    state: LoopStateItem;
-    rawPayload: unknown;
-    workflowRecipe?: LoopWorkflowRecipe;
-  }): Promise<void> {
-    if (this.persistence) {
-      await this.persistence.writeIssue(input);
-      return;
-    }
-
-    await this.store.writeIssue(input);
-  }
-
   async generateSpec(issueId: string) {
     const detail = await this.getIssue(issueId);
     if (detail.spec && detail.spec.status !== 'REVISION_REQUESTED') {
@@ -550,7 +484,7 @@ export class LoopsService {
     }
 
     const now = new Date().toISOString();
-    const version = this.nextSpecVersion(detail.state.specVersion);
+    const version = this.engine.nextSpecVersion(detail.state.specVersion);
     const plannedSpec = await this.agentAdapter.plan(detail.issue, now);
     const spec: LoopSpec = {
       ...plannedSpec,
@@ -758,13 +692,13 @@ export class LoopsService {
     let recovered = 0;
 
     while (advanced < maxParallel) {
-      let shard = this.findRunnableShard(currentDetail.shards);
+      let shard = this.engine.findRunnableShard(currentDetail.shards);
       if (!shard) {
         const recoveredDetail = await this.recoverInterruptedShards(issueId, currentDetail);
         if (recoveredDetail) {
           recovered += 1;
           currentDetail = recoveredDetail;
-          shard = this.findRunnableShard(currentDetail.shards);
+          shard = this.engine.findRunnableShard(currentDetail.shards);
         }
       }
       if (!shard) {
@@ -1009,7 +943,7 @@ export class LoopsService {
     const now = new Date().toISOString();
     const nextRound = detail.state.round + 1;
     const reloopCount = detail.state.reloopCount + 1;
-    const specVersion = this.nextSpecVersion(detail.state.specVersion);
+    const specVersion = this.engine.nextSpecVersion(detail.state.specVersion);
     const spec = this.buildReloopSpec({
       detail,
       specVersion,
@@ -1168,7 +1102,7 @@ export class LoopsService {
 
     const nextRound = input.detail.state.round + 1;
     const reloopCount = input.detail.state.reloopCount + 1;
-    const specVersion = this.nextSpecVersion(input.detail.state.specVersion);
+    const specVersion = this.engine.nextSpecVersion(input.detail.state.specVersion);
     const spec = this.buildReloopSpec({
       detail: input.detail,
       specVersion,
@@ -4162,7 +4096,7 @@ export class LoopsService {
     const blueprint = detail?.workflowRecipe?.baselineEvidence?.find(
       (entry) => entry.kind === 'blueprint',
     );
-    return blueprint?.value ?? this.inferWorkflowKind(item);
+    return blueprint?.value ?? this.evidence.inferWorkflowKind(item);
   }
 
   private latestEvalBaseline(
@@ -5014,7 +4948,7 @@ export class LoopsService {
       },
       phaseDistribution: Object.entries(phaseCounts).map(([phase, count]) => ({
         phase,
-        label: this.formatPhase(phase),
+        label: this.engine.formatPhase(phase),
         count,
       })),
       costSummary: {
@@ -5056,7 +4990,7 @@ export class LoopsService {
           status: 'idle' as const,
           phase: definition.phase,
           supportedPhases: definition.supportedPhases,
-          meta: this.formatPhase(definition.phase),
+          meta: this.engine.formatPhase(definition.phase),
           diagnostics: [],
         };
       }
@@ -5076,7 +5010,7 @@ export class LoopsService {
         issueId: activeItem.issue.id,
         issueTitle: activeItem.issue.title,
         href: `/loops/${activeItem.issue.id}`,
-        meta: `${this.formatPhase(state?.phase ?? definition.phase)} · round ${state?.round ?? 1}`,
+        meta: `${this.engine.formatPhase(state?.phase ?? definition.phase)} · round ${state?.round ?? 1}`,
         diagnostics,
         updated: state?.updated ?? activeItem.issue.updated,
       };
@@ -5793,7 +5727,7 @@ export class LoopsService {
         notes: request.notes,
         state: {
           ...detail.state,
-          phase: this.nextResumePhase(detail.state),
+          phase: this.engine.nextResumePhase(detail.state),
           paused: false,
           updated: now,
         },
@@ -6218,15 +6152,6 @@ export class LoopsService {
     return record;
   }
 
-  private createIssueId(now: string) {
-    const date = now.slice(0, 10).replace(/-/g, '');
-    // Cryptographic suffix avoids the birthday-bound collision risk of the
-    // previous `Math.random()` 6-char base36 suffix. 8 hex chars (32 bits)
-    // scoped per day is ample for any realistic Loops deployment.
-    const suffix = randomUUID().replace(/-/g, '').slice(0, 8);
-    return `issue-${date}-${suffix}`;
-  }
-
   /**
    * Apply a cost delta (LLM/agent calls + tokens) to a candidate state and
    * route it through the cost guard. Centralising this ensures every
@@ -6252,27 +6177,8 @@ export class LoopsService {
     });
   }
 
-  private nextResumePhase(state: LoopStateItem): LoopStateItem['phase'] {
-    if (state.shardsTotal > 0) return 'PHASE_4_IMPLEMENT';
-    if (state.specVersion === 'v0') return 'PHASE_1_SPEC';
-    return 'PHASE_2_REVIEW';
-  }
-
-  private nextSpecVersion(current: string) {
-    if (current === 'v0') return 'v1';
-    const currentNumber = Number(current.replace('v', ''));
-    return `v${Number.isFinite(currentNumber) ? currentNumber + 1 : 1}`;
-  }
-
-  private findRunnableShard(shards: LoopShard[]) {
-    return shards.find(
-      (shard) =>
-        (shard.status === 'TODO' || shard.status === 'NEEDS-WORK') &&
-        shard.dependsOn.every((dependency) =>
-          shards.some((candidate) => candidate.id === dependency && candidate.status === 'DONE'),
-        ),
-    );
-  }
+  // 结构优化 Step 3：nextResumePhase / nextSpecVersion / findRunnableShard /
+  // formatPhase 已下沉到 `LoopsEngineService`（经 `this.engine.*` 委托）。
 
   private async blockShardForContextBudget(
     issueId: string,
@@ -6387,15 +6293,6 @@ export class LoopsService {
       fixInstructions:
         verdict === review.verdict ? review.fixInstructions : testReview.fixInstructions,
     });
-  }
-
-  private async resolveTargetRepo(input: string) {
-    try {
-      return await resolveAllowedTargetRepo(input);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Invalid targetRepo';
-      throw new BadRequestException(message);
-    }
   }
 
   private buildRiskQueue(
@@ -6532,10 +6429,6 @@ export class LoopsService {
       return { action: 'closed', label: 'Closed', nextActionCategory: 'done' };
     }
     return { action: 'run-step', label: 'Continue loop', nextActionCategory: 'continue' };
-  }
-
-  private formatPhase(phase: string) {
-    return PHASE_LABELS[phase] ?? phase.replace('PHASE_', 'P').replaceAll('_', ' ');
   }
 
   /**
@@ -6916,7 +6809,7 @@ export class LoopsService {
     const snapshot = this.asDetail(item)?.workflowRecipe;
     const governance = this.asDetail(item)?.deliveryGovernance;
     const workflowDefault = governance?.workflowDefaults.find(
-      (entry) => entry.loopKind === this.inferWorkflowKind(item),
+      (entry) => entry.loopKind === this.evidence.inferWorkflowKind(item),
     );
 
     const steps: LoopWorkflowStep[] = [
@@ -7052,10 +6945,13 @@ export class LoopsService {
     ];
 
     return {
-      id: snapshot?.id ?? workflowDefault?.recipeId ?? `default-${this.inferWorkflowKind(item)}`,
+      id:
+        snapshot?.id ??
+        workflowDefault?.recipeId ??
+        `default-${this.evidence.inferWorkflowKind(item)}`,
       name: snapshot?.name ?? 'Default Codex / Claude Code delivery',
       version: snapshot?.version ?? 1,
-      appliesTo: snapshot?.appliesTo ?? [this.inferWorkflowKind(item)],
+      appliesTo: snapshot?.appliesTo ?? [this.evidence.inferWorkflowKind(item)],
       capturedAt: snapshot?.capturedAt ?? workflowDefault?.updated ?? updated,
       source: snapshot?.source ?? (workflowDefault ? 'workspace' : 'default'),
       baselineEvidence:
@@ -7070,7 +6966,7 @@ export class LoopsService {
       LoopIssueDetail['deliveryGovernance']
     >['workflowDefaults'][number],
   ): LoopWorkflowRecipe['baselineEvidence'] {
-    const loopKind = this.inferWorkflowKind(item);
+    const loopKind = this.evidence.inferWorkflowKind(item);
     const workflowId = workflowDefault?.recipeId ?? `default-${loopKind}`;
     return [
       {
@@ -7359,17 +7255,8 @@ export class LoopsService {
     return undefined;
   }
 
-  private inferWorkflowKind(
-    item: LoopListItem | LoopIssueDetail,
-  ): LoopWorkflowRecipe['appliesTo'][number] {
-    const text =
-      `${item.issue.title} ${item.issue.body ?? ''} ${item.issue.targetRepo}`.toLowerCase();
-    if (text.includes('doc') || text.includes('文档')) return 'docs';
-    if (text.includes('fix') || text.includes('bug') || text.includes('修复')) return 'bugfix';
-    if (text.includes('refactor') || text.includes('重构')) return 'refactor';
-    if (/\b(deploy|ops)\b/.test(text) || text.includes('运维')) return 'ops';
-    return 'feature';
-  }
+  // 结构优化 Step 5：inferWorkflowKind 已下沉到 `LoopsEvidenceService`
+  //（经 `this.evidence.inferWorkflowKind(...)` 委托）。
 
   private evidenceIdsByKind(item: LoopListItem | LoopIssueDetail) {
     const detail = this.asDetail(item);

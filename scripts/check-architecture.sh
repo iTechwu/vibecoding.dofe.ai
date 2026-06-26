@@ -623,6 +623,16 @@ check_no_matches \
   apps/web \
   --glob '*.{ts,tsx}'
 
+# Loops 结构优化（docs/0626/struct-opz）：domain services 不得反向 import API 层。
+# 仅匹配 import/from/require/dynamic-import 中的路径，docstring 注释里的字面量
+# `src/modules/loops`（无引号包围）不会误报。依赖方向：src -> domain -> @dofe/infra-*。
+section "Loops domain reverse-import boundary"
+check_no_matches \
+  "apps/api/libs/domain/services must not import from apps/api/src/modules/loops (direction: src -> domain -> infra)" \
+  "(from|import|require)\\s*\\(?['\"][^'\"]*src/modules/loops" \
+  apps/api/libs/domain/services \
+  --glob '*.{ts,tsx}'
+
 if [ "$failures" -gt 0 ]; then
   printf '\nArchitecture check failed with %s failing section(s).\n' "$failures"
   exit 1

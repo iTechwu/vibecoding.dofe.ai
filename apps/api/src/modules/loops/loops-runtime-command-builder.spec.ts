@@ -3,7 +3,7 @@ import {
   buildLocalAgentCommand,
   planAgentInvocation,
 } from './loops-runtime-command-builder.util';
-import { LOOPS_RUNTIME_IMAGES } from './loops-runtime-images';
+import { LOOPS_RUNTIME_IMAGES } from '@app/services/loops-runtime';
 
 describe('loops runtime command builder (0622 · B3)', () => {
   const agentArgs = ['exec', '--json', 'prompt'];

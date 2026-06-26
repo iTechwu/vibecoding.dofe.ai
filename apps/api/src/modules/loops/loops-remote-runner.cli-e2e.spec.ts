@@ -444,14 +444,14 @@ describe('R34a · Remote Runner CLI End-to-End', () => {
       process.env.LOOPS_AGENT_MODE = 'deterministic'; // use deterministic for hermetic test
 
       const { LoopsService } = await import('./loops.service');
-      const { LoopsFileStoreService } = await import('./loops-file-store.service');
+      const { LoopsFileStoreService } = await import('@app/services/loops-store');
       const { LoopsRunnerService } = await import('./loops-runner.service');
       const { DeterministicLoopsAgentAdapter } =
         await import('./adapters/deterministic-loops-agent.adapter');
       const { DeterministicLoopsClaudeAdapter } =
         await import('./adapters/deterministic-loops-claude.adapter');
 
-      const { LoopsWorkLockService } = await import('./loops-work-lock.service');
+      const { LoopsWorkLockService } = await import('@app/services/loops-locks');
       const store = new LoopsFileStoreService();
       const runner = new LoopsRunnerService();
       const workLock = new LoopsWorkLockService();

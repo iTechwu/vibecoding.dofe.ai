@@ -24,8 +24,8 @@ import type {
 } from './loops-agent-adapter.interface';
 import { DeterministicLoopsAgentAdapter } from './deterministic-loops-agent.adapter';
 import { extractJson, runProcess } from './loops-process.util';
-import { readLoopsRuntimeConfig } from '../loops-runtime-config.util';
-import { LoopsWorkspaceProfileService } from '../loops-workspace-profile.service';
+import { readLoopsRuntimeConfig } from '@app/services/loops-store';
+import { LoopsWorkspaceProfileService } from '@app/services/loops-runtime';
 import { planAgentInvocation } from '../loops-runtime-command-builder.util';
 
 const CodexReviewOutputSchema = z.object({

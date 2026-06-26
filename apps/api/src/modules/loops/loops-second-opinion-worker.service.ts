@@ -9,9 +9,9 @@ import type {
   LoopSecondOpinionReviewer,
 } from '@repo/contracts';
 import { extractJson, runProcess } from './adapters/loops-process.util';
-import { resolveAllowedTargetRepo } from './loops-path-policy.util';
-import { readLoopsRuntimeConfig } from './loops-runtime-config.util';
-import { LoopsWorkspaceProfileService } from './loops-workspace-profile.service';
+import { resolveAllowedTargetRepo } from '@app/services/loops-store';
+import { readLoopsRuntimeConfig } from '@app/services/loops-store';
+import { LoopsWorkspaceProfileService } from '@app/services/loops-runtime';
 import { planAgentInvocation } from './loops-runtime-command-builder.util';
 import {
   buildPrimarySecondOpinionFindings,

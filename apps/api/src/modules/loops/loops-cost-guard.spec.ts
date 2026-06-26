@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { LoopsFileStoreService } from './loops-file-store.service';
+import { LoopsFileStoreService } from '@app/services/loops-store';
 import type { LoopStateItem } from '@repo/contracts';
 
 function baseState(overrides: Partial<LoopStateItem> = {}): LoopStateItem {
