@@ -2,16 +2,16 @@
 
 ## 尚未完成项
 
-| 编号 | 领域                          | 当前状态                                                                                                                    | 后续动作                                                                       | 风险 |
-| ---- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ---- |
-| N1   | Step 3 Engine 主流程          | 仅纯状态推导原语下沉                                                                                                        | 抽 `generateSpec` / `runLoop` / `advance` / `finalize` 等推进方法              | 高   |
-| N2   | Step 6 Eval / Bench Worker IO | 纯 builder 已下沉                                                                                                           | 抽 trend worker IO、DB/Redis/store 编排 port                                   | 中高 |
-| N3   | Step 8 Trigger Fire           | CRUD 已下沉                                                                                                                 | 抽 `fireScheduleTrigger` 所需 issue creation port                              | 中   |
-| N4   | Step 8 Remote Execution       | list/lease/job 基础能力已下沉                                                                                               | 抽 remote shard execution pipeline 与 artifact IO port                         | 中高 |
-| N5   | Step 9 Archive                | wrapper 已下沉到 `loops-admin`，collection port 已由 `LoopsArchiveCollectionService` 实现；eval aggregation 仍是可选窄 port | 评估 archive service re-home，并在 Step N4 后接入 eval aggregation domain port | 中   |
-| N6   | Step 7 Integrations           | PR/MCP/secret 已下沉                                                                                                        | re-home notification sender，抽 CI publication builder                         | 中   |
-| N7   | Step 10 Facade 收敛           | facade 仍大量 wrapper/private helper                                                                                        | 删除已迁 wrapper，收敛 API module providers                                    | 中高 |
-| N8   | 文档一致性                    | `IMPLEMENTATION-ANNOTATIONS.md` 顶部仍有早期状态残留                                                                        | 以 `EXECUTION.md` 总览为准，校准顶部状态与历史待办措辞                         | 低   |
+| 编号 | 领域                          | 当前状态                                                                                                                      | 后续动作                                                                                                             | 风险 |
+| ---- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ---- |
+| N1   | Step 3 Engine 主流程          | 仅纯状态推导原语下沉                                                                                                          | 抽 `generateSpec` / `runLoop` / `advance` / `finalize` 等推进方法                                                    | 高   |
+| N2   | Step 6 Eval / Bench Worker IO | 纯 builder 已下沉                                                                                                             | 抽 trend worker IO、DB/Redis/store 编排 port                                                                         | 中高 |
+| N3   | Step 8 Trigger Fire           | CRUD + `fireScheduleTrigger` 编排已下沉；issue creation port 已定义（`LOOPS_ISSUE_CREATION_PORT`），当前由 legacy facade 实现 | 将 issue creation port 实现从 facade 迁到 `loops-issues` intake port；补 processor schedule tick → fire focused 子集 | 中   |
+| N4   | Step 8 Remote Execution       | list/lease/job 基础能力已下沉                                                                                                 | 抽 remote shard execution pipeline 与 artifact IO port                                                               | 中高 |
+| N5   | Step 9 Archive                | wrapper 已下沉到 `loops-admin`，collection port 已由 `LoopsArchiveCollectionService` 实现；eval aggregation 仍是可选窄 port   | 评估 archive service re-home，并在 Step N4 后接入 eval aggregation domain port                                       | 中   |
+| N6   | Step 7 Integrations           | PR/MCP/secret 已下沉                                                                                                          | re-home notification sender，抽 CI publication builder                                                               | 中   |
+| N7   | Step 10 Facade 收敛           | facade 仍大量 wrapper/private helper                                                                                          | 删除已迁 wrapper，收敛 API module providers                                                                          | 中高 |
+| N8   | 文档一致性                    | `IMPLEMENTATION-ANNOTATIONS.md` 顶部仍有早期状态残留                                                                          | 以 `EXECUTION.md` 总览为准，校准顶部状态与历史待办措辞                                                               | 低   |
 
 ## 进一步优化项
 
@@ -37,6 +37,6 @@
 
 - Engine 主流程是最高风险项：依赖 store、runner、evidence、locks、cost guard、state mutation，必须单独循环。
 - Archive service 已不再直接注入 legacy `LoopsService` 类；collection port 已由 domain collection service 实现，剩余风险是 eval aggregation 仍需在 Step N4 后接入更完整 domain port。
-- Trigger fire 不能把 issue creation 写死到 trigger service，应先定义 issue creation port。
+- Trigger fire 编排已下沉到 `loops-triggers`，processor 不再注入 legacy facade 类；issue creation port 当前仍由 `useExisting: LoopsService` 临时实现，待 intake 下沉后换实现。
 - Eval worker IO 涉及 Redis/DB/store 多写路径，应保持 processor queue name 不变。
 - Step 10 删除 wrapper 前必须确认 controller、processor、spec 不再依赖 legacy method body。

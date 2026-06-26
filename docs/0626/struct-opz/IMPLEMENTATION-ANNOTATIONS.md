@@ -27,7 +27,7 @@
 
 ## 当前剩余待实施项
 
-截至 Cycle 49 后，已经完成多批“实施 → 标注文档 → 审查待实施项 → 再标注文档”的循环。当前剩余项如下：
+截至 nextstep Cycle 60 后，已经完成多批“实施 → 标注文档 → 审查待实施项 → 再标注文档”的循环。当前剩余项如下：
 
 - Step 2：`list` / `listFromFile` / `getIssue` query/read pipeline 已下沉到 `loops-issues`；API facade 保留兼容入口与 HTTP 日志/异常映射。
 - Step 3：完整状态机方法仍在 API `LoopsService`，当前仅下沉了纯状态推导原语。
@@ -35,7 +35,7 @@
 - Step 5：workflow baseline evidence、delivery evidence markdown、runtime security exceptions、second opinion policy、release gate blockers、requirements coverage builder、evidence artifact builder、review/release gate builder、delivery controls、list enricher、second opinion builder 等已下沉；API `LoopsService` 仅保留兼容 wrapper。
 - Step 6：Eval suite builder、Eval run builder、Eval trend baseline builder、request-time aggregation builder 与 loop bench metric helper 已下沉；trend worker IO 仍在 API `LoopsService`。
 - Step 7：notification sender 仍暂置 `loops-store`；CI checks registry 与 publication history builder 仍在 API `LoopsService`。
-- Step 8：schedule trigger CRUD 与 remote runner pool 基础 list/lease/job 已下沉；processor 作为 API/worker entry 保留，fire 与 remote execution pipeline 仍待拆 domain service。
+- Step 8：schedule trigger CRUD + `fireScheduleTrigger` 编排已下沉到 `loops-triggers`（`LoopsTriggerSchedulerProcessor` 不再注入 legacy facade 类，issue creation port `LOOPS_ISSUE_CREATION_PORT` 当前由 facade 临时实现）；remote runner pool 基础 list/lease/job 已下沉；remote shard execution pipeline 仍待拆 domain service。
 - Step 9：capability registry、tool registry、delivery blueprint marketplace、archive control wrapper、archive collection service 已下沉；eval aggregation 接入仍待 Step 6/Next N4 收口。
 - Step 10：API module 仍需进一步瘦身；`LoopsService` 仍为 legacy 聚合 facade + 大量私有方法。
 
@@ -2242,5 +2242,144 @@ rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\
 结果：
 
 - `loops-admin.service.spec.ts` 与 `loops-archive-collection.service.spec.ts` 通过，2 个 test suite / 6 个测试通过。
+- API type-check 通过。
+- domain 反向依赖扫描无命中。
+
+## nextstep Cycle 58 · Step N2 Trigger Fire Issue Creation Port 实施
+
+### 实施
+
+- `loops-triggers` 新增 issue creation port：`LOOPS_ISSUE_CREATION_PORT` token、`LoopsIssueCreationPort`（`createIssue(input): Promise<{ issue: { id: string } }>`）、可选 `LoopsTriggersLogSink`。
+- `LoopsTriggersService` 新增 `fireScheduleTrigger(triggerId, input, issueCreationPort, logSink?)`，承接 trigger 读取、paused 早返回、issue creation 调用、execution 记录、成功/失败 stats 编排。
+- `LoopsService` `implements LoopsIssueCreationPort`，`fireScheduleTrigger` 收敛为 thin wrapper 委托 domain service。
+- `loops.module.ts` 绑定 `{ provide: LOOPS_ISSUE_CREATION_PORT, useExisting: LoopsService }`。
+- `LoopsTriggerSchedulerProcessor` 移除 `LoopsService` 注入，改为 `LoopsTriggersService` + `LOOPS_ISSUE_CREATION_PORT` + `domainLogSink`。
+
+### 标注文档
+
+- Step 8 fire 编排已下沉到 `loops-triggers`；processor 不再注入 legacy facade 类。
+- issue creation port 当前仍由 facade 临时实现（与 archive collection port 同构）。
+
+### 审查待实施项
+
+- 待实施：issue creation port 实现继续下沉到 `loops-issues` intake port；processor schedule tick → fire focused 子集；Step N7 删除 facade fire wrapper。
+
+### 再标注文档
+
+- nextstep Cycle 58 完成，下一轮补 trigger fire focused tests。
+
+### 验证
+
+- API type-check 通过；domain 反向依赖扫描无命中。
+
+## nextstep Cycle 59 · Step N2 Trigger Fire Focused Tests
+
+### 实施
+
+- 新增 `loops-triggers.service.spec.ts`（standalone unit spec）。
+- 覆盖 CRUD 读取/missing、paused 早返回、成功 fire（execution 记录 + stats 重置 + logSink info）、失败 fire（failureCount 自增、未达阈值 status 保持 active、不写 execution、logSink error）、达 maxFailures 翻转 error、missing 抛 `NotFoundException`、log sink 可选。
+
+### 标注文档
+
+- Step N2 fire 编排已有 domain service focused tests 覆盖主要成功/失败路径。
+
+### 审查待实施项
+
+- 仍待：issue creation port 实现下沉；processor 端 schedule tick → fire focused 子集。
+
+### 再标注文档
+
+- nextstep Cycle 59 完成，进入结构扫描。
+
+### 验证
+
+- `loops-triggers.service.spec.ts` 7 个测试通过；API type-check 通过。
+
+## nextstep Cycle 60 · Step N2 结构审查与注释校准
+
+### 实施
+
+- domain 反向依赖扫描无命中。
+- 确认 `LoopsTriggerSchedulerProcessor` 已移除 `LoopsService` 类注入与 `loops.service` import。
+- 确认 triggers domain 无 `forwardRef` / lazy `require('./loops.service')`。
+- 确认 controller `fireScheduleTrigger` 仍经 facade wrapper（对外 contract/path 不变）。
+- 更新 `loops-triggers.module.ts` 与 processor 顶部 doc 注释。
+
+### 标注文档
+
+- 剩余结构债：API module 中 `LOOPS_ISSUE_CREATION_PORT -> useExisting: LoopsService` 临时绑定。
+- fire 编排已脱离 legacy facade class 依赖。
+
+### 审查待实施项
+
+- 下一步：issue creation port 实现下沉到 `loops-issues` intake port；processor schedule tick → fire focused 子集；Step N7 删除 facade fire wrapper。
+
+### 再标注文档
+
+- nextstep Cycle 60 完成，进入文档总览同步。
+
+### 验证
+
+- API type-check 通过；`loops-triggers.service.spec.ts` 7 个测试通过；domain 反向依赖扫描无命中。
+
+## nextstep Cycle 61 · 文档总览同步
+
+### 实施
+
+- 更新 `struct-opz-nextstep/README.md` Step 8 当前结论。
+- 更新 `struct-opz-nextstep/BACKLOG.md` N3 状态与当前风险提醒。
+- 更新 `struct-opz/EXECUTION.md` Step 8 总览行。
+- 更新本文件顶部“当前剩余待实施项”。
+
+### 标注文档
+
+- 明确 Step 8 当前已完成 schedule trigger CRUD + `fireScheduleTrigger` 编排下沉。
+- 明确剩余：issue creation port 实现仍由 facade 临时实现；remote shard execution pipeline 仍待拆。
+
+### 审查待实施项
+
+- 下一批优先级：N2 eval / bench worker IO、N6 integrations、N3 issue creation port 下沉、N4 remote execution、N1 engine、N7 facade 收敛。
+
+### 再标注文档
+
+- nextstep Cycle 61 完成，进入最终验证。
+
+### 验证
+
+- 文档变更随 nextstep Cycle 62 最终验证收口。
+
+## nextstep Cycle 62 · 本批收敛验证与下一轮待办
+
+### 实施
+
+- 执行 triggers + admin + archive focused tests。
+- 执行 API type-check。
+- 执行 domain 反向依赖扫描。
+- 汇总本批 Cycle 58-62。
+
+### 标注文档
+
+- 本批已完成至少 5 次循环动作（58 实施 / 59 tests / 60 结构审查 / 61 文档同步 / 62 最终验证）。
+- 准确标注 N3 trigger fire 当前状态，未改变对外 API contract / controller path / queue name。
+
+### 审查待实施项
+
+- 待实施：N2 eval / bench worker IO、N6 integrations、N3 issue creation port 下沉、N4 remote execution、N5 archive re-home 评估、N1 engine、N7 facade 收敛。
+
+### 再标注文档
+
+- nextstep Cycle 62 完成；trigger fire port 已落地，issue creation port 仍由 facade 临时实现。
+
+### 验证
+
+```bash
+pnpm --filter @repo/api test -- loops-triggers.service.spec.ts loops-admin.service.spec.ts loops-archive-collection.service.spec.ts --runInBand
+pnpm --filter @repo/api type-check
+rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)|require\\(['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)" apps/api/libs/domain/services
+```
+
+结果：
+
+- 3 个 test suite 通过，13 个测试通过。
 - API type-check 通过。
 - domain 反向依赖扫描无命中。

@@ -1,7 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
-import { randomUUID } from 'crypto';
 
 /**
  * R37: Lightweight MCP (Model Context Protocol) client.
@@ -216,8 +215,9 @@ export class LoopsMcpClientService {
     receive: () => AsyncIterable<string>,
     method: string,
     params: Record<string, unknown>,
-    timeoutMs: number,
   ): Promise<JsonRpcResponse> {
+    // Per-request timeout is enforced by the idle-timeout in receiveLines()
+    // (see withProcessTimeout); this helper only handles request/response framing.
     const requestStr = this.buildRequest(id, method, params);
     send(requestStr);
 
@@ -250,7 +250,6 @@ export class LoopsMcpClientService {
     // Async generator that reads stdout lines
     const stdoutLines: string[] = [];
     let stdoutDone = false;
-    const stdoutError: Error | null = null;
 
     child.stdout?.on('data', (chunk: Buffer) => {
       const text = chunk.toString('utf8');

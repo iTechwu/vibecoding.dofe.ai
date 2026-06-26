@@ -441,6 +441,126 @@ pnpm --filter @repo/api type-check
 - `loops-triggers.service.spec.ts` 通过，7 个测试通过。
 - API type-check 通过。
 
+### Cycle 60 · Step N2 结构审查与注释校准
+
+#### 实施
+
+- 执行 domain 反向依赖扫描，确认 `loops-triggers` 不 import API loops。
+- 扫描 `LoopsTriggerSchedulerProcessor`，确认已移除 `LoopsService` 类注入与 `loops.service` import，改为 `LoopsTriggersService` + `LOOPS_ISSUE_CREATION_PORT`。
+- 扫描 `forwardRef` / lazy `require('./loops.service')`，确认 triggers domain 无 direct facade 类依赖。
+- 确认 controller `fireScheduleTrigger` 仍经 facade wrapper（对外 contract / path 不变）。
+- 更新 `loops-triggers.module.ts` 注释，反映 fire 编排已下沉、issue creation port 当前由 facade 实现。
+- 更新 `loops-trigger-scheduler.processor.ts` 顶部 doc 注释。
+
+#### 标注文档
+
+- 标注：当前剩余结构债是 API module 中 `LOOPS_ISSUE_CREATION_PORT -> useExisting: LoopsService` 的临时绑定（与 archive collection port 同构）。
+- 标注：fire 编排已脱离 legacy facade class 依赖；processor 通过 domain service + port 解耦。
+
+#### 审查待实施项
+
+- 下一步最短路径：
+  - issue creation port 实现继续下沉到 `loops-issues` intake port，移除 `useExisting: LoopsService`。
+  - processor 端 schedule tick → fire 的 focused 子集。
+  - Step N7 时删除 facade fire wrapper。
+
+#### 再标注文档
+
+- Cycle 60 完成，进入文档总览同步。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api type-check
+pnpm --filter @repo/api test -- loops-triggers.service.spec.ts --runInBand
+rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)|require\\(['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)" apps/api/libs/domain/services
+```
+
+结果：
+
+- API type-check 通过。
+- `loops-triggers.service.spec.ts` 7 个测试通过。
+- domain 反向依赖扫描无命中。
+
+### Cycle 61 · 文档总览同步
+
+#### 实施
+
+- 更新 `struct-opz-nextstep/README.md` Step 8 当前结论。
+- 更新 `struct-opz-nextstep/BACKLOG.md` N3 状态与当前风险提醒。
+- 更新 `struct-opz/EXECUTION.md` Step 8 总览行。
+- 更新 `struct-opz/IMPLEMENTATION-ANNOTATIONS.md` 顶部“当前剩余待实施项”并追加 nextstep Cycle 58-60 历史标注。
+
+#### 标注文档
+
+- 明确 Step 8 当前已完成 schedule trigger CRUD + `fireScheduleTrigger` 编排下沉。
+- 明确剩余：issue creation port 实现仍由 facade 临时实现；remote shard execution pipeline 仍待拆。
+
+#### 审查待实施项
+
+- 下一批优先级：
+  - N2 eval / bench worker IO（与 archive eval aggregation port 接入）。
+  - N6 integrations notification / CI publication。
+  - N3 issue creation port 实现继续下沉。
+  - N4 remote execution pipeline。
+  - N1 engine 主流程。
+  - N7 facade/module 收敛。
+
+#### 再标注文档
+
+- Cycle 61 完成，进入最终验证。
+
+#### 验证
+
+- 文档变更随 Cycle 62 最终验证收口。
+
+### Cycle 62 · 本批收敛验证与下一轮待办
+
+#### 实施
+
+- 执行 triggers + admin + archive focused tests。
+- 执行 API type-check。
+- 执行 domain 反向依赖扫描。
+- 汇总本批 Cycle 58-62。
+
+#### 标注文档
+
+- 本批已完成至少 5 次循环动作：
+  - Cycle 58：trigger fire issue creation port 实施。
+  - Cycle 59：trigger fire focused tests。
+  - Cycle 60：结构审查与注释校准。
+  - Cycle 61：文档总览同步。
+  - Cycle 62：最终验证与待办标注。
+
+#### 审查待实施项
+
+- 待实施：
+  - N2：eval / bench worker IO 与 archive eval aggregation port 接入。
+  - N6：notification sender re-home / CI publication builder。
+  - N3：issue creation port 实现继续下沉到 `loops-issues` intake port。
+  - N4：remote shard execution pipeline 与 artifact IO port。
+  - N5：archive service re-home 评估。
+  - N1：engine 主流程。
+  - N7：facade/module 收敛。
+
+#### 再标注文档
+
+- Cycle 62 完成；本批准确标注 N3 trigger fire 当前状态，未改变对外 API contract / controller path / queue name。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api test -- loops-triggers.service.spec.ts loops-admin.service.spec.ts loops-archive-collection.service.spec.ts --runInBand
+pnpm --filter @repo/api type-check
+rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)|require\\(['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)" apps/api/libs/domain/services
+```
+
+结果：
+
+- 3 个 test suite 通过，13 个测试通过。
+- API type-check 通过。
+- domain 反向依赖扫描无命中。
+
 ## Step N0 · 文档事实源校准
 
 ### 目标
