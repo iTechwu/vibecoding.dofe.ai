@@ -21,24 +21,16 @@
  *  - Refresh                  → grant_type=refresh_token to internal endpoint.
  *  - Logout                   → id_token_hint + post_logout_redirect_uri.
  *
- * vibecoding pilot findings pinned below (consumer reconciliation required):
+ * vibecoding pilot findings (Cycle 8) — closed at SDK source in Cycle 14,
+ * pinned live in Cycle 18 (@dofe/sso-nestjs@0.1.58):
  *  - vibecoding resolves a SEPARATE API base (`resolveOidcApiBaseUrl()`) for the
  *    `/auth/oidc/callback` redirect_uri and frontend base
- *    (`resolveOidcFrontendBaseUrl()`) for `/auth/oidc/success`. The SDK
- *    `resolveOidcUrls()` derives both from a single `frontendOrigin`/`appBaseUrl`,
- *    so the pilot must pass the API-base redirect_uri as an explicit override to
- *    `getAuthorizationUrl()` and ensure `handleCallback()`'s token exchange
- *    redirect_uri agrees (or the callback route must move to the resolved base).
- *  - vibecoding logout uses `post_logout_redirect_uri=${appBaseUrl}/login` (path
- *    suffix). The SDK appends no path. The pilot must reconcile the `/login`
- *    suffix (consumer-side redirect or SDK logout-redirect-path option).
- *
- * Cycle 15 update: the SDK fix landed in ../sso.dofe.ai (Cycle 14) adds optional
- * `apiBaseUrl` and `postLogoutRedirectPath` options that close both gaps. The
- * "gap-closed" tests below assert the post-fix behavior. They are guarded by a
- * feature-detect (typeof (options as any) — the published @dofe/sso-nestjs@0.1.57
- * does NOT yet ship these options, so the gap-closed tests skip until a newer
- * version is published and pinned here).
+ *    (`resolveOidcFrontendBaseUrl()`) for `/auth/oidc/success`. The SDK now
+ *    supports this via `apiBaseUrl`: redirect_uri uses the API base, success
+ *    stays on the frontend base, and authorize + token-exchange redirect_uri
+ *    agree (gap-closed tests below).
+ *  - vibecoding logout uses `post_logout_redirect_uri=${appBaseUrl}/login`. The
+ *    SDK now supports this via `postLogoutRedirectPath` (gap-closed test below).
  */
 
 import { of } from 'rxjs';
@@ -59,8 +51,8 @@ const TOKEN_FIXTURE = {
 };
 
 // vibecoding option shape: appBaseUrl / frontendOrigin come from
-// resolveOidcFrontendBaseUrl(); the API-base callback is reconciled via an
-// explicit redirectUri override (see pilot findings below).
+// resolveOidcFrontendBaseUrl(); the API-base callback is expressed via the SDK
+// `apiBaseUrl` option (gap-closed tests below).
 const VIBECODING_OPTIONS: OidcRpModuleOptions = {
   clientId: 'vibecoding-client-id',
   clientSecret: 'vibecoding-secret',
@@ -71,6 +63,13 @@ const VIBECODING_OPTIONS: OidcRpModuleOptions = {
   frontendOrigin: 'https://vibecoding.dofe.ai',
   appBaseUrl: 'https://vibecoding.dofe.ai',
   serviceName: 'vibecoding',
+};
+
+// Full vibecoding shape incl. the two options that close the Cycle 8 findings.
+const VIBECODING_FULL_OPTIONS: OidcRpModuleOptions = {
+  ...VIBECODING_OPTIONS,
+  apiBaseUrl: 'https://api.vibecoding.dofe.ai',
+  postLogoutRedirectPath: '/login',
 };
 
 interface RecordedSet {
@@ -221,126 +220,51 @@ describe('F.1 SDK RP adapter equivalence (vibecoding pilot options)', () => {
   });
 });
 
-// ─── vibecoding pilot adapter findings (pinned for migration) ───────
+// ─── vibecoding gap-closed behavior (Cycle 18, live) ────────────────
+//
+// @dofe/sso-nestjs@0.1.58 ships `apiBaseUrl` + `postLogoutRedirectPath`
+// (Cycle 14). These tests assert the gap-closed behavior that unblocks the
+// vibecoding pilot production migration (still gated on real browser E2E).
 
-describe('F.1 vibecoding pilot adapter findings (reconciliation required)', () => {
-  it('accepts an explicit API-base redirect_uri override on authorize (vibecoding keeps its API-base callback)', async () => {
-    const { store } = createRecordingStateStore();
-    const { http } = createFakeHttp();
-    const service = new SsoOidcRelyingPartyService(VIBECODING_OPTIONS, store, http);
-
-    // vibecoding's real callback lives on the API base (resolveOidcApiBaseUrl).
-    const apiBaseRedirectUri = 'https://api.vibecoding.dofe.ai/auth/oidc/callback';
-    const { authorizationUrl } = await service.getAuthorizationUrl(apiBaseRedirectUri);
-
-    expect(extractQuery(authorizationUrl).get('redirect_uri')).toBe(apiBaseRedirectUri);
-  });
-
-  it('pins that the token-exchange redirect_uri uses the single resolved base (pilot must reconcile)', async () => {
+describe('F.1 vibecoding gap-closed behavior (SDK apiBaseUrl + postLogoutRedirectPath)', () => {
+  it('puts redirect_uri on the API base for BOTH authorize and token exchange', async () => {
     const { store } = createRecordingStateStore();
     const { http, posts } = createFakeHttp();
-    const service = new SsoOidcRelyingPartyService(VIBECODING_OPTIONS, store, http);
+    const service = new SsoOidcRelyingPartyService(VIBECODING_FULL_OPTIONS, store, http);
 
-    // Authorize with an API-base override…
-    const { state } = await service.getAuthorizationUrl(
+    expect(service.redirectUri).toBe('https://api.vibecoding.dofe.ai/auth/oidc/callback');
+    expect(service.successUrl).toBe('https://vibecoding.dofe.ai/auth/oidc/success');
+
+    const { state, authorizationUrl } = await service.getAuthorizationUrl();
+    // authorize redirect_uri on the API base…
+    expect(extractQuery(authorizationUrl).get('redirect_uri')).toBe(
       'https://api.vibecoding.dofe.ai/auth/oidc/callback',
     );
     await service.handleCallback('auth-code', state);
-
-    // …but the token exchange sends the SDK-resolved redirect_uri (frontend
-    // base). Finding: vibecoding's API-base callback + frontend-base success
-    // cannot both be expressed via the current single-base resolveOidcUrls.
-    // The pilot must either move the callback to the resolved base or obtain
-    // SDK split-base support before deleting the hand-rolled service.
-    const exchangeBody = posts[0].body;
-    expect(exchangeBody).toContain(
-      'redirect_uri=' + encodeURIComponent('https://vibecoding.dofe.ai/auth/oidc/callback'),
+    // …and the token-exchange redirect_uri agrees (split-base gap closed).
+    expect(posts[0].body).toContain(
+      'redirect_uri=' + encodeURIComponent('https://api.vibecoding.dofe.ai/auth/oidc/callback'),
     );
   });
 
-  it('pins that logout post_logout_redirect_uri has no path suffix (vibecoding /login must be reconciled)', () => {
+  it('appends the /login post-logout path when postLogoutRedirectPath is set', () => {
+    const { store } = createRecordingStateStore();
+    const { http } = createFakeHttp();
+    const service = new SsoOidcRelyingPartyService(VIBECODING_FULL_OPTIONS, store, http);
+
+    expect(extractQuery(service.getLogoutUrl()).get('post_logout_redirect_uri')).toBe(
+      'https://vibecoding.dofe.ai/login',
+    );
+  });
+
+  it('omitting the new options reproduces the single-base SDK default (backward compat)', () => {
     const { store } = createRecordingStateStore();
     const { http } = createFakeHttp();
     const service = new SsoOidcRelyingPartyService(VIBECODING_OPTIONS, store, http);
 
-    // vibecoding hand-rolled logout uses `${appBaseUrl}/login`; the SDK appends
-    // no path. Finding: the pilot must redirect to /login consumer-side, or the
-    // SDK must add a logout-redirect-path option.
-    const logoutUrl = service.getLogoutUrl();
-    expect(extractQuery(logoutUrl).get('post_logout_redirect_uri')).toBe(
+    expect(service.redirectUri).toBe('https://vibecoding.dofe.ai/auth/oidc/callback');
+    expect(extractQuery(service.getLogoutUrl()).get('post_logout_redirect_uri')).toBe(
       'https://vibecoding.dofe.ai',
     );
   });
 });
-
-// ─── Cycle 15: gap-closed behavior (post SDK fix) ───────────────────
-//
-// ../sso.dofe.ai Cycle 14 added optional `apiBaseUrl` + `postLogoutRedirectPath`
-// to OidcRpModuleOptions. These tests assert the post-fix behavior. They
-// feature-detect the published SDK: @dofe/sso-nestjs@0.1.57 does not yet ship
-// these options, so the tests SKIP until a newer version is published and
-// pinned. Once pinned, the skip is removed and the pre-fix findings tests above
-// can be deleted.
-
-const SDK_HAS_SPLIT_BASE_OPTIONS = (() => {
-  // The options type is structural; detect at runtime by checking whether the
-  // service honors apiBaseUrl. Cheap detection: build a service with apiBaseUrl
-  // and read redirectUri.
-  try {
-    const svc = new SsoOidcRelyingPartyService(
-      { ...VIBECODING_OPTIONS, apiBaseUrl: 'https://api.vibecoding.dofe.ai' } as never,
-      createRecordingStateStore().store,
-      createFakeHttp().http,
-    );
-    return svc.redirectUri.startsWith('https://api.vibecoding.dofe.ai');
-  } catch {
-    return false;
-  }
-})();
-
-const describeGapClosed = SDK_HAS_SPLIT_BASE_OPTIONS ? describe : describe.skip;
-
-describeGapClosed(
-  'F.1 vibecoding gap-closed behavior (SDK apiBaseUrl + postLogoutRedirectPath)',
-  () => {
-    it('puts redirect_uri on the API base for BOTH authorize and token exchange', async () => {
-      const { store } = createRecordingStateStore();
-      const { http, posts } = createFakeHttp();
-      const service = new SsoOidcRelyingPartyService(
-        {
-          ...VIBECODING_OPTIONS,
-          apiBaseUrl: 'https://api.vibecoding.dofe.ai',
-        } as never,
-        store,
-        http,
-      );
-
-      expect(service.redirectUri).toBe('https://api.vibecoding.dofe.ai/auth/oidc/callback');
-      expect(service.successUrl).toBe('https://vibecoding.dofe.ai/auth/oidc/success');
-
-      const { state } = await service.getAuthorizationUrl();
-      await service.handleCallback('auth-code', state);
-
-      expect(posts[0].body).toContain(
-        'redirect_uri=' + encodeURIComponent('https://api.vibecoding.dofe.ai/auth/oidc/callback'),
-      );
-    });
-
-    it('appends the /login post-logout path when postLogoutRedirectPath is set', () => {
-      const { store } = createRecordingStateStore();
-      const { http } = createFakeHttp();
-      const service = new SsoOidcRelyingPartyService(
-        {
-          ...VIBECODING_OPTIONS,
-          postLogoutRedirectPath: '/login',
-        } as never,
-        store,
-        http,
-      );
-
-      expect(extractQuery(service.getLogoutUrl()).get('post_logout_redirect_uri')).toBe(
-        'https://vibecoding.dofe.ai/login',
-      );
-    });
-  },
-);

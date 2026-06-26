@@ -24,7 +24,7 @@
 仍需收紧：
 
 - Step 3：engine 主流程推进方法仍在 legacy `LoopsService`。
-- Step 6：Eval / bench trend worker IO 与 DB/Redis/store 编排仍在 facade。
+- Step 6：Eval suite/run/bench builder + eval/bench trend worker IO + eval aggregation worker 编排已下沉到 `loops-eval`；evidence 收集与 DB/Redis 适配仍由 facade port 实现。
 - Step 7：CI publication builder 与 notification sender re-home 仍待处理。
 - Step 8：schedule trigger CRUD + `fireScheduleTrigger` 编排已下沉到 `loops-triggers`；remote execution pipeline 仍待拆；issue creation port 当前由 facade 临时实现。
 - Step 9：Archive control wrapper 与 collection port 已下沉到 `loops-admin`；eval aggregation 接入仍待 Step N4 收口。

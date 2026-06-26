@@ -4,7 +4,10 @@ import type {
   EvalRun,
   EvalSuite,
   LoopBenchMetricKey,
+  LoopBenchTrendSnapshot,
+  LoopBenchTrendWorkerResponse,
   LoopCostResponse,
+  EvalTrendWorkerResponse,
   LoopLearning,
   LoopListResponse,
   LoopWorkflowRecipe,
@@ -635,4 +638,220 @@ export class LoopsEvalService {
       source: 'request-time',
     };
   }
+
+  // =========================================================================
+  // Step N2 · Eval / Bench trend worker IO orchestration
+  //
+  // 以下两个 worker 方法把 facade 里的 evidence/suite/run 组装 + trend history
+  // 读取/append 编排下沉到 domain。实际的 store / evidence-collect 能力经窄 port
+  // 注入，domain 不反向依赖 API facade，也不直接持有 `LoopsFileStoreService`。
+  // =========================================================================
+
+  /**
+   * Eval trend worker: assemble evidence → suites → runs, compute baselines
+   * against history, then append the new snapshots. Behaviour matches the
+   * legacy `LoopsService.runEvalTrendWorker` so the facade wrapper can stay
+   * a thin delegate.
+   */
+  async runEvalTrendWorker(input: {
+    evidencePort: LoopsEvalEvidencePort;
+    storePort: LoopsEvalTrendStorePort;
+    logSink?: LoopsEvalLogSink;
+  }): Promise<EvalTrendWorkerResponse> {
+    const generatedAt = new Date().toISOString();
+    const { suites, runs } = await input.evidencePort.collectEvalEvidence();
+    const history = await input.storePort.readEvalTrendHistory();
+    const baselines = this.buildEvalTrendBaselines({
+      runs,
+      history,
+      generatedAt,
+    });
+
+    await input.storePort.appendEvalTrendSnapshots(baselines);
+    return {
+      generatedAt,
+      snapshotCount: baselines.length,
+      baselines,
+    };
+  }
+
+  /**
+   * Loop-bench trend worker: gather list/cost/learnings, build metrics, diff
+   * against the previous snapshot, then append. Mirrors the legacy
+   * `LoopsService.runLoopBenchTrendWorker` return shape.
+   */
+  async runLoopBenchTrendWorker(input: {
+    evidencePort: LoopsEvalEvidencePort;
+    storePort: LoopsEvalTrendStorePort;
+  }): Promise<LoopBenchTrendWorkerResponse> {
+    const generatedAt = new Date().toISOString();
+    const { list, cost, recentLearnings } = await input.evidencePort.collectLoopBenchInputs();
+    const history = await input.storePort.readLoopBenchTrendHistory();
+    const previous = history.at(-1);
+    const metrics = this.buildLoopBenchMetrics(list, { cost, recentLearnings });
+    const artifactRef = `.loops/bench-trends/${generatedAt.replace(/[:.]/g, '-')}.json`;
+    const snapshot: LoopBenchTrendSnapshot = {
+      id: `loop-bench-${Date.parse(generatedAt)}`,
+      capturedAt: generatedAt,
+      artifactRef,
+      loopCount: list.length,
+      metrics,
+      previousMetrics: previous?.metrics,
+      deltas: previous ? this.diffLoopBenchMetrics(metrics, previous.metrics) : undefined,
+    };
+    const nextHistory = await input.storePort.appendLoopBenchTrendSnapshot(snapshot);
+    return {
+      generatedAt,
+      snapshot,
+      historyCount: nextHistory.length,
+    };
+  }
+
+  // =========================================================================
+  // Step N2 · Eval aggregation worker IO orchestration
+  //
+  // 把 facade 的 runEvalAggregationWorker / getEvalAggregationCacheHealth 编排
+  // 下沉到 domain：evidence+suite 收集、computeAggregation、DB upsert、Redis 缓存
+  // warm 全部经窄 port 注入，domain 不直接持有 store / db / aggregation worker。
+  // =========================================================================
+
+  /**
+   * Port supplying the aggregation worker with suites (already materialised
+   * from evidence) plus the optional DB persistence + Redis cache-warm sinks.
+   */
+  async runEvalAggregationWorker(input: {
+    tenantId?: string;
+    period?: '7d' | '30d' | '90d' | 'all';
+    evidencePort: LoopsEvalEvidencePort;
+    computeAggregation: (flat: LoopsAggregationFlatItem[], period: string) => LoopsAggregation[];
+    persistAggregation?: (agg: LoopsAggregation, period: string) => Promise<boolean>;
+    warmCache?: (agg: LoopsAggregation, period: string) => Promise<void>;
+    logSink?: LoopsEvalLogSink;
+  }): Promise<{
+    processed: number;
+    persisted: number;
+    cachedInRedis: boolean;
+    period: string;
+    generatedAt: string;
+  }> {
+    const period = input.period ?? '30d';
+    const generatedAt = new Date().toISOString();
+    const { suites } = await input.evidencePort.collectEvalEvidence();
+    const tenantId = input.tenantId ?? 'default';
+
+    const flat: LoopsAggregationFlatItem[] = suites.map((suite) => ({
+      suiteId: suite.id,
+      suiteName: suite.name,
+      tenantId,
+      workspaceId: 'default',
+      totalChecks: suite.summary.total,
+      passedChecks: suite.summary.passed,
+      failedChecks: suite.summary.attention,
+      blockedChecks: suite.summary.blocked,
+      passRate: suite.summary.passRate,
+      averageScore: suite.summary.passRate,
+      loopCount: suite.summary.total > 0 ? Math.max(1, Math.round(suite.summary.total / 3)) : 0,
+    }));
+
+    const aggregations = input.computeAggregation(flat, period);
+
+    let persisted = 0;
+    if (input.persistAggregation && aggregations.length > 0) {
+      try {
+        for (const agg of aggregations) {
+          if (await input.persistAggregation(agg, period)) persisted++;
+        }
+        input.logSink?.log('info', `[EvalAgg] Worker persisted ${persisted} aggregations to DB`);
+      } catch (error) {
+        input.logSink?.log('error', '[EvalAgg] DB persistence failed', { error });
+      }
+    }
+
+    let cachedInRedis = false;
+    if (input.warmCache && aggregations.length > 0) {
+      for (const agg of aggregations) {
+        await input.warmCache(agg, period).catch(() => {});
+      }
+      cachedInRedis = true;
+    }
+
+    return {
+      processed: aggregations.length,
+      persisted,
+      cachedInRedis,
+      period,
+      generatedAt,
+    };
+  }
+}
+
+/** Flat aggregatable item the aggregation worker groups by tenant/suite/period. */
+export type LoopsAggregationFlatItem = {
+  suiteId: string;
+  suiteName: string;
+  tenantId: string;
+  workspaceId: string;
+  blueprintId?: string;
+  totalChecks: number;
+  passedChecks: number;
+  failedChecks: number;
+  blockedChecks: number;
+  passRate: number;
+  averageScore: number;
+  loopCount: number;
+};
+
+/** Computed aggregation row ready for DB upsert + Redis cache warm. */
+export type LoopsAggregation = {
+  tenantId: string;
+  workspaceId: string;
+  suiteId: string;
+  blueprintId?: string;
+  totalChecks: number;
+  passedChecks: number;
+  failedChecks: number;
+  blockedChecks: number;
+  passRate: number;
+  averageScore: number;
+  loopCount: number;
+  trendDelta?: number;
+  period: string;
+  capturedAt: string;
+};
+
+/**
+ * Port supplying the eval worker with assembled evidence + loop-bench inputs.
+ * `collectEvalEvidence` returns suites/runs ready for baseline computation; the
+ * bench variant returns the list/cost/learnings triple the bench snapshot needs.
+ */
+export interface LoopsEvalEvidencePort {
+  collectEvalEvidence(): Promise<{ suites: EvalSuite[]; runs: EvalRun[] }>;
+  collectLoopBenchInputs(): Promise<{
+    list: LoopListItem[];
+    cost?: LoopCostResponse;
+    recentLearnings?: LoopLearning[];
+  }>;
+}
+
+/**
+ * Port for trend history persistence. Mirrors the store methods the facade
+ * previously called directly, so the domain orchestration can read history
+ * and append snapshots without touching `LoopsFileStoreService`.
+ */
+export interface LoopsEvalTrendStorePort {
+  readEvalTrendHistory(): Promise<EvalHistoricalBaselineSnapshot[]>;
+  appendEvalTrendSnapshots(
+    snapshots: EvalHistoricalBaselineSnapshot[],
+  ): Promise<EvalHistoricalBaselineSnapshot[]>;
+  readLoopBenchTrendHistory(): Promise<LoopBenchTrendSnapshot[]>;
+  appendLoopBenchTrendSnapshot(snapshot: LoopBenchTrendSnapshot): Promise<LoopBenchTrendSnapshot[]>;
+}
+
+/**
+ * Optional log sink so the domain worker can surface the same `[Loops]` /
+ * `[EvalAgg]` lifecycle logs the facade used to own, without depending on
+ * Winston directly.
+ */
+export interface LoopsEvalLogSink {
+  log(level: 'info' | 'warn' | 'error', message: string, meta?: Record<string, unknown>): void;
 }

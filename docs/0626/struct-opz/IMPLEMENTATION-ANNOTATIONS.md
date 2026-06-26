@@ -11,19 +11,19 @@
 
 ## 总体状态
 
-| Step                                           | 状态     | 标注                                                                     |
-| ---------------------------------------------- | -------- | ------------------------------------------------------------------------ |
-| Step 0 · 建立目标目录与兼容 Facade             | 已完成   | `LoopsDomainModule` 已作为 domain 装配入口                               |
-| Step 1 · 下沉低耦合工具、Store 与 Lock         | 已完成   | `loops-store` / `loops-locks` 已下沉                                     |
-| Step 2 · 拆 Issue Intake 与查询能力            | 部分完成 | intake + query/read pipeline 已下沉，API 保留兼容 wrapper                |
-| Step 3 · 拆 Loop Engine 状态机                 | 部分完成 | 纯状态推导原语已下沉，主流程推进仍待拆                                   |
-| Step 4 · 拆 Runner、Runtime 与 Workspace       | 部分完成 | runner/runtime 主体已下沉，adapter provider wiring 留 API module         |
-| Step 5 · 拆 Evidence、Quality 与 Release Gates | 部分完成 | evidence/quality 主要 builder/gate/enricher 已下沉，API 保留兼容 wrapper |
-| Step 6 · 拆 Eval 与 Bench 聚合                 | 部分完成 | eval/bench 纯 builder 已下沉，worker IO 仍待拆                           |
-| Step 7 · 拆 Integrations、MCP、CI、PR 与通知   | 部分完成 | Cycle 4 完成 PR provider / MCP client / MCP secret                       |
-| Step 8 · 拆 Trigger 与 Remote Runner Pool      | 部分完成 | Cycle 13 完成 schedule trigger CRUD                                      |
-| Step 9 · 拆 Admin、Archive、Tool 与 Blueprint  | 部分完成 | Cycle 53-57 完成 archive collection service                              |
-| Step 10 · 收敛 API Module 与删除旧聚合         | 待实施   | -                                                                        |
+| Step                                           | 状态     | 标注                                                                                                   |
+| ---------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------ |
+| Step 0 · 建立目标目录与兼容 Facade             | 已完成   | `LoopsDomainModule` 已作为 domain 装配入口                                                             |
+| Step 1 · 下沉低耦合工具、Store 与 Lock         | 已完成   | `loops-store` / `loops-locks` 已下沉                                                                   |
+| Step 2 · 拆 Issue Intake 与查询能力            | 部分完成 | intake + query/read pipeline 已下沉，API 保留兼容 wrapper                                              |
+| Step 3 · 拆 Loop Engine 状态机                 | 部分完成 | 纯状态推导原语已下沉，主流程推进仍待拆                                                                 |
+| Step 4 · 拆 Runner、Runtime 与 Workspace       | 部分完成 | runner/runtime 主体已下沉，adapter provider wiring 留 API module                                       |
+| Step 5 · 拆 Evidence、Quality 与 Release Gates | 部分完成 | evidence/quality 主要 builder/gate/enricher 已下沉，API 保留兼容 wrapper                               |
+| Step 6 · 拆 Eval 与 Bench 聚合                 | 部分完成 | eval/bench 纯 builder + trend/aggregation worker IO 编排已下沉，evidence/DB/Redis 适配仍由 facade port |
+| Step 7 · 拆 Integrations、MCP、CI、PR 与通知   | 部分完成 | Cycle 4 完成 PR provider / MCP client / MCP secret                                                     |
+| Step 8 · 拆 Trigger 与 Remote Runner Pool      | 部分完成 | Cycle 13 完成 schedule trigger CRUD                                                                    |
+| Step 9 · 拆 Admin、Archive、Tool 与 Blueprint  | 部分完成 | Cycle 53-57 完成 archive collection service                                                            |
+| Step 10 · 收敛 API Module 与删除旧聚合         | 待实施   | -                                                                                                      |
 
 ## 当前剩余待实施项
 
@@ -33,7 +33,7 @@
 - Step 3：完整状态机方法仍在 API `LoopsService`，当前仅下沉了纯状态推导原语。
 - Step 4：runner services/adapters 已下沉；adapter provider wiring 仍在 API module，作为 API 装配逻辑保留。
 - Step 5：workflow baseline evidence、delivery evidence markdown、runtime security exceptions、second opinion policy、release gate blockers、requirements coverage builder、evidence artifact builder、review/release gate builder、delivery controls、list enricher、second opinion builder 等已下沉；API `LoopsService` 仅保留兼容 wrapper。
-- Step 6：Eval suite builder、Eval run builder、Eval trend baseline builder、request-time aggregation builder 与 loop bench metric helper 已下沉；trend worker IO 仍在 API `LoopsService`。
+- Step 6：Eval suite builder、Eval run builder、Eval trend baseline builder、request-time aggregation builder 与 loop bench metric helper + eval/bench trend worker IO 编排（`runEvalTrendWorker` / `runLoopBenchTrendWorker`）+ eval aggregation worker 编排（`runEvalAggregationWorker`）已下沉到 `loops-eval`；evidence 收集与 DB/Redis 适配仍由 facade port 实现。
 - Step 7：notification sender 仍暂置 `loops-store`；CI checks registry 与 publication history builder 仍在 API `LoopsService`。
 - Step 8：schedule trigger CRUD + `fireScheduleTrigger` 编排已下沉到 `loops-triggers`（`LoopsTriggerSchedulerProcessor` 不再注入 legacy facade 类，issue creation port `LOOPS_ISSUE_CREATION_PORT` 当前由 facade 临时实现）；remote runner pool 基础 list/lease/job 已下沉；remote shard execution pipeline 仍待拆 domain service。
 - Step 9：capability registry、tool registry、delivery blueprint marketplace、archive control wrapper、archive collection service 已下沉；eval aggregation 接入仍待 Step 6/Next N4 收口。
@@ -2381,5 +2381,158 @@ rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\
 结果：
 
 - 3 个 test suite 通过，13 个测试通过。
+- API type-check 通过。
+- domain 反向依赖扫描无命中。
+
+## nextstep Cycle 63 · Step N2 Eval / Bench Trend Worker IO 下沉实施
+
+### 实施
+
+- `loops-eval` 新增 trend worker port：`LoopsEvalEvidencePort`、`LoopsEvalTrendStorePort`、`LoopsEvalLogSink`。
+- `LoopsEvalService` 新增 `runEvalTrendWorker` / `runLoopBenchTrendWorker`，承接 evidence→suites→runs→baseline→append 与 list/cost/learnings→metrics→diff→append 编排。
+- `LoopsService` 收敛为 thin wrapper，经 `evalEvidencePort` / `evalTrendStorePort` / `evalLogSink` getter 适配。
+
+### 标注文档
+
+- Step N2 trend worker IO 编排已下沉到 domain；facade 仅做 port 适配。
+
+### 审查待实施项
+
+- 待实施：aggregation worker 编排下沉；evidence/DB/Redis 适配独立化；processor 解耦。
+
+### 再标注文档
+
+- nextstep Cycle 63 完成，进入 aggregation worker 下沉。
+
+### 验证
+
+- API type-check 通过；facade trend 测试通过（79 tests）。
+
+## nextstep Cycle 64 · Step N2 Eval Aggregation Worker IO 下沉实施
+
+### 实施
+
+- `loops-eval` 新增 `LoopsAggregationFlatItem` / `LoopsAggregation` 类型。
+- `LoopsEvalService.runEvalAggregationWorker` 承接 suites→flat→compute→persist→warm→counts 编排。
+- `LoopsService.runEvalAggregationWorker` 收敛为 thin wrapper，把 db/redis 适配包成 port 回调。
+
+### 标注文档
+
+- Step N2 aggregation worker 编排已下沉到 domain；DB/Redis 适配仍由 facade port 提供。
+
+### 审查待实施项
+
+- 待实施：adapter service 独立化；processor 解耦；focused tests。
+
+### 再标注文档
+
+- nextstep Cycle 64 完成，进入 focused tests。
+
+### 验证
+
+- API type-check 通过；facade loops.service.spec.ts 68 个测试通过。
+
+## nextstep Cycle 65 · Step N2 Eval Worker Focused Tests
+
+### 实施
+
+- 新增 `loops-eval.service.spec.ts`（standalone unit spec）。
+- 覆盖 trend worker（有/无 history）、bench trend worker（有/无 history deltas）、aggregation worker（persist/warm 计数、port 缺失跳过、持久化抛错记 error）。
+
+### 标注文档
+
+- Step N2 trend + aggregation worker 编排已有 domain focused tests 覆盖。
+
+### 审查待实施项
+
+- 仍待：processor 解耦 facade；adapter service 独立化。
+
+### 再标注文档
+
+- nextstep Cycle 65 完成，进入结构扫描。
+
+### 验证
+
+- `loops-eval.service.spec.ts` 7 个测试通过；API type-check 通过。
+
+## nextstep Cycle 66 · Step N2 结构审查与注释校准
+
+### 实施
+
+- domain 反向依赖扫描无命中。
+- 确认 `loops-eval.service.ts` 仅 import `@repo/contracts` + `@nestjs/common`。
+- 确认 BullMQ queue name 不变。
+- 更新 `loops-eval.module.ts` 注释。
+
+### 标注文档
+
+- 剩余结构债：evidence/DB/Redis 适配仍由 facade port；processor 仍调用 facade wrapper。
+
+### 审查待实施项
+
+- 下一步：建 `loops-eval` 专属 adapter service；processor 解耦。
+
+### 再标注文档
+
+- nextstep Cycle 66 完成，进入文档总览同步。
+
+### 验证
+
+- domain 反向依赖扫描无命中。
+
+## nextstep Cycle 67 · 文档总览同步
+
+### 实施
+
+- 更新 `struct-opz-nextstep/README.md` Step 6、`BACKLOG.md` N2 + 风险提醒。
+- 更新 `struct-opz/EXECUTION.md` Step 6 总览行、本文件顶部 Step 6 剩余项。
+
+### 标注文档
+
+- 明确 Step 6 已完成 trend + aggregation worker 编排下沉；剩余 adapter 独立化与 processor 解耦。
+
+### 审查待实施项
+
+- 下一批：N6 integrations、N3 issue creation port 下沉、N2 收尾、N4 remote execution、N1 engine、N7 facade 收敛。
+
+### 再标注文档
+
+- nextstep Cycle 67 完成，进入最终验证。
+
+### 验证
+
+- 文档变更随 Cycle 68 最终验证收口。
+
+## nextstep Cycle 68 · 本批收敛验证与下一轮待办
+
+### 实施
+
+- 执行 eval domain + facade focused tests、API type-check、domain 反向依赖扫描。
+- 汇总本批 Cycle 63-68。
+
+### 标注文档
+
+- 本批已完成至少 5 次循环动作（63 trend worker 实施 / 64 aggregation worker 实施 / 65 focused tests / 66 结构审查 / 67 文档同步 / 68 最终验证）。
+- 准确标注 N2 eval worker IO 当前状态，未改变对外 API contract / controller path / BullMQ queue name。
+
+### 审查待实施项
+
+- 待实施：N6 integrations、N3 issue creation port 下沉、N2 收尾（adapter service + processor 解耦）、N4 remote execution、N5 archive re-home、N1 engine、N7 facade 收敛。
+
+### 再标注文档
+
+- nextstep Cycle 68 完成；eval/bench trend worker IO + eval aggregation worker 编排已下沉到 `loops-eval`。
+
+### 验证
+
+```bash
+pnpm --filter @repo/api test -- loops-eval.service.spec.ts loops.service.spec.ts --runInBand
+pnpm --filter @repo/api type-check
+rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)|require\\(['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)" apps/api/libs/domain/services
+```
+
+结果：
+
+- eval domain + facade focused tests 通过（7 + 68）。
 - API type-check 通过。
 - domain 反向依赖扫描无命中。

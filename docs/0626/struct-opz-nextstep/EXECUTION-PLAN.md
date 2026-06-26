@@ -561,6 +561,211 @@ rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\
 - API type-check 通过。
 - domain 反向依赖扫描无命中。
 
+### Cycle 63 · Step N2 Eval / Bench Trend Worker IO 下沉实施
+
+#### 实施
+
+- `loops-eval` 新增 trend worker port：
+  - `LoopsEvalEvidencePort`（`collectEvalEvidence` / `collectLoopBenchInputs`）
+  - `LoopsEvalTrendStorePort`（read/append eval & bench trend history）
+  - `LoopsEvalLogSink`（可选日志 sink）
+- `LoopsEvalService` 新增 `runEvalTrendWorker` / `runLoopBenchTrendWorker`：evidence→suites→runs→baseline→append、list/cost/learnings→metrics→diff→append 全部在 domain 编排，IO 经 port。
+- `LoopsService` 收敛为 thin wrapper：`evalEvidencePort` / `evalTrendStorePort` / `evalLogSink` getter 适配自身 `collectEvalEvidence` / `buildEvalSuites` / `buildEvalRuns` / `list` / `cost` / `store.readRecentLearnings` 与 trend history 方法。
+
+#### 标注文档
+
+- Step N2 trend worker IO 进入完成：编排已下沉到 domain，facade 仅做 port 适配。
+
+#### 审查待实施项
+
+- 待继续：aggregation worker 编排下沉；evidence 收集 / DB/Redis 适配独立为 `loops-eval` adapter service；processor 解耦 facade。
+
+#### 再标注文档
+
+- Cycle 63 完成，进入 aggregation worker 下沉。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api type-check
+pnpm --filter @repo/api test -- loops.service.spec.ts -t trend --runInBand
+```
+
+结果：
+
+- API type-check 通过。
+- facade trend 测试通过（79 tests）。
+
+### Cycle 64 · Step N2 Eval Aggregation Worker IO 下沉实施
+
+#### 实施
+
+- `loops-eval` 新增 `LoopsAggregationFlatItem` / `LoopsAggregation` 类型。
+- `LoopsEvalService.runEvalAggregationWorker(input)`：suites→flat→computeAggregation→DB upsert（经 `persistAggregation` port）→Redis warm（经 `warmCache` port）→counts 返回，编排全部在 domain。
+- `LoopsService.runEvalAggregationWorker` 收敛为 thin wrapper：把 `evalAggregationDb.upsert`、`evalAggregationWorker.computeAggregation` / `setCachedAggregation` 包成 port 回调传入 domain。
+- `getEvalAggregationCacheHealth` 保持委托 `evalAggregationWorker.cacheHealth()`。
+
+#### 标注文档
+
+- Step N2 aggregation worker 编排已下沉到 domain；DB/Redis 适配仍由 facade port 提供（与 trend port 同构）。
+
+#### 审查待实施项
+
+- 待继续：evidence 收集 / DB/Redis 适配独立为 `loops-eval` adapter service；`LoopsEvalAggregationProcessor` 解耦 facade（当前仍调用 facade wrapper）；focused tests。
+
+#### 再标注文档
+
+- Cycle 64 完成，进入 focused tests。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api type-check
+pnpm --filter @repo/api test -- loops.service.spec.ts --runInBand
+```
+
+结果：
+
+- API type-check 通过。
+- facade loops.service.spec.ts 68 个测试通过。
+
+### Cycle 65 · Step N2 Eval Worker Focused Tests
+
+#### 实施
+
+- 新增 `loops-eval.service.spec.ts`（standalone unit spec）。
+- 覆盖：
+  - `runEvalTrendWorker`：有 history 计算 baseline + append；无 runs 返回 0 snapshot。
+  - `runLoopBenchTrendWorker`：有 history 写 deltas + previousMetrics；无 history 不写 deltas。
+  - `runEvalAggregationWorker`：flatten/persist/warm 计数；port 缺失时跳过持久化与缓存；持久化抛错时记 error 日志并继续。
+
+#### 标注文档
+
+- Step N2 的 trend + aggregation worker 编排已有 domain focused tests 覆盖主要成功/失败路径。
+
+#### 审查待实施项
+
+- 仍待：processor 解耦 facade；adapter service 独立化。
+
+#### 再标注文档
+
+- Cycle 65 完成，进入结构扫描。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api test -- loops-eval.service.spec.ts --runInBand
+pnpm --filter @repo/api type-check
+```
+
+结果：
+
+- `loops-eval.service.spec.ts` 7 个测试通过。
+- API type-check 通过。
+
+### Cycle 66 · Step N2 结构审查与注释校准
+
+#### 实施
+
+- 执行 domain 反向依赖扫描，无命中。
+- 确认 `loops-eval.service.ts` 仅 import `@repo/contracts` + `@nestjs/common`，不直接持有 store / db / aggregation worker。
+- 确认 BullMQ queue name（`loops-eval-aggregation` / `loops-trigger-scheduler` / `loops-remote-runner`）不变。
+- 更新 `loops-eval.module.ts` 注释，反映 trend + aggregation worker 编排已下沉、IO 经 port。
+
+#### 标注文档
+
+- 剩余结构债：evidence 收集 / DB upsert / Redis warm 仍由 facade port 适配；processor 仍调用 facade wrapper。
+
+#### 审查待实施项
+
+- 下一步：建 `loops-eval` 专属 adapter service 把 DB/Redis/evidence 适配从 facade 迁出；processor 解耦。
+
+#### 再标注文档
+
+- Cycle 66 完成，进入文档总览同步。
+
+#### 验证
+
+```bash
+rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)|require\\(['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)" apps/api/libs/domain/services
+```
+
+结果：无命中。
+
+### Cycle 67 · 文档总览同步
+
+#### 实施
+
+- 更新 `struct-opz-nextstep/README.md` Step 6 当前结论。
+- 更新 `struct-opz-nextstep/BACKLOG.md` N2 状态与当前风险提醒。
+- 更新 `struct-opz/EXECUTION.md` Step 6 总览行。
+- 更新 `struct-opz/IMPLEMENTATION-ANNOTATIONS.md` 顶部 Step 6 剩余项。
+
+#### 标注文档
+
+- 明确 Step 6 当前已完成 trend + aggregation worker 编排下沉。
+- 明确剩余：evidence 收集 / DB/Redis 适配独立化、processor 解耦。
+
+#### 审查待实施项
+
+- 下一批优先级：N6 integrations（notification sender / CI publication）、N3 issue creation port 下沉、N4 remote execution、N1 engine、N7 facade 收敛。
+
+#### 再标注文档
+
+- Cycle 67 完成，进入最终验证。
+
+#### 验证
+
+- 文档变更随 Cycle 68 最终验证收口。
+
+### Cycle 68 · 本批收敛验证与下一轮待办
+
+#### 实施
+
+- 执行 eval domain + facade focused tests。
+- 执行 API type-check。
+- 执行 domain 反向依赖扫描。
+- 汇总本批 Cycle 63-68。
+
+#### 标注文档
+
+- 本批已完成至少 5 次循环动作：
+  - Cycle 63：eval/bench trend worker IO 实施。
+  - Cycle 64：eval aggregation worker IO 实施。
+  - Cycle 65：eval worker focused tests。
+  - Cycle 66：结构审查与注释校准。
+  - Cycle 67：文档总览同步。
+  - Cycle 68：最终验证与待办标注。
+
+#### 审查待实施项
+
+- 待实施：
+  - N6：notification sender re-home / CI publication builder。
+  - N3：issue creation port 实现继续下沉到 `loops-issues` intake port。
+  - N2 收尾：evidence 收集 / DB/Redis 适配独立为 `loops-eval` adapter service；processor 解耦 facade。
+  - N4：remote shard execution pipeline 与 artifact IO port。
+  - N5：archive service re-home 评估。
+  - N1：engine 主流程。
+  - N7：facade/module 收敛。
+
+#### 再标注文档
+
+- Cycle 68 完成；本批准确标注 N2 eval worker IO 当前状态，未改变对外 API contract / controller path / BullMQ queue name。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api test -- loops-eval.service.spec.ts loops.service.spec.ts --runInBand
+pnpm --filter @repo/api type-check
+rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)|require\\(['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)" apps/api/libs/domain/services
+```
+
+结果：
+
+- eval domain + facade focused tests 通过（7 + 68）。
+- API type-check 通过。
+- domain 反向依赖扫描无命中。
+
 ## Step N0 · 文档事实源校准
 
 ### 目标

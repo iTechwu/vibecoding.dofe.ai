@@ -117,7 +117,14 @@ import { normaliseSimpleIssue } from '@repo/contracts';
 import type { AuthUserInfo } from '@app/auth/types/auth.interface';
 import { PermissionService } from '@app/auth/permission.service';
 import { LoopsFileStoreService } from '@app/services/loops-store';
-import { LoopsEvalAggregationWorkerService, LoopsEvalService } from '@app/services/loops-eval';
+import {
+  LoopsEvalAggregationWorkerService,
+  LoopsEvalService,
+  type LoopsAggregation,
+  type LoopsEvalEvidencePort,
+  type LoopsEvalTrendStorePort,
+  type LoopsEvalLogSink,
+} from '@app/services/loops-eval';
 import { LoopsCrossTenantArchiveService } from './loops-cross-tenant-archive.service';
 import { LoopsMcpClientService, LoopsMcpSecretService } from '@app/services/loops-integrations';
 import { LoopsDockerSandboxService } from '@app/services/loops-runtime';
@@ -316,6 +323,46 @@ export class LoopsService implements LoopsIssueCreationPort {
   private readonly evidence: LoopsEvidenceService;
 
   private readonly evalService: LoopsEvalService;
+
+  /**
+   * 结构优化 nextstep Step N2：eval/bench trend worker 的 evidence 组装与 store
+   * 编排已下沉到 `LoopsEvalService`。facade 在此暴露窄 port 适配器，把自身的
+   * `collectEvalEvidence` / `buildEvalSuites` / `buildEvalRuns` 与 `store` 的
+   * trend history 方法包装成 domain port，避免 domain 反向依赖 facade。
+   */
+  private get evalEvidencePort(): LoopsEvalEvidencePort {
+    return {
+      collectEvalEvidence: async () => {
+        const evidence = await this.collectEvalEvidence();
+        const suites = this.buildEvalSuites(evidence);
+        const runs = this.buildEvalRuns(evidence, suites, {}, { history: [] });
+        return { suites, runs };
+      },
+      collectLoopBenchInputs: async () => {
+        const [list, cost, recentLearnings] = await Promise.all([
+          this.list({ page: 1, limit: 200 }),
+          this.cost(),
+          this.store.readRecentLearnings(1000, { recallScope: 'cross-workspace' }),
+        ]);
+        return { list: list.list, cost, recentLearnings };
+      },
+    };
+  }
+
+  private get evalTrendStorePort(): LoopsEvalTrendStorePort {
+    return {
+      readEvalTrendHistory: () => this.store.readEvalTrendHistory(),
+      appendEvalTrendSnapshots: (snapshots) => this.store.appendEvalTrendSnapshots(snapshots),
+      readLoopBenchTrendHistory: () => this.store.readLoopBenchTrendHistory(),
+      appendLoopBenchTrendSnapshot: (snapshot) => this.store.appendLoopBenchTrendSnapshot(snapshot),
+    };
+  }
+
+  private get evalLogSink(): LoopsEvalLogSink {
+    return {
+      log: (level, message, meta) => this.log(level, message, meta),
+    };
+  }
 
   async list(query: LoopIssuesQuery): Promise<LoopListResponse> {
     return this.issues.list(query, (result) => this.withDeliveryControlsList(result));
@@ -2592,31 +2639,10 @@ export class LoopsService implements LoopsIssueCreationPort {
   }
 
   async runLoopBenchTrendWorker(): Promise<LoopBenchTrendWorkerResponse> {
-    const generatedAt = new Date().toISOString();
-    const [list, cost, recentLearnings, history] = await Promise.all([
-      this.list({ page: 1, limit: 200 }),
-      this.cost(),
-      this.store.readRecentLearnings(1000, { recallScope: 'cross-workspace' }),
-      this.store.readLoopBenchTrendHistory(),
-    ]);
-    const previous = history.at(-1);
-    const metrics = this.buildLoopBenchMetrics(list.list, { cost, recentLearnings });
-    const artifactRef = `.loops/bench-trends/${generatedAt.replace(/[:.]/g, '-')}.json`;
-    const snapshot: LoopBenchTrendSnapshot = {
-      id: `loop-bench-${Date.parse(generatedAt)}`,
-      capturedAt: generatedAt,
-      artifactRef,
-      loopCount: list.list.length,
-      metrics,
-      previousMetrics: previous?.metrics,
-      deltas: previous ? this.diffLoopBenchMetrics(metrics, previous.metrics) : undefined,
-    };
-    const nextHistory = await this.store.appendLoopBenchTrendSnapshot(snapshot);
-    return {
-      generatedAt,
-      snapshot,
-      historyCount: nextHistory.length,
-    };
+    return this.evalService.runLoopBenchTrendWorker({
+      evidencePort: this.evalEvidencePort,
+      storePort: this.evalTrendStorePort,
+    });
   }
 
   private async readLoopBenchTrendSummary(): Promise<LoopBenchTrendSummary> {
@@ -2661,23 +2687,11 @@ export class LoopsService implements LoopsIssueCreationPort {
   }
 
   async runEvalTrendWorker(): Promise<EvalTrendWorkerResponse> {
-    const generatedAt = new Date().toISOString();
-    const evidence = await this.collectEvalEvidence();
-    const suites = this.buildEvalSuites(evidence);
-    const history = await this.store.readEvalTrendHistory();
-    const runs = this.buildEvalRuns(evidence, suites, {}, { history: [] });
-    const baselines = this.evalService.buildEvalTrendBaselines({
-      runs,
-      history,
-      generatedAt,
+    return this.evalService.runEvalTrendWorker({
+      evidencePort: this.evalEvidencePort,
+      storePort: this.evalTrendStorePort,
+      logSink: this.evalLogSink,
     });
-
-    await this.store.appendEvalTrendSnapshots(baselines);
-    return {
-      generatedAt,
-      snapshotCount: baselines.length,
-      baselines,
-    };
   }
 
   async getEvalRun(id: string): Promise<EvalRun> {
@@ -2845,112 +2859,62 @@ export class LoopsService implements LoopsIssueCreationPort {
     period: string;
     generatedAt: string;
   }> {
-    const period = input?.period ?? '30d';
-    const generatedAt = new Date().toISOString();
-
-    // Collect evidence across all tenants/workspaces
-    const evidence = await this.collectEvalEvidence();
-    const suites = this.buildEvalSuites(evidence);
-
-    // Flatten suite checks into aggregatable items
-    const flat: Array<{
-      suiteId: string;
-      suiteName: string;
-      tenantId: string;
-      workspaceId: string;
-      totalChecks: number;
-      passedChecks: number;
-      failedChecks: number;
-      blockedChecks: number;
-      passRate: number;
-      averageScore: number;
-      loopCount: number;
-    }> = [];
-
-    for (const suite of suites) {
-      const tenantId = input?.tenantId ?? 'default';
-      flat.push({
-        suiteId: suite.id,
-        suiteName: suite.name,
-        tenantId,
-        workspaceId: 'default',
-        totalChecks: suite.summary.total,
-        passedChecks: suite.summary.passed,
-        failedChecks: suite.summary.attention,
-        blockedChecks: suite.summary.blocked,
-        passRate: suite.summary.passRate,
-        averageScore: suite.summary.passRate,
-        loopCount: suite.summary.total > 0 ? Math.max(1, Math.round(suite.summary.total / 3)) : 0,
-      });
-    }
-
-    // Compute aggregations
-    const aggregations = this.evalAggregationWorker
-      ? this.evalAggregationWorker.computeAggregation(flat, period)
-      : [];
-
-    // Persist to DB
-    let persisted = 0;
-    if (this.evalAggregationDb && aggregations.length > 0) {
-      try {
-        for (const agg of aggregations) {
-          await this.evalAggregationDb.upsert({
-            where: { id: agg.tenantId + '-' + agg.suiteId + '-' + period },
-            create: {
-              id: agg.tenantId + '-' + agg.suiteId + '-' + period,
-              tenantId: agg.tenantId,
-              workspaceId: agg.workspaceId,
-              suiteId: agg.suiteId,
-              blueprintId: agg.blueprintId ?? null,
-              totalChecks: agg.totalChecks,
-              passedChecks: agg.passedChecks,
-              failedChecks: agg.failedChecks,
-              blockedChecks: agg.blockedChecks,
-              passRate: agg.passRate,
-              averageScore: agg.averageScore,
-              loopCount: agg.loopCount,
-              trendDelta: agg.trendDelta ?? null,
-              period: agg.period,
-              capturedAt: new Date(agg.capturedAt),
-            },
-            update: {
-              totalChecks: agg.totalChecks,
-              passedChecks: agg.passedChecks,
-              failedChecks: agg.failedChecks,
-              blockedChecks: agg.blockedChecks,
-              passRate: agg.passRate,
-              averageScore: agg.averageScore,
-              loopCount: agg.loopCount,
-              trendDelta: agg.trendDelta ?? null,
-              capturedAt: new Date(agg.capturedAt),
-            },
-          } as Prisma.LoopEvalAggregationUpsertArgs);
-          persisted++;
-        }
-        this.log('info', `[EvalAgg] Worker persisted ${persisted} aggregations to DB`);
-      } catch (error) {
-        this.log('error', '[EvalAgg] DB persistence failed', { error });
-      }
-    }
-
-    // Warm Redis cache
-    let cachedInRedis = false;
-    if (this.evalAggregationWorker && aggregations.length > 0) {
-      for (const agg of aggregations) {
-        await this.evalAggregationWorker
-          .setCachedAggregation(agg.tenantId, agg.suiteId, period, { aggregations: [agg] })
-          .catch(() => {});
-      }
-      cachedInRedis = true;
-    }
-
-    return {
-      processed: aggregations.length,
-      persisted,
-      cachedInRedis,
-      period,
-      generatedAt,
-    };
+    return this.evalService.runEvalAggregationWorker({
+      tenantId: input?.tenantId,
+      period: input?.period,
+      evidencePort: this.evalEvidencePort,
+      computeAggregation: (flat, period) =>
+        this.evalAggregationWorker
+          ? this.evalAggregationWorker.computeAggregation(flat, period)
+          : [],
+      persistAggregation: this.evalAggregationDb
+        ? async (agg, period) => {
+            await this.evalAggregationDb!.upsert({
+              where: { id: agg.tenantId + '-' + agg.suiteId + '-' + period },
+              create: {
+                id: agg.tenantId + '-' + agg.suiteId + '-' + period,
+                tenantId: agg.tenantId,
+                workspaceId: agg.workspaceId,
+                suiteId: agg.suiteId,
+                blueprintId: agg.blueprintId ?? null,
+                totalChecks: agg.totalChecks,
+                passedChecks: agg.passedChecks,
+                failedChecks: agg.failedChecks,
+                blockedChecks: agg.blockedChecks,
+                passRate: agg.passRate,
+                averageScore: agg.averageScore,
+                loopCount: agg.loopCount,
+                trendDelta: agg.trendDelta ?? null,
+                period: agg.period,
+                capturedAt: new Date(agg.capturedAt),
+              },
+              update: {
+                totalChecks: agg.totalChecks,
+                passedChecks: agg.passedChecks,
+                failedChecks: agg.failedChecks,
+                blockedChecks: agg.blockedChecks,
+                passRate: agg.passRate,
+                averageScore: agg.averageScore,
+                loopCount: agg.loopCount,
+                trendDelta: agg.trendDelta ?? null,
+                capturedAt: new Date(agg.capturedAt),
+              },
+            } as Prisma.LoopEvalAggregationUpsertArgs);
+            return true;
+          }
+        : undefined,
+      warmCache: this.evalAggregationWorker
+        ? async (agg, period) => {
+            await this.evalAggregationWorker!.setCachedAggregation(
+              agg.tenantId,
+              agg.suiteId,
+              period,
+              { aggregations: [agg as unknown as LoopsAggregation] },
+            );
+          }
+        : undefined,
+      logSink: this.evalLogSink,
+    });
   }
 
   /**
@@ -2966,10 +2930,6 @@ export class LoopsService implements LoopsIssueCreationPort {
     }
     return { available: false, cachedKeys: 0, message: 'Eval aggregation worker not configured' };
   }
-
-  // =========================================================================
-  // Trigger Scheduler Status (R34b)
-  // =========================================================================
 
   /**
    * R37: Check Docker sandbox availability.
