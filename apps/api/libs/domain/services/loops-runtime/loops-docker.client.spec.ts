@@ -143,7 +143,7 @@ describe('LoopsDockerClient (0622 · infra-docker adapter)', () => {
       cb(new Error('unauthorized: supersecret-token is invalid'), null),
     );
     const logger = { warn: jest.fn(), debug: jest.fn(), info: jest.fn() };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     const client = new LoopsDockerClient(logger as any);
 
     const result = await client.pull('uhub.service.ucloud.cn/techwu/img:latest');
