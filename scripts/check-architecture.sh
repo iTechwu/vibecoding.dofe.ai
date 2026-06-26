@@ -182,6 +182,153 @@ else
   failures=$((failures + 1))
 fi
 
+section "OIDC RP legacy dependency boundary"
+if node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const expectedOpenidClientVersion = '6.8.4';
+const ignored = new Set(['node_modules', '.git', 'dist', '.next', 'coverage', '.turbo']);
+const failures = [];
+
+function walk(dir) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (ignored.has(entry.name)) continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      walk(full);
+      continue;
+    }
+    if (entry.name !== 'package.json') continue;
+    const json = JSON.parse(fs.readFileSync(full, 'utf8'));
+    const rel = path.relative(process.cwd(), full);
+    for (const section of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
+      for (const [name, version] of Object.entries(json[section] || {})) {
+        if (name === 'openid-client' && version !== expectedOpenidClientVersion) {
+          failures.push(
+            `${rel} ${section}.openid-client must be exact ${expectedOpenidClientVersion} while F.1 OIDC RP remains hand-rolled, found ${version}`,
+          );
+        }
+      }
+    }
+  }
+}
+
+walk(process.cwd());
+if (failures.length > 0) {
+  console.error('FAIL: openid-client must stay exact while F.1 OIDC RP parity is pending');
+  for (const failure of failures) console.error(failure);
+  process.exit(1);
+}
+
+console.log(`PASS: openid-client direct versions are exact ${expectedOpenidClientVersion}`);
+NODE
+then
+  :
+else
+  failures=$((failures + 1))
+fi
+
+section "File SDK web signal cast boundary"
+if node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const expectedFileSdkWebVersion = '0.1.12';
+const packageFile = path.join(process.cwd(), 'apps/web/package.json');
+const uploaderFile = path.join(process.cwd(), 'apps/web/lib/upload/uploader.ts');
+const failures = [];
+
+if (fs.existsSync(packageFile) && fs.existsSync(uploaderFile)) {
+  const webPackage = JSON.parse(fs.readFileSync(packageFile, 'utf8'));
+  const fileSdkWebVersion = webPackage.dependencies?.['@dofe/file-sdk-web'];
+  const content = fs.readFileSync(uploaderFile, 'utf8');
+  const hasTemporaryCast =
+    /type\s+UploadOptionsWithSignal\s*=/.test(content) &&
+    /signal:\s*AbortSignal\s*[;}]/.test(content) &&
+    /&\s*\{[^}]*signal/.test(content);
+  const hasVersionComment =
+    content.includes('@dofe/file-sdk-web@0.1.12') &&
+    content.includes('@dofe/file-sdk-web@0.1.13+');
+
+  if (fileSdkWebVersion === expectedFileSdkWebVersion) {
+    if (!hasTemporaryCast || !hasVersionComment) {
+      failures.push(
+        `apps/web/lib/upload/uploader.ts must keep the documented UploadOptionsWithSignal temporary cast while @dofe/file-sdk-web is pinned to ${expectedFileSdkWebVersion}`,
+      );
+    }
+  } else if (fileSdkWebVersion && hasTemporaryCast) {
+    failures.push(
+      `apps/web/lib/upload/uploader.ts still has UploadOptionsWithSignal after @dofe/file-sdk-web moved away from ${expectedFileSdkWebVersion}; remove the temporary cast and use SDK UploadOptions.signal`,
+    );
+  }
+}
+
+if (failures.length > 0) {
+  console.error('FAIL: file-sdk-web signal cast boundary failed');
+  for (const failure of failures) console.error(failure);
+  process.exit(1);
+}
+
+console.log('PASS: file-sdk-web signal cast boundary is consistent with pinned SDK version');
+NODE
+then
+  :
+else
+  failures=$((failures + 1))
+fi
+
+section "Controlled legacy lockfile pin boundary"
+if node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const expectedFileSdkWebVersion = '0.1.12';
+const expectedOpenidClientVersion = '6.8.4';
+const lockfile = path.join(process.cwd(), 'pnpm-lock.yaml');
+const failures = [];
+
+function readDependency(relativePath, packageName) {
+  const packageFile = path.join(process.cwd(), relativePath);
+  if (!fs.existsSync(packageFile)) return undefined;
+
+  const pkg = JSON.parse(fs.readFileSync(packageFile, 'utf8'));
+  return pkg.dependencies?.[packageName] ?? pkg.devDependencies?.[packageName];
+}
+
+if (fs.existsSync(lockfile)) {
+  const content = fs.readFileSync(lockfile, 'utf8');
+  const fileSdkWebVersion = readDependency('apps/web/package.json', '@dofe/file-sdk-web');
+  if (
+    fileSdkWebVersion === expectedFileSdkWebVersion &&
+    !content.includes(`'@dofe/file-sdk-web@${expectedFileSdkWebVersion}'`)
+  ) {
+    failures.push(
+      `pnpm-lock.yaml must keep @dofe/file-sdk-web pinned to ${expectedFileSdkWebVersion} until @dofe/file-sdk-web@0.1.13+ is published and the upload cast is removed`,
+    );
+  }
+
+  if (
+    readDependency('apps/api/package.json', 'openid-client') &&
+    !content.includes(`openid-client@${expectedOpenidClientVersion}:`)
+  ) {
+    failures.push(
+      `pnpm-lock.yaml must keep openid-client pinned to ${expectedOpenidClientVersion} while F.1 OIDC RP remains hand-rolled`,
+    );
+  }
+}
+
+if (failures.length > 0) {
+  console.error('FAIL: controlled legacy lockfile pins must stay exact');
+  for (const failure of failures) console.error(failure);
+  process.exit(1);
+}
+
+console.log('PASS: controlled legacy lockfile pins are exact');
+NODE
+then
+  :
+else
+  failures=$((failures + 1))
+fi
+
 section "DB client boundary"
 check_no_matches \
   "Service/API/domain files must not call getReadClient/getWriteClient directly" \
