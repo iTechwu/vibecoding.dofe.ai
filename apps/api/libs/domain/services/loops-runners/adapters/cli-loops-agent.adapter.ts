@@ -23,10 +23,10 @@ import type {
   LoopsTestReviewOutput,
 } from './loops-agent-adapter.interface';
 import { DeterministicLoopsAgentAdapter } from './deterministic-loops-agent.adapter';
-import { extractJson, runProcess } from './loops-process.util';
+import { extractJson, runProcess } from '@app/services/loops-runners';
 import { readLoopsRuntimeConfig } from '@app/services/loops-store';
 import { LoopsWorkspaceProfileService } from '@app/services/loops-runtime';
-import { planAgentInvocation } from '../loops-runtime-command-builder.util';
+import { planAgentInvocation } from '@app/services/loops-runners';
 
 const CodexReviewOutputSchema = z.object({
   verdict: z.enum(['PASS', 'NEEDS-WORK', 'FAIL']),

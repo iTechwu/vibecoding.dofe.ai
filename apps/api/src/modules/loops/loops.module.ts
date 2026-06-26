@@ -7,36 +7,33 @@ import { AuditLogModule } from '@app/audit-log';
 // 结构优化 Step 0：接入 loops domain 装配入口。后续子域 provider 下沉后，
 // API 层只通过此 module 消费 domain 能力（依赖方向 src -> domain -> infra）。
 import { LoopsDomainModule } from '@app/services/loops';
-import { CliLoopsAgentAdapter } from './adapters/cli-loops-agent.adapter';
-import { CliLoopsClaudeAdapter } from './adapters/cli-loops-claude.adapter';
-import { CliLoopsGitAdapter } from './adapters/cli-loops-git.adapter';
-import { DeterministicLoopsClaudeAdapter } from './adapters/deterministic-loops-claude.adapter';
-import { DeterministicLoopsAgentAdapter } from './adapters/deterministic-loops-agent.adapter';
-import { LOOPS_AGENT_ADAPTER } from './adapters/loops-agent-adapter.interface';
-import { LOOPS_CLAUDE_ADAPTER } from './adapters/loops-claude-adapter.interface';
-import { LOOPS_GIT_ADAPTER } from './adapters/loops-git-adapter.interface';
-import { LoopsPrProviderClient } from './adapters/loops-pr-provider.client';
-import { AgentRuntimeDetectionService } from './agent-runtime-detection.service';
+import {
+  CliLoopsAgentAdapter,
+  CliLoopsClaudeAdapter,
+  CliLoopsGitAdapter,
+  DeterministicLoopsAgentAdapter,
+  DeterministicLoopsClaudeAdapter,
+  LOOPS_AGENT_ADAPTER,
+  LOOPS_CLAUDE_ADAPTER,
+  LOOPS_GIT_ADAPTER,
+} from '@app/services/loops-runners';
 import { LoopsController } from './loops.controller';
-import { LoopsCapabilityRegistry } from './loops-capability-registry';
-import { LoopsRunnerService } from './loops-runner.service';
 import { LoopsService } from './loops.service';
-import { LoopsBrowserQaWorkerService } from './loops-browser-qa-worker.service';
-import { LoopsSecondOpinionWorkerService } from './loops-second-opinion-worker.service';
-import { LoopsDockerSandboxService } from './loops-docker-sandbox.service';
-import { LoopsLearningGovernanceService } from './loops-learning-governance.service';
-import { LoopsEvalAggregationWorkerService } from './loops-eval-aggregation-worker.service';
 import { LoopsEvalAggregationProcessor } from './loops-eval-aggregation.processor';
 import { LoopsRemoteRunnerProcessor } from './loops-remote-runner.processor';
 import { LoopsTriggerSchedulerProcessor } from './loops-trigger-scheduler.processor';
 import { LoopsCrossTenantArchiveService } from './loops-cross-tenant-archive.service';
-import { LoopsMcpClientService } from './loops-mcp-client.service';
-import { LoopsMcpSecretService } from './loops-mcp-secret.service';
+import { LoopsPrProviderClient } from '@app/services/loops-integrations';
+import {
+  LOOPS_ARCHIVE_COLLECTION_PORT,
+  LoopsArchiveCollectionService,
+} from '@app/services/loops-admin';
 
 @Module({
-  // HttpModule provides HttpService to LoopsPrProviderClient (and the
-  // LOOPS_GIT_ADAPTER factory) so external HTTP goes through @nestjs/axios
-  // (Rule 3) instead of global `fetch` on the production path.
+  // HttpModule is kept for API-layer adapters; integration HTTP providers now
+  // live in LoopsIntegrationsModule, which imports its own HttpModule. It also
+  // provides HttpService to LoopsPrProviderClient through the domain module so
+  // external HTTP goes through @nestjs/axios (Rule 3) instead of global `fetch`.
   // (LoopsNotificationSender now lives in LoopsStoreModule, which imports its
   // own HttpModule — Step 1c.)
   imports: [
@@ -57,31 +54,24 @@ import { LoopsMcpSecretService } from './loops-mcp-secret.service';
   controllers: [LoopsController],
   providers: [
     LoopsService,
-    LoopsCapabilityRegistry,
-    // 0622 · B2: host runtime detection (local CLI + Docker). workspace profile
-    // + Docker client 已下沉到 `LoopsRuntimeModule`（经 LoopsDomainModule re-export）。
-    AgentRuntimeDetectionService,
+    // 0622 · B2: host runtime detection / workspace profile / Docker client
+    // 已下沉到 `LoopsRuntimeModule`（经 LoopsDomainModule re-export）。
     // 结构优化 Step 1c：file-store / persistence / LOOPS_PERSISTENCE /
     // notification-sender 已下沉到 `LoopsStoreModule`（经 LoopsDomainModule re-export）。
-    LoopsRunnerService,
-    LoopsBrowserQaWorkerService,
-    LoopsSecondOpinionWorkerService,
-    LoopsDockerSandboxService,
-    LoopsLearningGovernanceService,
-    LoopsEvalAggregationWorkerService,
     LoopsEvalAggregationProcessor,
     LoopsRemoteRunnerProcessor,
     LoopsTriggerSchedulerProcessor,
+    {
+      provide: LOOPS_ARCHIVE_COLLECTION_PORT,
+      useExisting: LoopsArchiveCollectionService,
+    },
     LoopsCrossTenantArchiveService,
-    LoopsMcpClientService,
-    LoopsMcpSecretService,
     // 结构优化 Step 1b：工作锁 service + LOOPS_LOCK_BACKEND backend 绑定已下沉到
     // `LoopsLocksModule`（经 `LoopsDomainModule` re-export 注入）。
     DeterministicLoopsAgentAdapter,
     DeterministicLoopsClaudeAdapter,
     CliLoopsAgentAdapter,
     CliLoopsClaudeAdapter,
-    LoopsPrProviderClient,
     {
       provide: LOOPS_AGENT_ADAPTER,
       useExisting:

@@ -5,8 +5,8 @@ import type {
   LoopsConvergencePrInput,
   LoopsGitAdapter,
 } from './loops-git-adapter.interface';
-import { LoopsPrProviderClient } from './loops-pr-provider.client';
-import { runProcess } from './loops-process.util';
+import { LoopsPrProviderClient } from '@app/services/loops-integrations';
+import { runProcess } from '@app/services/loops-runners';
 import { resolveAllowedTargetRepo } from '@app/services/loops-store';
 
 export type LoopsGitAdapterOptions = {

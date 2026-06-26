@@ -64,9 +64,17 @@ export interface LoopsAgentAdapter {
   /** 07 §2.2 ② decompose：拆解为自包含 Shard + 初始标注。 */
   decompose(issue: LoopIssue, spec: LoopSpec): Promise<LoopsDecomposition>;
   /** 07 §2.2 ③ designTests：生成 / 维护 Test Matrix。 */
-  designTests(issue: LoopIssue, spec: LoopSpec, shards: LoopShard[], createdAt: string): Promise<LoopTestMatrix>;
+  designTests(
+    issue: LoopIssue,
+    spec: LoopSpec,
+    shards: LoopShard[],
+    createdAt: string,
+  ): Promise<LoopTestMatrix>;
   /** 07 §2.2 ④ reviewTests：基于测试证据判定测试状态。 */
-  reviewTests(input: { matrix?: LoopTestMatrix; testRecord?: LoopTestRecord }): Promise<LoopsTestReviewOutput>;
+  reviewTests(input: {
+    matrix?: LoopTestMatrix;
+    testRecord?: LoopTestRecord;
+  }): Promise<LoopsTestReviewOutput>;
   /** 07 §2.2 ⑤ review：单 Shard 实现审查。 */
   review(input: LoopsReviewInput): Promise<LoopsReviewOutput>;
   /** 07 §2.2 ⑥ reviewGlobal：跨 Shard 整体复查。 */

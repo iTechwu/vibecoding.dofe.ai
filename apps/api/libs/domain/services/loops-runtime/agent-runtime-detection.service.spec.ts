@@ -2,9 +2,9 @@ import type { LoopWorkspaceProfile } from '@repo/contracts';
 import { AgentRuntimeDetectionService } from './agent-runtime-detection.service';
 import type { LoopsDockerClient } from '@app/services/loops-runtime';
 
-jest.mock('./adapters/loops-process.util');
+jest.mock('@app/services/loops-runners');
 
-const { runProcess } = require('./adapters/loops-process.util') as {
+const { runProcess } = require('@app/services/loops-runners') as {
   runProcess: jest.Mock;
 };
 

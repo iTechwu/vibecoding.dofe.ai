@@ -3,7 +3,7 @@ import { Inject } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
-import { LoopsEvalAggregationWorkerService } from './loops-eval-aggregation-worker.service';
+import { LoopsEvalAggregationWorkerService } from '@app/services/loops-eval';
 import { LoopsService } from './loops.service';
 
 /**

@@ -8,16 +8,16 @@ import type {
   LoopSecondOpinion,
   LoopSecondOpinionReviewer,
 } from '@repo/contracts';
-import { extractJson, runProcess } from './adapters/loops-process.util';
+import { extractJson, runProcess } from '@app/services/loops-runners';
 import { resolveAllowedTargetRepo } from '@app/services/loops-store';
 import { readLoopsRuntimeConfig } from '@app/services/loops-store';
 import { LoopsWorkspaceProfileService } from '@app/services/loops-runtime';
-import { planAgentInvocation } from './loops-runtime-command-builder.util';
+import { planAgentInvocation } from '@app/services/loops-runners';
 import {
   buildPrimarySecondOpinionFindings,
   buildSecondarySecondOpinionFindings,
   compareSecondOpinionFindings,
-} from './loops-second-opinion-comparison.util';
+} from '@app/services/loops-quality';
 
 const SecondOpinionCliOutputSchema = z.object({
   status: z.enum(['passed', 'needs_changes']).default('passed'),

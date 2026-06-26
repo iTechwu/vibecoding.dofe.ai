@@ -113,10 +113,9 @@ export class LoopsMcpClientService {
     });
 
     const result = await this.withProcessTimeout(child, timeoutMs, async (send, receive) => {
-      let reqId = 0;
-      // 1. initialize
+      // 1. initialize (JSON-RPC ids must be unique within a stdio session)
       const initResp = await this.sendRequest(
-        ++reqId,
+        1,
         send,
         receive,
         'initialize',
@@ -143,7 +142,7 @@ export class LoopsMcpClientService {
       send(this.buildNotification('notifications/initialized', {}));
 
       // 3. tools/list
-      const toolsResp = await this.sendRequest(++reqId, send, receive, 'tools/list', {}, timeoutMs);
+      const toolsResp = await this.sendRequest(2, send, receive, 'tools/list', {}, timeoutMs);
       const tools = (toolsResp.result as { tools?: McpTool[] })?.tools ?? [];
 
       return { serverInfo, protocolVersion, capabilities, tools };
@@ -166,10 +165,9 @@ export class LoopsMcpClientService {
     });
 
     const result = await this.withProcessTimeout(child, timeoutMs, async (send, receive) => {
-      let reqId = 0;
-      // Initialize first
+      // Initialize first (JSON-RPC ids must be unique within a stdio session)
       await this.sendRequest(
-        ++reqId,
+        1,
         send,
         receive,
         'initialize',
@@ -184,7 +182,7 @@ export class LoopsMcpClientService {
 
       // Call the tool
       const callResp = await this.sendRequest(
-        ++reqId,
+        2,
         send,
         receive,
         'tools/call',

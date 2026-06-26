@@ -28,15 +28,14 @@ import { PrismaClient } from '@prisma/client';
 import type { PrismaService } from '@dofe/infra-prisma';
 import type { LoopConvergencePr, LoopTestRecord } from '@repo/contracts';
 import { LoopsDbService } from '@app/db';
-import { DeterministicLoopsAgentAdapter } from './adapters/deterministic-loops-agent.adapter';
-import { DeterministicLoopsClaudeAdapter } from './adapters/deterministic-loops-claude.adapter';
-import type {
-  LoopsCommitShardResult,
-  LoopsGitAdapter,
-} from './adapters/loops-git-adapter.interface';
+import {
+  DeterministicLoopsAgentAdapter,
+  DeterministicLoopsClaudeAdapter,
+} from '@app/services/loops-runners';
+import type { LoopsCommitShardResult, LoopsGitAdapter } from '@app/services/loops-runners';
 import { LoopsFileStoreService } from '@app/services/loops-store';
 import { LoopsPersistenceService } from '@app/services/loops-store';
-import { LoopsRunnerService } from './loops-runner.service';
+import { LoopsRunnerService } from '@app/services/loops-runners';
 import { LoopsService } from './loops.service';
 import { LoopsWorkLockService } from '@app/services/loops-locks';
 

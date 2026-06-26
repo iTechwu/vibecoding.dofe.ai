@@ -1,17 +1,12 @@
-import { Inject, Injectable, Optional, forwardRef } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
 import { createHash, randomUUID } from 'crypto';
 import { LoopsFileStoreService } from '@app/services/loops-store';
-// NOTE: type-only import on purpose. `LoopsService` <-> `LoopsCrossTenantArchiveService`
-// is a same-package circular dependency. A value import here makes SWC emit a runtime
-// reference to `LoopsService` in this class' `design:paramtypes` decorator metadata,
-// which webpack turns into a live-binding getter read. When `loops.service.ts` loads
-// first and eagerly requires this module, that getter fires before the `LoopsService`
-// class is initialized -> `ReferenceError: Cannot access 'LoopsService' before
-// initialization` (dist/main.js bootstrap crash). Type-only import erases that metadata
-// read; the DI token is supplied lazily via `forwardRef` + `require` below.
-import type { LoopsService } from './loops.service';
+import {
+  LOOPS_ARCHIVE_COLLECTION_PORT,
+  type LoopsArchiveCollectionPort,
+} from '@app/services/loops-admin';
 
 // ---------------------------------------------------------------------------
 // Minimal interface for file storage operations needed by the archive service.
@@ -54,12 +49,8 @@ export class LoopsCrossTenantArchiveService {
   constructor(
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
     private readonly store: LoopsFileStoreService,
-    // Circular DI (LoopsService <-> this service): `forwardRef` resolves the cycle at
-    // NestJS instantiation time. The lazy `require` keeps the class reference out of
-    // module-eval-time metadata (see the import note above) so it can't trigger the
-    // webpack TDZ; it is only dereferenced when NestJS resolves the dependency.
-    @Inject(forwardRef(() => require('./loops.service').LoopsService))
-    private readonly loopsService: LoopsService,
+    @Inject(LOOPS_ARCHIVE_COLLECTION_PORT)
+    private readonly collectionPort: LoopsArchiveCollectionPort,
     @Optional() @Inject(ARCHIVE_FILE_STORAGE) private readonly fileStorage?: ArchiveFileStorage,
   ) {}
 
@@ -206,13 +197,13 @@ export class LoopsCrossTenantArchiveService {
     const artifacts: Array<{ path: string; sizeBytes: number; sha256: string }> = [];
 
     try {
-      const list = await this.loopsService.list({ limit: 500, page: 1 });
+      const list = await this.collectionPort.list({ limit: 500, page: 1 });
       const includeClosed = options?.includeClosed ?? false;
 
       for (const item of list.list) {
         if (!includeClosed && item.issue.status === 'CLOSED') continue;
         try {
-          const detail = await this.loopsService.getIssue(item.issue.id);
+          const detail = await this.collectionPort.getIssue(item.issue.id);
           const detailJson = JSON.stringify({
             issue: detail.issue,
             state: detail.state,
@@ -232,7 +223,7 @@ export class LoopsCrossTenantArchiveService {
       }
 
       // Eval aggregation
-      const evalAgg = await this.loopsService.getCrossTenantEvalAggregation({
+      const evalAgg = await this.collectionPort.getCrossTenantEvalAggregation({
         tenantId,
         period: 'all',
         limit: 100,

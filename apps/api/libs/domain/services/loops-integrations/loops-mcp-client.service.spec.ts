@@ -341,7 +341,9 @@ describe('LoopsMcpClientService', () => {
               try {
                 const r = JSON.parse(data.split('\n')[0]);
                 if (typeof r.id === 'number') ids1.push(r.id);
-              } catch {}
+              } catch {
+                // ignore non-JSON lines
+              }
               return true;
             }),
             end: jest.fn(),
@@ -397,7 +399,9 @@ describe('LoopsMcpClientService', () => {
               try {
                 const r = JSON.parse(data.split('\n')[0]);
                 if (typeof r.id === 'number') ids2.push(r.id);
-              } catch {}
+              } catch {
+                // ignore non-JSON lines
+              }
               return true;
             }),
             end: jest.fn(),

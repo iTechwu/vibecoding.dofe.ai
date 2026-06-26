@@ -9,7 +9,7 @@ import type {
 } from '@repo/contracts';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
-import { runProcess } from './adapters/loops-process.util';
+import { runProcess } from '@app/services/loops-runners';
 import { LOOPS_RUNTIME_LOCAL_COMMAND } from '@app/services/loops-runtime';
 import { LoopsDockerClient } from '@app/services/loops-runtime';
 

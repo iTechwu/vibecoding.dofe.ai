@@ -4,8 +4,11 @@ import type { AuthUserInfo } from '@app/auth/types/auth.interface';
 import type {
   CreateLoopIssueRequest,
   CreateLoopIssueSimpleRequest,
+  LoopDetail,
   LoopIntake,
   LoopIssue,
+  LoopIssuesQuery,
+  LoopListResponse,
   LoopRuleSnapshot,
   LoopStateItem,
   LoopSubmitter,
@@ -164,6 +167,54 @@ export class LoopsIssuesService {
         agentReadable: agentReadableRules.length > 0,
         evidence,
       },
+    };
+  }
+
+  /**
+   * Read a loop issue detail through the source of truth and apply the caller's
+   * detail enricher. The API facade owns HTTP exception mapping/logging; this
+   * service keeps the domain read pipeline free of controller concerns.
+   */
+  async getIssue<TDetail extends LoopDetail>(
+    issueId: string,
+    enrichDetail: (detail: TDetail) => TDetail,
+  ): Promise<TDetail> {
+    const detail = this.persistence
+      ? await this.persistence.readDetail(issueId)
+      : await this.store.readDetail(issueId);
+    return enrichDetail(detail as TDetail);
+  }
+
+  async list(
+    query: LoopIssuesQuery,
+    enrichList: (result: LoopListResponse) => Promise<LoopListResponse>,
+  ): Promise<LoopListResponse> {
+    const result = await (this.persistence?.list(query) ?? this.listFromFile(query));
+    return enrichList(result);
+  }
+
+  private async listFromFile(query: LoopIssuesQuery): Promise<LoopListResponse> {
+    const fallback = await this.store.list();
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const items = fallback.issues
+      .map((issue) => ({
+        issue,
+        state: fallback.loops.find((state) => state.issueId === issue.id),
+      }))
+      .filter(
+        (item) =>
+          (!query.status || item.issue.status === query.status) &&
+          (!query.phase || item.state?.phase === query.phase) &&
+          (!query.priority || item.issue.priority === query.priority) &&
+          (!query.targetRepo || item.issue.targetRepo === query.targetRepo),
+      );
+    const start = (page - 1) * limit;
+    return {
+      list: items.slice(start, start + limit),
+      total: items.length,
+      page,
+      limit,
     };
   }
 }

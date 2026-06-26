@@ -5,6 +5,13 @@ import { LoopsIssuesModule } from '../loops-issues';
 import { LoopsEngineModule } from '../loops-engine';
 import { LoopsRuntimeModule } from '../loops-runtime';
 import { LoopsEvidenceModule } from '../loops-evidence';
+import { LoopsQualityModule } from '../loops-quality/loops-quality.module';
+import { LoopsRunnersModule } from '../loops-runners/loops-runners.module';
+import { LoopsIntegrationsModule } from '../loops-integrations/loops-integrations.module';
+import { LoopsEvalModule } from '../loops-eval/loops-eval.module';
+import { LoopsAdminModule } from '../loops-admin/loops-admin.module';
+import { LoopsTriggersModule } from '../loops-triggers/loops-triggers.module';
+import { LoopsRemoteRunnersModule } from '../loops-remote-runners/loops-remote-runners.module';
 
 /**
  * Loops domain aggregation module.
@@ -25,6 +32,13 @@ import { LoopsEvidenceModule } from '../loops-evidence';
  * Step 3：接入 `LoopsEngineModule`（loop 状态机纯推导原语）。
  * Step 4：接入 `LoopsRuntimeModule`（docker client + workspace profile + runtime 常量）。
  * Step 5：接入 `LoopsEvidenceModule`（交付证据 / delivery 派生原语）。
+ * Step 5a：接入 `LoopsQualityModule`（browser QA / learning / visual regression 原语）。
+ * Step 4a：接入 `LoopsRunnersModule`（process runner + runtime command planner 纯原语）。
+ * Step 7a：接入 `LoopsIntegrationsModule`（PR provider / MCP client / MCP secret）。
+ * Step 6a：接入 `LoopsEvalModule`（Eval aggregation worker）。
+ * Step 9a：接入 `LoopsAdminModule`（capability registry）。
+ * Step 8a：接入 `LoopsTriggersModule`（schedule trigger CRUD）。
+ * Step 8b：接入 `LoopsRemoteRunnersModule`（remote runner pool primitives）。
  */
 @Module({
   imports: [
@@ -34,6 +48,13 @@ import { LoopsEvidenceModule } from '../loops-evidence';
     LoopsEngineModule,
     LoopsRuntimeModule,
     LoopsEvidenceModule,
+    LoopsQualityModule,
+    LoopsRunnersModule,
+    LoopsIntegrationsModule,
+    LoopsEvalModule,
+    LoopsAdminModule,
+    LoopsTriggersModule,
+    LoopsRemoteRunnersModule,
   ],
   exports: [
     LoopsStoreModule,
@@ -42,6 +63,13 @@ import { LoopsEvidenceModule } from '../loops-evidence';
     LoopsEngineModule,
     LoopsRuntimeModule,
     LoopsEvidenceModule,
+    LoopsQualityModule,
+    LoopsRunnersModule,
+    LoopsIntegrationsModule,
+    LoopsEvalModule,
+    LoopsAdminModule,
+    LoopsTriggersModule,
+    LoopsRemoteRunnersModule,
   ],
 })
 export class LoopsDomainModule {}

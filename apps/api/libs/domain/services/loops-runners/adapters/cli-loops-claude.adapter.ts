@@ -5,11 +5,11 @@ import type { Logger } from 'winston';
 import { z } from 'zod';
 import type { LoopsClaudeAdapter, LoopsClaudeRunInput } from './loops-claude-adapter.interface';
 import { DeterministicLoopsClaudeAdapter } from './deterministic-loops-claude.adapter';
-import { extractJson, runProcess } from './loops-process.util';
+import { extractJson, runProcess } from '@app/services/loops-runners';
 import { resolveAllowedTargetRepo } from '@app/services/loops-store';
 import { readLoopsRuntimeConfig } from '@app/services/loops-store';
 import { LoopsWorkspaceProfileService } from '@app/services/loops-runtime';
-import { planAgentInvocation } from '../loops-runtime-command-builder.util';
+import { planAgentInvocation } from '@app/services/loops-runners';
 
 const ClaudeCliResultSchema = z.object({
   summary: z.string().trim().min(1).optional(),

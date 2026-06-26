@@ -445,11 +445,9 @@ describe('R34a · Remote Runner CLI End-to-End', () => {
 
       const { LoopsService } = await import('./loops.service');
       const { LoopsFileStoreService } = await import('@app/services/loops-store');
-      const { LoopsRunnerService } = await import('./loops-runner.service');
-      const { DeterministicLoopsAgentAdapter } =
-        await import('./adapters/deterministic-loops-agent.adapter');
-      const { DeterministicLoopsClaudeAdapter } =
-        await import('./adapters/deterministic-loops-claude.adapter');
+      const { LoopsRunnerService } = await import('@app/services/loops-runners');
+      const { DeterministicLoopsAgentAdapter, DeterministicLoopsClaudeAdapter } =
+        await import('@app/services/loops-runners');
 
       const { LoopsWorkLockService } = await import('@app/services/loops-locks');
       const store = new LoopsFileStoreService();

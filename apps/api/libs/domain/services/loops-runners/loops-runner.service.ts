@@ -14,7 +14,7 @@ import { readLoopsRuntimeConfig } from '@app/services/loops-store';
 import {
   LoopsDockerSandboxService,
   type DockerSandboxRunOptions,
-} from './loops-docker-sandbox.service';
+} from '@app/services/loops-runtime';
 
 const execFileAsync = promisify(execFile);
 const OUTPUT_LIMIT = 12000;

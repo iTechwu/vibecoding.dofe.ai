@@ -19,22 +19,21 @@ import { createHmac } from 'crypto';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { LoopConvergencePr, LoopRuntimeDetection, LoopTestRecord } from '@repo/contracts';
-import { DeterministicLoopsAgentAdapter } from './adapters/deterministic-loops-agent.adapter';
-import { DeterministicLoopsClaudeAdapter } from './adapters/deterministic-loops-claude.adapter';
-import type {
-  LoopsCommitShardResult,
-  LoopsGitAdapter,
-} from './adapters/loops-git-adapter.interface';
-import { AgentRuntimeDetectionService } from './agent-runtime-detection.service';
-import { LoopsBrowserQaWorkerService } from './loops-browser-qa-worker.service';
+import {
+  DeterministicLoopsAgentAdapter,
+  DeterministicLoopsClaudeAdapter,
+} from '@app/services/loops-runners';
+import type { LoopsCommitShardResult, LoopsGitAdapter } from '@app/services/loops-runners';
+import { AgentRuntimeDetectionService } from '@app/services/loops-runtime';
+import { LoopsBrowserQaWorkerService } from '@app/services/loops-quality';
 import { LoopsFileStoreService } from '@app/services/loops-store';
 import type { LoopsPersistenceService } from '@app/services/loops-store';
-import { LoopsRunnerService } from './loops-runner.service';
-import { LoopsSecondOpinionWorkerService } from './loops-second-opinion-worker.service';
+import { LoopsRunnerService } from '@app/services/loops-runners';
+import { LoopsSecondOpinionWorkerService } from '@app/services/loops-quality';
 import { LoopsService } from './loops.service';
 import { LoopsWorkLockService } from '@app/services/loops-locks';
 import { LoopsWorkspaceProfileService } from '@app/services/loops-runtime';
-import type { LoopsPrProviderClient } from './adapters/loops-pr-provider.client';
+import type { LoopsPrProviderClient } from '@app/services/loops-integrations';
 
 function makePassTestRecord(issueId: string, shardId: string, round: number): LoopTestRecord {
   return {
@@ -2673,11 +2672,9 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
       },
     };
     expect(() =>
-      (runtimeService as unknown as { enforceReleaseGate: Function }).enforceReleaseGate(
-        partial,
-        partialReleaseGate,
-        partial.secondOpinion,
-      ),
+      (
+        runtimeService as unknown as { enforceReleaseGate: (...args: unknown[]) => unknown }
+      ).enforceReleaseGate(partial, partialReleaseGate, partial.secondOpinion),
     ).toThrow('Second opinion has 1 unresolved conflict(s)');
 
     const resolved = await runtimeService.resolveSecondOpinion(created.issue.id, {
@@ -2693,11 +2690,9 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
       ]),
     );
     expect(() =>
-      (runtimeService as unknown as { enforceReleaseGate: Function }).enforceReleaseGate(
-        resolved,
-        partialReleaseGate,
-        resolved.secondOpinion,
-      ),
+      (
+        runtimeService as unknown as { enforceReleaseGate: (...args: unknown[]) => unknown }
+      ).enforceReleaseGate(resolved, partialReleaseGate, resolved.secondOpinion),
     ).not.toThrow();
   });
 

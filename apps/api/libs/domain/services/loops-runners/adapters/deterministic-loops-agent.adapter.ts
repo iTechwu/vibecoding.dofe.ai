@@ -277,7 +277,7 @@ export class DeterministicLoopsAgentAdapter implements LoopsAgentAdapter {
         },
         filesHint: [
           'packages/contracts/src/schemas/loops.schema.ts',
-          'apps/api/src/modules/loops/*',
+          'loops API/domain service modules',
           'apps/web/app/loops/*',
         ],
       },
@@ -303,10 +303,7 @@ export class DeterministicLoopsAgentAdapter implements LoopsAgentAdapter {
           ],
           e2e: ['审核台通过后 Loop 进度页展示 shard 列表（manual/deferred）'],
         },
-        filesHint: [
-          'apps/api/src/modules/loops/loops.service.ts',
-          'apps/web/app/loops/[issueId]/page.tsx',
-        ],
+        filesHint: ['loops engine/service layer', 'apps/web/app/loops/[issueId]/page.tsx'],
       },
     ];
   }

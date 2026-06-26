@@ -40,13 +40,11 @@ import type {
   LoopTriggerReplayRequest,
   LoopTriggerDeadLetter,
   LoopTriggerDeadLetterListResponse,
-  LoopTool,
   LoopToolListResponse,
   RegisterToolRequest,
   UpdateToolRequest,
   ToolHealthCheckResponse,
   ToolTestResponse,
-  LoopBlueprint,
   LoopBlueprintListResponse,
   CreateBlueprintRequest,
   UpdateBlueprintRequest,
@@ -123,31 +121,28 @@ import { normaliseSimpleIssue } from '@repo/contracts';
 import type { AuthUserInfo } from '@app/auth/types/auth.interface';
 import { PermissionService } from '@app/auth/permission.service';
 import { LoopsFileStoreService } from '@app/services/loops-store';
-import { LoopsEvalAggregationWorkerService } from './loops-eval-aggregation-worker.service';
+import { LoopsEvalAggregationWorkerService, LoopsEvalService } from '@app/services/loops-eval';
 import { LoopsCrossTenantArchiveService } from './loops-cross-tenant-archive.service';
-import { LoopsMcpClientService } from './loops-mcp-client.service';
-import { LoopsMcpSecretService } from './loops-mcp-secret.service';
-import { LoopsDockerSandboxService } from './loops-docker-sandbox.service';
+import { LoopsMcpClientService, LoopsMcpSecretService } from '@app/services/loops-integrations';
+import { LoopsDockerSandboxService } from '@app/services/loops-runtime';
 import type { Prisma, LoopEvalAggregation } from '@prisma/client';
 import { LoopEvalAggregationService } from '@app/db/loop-eval-aggregation';
-import { LoopsCapabilityRegistry } from './loops-capability-registry';
-import { AgentRuntimeDetectionService } from './agent-runtime-detection.service';
-import { LoopsWorkspaceProfileService } from '@app/services/loops-runtime';
-import { LoopsRunnerService } from './loops-runner.service';
+import { LoopsAdminService, LoopsCapabilityRegistry } from '@app/services/loops-admin';
+import { LoopsTriggersService } from '@app/services/loops-triggers';
+import { LoopsRemoteRunnersService } from '@app/services/loops-remote-runners';
 import {
-  LOOPS_AGENT_ADAPTER,
-  type LoopsAgentAdapter,
-} from './adapters/loops-agent-adapter.interface';
-import {
-  LOOPS_CLAUDE_ADAPTER,
-  type LoopsClaudeAdapter,
-} from './adapters/loops-claude-adapter.interface';
+  AgentRuntimeDetectionService,
+  LoopsWorkspaceProfileService,
+} from '@app/services/loops-runtime';
+import { LoopsRunnerService } from '@app/services/loops-runners';
+import { LOOPS_AGENT_ADAPTER, type LoopsAgentAdapter } from '@app/services/loops-runners';
+import { LOOPS_CLAUDE_ADAPTER, type LoopsClaudeAdapter } from '@app/services/loops-runners';
 import {
   LOOPS_GIT_ADAPTER,
   type LoopsCommitShardResult,
   type LoopsGitAdapter,
-} from './adapters/loops-git-adapter.interface';
-import { LoopsPrProviderClient } from './adapters/loops-pr-provider.client';
+} from '@app/services/loops-runners';
+import { LoopsPrProviderClient } from '@app/services/loops-integrations';
 import type { LoopsPersistenceService } from '@app/services/loops-store';
 import { LOOPS_PERSISTENCE } from '@app/services/loops-store';
 import { LoopsIssuesService } from '@app/services/loops-issues';
@@ -155,12 +150,10 @@ import { LoopsEngineService } from '@app/services/loops-engine';
 import { LoopsEvidenceService } from '@app/services/loops-evidence';
 import { readLoopsRuntimeConfig } from '@app/services/loops-store';
 import { LoopsWorkLockService } from '@app/services/loops-locks';
-import { LoopsBrowserQaWorkerService } from './loops-browser-qa-worker.service';
-import { LoopsSecondOpinionWorkerService } from './loops-second-opinion-worker.service';
 import {
-  buildPrimarySecondOpinionFindings,
-  compareSecondOpinionFindings,
-} from './loops-second-opinion-comparison.util';
+  LoopsBrowserQaWorkerService,
+  LoopsSecondOpinionWorkerService,
+} from '@app/services/loops-quality';
 import { enrichLoopLearning } from '@app/services/loops-store';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
@@ -285,6 +278,18 @@ export class LoopsService {
     // R38: MCP secret management
     @Optional()
     private readonly mcpSecret?: LoopsMcpSecretService,
+    // Step 8: schedule trigger CRUD/cron primitives live in domain. Fire still
+    // stays here because it coordinates issue creation through the facade.
+    @Optional()
+    private readonly triggersService: LoopsTriggersService = new LoopsTriggersService(store),
+    @Optional()
+    private readonly remoteRunnersService: LoopsRemoteRunnersService = new LoopsRemoteRunnersService(
+      store,
+    ),
+    // Step 9：tool registry / delivery blueprint 控制面已下沉到 domain admin service。
+    // facade 保留 public API 和日志兼容。
+    @Optional()
+    private readonly adminService: LoopsAdminService = new LoopsAdminService(store),
     // 结构优化 Step 2：issue intake 原语下沉到 `LoopsIssuesService`。@Optional 让
     // standalone 构造（spec/e2e 用 `new LoopsService(...)`）不传时也能自构造（store +
     // persistence 已在前序参数注入），Nest graph 内则由 LoopsIssuesModule 提供。
@@ -298,11 +303,14 @@ export class LoopsService {
     //（纯函数，自构造零成本）。Nest graph 内由 LoopsEvidenceModule 提供。
     @Optional()
     evidence?: LoopsEvidenceService,
+    @Optional()
+    evalService?: LoopsEvalService,
   ) {
     this.issues =
       issues ?? new LoopsIssuesService(this.store, this.persistence, this.workspaceProfile);
     this.engine = engine ?? new LoopsEngineService();
     this.evidence = evidence ?? new LoopsEvidenceService();
+    this.evalService = evalService ?? new LoopsEvalService();
   }
 
   private readonly issues: LoopsIssuesService;
@@ -311,39 +319,17 @@ export class LoopsService {
 
   private readonly evidence: LoopsEvidenceService;
 
-  async list(query: LoopIssuesQuery): Promise<LoopListResponse> {
-    const result = await (this.persistence?.list(query) ?? this.listFromFile(query));
-    return this.withDeliveryControlsList(result);
-  }
+  private readonly evalService: LoopsEvalService;
 
-  private async listFromFile(query: LoopIssuesQuery): Promise<LoopListResponse> {
-    const fallback = await this.store.list();
-    const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
-    const items = fallback.issues
-      .map((issue) => ({
-        issue,
-        state: fallback.loops.find((state) => state.issueId === issue.id),
-      }))
-      .filter(
-        (item) =>
-          (!query.status || item.issue.status === query.status) &&
-          (!query.phase || item.state?.phase === query.phase) &&
-          (!query.priority || item.issue.priority === query.priority) &&
-          (!query.targetRepo || item.issue.targetRepo === query.targetRepo),
-      );
-    const start = (page - 1) * limit;
-    return {
-      list: items.slice(start, start + limit),
-      total: items.length,
-      page,
-      limit,
-    };
+  async list(query: LoopIssuesQuery): Promise<LoopListResponse> {
+    return this.issues.list(query, (result) => this.withDeliveryControlsList(result));
   }
 
   async getIssue(issueId: string) {
     try {
-      return this.withRequirementsCoverage(await this.readDetail(issueId));
+      return this.issues.getIssue(issueId, (detail: LoopIssueDetail) =>
+        this.withRequirementsCoverage(detail),
+      );
     } catch (error) {
       // Surface the original failure (corrupted workspace vs. genuinely
       // missing issue are otherwise indistinguishable) before normalising to
@@ -363,6 +349,13 @@ export class LoopsService {
     meta?: Record<string, unknown>,
   ): void {
     this.logger?.[level](message, meta);
+  }
+
+  private adminLogSink() {
+    return {
+      log: (level: 'info' | 'warn' | 'error', message: string, meta?: Record<string, unknown>) =>
+        this.log(level, message, meta),
+    };
   }
 
   async createIssue(input: CreateLoopIssueRequest, authUser?: AuthUserInfo) {
@@ -1789,16 +1782,7 @@ export class LoopsService {
   async listRemoteRunners(
     query: { limit?: number; page?: number } = {},
   ): Promise<LoopRemoteRunnerListResponse> {
-    const list = this.buildRemoteRunnerItems();
-    const limit = query.limit ?? 20;
-    const page = query.page ?? 1;
-    const start = (page - 1) * limit;
-    return {
-      list: list.slice(start, start + limit),
-      total: list.length,
-      page,
-      limit,
-    };
+    return this.remoteRunnersService.listRemoteRunners(query);
   }
 
   async acquireRemoteRunnerLease(
@@ -1807,22 +1791,7 @@ export class LoopsService {
     permissionContext?: LoopAssetPermissionContext,
   ): Promise<LoopRemoteRunnerLease> {
     await this.assertOptionalAssetPermission(permissionContext, 'remote-runner', 'admin');
-    const runner = this.getRemoteRunnerItem(id);
-    const leasedAt = new Date();
-    const expiresAt = new Date(leasedAt.getTime() + runner.leaseTtlSec * 1000);
-    return {
-      id: `lease-${id}-${randomUUID()}`,
-      runnerId: id,
-      issueId: request.issueId,
-      shardId: request.shardId,
-      runtimeBackend: request.runtimeBackend,
-      status: 'leased',
-      leasedAt: leasedAt.toISOString(),
-      expiresAt: expiresAt.toISOString(),
-      artifactRoot: `${runner.artifactRoot}/leases`,
-      message:
-        'Control-plane lease acquired; execution still runs through Codex CLI / Claude Code CLI adapters.',
-    };
+    return this.remoteRunnersService.acquireRemoteRunnerLease(id, request);
   }
 
   async releaseRemoteRunnerLease(
@@ -1831,18 +1800,7 @@ export class LoopsService {
     permissionContext?: LoopAssetPermissionContext,
   ): Promise<LoopRemoteRunnerLease> {
     await this.assertOptionalAssetPermission(permissionContext, 'remote-runner', 'admin');
-    const runner = this.getRemoteRunnerItem(id);
-    const releasedAt = new Date();
-    return {
-      id: request.leaseId,
-      runnerId: id,
-      runtimeBackend: 'codex-cli',
-      status: 'released',
-      leasedAt: releasedAt.toISOString(),
-      expiresAt: releasedAt.toISOString(),
-      artifactRoot: `${runner.artifactRoot}/leases`,
-      message: request.reason ?? 'Control-plane lease released.',
-    };
+    return this.remoteRunnersService.releaseRemoteRunnerLease(id, request);
   }
 
   async runRemoteRunnerJob(
@@ -1851,31 +1809,7 @@ export class LoopsService {
     permissionContext?: LoopAssetPermissionContext,
   ): Promise<LoopRemoteRunnerJob> {
     await this.assertOptionalAssetPermission(permissionContext, 'remote-runner', 'admin');
-    const runner = this.getRemoteRunnerItem(id);
-    const queuedAt = new Date();
-    const startedAt = new Date(queuedAt.getTime() + 1);
-    const finishedAt = new Date(startedAt.getTime() + 1);
-    const jobId = `rr-job-${id}-${randomUUID()}`;
-    const job: LoopRemoteRunnerJob = {
-      id: jobId,
-      runnerId: id,
-      leaseId: request.leaseId,
-      issueId: request.issueId,
-      shardId: request.shardId,
-      runtimeBackend: request.runtimeBackend,
-      workerKind: request.workerKind,
-      status: 'succeeded',
-      queuedAt: queuedAt.toISOString(),
-      startedAt: startedAt.toISOString(),
-      finishedAt: finishedAt.toISOString(),
-      artifactRoot: `${runner.artifactRoot}/jobs/${jobId}`,
-      artifacts: [],
-      message:
-        request.reason ??
-        'Remote runner worker job materialized artifact manifest for Codex/Claude runtime handoff.',
-    };
-
-    return this.store.writeRemoteRunnerJob(job);
+    return this.remoteRunnersService.runRemoteRunnerJob(id, request);
   }
 
   /**
@@ -2345,38 +2279,11 @@ export class LoopsService {
   }
 
   private buildRemoteRunnerItems(): LoopRemoteRunner[] {
-    return [
-      {
-        id: 'remote-runner-primary',
-        name: 'Primary Remote Runner Pool',
-        status: 'ready',
-        runtimeBackends: ['codex-cli', 'claude-code-cli', 'docker'],
-        capacity: {
-          maxConcurrent: 4,
-          leased: 0,
-          available: 4,
-        },
-        queue: {
-          pending: 0,
-          running: 0,
-        },
-        sandboxProfile: 'remote-sandbox',
-        artifactRoot: '.loops/runs/remote-runner-primary',
-        leaseTtlSec: 1800,
-        health: {
-          ok: true,
-          message:
-            'Worker artifact provider is connected; execution handoff remains governed by Codex/Claude CLI adapters.',
-        },
-        risks: ['Distributed queue scheduling and resumable sandbox execution remain future work.'],
-      },
-    ];
+    return this.remoteRunnersService.buildRemoteRunnerItems();
   }
 
   private getRemoteRunnerItem(id: string): LoopRemoteRunner {
-    const found = this.buildRemoteRunnerItems().find((item) => item.id === id);
-    if (!found) throw new NotFoundException(`Remote runner ${id} not found`);
-    return found;
+    return this.remoteRunnersService.getRemoteRunnerItem(id);
   }
 
   private buildMcpServerItems(): LoopMcpServer[] {
@@ -2639,183 +2546,11 @@ export class LoopsService {
   }
 
   private buildEvalSuites(evidence: EvalEvidence): EvalSuite[] {
-    const now = new Date().toISOString();
-    return this.evalSuiteBlueprints().map((suite) =>
-      this.materializeEvalSuite(suite, evidence, now),
-    );
+    return this.evalService.buildEvalSuites(evidence);
   }
 
   private evalSuiteBlueprints(): EvalSuiteBlueprint[] {
-    return [
-      {
-        id: 'architecture-compliance',
-        name: 'Architecture Compliance',
-        scope: 'workspace' as const,
-        version: 1,
-        checks: [
-          {
-            id: 'db-service-layer',
-            label: 'DB access only in DB Service',
-            category: 'architecture' as const,
-            hardGate: true,
-            status: 'attention' as const,
-            evidence: 'Derived from cross-loop review',
-          },
-          {
-            id: 'zod-contract',
-            label: 'Zod-first contract validation',
-            category: 'architecture' as const,
-            hardGate: true,
-            status: 'attention' as const,
-            evidence: 'Contracts exist for all API endpoints',
-          },
-          {
-            id: 'client-layer',
-            label: 'External API via Client layer',
-            category: 'architecture' as const,
-            hardGate: true,
-            status: 'attention' as const,
-            evidence: 'Client imports verified',
-          },
-          {
-            id: 'winston-logger',
-            label: 'Winston Logger (no console.log)',
-            category: 'architecture' as const,
-            hardGate: true,
-            status: 'attention' as const,
-            evidence: 'Logger injection verified',
-          },
-        ],
-      },
-      {
-        id: 'delivery-readiness',
-        name: 'Delivery Readiness',
-        scope: 'delivery' as const,
-        version: 1,
-        checks: [
-          {
-            id: 'spec-approved',
-            label: 'Spec approved',
-            category: 'delivery' as const,
-            hardGate: true,
-            status: 'attention' as const,
-            evidence: 'Spec status per loop',
-          },
-          {
-            id: 'global-review-pass',
-            label: 'Global review pass',
-            category: 'delivery' as const,
-            hardGate: true,
-            status: 'attention' as const,
-            evidence: 'Global verdict per loop',
-          },
-          {
-            id: 'pr-evidence',
-            label: 'PR evidence present',
-            category: 'delivery' as const,
-            hardGate: true,
-            status: 'attention' as const,
-            evidence: 'Convergence PR status',
-          },
-        ],
-      },
-      {
-        id: 'runtime-safety',
-        name: 'Runtime Safety',
-        scope: 'runtime' as const,
-        version: 1,
-        checks: [
-          {
-            id: 'path-policy',
-            label: 'Path policy enforced',
-            category: 'runtime' as const,
-            hardGate: true,
-            status: 'attention' as const,
-            evidence: 'Path policy snapshots',
-          },
-          {
-            id: 'network-policy',
-            label: 'Network policy',
-            category: 'runtime' as const,
-            hardGate: true,
-            status: 'attention' as const,
-            evidence: 'Network strategy per workspace',
-          },
-          {
-            id: 'secret-canary',
-            label: 'Secret canary detection',
-            category: 'runtime' as const,
-            hardGate: true,
-            status: 'attention' as const,
-            evidence: 'Canary status per test record',
-          },
-        ],
-      },
-      {
-        id: 'test-evidence',
-        name: 'Test Evidence',
-        scope: 'delivery' as const,
-        version: 1,
-        checks: [
-          {
-            id: 'test-command-pass',
-            label: 'Required tests pass',
-            category: 'test' as const,
-            hardGate: true,
-            status: 'attention' as const,
-            evidence: 'Test records per loop',
-          },
-          {
-            id: 'failure-classified',
-            label: 'Failure reason classified',
-            category: 'test' as const,
-            hardGate: false,
-            status: 'attention' as const,
-            evidence: 'Test record fix instructions',
-          },
-          {
-            id: 'coverage-exists',
-            label: 'Coverage reported',
-            category: 'test' as const,
-            hardGate: false,
-            status: 'attention' as const,
-            evidence: 'Coverage data per test record',
-          },
-        ],
-      },
-      {
-        id: 'cost-policy',
-        name: 'Cost Policy',
-        scope: 'agent' as const,
-        version: 1,
-        checks: [
-          {
-            id: 'token-budget',
-            label: 'Token budget not exceeded',
-            category: 'cost' as const,
-            hardGate: true,
-            status: 'attention' as const,
-            evidence: 'Cost guard state',
-          },
-          {
-            id: 'call-budget',
-            label: 'Call budget not exceeded',
-            category: 'cost' as const,
-            hardGate: true,
-            status: 'attention' as const,
-            evidence: 'Cost guard state',
-          },
-          {
-            id: 'time-budget',
-            label: 'Time budget not exceeded',
-            category: 'cost' as const,
-            hardGate: false,
-            status: 'attention' as const,
-            evidence: 'Not yet tracked per-loop',
-          },
-        ],
-      },
-    ];
+    return this.evalService.evalSuiteBlueprints();
   }
 
   private materializeEvalSuite(
@@ -2823,34 +2558,7 @@ export class LoopsService {
     evidence: EvalEvidence,
     capturedAt: string,
   ): EvalSuite {
-    const checks = suite.checks.map((check) => {
-      const results = evidence.list.map((item) => this.evaluateEvalCheck(check.id, item, evidence));
-      const passCount = results.filter((status) => status === 'passed').length;
-      const failCount = results.filter((status) => status === 'attention').length;
-      const blockedCount = results.filter((status) => status === 'blocked').length;
-      return {
-        ...check,
-        status: this.evalAggregateStatus(passCount, failCount, blockedCount),
-        passCount,
-        failCount,
-        blockedCount,
-      };
-    });
-    const passed = checks.filter((check) => check.status === 'passed').length;
-    const attention = checks.filter((check) => check.status === 'attention').length;
-    const blocked = checks.filter((check) => check.status === 'blocked').length;
-    return {
-      ...suite,
-      capturedAt,
-      checks,
-      summary: {
-        total: checks.length,
-        passed,
-        attention,
-        blocked,
-        passRate: checks.length ? Math.round((passed / checks.length) * 100) : 0,
-      },
-    };
+    return this.evalService.materializeEvalSuite(suite, evidence, capturedAt);
   }
 
   private evaluateEvalCheck(
@@ -2858,100 +2566,7 @@ export class LoopsService {
     item: LoopListItem,
     evidence: EvalEvidence,
   ): EvalSuite['checks'][number]['status'] {
-    const detail = evidence.details.get(item.issue.id);
-    const costItem = evidence.costByIssue.get(item.issue.id);
-    switch (checkId) {
-      case 'db-service-layer':
-      case 'zod-contract':
-      case 'client-layer':
-      case 'winston-logger':
-        return item.state?.globalVerdict === 'FAIL' ? 'blocked' : 'attention';
-      case 'spec-approved':
-        return detail?.spec?.status === 'APPROVED'
-          ? 'passed'
-          : item.issue.status === 'REJECTED'
-            ? 'blocked'
-            : 'attention';
-      case 'global-review-pass':
-        return item.state?.globalVerdict === 'PASS'
-          ? 'passed'
-          : item.state?.globalVerdict === 'FAIL'
-            ? 'blocked'
-            : 'attention';
-      case 'pr-evidence':
-        return detail?.convergencePr?.status === 'OPENED' ||
-          detail?.convergencePr?.status === 'PUSHED'
-          ? 'passed'
-          : item.state?.globalVerdict === 'FAIL'
-            ? 'blocked'
-            : 'attention';
-      case 'path-policy':
-        return detail?.testRecords.some(
-          (record) => record.runtimeSecurityPolicy?.write.scope === 'target-repo',
-        )
-          ? 'passed'
-          : item.state?.paused
-            ? 'blocked'
-            : 'attention';
-      case 'network-policy':
-        return detail?.testRecords.some(
-          (record) => record.runtimeSecurityPolicy?.network.status === 'blocked',
-        )
-          ? 'passed'
-          : detail?.testRecords.some(
-                (record) => record.runtimeSecurityPolicy?.network.status === 'allowed-by-override',
-              )
-            ? 'blocked'
-            : 'attention';
-      case 'secret-canary':
-        return detail?.testRecords.some(
-          (record) => record.runtimeSecurityPolicy?.canary.status === 'leaked',
-        )
-          ? 'blocked'
-          : detail?.testRecords.some(
-                (record) => record.runtimeSecurityPolicy?.canary.status === 'armed',
-              )
-            ? 'passed'
-            : 'attention';
-      case 'test-command-pass':
-        return !detail?.testRecords.length
-          ? 'attention'
-          : detail.testRecords.every((record) => record.status === 'TEST-PASS')
-            ? 'passed'
-            : detail.testRecords.some((record) => record.status === 'TEST-FAIL')
-              ? 'blocked'
-              : 'attention';
-      case 'failure-classified':
-        return !detail?.testRecords.length
-          ? 'attention'
-          : detail.testRecords.some(
-                (record) => record.status === 'TEST-FAIL' && record.fixInstructions.length === 0,
-              )
-            ? 'blocked'
-            : 'passed';
-      case 'coverage-exists':
-        return detail?.testRecords.some((record) => record.coverage) ? 'passed' : 'attention';
-      case 'token-budget':
-        return !costItem
-          ? 'attention'
-          : costItem.tokensRemaining < 0 || costItem.tripped
-            ? 'blocked'
-            : 'passed';
-      case 'call-budget':
-        return !costItem
-          ? 'attention'
-          : costItem.callsRemaining < 0 || costItem.tripped
-            ? 'blocked'
-            : 'passed';
-      case 'time-budget':
-        return detail?.implementationRecords.some(
-          (record) => typeof record.durationSec === 'number',
-        )
-          ? 'passed'
-          : 'attention';
-      default:
-        return 'attention';
-    }
+    return this.evalService.evaluateEvalCheck(checkId, item, evidence);
   }
 
   private evalAggregateStatus(
@@ -2959,9 +2574,7 @@ export class LoopsService {
     failCount: number,
     blockedCount: number,
   ): EvalSuite['checks'][number]['status'] {
-    if (blockedCount > 0) return 'blocked';
-    if (passCount > 0 && failCount === 0) return 'passed';
-    return 'attention';
+    return this.evalService.evalAggregateStatus(passCount, failCount, blockedCount);
   }
 
   async listEvalRuns(
@@ -3026,72 +2639,18 @@ export class LoopsService {
       recentLearnings?: LoopLearning[];
     } = {},
   ): Record<LoopBenchMetricKey, number> {
-    const active = items.filter(
-      ({ issue }) => !['CLOSED', 'ARCHIVED', 'REJECTED'].includes(issue.status),
-    );
-    const completed = items.filter(
-      ({ issue, state }) =>
-        issue.status === 'CLOSED' || state?.finalized || state?.phase === 'CLOSED',
-    );
-    const firstPassCount = completed.filter(
-      ({ state }) => state?.globalVerdict === 'PASS' && (state.reloopCount ?? 0) === 0,
-    ).length;
-    const browserQaRegressionCount = active.filter(
-      ({ releaseGate }) => releaseGate?.checklist.browserQaPassed === false,
-    ).length;
-    const secondOpinionConflictCount = active.filter(({ releaseGate, state }) => {
-      const phase = state?.phase ?? 'PHASE_0_INTAKE';
-      return (
-        ['PHASE_6_CONVERGE', 'PHASE_7_GLOBAL_REVIEW', 'PHASE_8_ANNOTATE'].includes(phase) &&
-        releaseGate?.checklist.secondOpinionPassed === false
-      );
-    }).length;
-    const blockedCount = active.filter(
-      ({ state }) => state?.paused || (state?.globalVerdict && state.globalVerdict !== 'PASS'),
-    ).length;
-    const costTripped = options.cost?.loops.filter((item) => item.tripped).length ?? 0;
-    const violationCount = items.reduce(
-      (sum, item) => sum + (item.runtimeSecurityExceptions?.length ?? 0),
-      0,
-    );
-    const learnings = options.recentLearnings ?? [];
-    const reusedCount = learnings.filter((learning) => learning.lastUsedAt).length;
-    const canaryRuns = items.filter(
-      ({ releaseGate }) => typeof releaseGate?.checklist.canaryPassed === 'boolean',
-    );
-    const canaryPassed = canaryRuns.filter(
-      ({ releaseGate }) => releaseGate?.checklist.canaryPassed === true,
-    ).length;
-
-    return {
-      firstPassReviewRate: this.percent(firstPassCount, completed.length),
-      browserQaRegressionRate: this.percent(browserQaRegressionCount, active.length),
-      secondOpinionConflictRate: this.percent(secondOpinionConflictCount, active.length),
-      releaseBlockerRate: this.percent(blockedCount + costTripped, active.length),
-      runtimeViolationRate: this.percent(violationCount, items.length),
-      learningReuseRate: this.percent(reusedCount, learnings.length),
-      canaryPassRate: this.percent(canaryPassed, canaryRuns.length),
-    };
+    return this.evalService.buildLoopBenchMetrics(items, options);
   }
 
   private diffLoopBenchMetrics(
     current: Record<LoopBenchMetricKey, number>,
     previous: Record<LoopBenchMetricKey, number>,
   ): Record<LoopBenchMetricKey, number> {
-    return {
-      firstPassReviewRate: current.firstPassReviewRate - previous.firstPassReviewRate,
-      browserQaRegressionRate: current.browserQaRegressionRate - previous.browserQaRegressionRate,
-      secondOpinionConflictRate:
-        current.secondOpinionConflictRate - previous.secondOpinionConflictRate,
-      releaseBlockerRate: current.releaseBlockerRate - previous.releaseBlockerRate,
-      runtimeViolationRate: current.runtimeViolationRate - previous.runtimeViolationRate,
-      learningReuseRate: current.learningReuseRate - previous.learningReuseRate,
-      canaryPassRate: current.canaryPassRate - previous.canaryPassRate,
-    };
+    return this.evalService.diffLoopBenchMetrics(current, previous);
   }
 
   private percent(numerator: number, denominator: number): number {
-    return denominator > 0 ? Math.round((numerator / denominator) * 100) : 0;
+    return this.evalService.percent(numerator, denominator);
   }
 
   private buildEvalRuns(
@@ -3100,48 +2659,10 @@ export class LoopsService {
     query: { suiteId?: string; loopId?: string } = {},
     context: EvalRunBuildContext = {},
   ): EvalRun[] {
-    const runs: EvalRun[] = [];
-    for (const item of evidence.list) {
-      for (const suite of suites) {
-        if (query.suiteId && suite.id !== query.suiteId) continue;
-        if (query.loopId && item.issue.id !== query.loopId) continue;
-        const now = new Date().toISOString();
-        const blueprintId = this.evalBlueprintId(item, evidence);
-        const baseline = this.latestEvalBaseline(context.history ?? [], suite.id, blueprintId);
-        const checkResults = suite.checks.map((check) => {
-          const status = this.evaluateEvalCheck(check.id, item, evidence);
-          return {
-            ...check,
-            status,
-            passCount: status === 'passed' ? 1 : 0,
-            failCount: status === 'attention' ? 1 : 0,
-            blockedCount: status === 'blocked' ? 1 : 0,
-          };
-        });
-        const passed = checkResults.filter((check) => check.status === 'passed').length;
-        const blocked = checkResults.filter((check) => check.status === 'blocked').length;
-        const score = Math.round((passed / Math.max(checkResults.length, 1)) * 100);
-        const status: EvalRun['status'] =
-          blocked > 0 ? 'blocked' : score >= 80 ? 'passed' : 'attention';
-        runs.push({
-          id: `eval-run-${suite.id}-${item.issue.id}`,
-          suiteId: suite.id,
-          loopId: item.issue.id,
-          targetRef: item.issue.id,
-          blueprintId,
-          baselineVersion: baseline?.baselineVersion,
-          baselineScore: baseline?.averageScore,
-          status,
-          score,
-          checkResults,
-          evidenceRefs: item.issue.id ? [`.loops/issues/${item.issue.id}.json`] : [],
-          trendDelta:
-            baseline?.averageScore === undefined ? undefined : score - baseline.averageScore,
-          runAt: now,
-        });
-      }
-    }
-    return runs;
+    return this.evalService.buildEvalRuns(evidence, suites, query, {
+      ...context,
+      inferWorkflowKind: (item) => this.evidence.inferWorkflowKind(item),
+    });
   }
 
   async runEvalTrendWorker(): Promise<EvalTrendWorkerResponse> {
@@ -3150,35 +2671,11 @@ export class LoopsService {
     const suites = this.buildEvalSuites(evidence);
     const history = await this.store.readEvalTrendHistory();
     const runs = this.buildEvalRuns(evidence, suites, {}, { history: [] });
-    const grouped = new Map<string, EvalRun[]>();
-
-    for (const run of runs) {
-      const blueprintId = run.blueprintId ?? 'default';
-      const key = `${blueprintId}:${run.suiteId}`;
-      grouped.set(key, [...(grouped.get(key) ?? []), run]);
-    }
-
-    const baselines: EvalHistoricalBaselineSnapshot[] = [];
-    for (const [key, group] of grouped.entries()) {
-      const [blueprintId, suiteId] = key.split(':');
-      const previous = this.latestEvalBaseline(history, suiteId, blueprintId);
-      const averageScore = this.roundAverage(group.map((run) => run.score));
-      const passed = group.filter((run) => run.status === 'passed').length;
-      const passRate = group.length ? Math.round((passed / group.length) * 100) : 0;
-      baselines.push({
-        id: `eval-baseline-${this.safeId(blueprintId)}-${suiteId}-${Date.parse(generatedAt)}`,
-        suiteId,
-        blueprintId,
-        baselineVersion: this.evalBaselineVersion(blueprintId, suiteId, generatedAt),
-        capturedAt: generatedAt,
-        runCount: group.length,
-        averageScore,
-        passRate,
-        previousAverageScore: previous?.averageScore,
-        trendDelta:
-          previous?.averageScore === undefined ? undefined : averageScore - previous.averageScore,
-      });
-    }
+    const baselines = this.evalService.buildEvalTrendBaselines({
+      runs,
+      history,
+      generatedAt,
+    });
 
     await this.store.appendEvalTrendSnapshots(baselines);
     return {
@@ -4013,13 +3510,7 @@ export class LoopsService {
     downloadUrl?: string;
     archivedAt: string;
   }> {
-    if (!this.crossTenantArchive) {
-      throw new Error('Cross-tenant archive service not configured');
-    }
-    return this.crossTenantArchive.archiveTenant(input.tenantId, {
-      includeClosed: input.includeClosed,
-      period: input.period,
-    });
+    return this.adminService.archiveTenant(input, this.crossTenantArchive);
   }
 
   async listArchives(tenantId: string): Promise<{
@@ -4033,11 +3524,7 @@ export class LoopsService {
       archivedAt: string;
     }>;
   }> {
-    if (!this.crossTenantArchive) {
-      return { archives: [] };
-    }
-    const archives = await this.crossTenantArchive.listArchives(tenantId);
-    return { archives };
+    return this.adminService.listArchives(tenantId, this.crossTenantArchive);
   }
 
   async refreshArchiveUrl(
@@ -4048,55 +3535,34 @@ export class LoopsService {
     downloadUrl?: string;
     message: string;
   }> {
-    if (!this.crossTenantArchive) {
-      throw new Error('Cross-tenant archive service not configured');
-    }
-    const downloadUrl = await this.crossTenantArchive.refreshDownloadUrl(tenantId, archiveId);
-    return {
-      archiveId,
-      downloadUrl: downloadUrl ?? undefined,
-      message: downloadUrl ? 'Download URL refreshed' : 'Failed to refresh download URL',
-    };
+    return this.adminService.refreshArchiveUrl(tenantId, archiveId, this.crossTenantArchive);
   }
 
   private async buildRequestTimeAggregation(
     tenantId: string,
     suiteId: string | undefined,
-    period: string,
+    period: '7d' | '30d' | '90d' | 'all',
     blueprintId: string | undefined,
     page: number,
     limit: number,
   ): Promise<ReturnType<LoopsService['getCrossTenantEvalAggregation']>> {
     const evidence = await this.collectEvalEvidence();
-    const suites = this.buildEvalSuites(evidence).filter((s) => !suiteId || s.id === suiteId);
-
-    const aggs = suites.map((suite) => ({
-      id: `${tenantId}-${suite.id}-${period}`,
+    const suites = this.buildEvalSuites(evidence);
+    return this.evalService.buildRequestTimeAggregation({
       tenantId,
-      workspaceId: 'default',
-      suiteId: suite.id,
       blueprintId,
-      totalChecks: suite.summary.total,
-      passedChecks: suite.summary.passed,
-      failedChecks: suite.summary.attention,
-      blockedChecks: suite.summary.blocked,
-      passRate: suite.summary.passRate,
-      averageScore: suite.summary.passRate,
-      loopCount: suite.summary.total > 0 ? Math.max(1, Math.round(suite.summary.total / 3)) : 0,
+      suiteId,
       period,
-      capturedAt: new Date().toISOString(),
-    }));
-
-    const paged = aggs.slice((page - 1) * limit, page * limit);
-    return { aggregations: paged, total: aggs.length, page, limit, source: 'request-time' };
+      page,
+      limit,
+      suites,
+    });
   }
 
   private evalBlueprintId(item: LoopListItem, evidence: EvalEvidence): string {
-    const detail = evidence.details.get(item.issue.id);
-    const blueprint = detail?.workflowRecipe?.baselineEvidence?.find(
-      (entry) => entry.kind === 'blueprint',
+    return this.evalService.evalBlueprintId(item, evidence, (item) =>
+      this.evidence.inferWorkflowKind(item),
     );
-    return blueprint?.value ?? this.evidence.inferWorkflowKind(item);
   }
 
   private latestEvalBaseline(
@@ -4104,22 +3570,19 @@ export class LoopsService {
     suiteId: string,
     blueprintId: string,
   ): EvalHistoricalBaselineSnapshot | undefined {
-    return history
-      .filter((item) => item.suiteId === suiteId && item.blueprintId === blueprintId)
-      .sort((a, b) => b.capturedAt.localeCompare(a.capturedAt))[0];
+    return this.evalService.latestEvalBaseline(history, suiteId, blueprintId);
   }
 
   private evalBaselineVersion(blueprintId: string, suiteId: string, capturedAt: string): string {
-    return `${this.safeId(blueprintId)}:${suiteId}:${capturedAt}`;
+    return this.evalService.evalBaselineVersion(blueprintId, suiteId, capturedAt);
   }
 
   private roundAverage(values: number[]): number {
-    if (values.length === 0) return 0;
-    return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+    return this.evalService.roundAverage(values);
   }
 
   private safeId(value: string): string {
-    return value.replace(/[^a-zA-Z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'default';
+    return this.evalService.safeId(value);
   }
 
   /**
@@ -4586,41 +4049,15 @@ export class LoopsService {
   // =========================================================================
 
   async listScheduleTriggers(query: LoopIssuesQuery): Promise<LoopScheduleTriggerListResponse> {
-    const { limit = 20, page = 1 } = query;
-    const offset = (page - 1) * limit;
-    const triggers = this.store.listScheduleTriggers();
-    const paged = triggers.slice(offset, offset + limit);
-    return {
-      list: paged,
-      total: triggers.length,
-      page,
-      limit,
-    };
+    return this.triggersService.listScheduleTriggers(query);
   }
 
   async getScheduleTrigger(triggerId: string): Promise<LoopScheduleTrigger> {
-    const trigger = this.store.readScheduleTrigger(triggerId);
-    if (!trigger) throw new NotFoundException(`Schedule trigger ${triggerId} not found`);
-    return trigger;
+    return this.triggersService.getScheduleTrigger(triggerId);
   }
 
   async createScheduleTrigger(input: CreateScheduleTriggerRequest): Promise<LoopScheduleTrigger> {
-    const now = new Date().toISOString();
-    const trigger: LoopScheduleTrigger = {
-      id: `sched-${this.store.nextScheduleTriggerSeq()}`,
-      workspaceId: 'default',
-      ...input,
-      templatePriority: input.templatePriority ?? 'P2',
-      status: 'active',
-      failureCount: 0,
-      maxFailures: 3,
-      lastRunAt: undefined,
-      nextRunAt: this.computeNextCronTime(input.cronExpression),
-      createdAt: now,
-      updatedAt: now,
-      owner: input.owner,
-    };
-    this.store.writeScheduleTrigger(trigger);
+    const trigger = this.triggersService.createScheduleTrigger(input);
     this.log('info', `[Loops] Schedule trigger created`, {
       triggerId: trigger.id,
       name: trigger.name,
@@ -4633,21 +4070,7 @@ export class LoopsService {
     triggerId: string,
     input: UpdateScheduleTriggerRequest,
   ): Promise<LoopScheduleTrigger> {
-    const existing = await this.getScheduleTrigger(triggerId);
-    const now = new Date().toISOString();
-    const updated: LoopScheduleTrigger = {
-      ...existing,
-      ...input,
-      templatePriority: input.templatePriority ?? existing.templatePriority,
-      failureCount: existing.failureCount,
-      maxFailures: existing.maxFailures,
-      lastRunAt: existing.lastRunAt,
-      nextRunAt: input.cronExpression
-        ? this.computeNextCronTime(input.cronExpression)
-        : existing.nextRunAt,
-      updatedAt: now,
-    };
-    this.store.writeScheduleTrigger(updated);
+    const updated = this.triggersService.updateScheduleTrigger(triggerId, input);
     this.log('info', `[Loops] Schedule trigger updated`, {
       triggerId,
       status: updated.status,
@@ -4656,10 +4079,9 @@ export class LoopsService {
   }
 
   async deleteScheduleTrigger(triggerId: string): Promise<{ deleted: boolean; triggerId: string }> {
-    await this.getScheduleTrigger(triggerId);
-    this.store.deleteScheduleTrigger(triggerId);
+    const result = this.triggersService.deleteScheduleTrigger(triggerId);
     this.log('info', `[Loops] Schedule trigger deleted`, { triggerId });
-    return { deleted: true, triggerId };
+    return result;
   }
 
   /**
@@ -4699,7 +4121,7 @@ export class LoopsService {
       const updated: LoopScheduleTrigger = {
         ...trigger,
         lastRunAt: now,
-        nextRunAt: this.computeNextCronTime(trigger.cronExpression),
+        nextRunAt: this.triggersService.computeNextCronTime(trigger.cronExpression),
         failureCount: 0,
         updatedAt: now,
       };
@@ -4853,35 +4275,7 @@ export class LoopsService {
   }
 
   private computeNextCronTime(cronExpression: string): string | undefined {
-    try {
-      const now = new Date();
-      // Simple cron parsing for common patterns (daily, hourly, weekly)
-      const parts = cronExpression.trim().split(/\s+/);
-      if (parts.length < 5) return undefined;
-      const next = new Date(now);
-      // For '0 9 * * *' (daily at 9am): add 1 day if past 9am today
-      if (parts[2] === '*' && parts[3] === '*' && parts[4] === '*') {
-        const hour = parseInt(parts[1], 10);
-        const minute = parseInt(parts[0], 10);
-        next.setHours(hour, minute, 0, 0);
-        if (next <= now) next.setDate(next.getDate() + 1);
-      } else if (parts[4] !== '*') {
-        // Weekly: '0 9 * * 1' (Monday at 9am)
-        const targetDay = parseInt(parts[4], 10);
-        const hour = parseInt(parts[1], 10);
-        const minute = parseInt(parts[0], 10);
-        next.setHours(hour, minute, 0, 0);
-        const currentDay = next.getDay() || 7;
-        let daysUntil = targetDay - currentDay;
-        if (daysUntil <= 0 && next <= now) daysUntil += 7;
-        next.setDate(next.getDate() + daysUntil);
-      } else {
-        next.setHours(next.getHours() + 1, 0, 0, 0);
-      }
-      return next.toISOString();
-    } catch {
-      return undefined;
-    }
+    return this.triggersService.computeNextCronTime(cronExpression);
   }
 
   private computeRetryBackoff(attempt: number): string {
@@ -5208,114 +4602,30 @@ export class LoopsService {
   // =========================================================================
 
   async listTools(query: LoopIssuesQuery): Promise<LoopToolListResponse> {
-    const { limit = 20, page = 1 } = query;
-    const offset = (page - 1) * limit;
-    const tools = this.store.listTools();
-    const paged = tools.slice(offset, offset + limit);
-    return {
-      list: paged,
-      total: tools.length,
-      page,
-      limit,
-    };
+    return this.adminService.listTools(query);
   }
 
-  async getTool(toolId: string): Promise<LoopTool> {
-    const tool = this.store.readTool(toolId);
-    if (!tool) throw new NotFoundException(`Tool ${toolId} not found`);
-    return tool;
+  async getTool(toolId: string) {
+    return this.adminService.getTool(toolId);
   }
 
-  async registerTool(input: RegisterToolRequest): Promise<LoopTool> {
-    const now = new Date().toISOString();
-    const tool: LoopTool = {
-      id: `tool-${this.store.nextToolSeq()}`,
-      name: input.name,
-      kind: input.kind,
-      category: input.category,
-      status: 'active',
-      description: input.description,
-      auth: {
-        kind: input.authKind,
-        configured: false,
-        scopes: [],
-      },
-      permissions: input.permissions,
-      compatibility: input.compatibility,
-      health: {
-        ok: true,
-        message: 'Tool registered, pending initial health check',
-      },
-      risks: [],
-      deterministicBoundary: input.deterministicBoundary,
-      ownerAgentIds: [],
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.store.writeTool(tool);
-    this.log('info', `[Loops] Tool registered`, { toolId: tool.id, name: tool.name });
-    return tool;
+  async registerTool(input: RegisterToolRequest) {
+    return this.adminService.registerTool(input, this.adminLogSink());
   }
 
-  async updateTool(toolId: string, input: UpdateToolRequest): Promise<LoopTool> {
-    const existing = await this.getTool(toolId);
-    const now = new Date().toISOString();
-    const updated: LoopTool = {
-      ...existing,
-      name: input.name ?? existing.name,
-      status: input.status ?? existing.status,
-      description: input.description ?? existing.description,
-      permissions: input.permissions ?? existing.permissions,
-      compatibility: input.compatibility
-        ? { ...existing.compatibility, ...input.compatibility }
-        : existing.compatibility,
-      deterministicBoundary: input.deterministicBoundary ?? existing.deterministicBoundary,
-      updatedAt: now,
-    };
-    this.store.writeTool(updated);
-    this.log('info', `[Loops] Tool updated`, { toolId, status: updated.status });
-    return updated;
+  async updateTool(toolId: string, input: UpdateToolRequest) {
+    return this.adminService.updateTool(toolId, input, this.adminLogSink());
   }
 
   async toolHealthCheck(toolId: string): Promise<ToolHealthCheckResponse> {
-    const existing = await this.getTool(toolId);
-    const now = new Date().toISOString();
-    const ok = existing.status === 'active';
-    const response: ToolHealthCheckResponse = {
-      toolId,
-      ok,
-      message: ok
-        ? `Tool ${existing.name} is active and operational`
-        : `Tool ${existing.name} is in ${existing.status} state`,
-      checkedAt: now,
-    };
-    // Persist health status
-    this.store.writeTool({
-      ...existing,
-      health: { ok, message: response.message, lastCheckedAt: now },
-      updatedAt: now,
-    });
-    return response;
+    return this.adminService.toolHealthCheck(toolId);
   }
 
   async testTool(
     toolId: string,
     input?: { input?: Record<string, unknown> },
   ): Promise<ToolTestResponse> {
-    await this.getTool(toolId);
-    const now = new Date().toISOString();
-    // v1 smoke test: verify tool exists and is registered
-    // Real tool invocation requires provider/client layer integration
-    return {
-      toolId,
-      ok: true,
-      message: `Tool ${toolId} smoke test passed (control-plane v1)`,
-      output: input?.input
-        ? `Input received: ${JSON.stringify(input.input).slice(0, 256)}`
-        : undefined,
-      durationMs: 0,
-      testedAt: now,
-    };
+    return this.adminService.testTool(toolId, input);
   }
 
   // =========================================================================
@@ -5323,380 +4633,26 @@ export class LoopsService {
   // =========================================================================
 
   async listBlueprints(query: LoopIssuesQuery): Promise<LoopBlueprintListResponse> {
-    const { limit = 20, page = 1 } = query;
-    const offset = (page - 1) * limit;
-    let blueprints = this.store.listBlueprints();
-    // Seed default blueprints if none exist
-    if (blueprints.length === 0) {
-      blueprints = this.seedDefaultBlueprints();
-    }
-    const paged = blueprints.slice(offset, offset + limit);
-    return {
-      list: paged,
-      total: blueprints.length,
-      page,
-      limit,
-    };
+    return this.adminService.listBlueprints(query);
   }
 
-  async getBlueprint(blueprintId: string): Promise<LoopBlueprint> {
-    const blueprint = this.store.readBlueprint(blueprintId);
-    if (!blueprint) throw new NotFoundException(`Blueprint ${blueprintId} not found`);
-    return blueprint;
+  async getBlueprint(blueprintId: string) {
+    return this.adminService.getBlueprint(blueprintId);
   }
 
-  async createBlueprint(input: CreateBlueprintRequest): Promise<LoopBlueprint> {
-    const now = new Date().toISOString();
-    const blueprint: LoopBlueprint = {
-      id: `bp-${this.store.nextBlueprintSeq()}`,
-      name: input.name,
-      kind: input.kind,
-      description: input.description,
-      version: '1.0.0',
-      priority: 'P2',
-      active: true,
-      personaSequence: input.personaSequence,
-      evalSuiteId: input.evalSuiteId,
-      gateProfile: input.gateProfile ?? { humanGates: [], agentGates: [], releaseGates: [] },
-      runtimePolicy: input.runtimePolicy,
-      evidenceTemplate: { requiredArtifacts: [] },
-      usageCount: 0,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.store.writeBlueprint(blueprint);
-    this.log('info', `[Loops] Blueprint created`, {
-      blueprintId: blueprint.id,
-      name: blueprint.name,
-    });
-    return blueprint;
+  async createBlueprint(input: CreateBlueprintRequest) {
+    return this.adminService.createBlueprint(input, this.adminLogSink());
   }
 
-  async updateBlueprint(
-    blueprintId: string,
-    input: UpdateBlueprintRequest,
-  ): Promise<LoopBlueprint> {
-    const existing = await this.getBlueprint(blueprintId);
-    const now = new Date().toISOString();
-    const updated: LoopBlueprint = {
-      ...existing,
-      name: input.name ?? existing.name,
-      description: input.description ?? existing.description,
-      active: input.active ?? existing.active,
-      personaSequence: input.personaSequence ?? existing.personaSequence,
-      evalSuiteId: input.evalSuiteId !== undefined ? input.evalSuiteId : existing.evalSuiteId,
-      gateProfile: input.gateProfile
-        ? {
-            humanGates: input.gateProfile.humanGates ?? existing.gateProfile.humanGates,
-            agentGates: input.gateProfile.agentGates ?? existing.gateProfile.agentGates,
-            releaseGates: input.gateProfile.releaseGates ?? existing.gateProfile.releaseGates,
-          }
-        : existing.gateProfile,
-      runtimePolicy: {
-        primary: input.runtimePolicy?.primary ?? existing.runtimePolicy.primary,
-        fallback: input.runtimePolicy?.fallback ?? existing.runtimePolicy.fallback,
-      },
-      updatedAt: now,
-    };
-    this.store.writeBlueprint(updated);
-    this.log('info', `[Loops] Blueprint updated`, { blueprintId, active: updated.active });
-    return updated;
+  async updateBlueprint(blueprintId: string, input: UpdateBlueprintRequest) {
+    return this.adminService.updateBlueprint(blueprintId, input, this.adminLogSink());
   }
 
-  /**
-   * R32a: Rollback a blueprint to a previous version from history.
-   * Stores the current version in history before applying the rollback.
-   */
   async rollbackBlueprint(
     blueprintId: string,
     input?: { targetVersion?: string; reason?: string },
-  ): Promise<LoopBlueprint> {
-    const current = await this.getBlueprint(blueprintId);
-    const now = new Date().toISOString();
-
-    // Save current version to history before rolling back
-    this.store.writeBlueprintHistory(blueprintId, current, now);
-    const history = this.store.listBlueprintHistory(blueprintId);
-
-    // Find target version
-    const target = input?.targetVersion
-      ? history.find((h) => h.version === input!.targetVersion)
-      : history[history.length - 1]; // default to most recent history entry
-
-    if (!target && input?.targetVersion) {
-      throw new NotFoundException(
-        `Blueprint ${blueprintId} version ${input.targetVersion} not found in history`,
-      );
-    }
-    if (!target) {
-      throw new BadRequestException(`Blueprint ${blueprintId} has no history to rollback to`);
-    }
-
-    const rolled: LoopBlueprint = {
-      ...current,
-      name: target.snapshot.name,
-      description: target.snapshot.description,
-      personaSequence: target.snapshot.personaSequence,
-      evalSuiteId: target.snapshot.evalSuiteId,
-      gateProfile: target.snapshot.gateProfile,
-      runtimePolicy: target.snapshot.runtimePolicy,
-      version: target.version,
-      updatedAt: now,
-    };
-    this.store.writeBlueprint(rolled);
-    this.log('info', `[Loops] Blueprint rolled back`, {
-      blueprintId,
-      fromVersion: current.version,
-      toVersion: target.version,
-      reason: input?.reason,
-    });
-    return rolled;
-  }
-
-  private seedDefaultBlueprints(): LoopBlueprint[] {
-    const now = new Date().toISOString();
-    const defaults: LoopBlueprint[] = [
-      {
-        id: 'bp-bugfix',
-        name: 'Bugfix Loop',
-        kind: 'bugfix',
-        description: 'Bug fix delivery with regression test and global review',
-        version: '1.0.0',
-        priority: 'P1',
-        active: true,
-        personaSequence: [
-          'Intake Analyst',
-          'Spec Writer',
-          'Work Planner',
-          'Builder',
-          'Test Runner',
-          'Code Reviewer',
-          'Release Reviewer',
-        ],
-        evalSuiteId: 'eval-delivery-readiness',
-        gateProfile: {
-          humanGates: ['Spec Review'],
-          agentGates: ['Code Review'],
-          releaseGates: ['Global Review', 'PR Evidence'],
-        },
-        runtimePolicy: { primary: 'codex-cli', fallback: 'claude-code-cli' },
-        evidenceTemplate: {
-          requiredArtifacts: ['test-records', 'review-records', 'global-verdict'],
-        },
-        usageCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: 'bp-feature',
-        name: 'Feature Loop',
-        kind: 'feature',
-        description: 'New feature delivery with full test matrix and contract validation',
-        version: '1.0.0',
-        priority: 'P1',
-        active: true,
-        personaSequence: [
-          'Intake Analyst',
-          'Spec Writer',
-          'Work Planner',
-          'Builder',
-          'Test Runner',
-          'Code Reviewer',
-          'Release Reviewer',
-          'Evidence Curator',
-        ],
-        evalSuiteId: 'eval-architecture-compliance',
-        gateProfile: {
-          humanGates: ['Spec Review'],
-          agentGates: ['Code Review', 'Architecture Check'],
-          releaseGates: ['Global Review', 'PR Evidence', 'Eval Gate'],
-        },
-        runtimePolicy: { primary: 'claude-code-cli', fallback: 'codex-cli' },
-        evidenceTemplate: {
-          requiredArtifacts: [
-            'spec',
-            'test-records',
-            'review-records',
-            'global-verdict',
-            'pr-comment',
-          ],
-        },
-        usageCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: 'bp-refactor',
-        name: 'Refactor Loop',
-        kind: 'refactor',
-        description: 'Behavior-preserving refactor with existing test pass guarantee',
-        version: '1.0.0',
-        priority: 'P2',
-        active: true,
-        personaSequence: [
-          'Intake Analyst',
-          'Work Planner',
-          'Builder',
-          'Test Runner',
-          'Code Reviewer',
-          'Release Reviewer',
-        ],
-        evalSuiteId: 'eval-test-evidence',
-        gateProfile: {
-          humanGates: [],
-          agentGates: ['Code Review'],
-          releaseGates: ['Global Review', 'All Tests Pass'],
-        },
-        runtimePolicy: { primary: 'codex-cli' },
-        evidenceTemplate: {
-          requiredArtifacts: ['test-records', 'review-records', 'global-verdict'],
-        },
-        usageCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: 'bp-docs',
-        name: 'Documentation Loop',
-        kind: 'docs',
-        description: 'Documentation update with link validation',
-        version: '1.0.0',
-        priority: 'P3',
-        active: true,
-        personaSequence: ['Intake Analyst', 'Builder', 'Code Reviewer'],
-        evalSuiteId: 'eval-delivery-readiness',
-        gateProfile: { humanGates: [], agentGates: ['Link Check'], releaseGates: ['PR Evidence'] },
-        runtimePolicy: { primary: 'codex-cli' },
-        evidenceTemplate: { requiredArtifacts: ['review-records', 'pr-comment'] },
-        usageCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: 'bp-integration',
-        name: 'Integration Loop',
-        kind: 'integration',
-        description: 'Third-party integration with contract and security validation',
-        version: '1.0.0',
-        priority: 'P1',
-        active: true,
-        personaSequence: [
-          'Intake Analyst',
-          'Spec Writer',
-          'Work Planner',
-          'Builder',
-          'Test Runner',
-          'Code Reviewer',
-          'Release Reviewer',
-          'Evidence Curator',
-        ],
-        evalSuiteId: 'eval-runtime-safety',
-        gateProfile: {
-          humanGates: ['Spec Review'],
-          agentGates: ['Code Review', 'Security Scan'],
-          releaseGates: ['Global Review', 'PR Evidence', 'Runtime Check'],
-        },
-        runtimePolicy: { primary: 'claude-code-cli', fallback: 'codex-cli' },
-        evidenceTemplate: {
-          requiredArtifacts: [
-            'spec',
-            'test-records',
-            'review-records',
-            'global-verdict',
-            'pr-comment',
-          ],
-        },
-        usageCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: 'bp-flow',
-        name: 'Flow Loop',
-        kind: 'flow',
-        description: 'Multi-step workflow automation delivery',
-        version: '1.0.0',
-        priority: 'P2',
-        active: true,
-        personaSequence: [
-          'Intake Analyst',
-          'Spec Writer',
-          'Work Planner',
-          'Builder',
-          'Test Runner',
-          'Code Reviewer',
-          'Release Reviewer',
-        ],
-        evalSuiteId: 'eval-delivery-readiness',
-        gateProfile: {
-          humanGates: ['Spec Review'],
-          agentGates: ['Code Review'],
-          releaseGates: ['Global Review', 'PR Evidence'],
-        },
-        runtimePolicy: { primary: 'codex-cli', fallback: 'claude-code-cli' },
-        evidenceTemplate: {
-          requiredArtifacts: ['spec', 'test-records', 'review-records', 'global-verdict'],
-        },
-        usageCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: 'bp-security',
-        name: 'Security Patch Loop',
-        kind: 'security',
-        description: 'Security fix with mandatory human approval and security scan',
-        version: '1.0.0',
-        priority: 'P0',
-        active: true,
-        personaSequence: [
-          'Intake Analyst',
-          'Work Planner',
-          'Builder',
-          'Test Runner',
-          'Code Reviewer',
-          'Release Reviewer',
-        ],
-        evalSuiteId: 'eval-runtime-safety',
-        gateProfile: {
-          humanGates: ['Security Approval'],
-          agentGates: ['Security Scan', 'Code Review'],
-          releaseGates: ['Global Review', 'PR Evidence'],
-        },
-        runtimePolicy: { primary: 'codex-cli' },
-        evidenceTemplate: {
-          requiredArtifacts: ['test-records', 'review-records', 'global-verdict', 'pr-comment'],
-        },
-        usageCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-      {
-        id: 'bp-dependency',
-        name: 'Dependency Upgrade Loop',
-        kind: 'dependency',
-        description: 'Dependency upgrade with lockfile validation and test matrix',
-        version: '1.0.0',
-        priority: 'P2',
-        active: true,
-        personaSequence: ['Intake Analyst', 'Builder', 'Test Runner', 'Code Reviewer'],
-        evalSuiteId: 'eval-test-evidence',
-        gateProfile: {
-          humanGates: [],
-          agentGates: ['Test Matrix'],
-          releaseGates: ['PR Evidence', 'All Tests Pass'],
-        },
-        runtimePolicy: { primary: 'codex-cli' },
-        evidenceTemplate: { requiredArtifacts: ['test-records', 'review-records'] },
-        usageCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      },
-    ];
-    for (const bp of defaults) {
-      this.store.writeBlueprint(bp);
-    }
-    return defaults;
+  ) {
+    return this.adminService.rollbackBlueprint(blueprintId, input, this.adminLogSink());
   }
 
   async intervene(issueId: string, request: LoopInterventionRequest) {
@@ -6602,62 +5558,7 @@ export class LoopsService {
     browserQaStatus: string;
     secondOpinionStatus: string;
   }): string {
-    const lines: string[] = [];
-    lines.push(`# Delivery Evidence — ${input.title}`, '');
-    lines.push(`- **Issue**: ${input.issueId}`);
-    lines.push(`- **Spec**: ${input.specSummary}`);
-    lines.push(`- **Global verdict**: ${input.globalVerdict}`);
-    lines.push(`- **PR status**: ${input.prStatus}`);
-    lines.push(`- **PR ready**: ${input.prReady ? 'yes' : 'no'}`, '');
-    lines.push('## Work Packages', '');
-    if (input.workPackages.length === 0) {
-      lines.push('_No work packages recorded._', '');
-    } else {
-      for (const wp of input.workPackages) {
-        const commit = wp.commitSha ? ` · commit: ${wp.commitSha.slice(0, 12)}` : '';
-        lines.push(
-          `- **${wp.id}** ${wp.title} — status: ${wp.status} · tests: ${wp.tests} · review: ${wp.review}${commit}`,
-        );
-        if (wp.files.length > 0) {
-          lines.push(`  - files: ${wp.files.join(', ')}`);
-        }
-        if (wp.commitMessage) {
-          lines.push(`  - commit message: ${wp.commitMessage}`);
-        }
-      }
-      lines.push('');
-    }
-    lines.push('## Tests', '');
-    lines.push(`- ${input.testPassed}/${input.testTotal} passed · ${input.testFailed} failed`);
-    lines.push(`- coverage: ${input.coverage}`, '');
-    lines.push('## Reviews', '');
-    lines.push(`- ${input.shardReviews} shard reviews · ${input.findings} findings`);
-    lines.push(`- global verdict: ${input.globalVerdict}`, '');
-    lines.push('## Cost', '');
-    lines.push(
-      `- tokens: ${input.costTokens} · calls: ${input.costCalls} · budget: ${input.budget}`,
-      '',
-    );
-    if (input.risks.length > 0) {
-      lines.push('## Risks', '');
-      for (const risk of input.risks) {
-        lines.push(`- **${risk.severity}**: ${risk.description}`);
-      }
-      lines.push('');
-    }
-    // gstack/0 P2-7: Per-issue quality signals in PR evidence.
-    lines.push('## Quality Signals', '');
-    lines.push(
-      `- **First-pass**: ${input.firstPass ? 'yes (no rework required)' : 'no (rework or re-loop recorded)'}`,
-    );
-    lines.push(
-      `- **Runtime violations**: ${input.runtimeViolationCount > 0 ? `${input.runtimeViolationCount} security exception(s)` : 'none recorded'}`,
-    );
-    lines.push(`- **Browser QA**: ${input.browserQaStatus}`);
-    lines.push(`- **Second opinion**: ${input.secondOpinionStatus}`, '');
-    lines.push('---');
-    lines.push(`_Generated by DofeAI Loops Control Plane. Runtime: Codex CLI / Claude Code CLI._`);
-    return lines.join('\n');
+    return this.evidence.buildDeliveryEvidenceMarkdown(input);
   }
 
   private parseNaturalCommand(command: string): LoopNaturalCommandIntent {
@@ -6718,67 +5619,27 @@ export class LoopsService {
   }
 
   private withRequirementsCoverage(detail: LoopIssueDetail): LoopIssueDetail {
-    const evidenceArtifacts = this.buildEvidenceArtifacts(detail);
-    const enhanced = {
-      ...detail,
-      requirementsCoverage: this.buildRequirementsCoverage(detail),
-      evidenceArtifacts,
-    };
-    return {
-      ...enhanced,
-      ...this.buildDeliveryControls(enhanced),
-    };
+    return this.evidence.withRequirementsCoverage(
+      detail,
+      this.buildSecondOpinion(detail),
+    ) as LoopIssueDetail;
   }
 
   private async withDeliveryControlsList(result: LoopListResponse): Promise<LoopListResponse> {
-    const list = await Promise.all(
-      result.list.map(async (item) => {
-        let runtimeSecurityExceptions: LoopRuntimeSecurityException[] = [];
-        let deliveryItem: LoopListItem | LoopIssueDetail = item;
-        try {
-          const detail = await this.readDetail(item.issue.id);
-          deliveryItem = detail;
-          runtimeSecurityExceptions = this.buildRuntimeSecurityExceptions(detail);
-        } catch (error) {
-          this.log('warn', '[Loops] unable to read runtime security exceptions for list item', {
-            issueId: item.issue.id,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-        return {
-          ...item,
-          ...this.buildDeliveryControls(deliveryItem),
-          ...(this.asDetail(deliveryItem)?.deliveryGovernance
-            ? { deliveryGovernance: this.asDetail(deliveryItem)?.deliveryGovernance }
-            : {}),
-          ...(runtimeSecurityExceptions.length ? { runtimeSecurityExceptions } : {}),
-        };
-      }),
-    );
-    return {
-      ...result,
-      list,
-    };
+    return this.evidence.withDeliveryControlsList(result, {
+      readDetail: (issueId) => this.readDetail(issueId),
+      buildSecondOpinion: (detail) => this.buildSecondOpinion(detail as LoopIssueDetail),
+      onReadError: (issueId, error) => {
+        this.log('warn', '[Loops] unable to read runtime security exceptions for list item', {
+          issueId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    });
   }
 
   private buildRuntimeSecurityExceptions(detail: LoopIssueDetail): LoopRuntimeSecurityException[] {
-    return detail.testRecords.flatMap((record) =>
-      record.failedTests
-        .filter((failure) => failure.name.startsWith('runtime-security:'))
-        .map((failure, index) => ({
-          id: `${record.id}-${failure.name}-${index}`,
-          testRecordId: record.id,
-          shardId: record.shardId,
-          round: record.round,
-          level: failure.name === 'runtime-security:canary' ? 'critical' : 'warning',
-          reason: failure.reason,
-          evidence: `${failure.name} · ${record.status}`,
-          command:
-            record.commands.find((command) => failure.reason.includes(command.command))?.command ??
-            record.runtimeSecurityPolicy?.canary.leakedInCommands[0],
-          created: record.created,
-        })),
-    );
+    return this.evidence.buildRuntimeSecurityExceptions(detail);
   }
 
   private buildDeliveryControls(item: LoopListItem | LoopIssueDetail): {
@@ -6788,176 +5649,12 @@ export class LoopsService {
     secondOpinion?: LoopSecondOpinion;
   } {
     const detail = this.asDetail(item);
-    return {
-      workflowRecipe: this.buildWorkflowRecipe(item),
-      reviewGates: this.buildReviewGates(item),
-      releaseGate: this.buildReleaseGate(item),
-      ...(detail ? { secondOpinion: this.buildSecondOpinion(detail) } : {}),
-    };
+    const secondOpinion = detail ? this.buildSecondOpinion(detail) : undefined;
+    return this.evidence.buildDeliveryControls(item, secondOpinion);
   }
 
   private buildWorkflowRecipe(item: LoopListItem | LoopIssueDetail): LoopWorkflowRecipe {
-    const phase = item.state?.phase ?? 'PHASE_0_INTAKE';
-    const blockedReason = this.deliveryBlockedReason(item);
-    const evidenceByKind = this.evidenceIdsByKind(item);
-    const specApproved = this.isSpecApproved(item);
-    const implementationDone = this.isImplementationDone(item);
-    const reviewPassed = this.isReviewPassed(item);
-    const browserQaPassed = this.isBrowserQaPassed(item);
-    const releaseReady = this.isReleaseReady(item);
-    const updated = item.state?.updated ?? item.issue.updated;
-    const snapshot = this.asDetail(item)?.workflowRecipe;
-    const governance = this.asDetail(item)?.deliveryGovernance;
-    const workflowDefault = governance?.workflowDefaults.find(
-      (entry) => entry.loopKind === this.evidence.inferWorkflowKind(item),
-    );
-
-    const steps: LoopWorkflowStep[] = [
-      {
-        id: `${item.issue.id}-intake`,
-        kind: 'intake',
-        label: 'Intake',
-        required: true,
-        status: 'passed',
-        owner: 'system',
-        humanGate: 'none',
-        phase: 'PHASE_0_INTAKE',
-        evidenceTypes: ['raw-payload', 'issue', 'intake'],
-        evidenceIds: [
-          ...evidenceByKind('raw-payload'),
-          ...evidenceByKind('issue'),
-          ...evidenceByKind('intake'),
-        ],
-      },
-      {
-        id: `${item.issue.id}-spec-review`,
-        kind: 'spec_review',
-        label: 'Spec Review',
-        required: true,
-        status:
-          blockedReason && phase === 'PHASE_2_REVIEW'
-            ? 'blocked'
-            : specApproved
-              ? 'passed'
-              : 'current',
-        owner: 'codex',
-        humanGate: 'approval',
-        phase: 'PHASE_2_REVIEW',
-        evidenceTypes: ['spec'],
-        evidenceIds: evidenceByKind('spec'),
-        blockedReason: blockedReason && phase === 'PHASE_2_REVIEW' ? blockedReason : undefined,
-      },
-      {
-        id: `${item.issue.id}-implementation`,
-        kind: 'implementation',
-        label: 'Implementation',
-        required: true,
-        status:
-          blockedReason && phase === 'PHASE_4_IMPLEMENT'
-            ? 'blocked'
-            : implementationDone
-              ? 'passed'
-              : phase === 'PHASE_4_IMPLEMENT'
-                ? 'current'
-                : specApproved
-                  ? 'pending'
-                  : 'pending',
-        owner: 'claude-code',
-        humanGate: 'none',
-        phase: 'PHASE_4_IMPLEMENT',
-        evidenceTypes: ['implementation-record', 'shards'],
-        evidenceIds: [...evidenceByKind('implementation-record'), ...evidenceByKind('shards')],
-        blockedReason: blockedReason && phase === 'PHASE_4_IMPLEMENT' ? blockedReason : undefined,
-      },
-      {
-        id: `${item.issue.id}-code-review`,
-        kind: 'code_review',
-        label: 'Code Review',
-        required: true,
-        status: blockedReason
-          ? 'blocked'
-          : reviewPassed
-            ? 'passed'
-            : phase === 'PHASE_5_REVIEW' || phase === 'PHASE_6_CONVERGE'
-              ? 'current'
-              : implementationDone
-                ? 'pending'
-                : 'pending',
-        owner: 'codex',
-        humanGate: 'none',
-        phase: 'PHASE_5_REVIEW',
-        evidenceTypes: ['review-record', 'global-review', 'test-record'],
-        evidenceIds: [
-          ...evidenceByKind('review-record'),
-          ...evidenceByKind('global-review'),
-          ...evidenceByKind('test-record'),
-        ],
-        blockedReason,
-      },
-      {
-        id: `${item.issue.id}-browser-qa`,
-        kind: 'browser_qa',
-        label: 'Browser QA',
-        required: false,
-        status: browserQaPassed
-          ? 'passed'
-          : phase === 'PHASE_7_GLOBAL_REVIEW'
-            ? 'current'
-            : 'pending',
-        owner: 'codex',
-        humanGate: 'none',
-        phase: 'PHASE_7_GLOBAL_REVIEW',
-        evidenceTypes: ['global-review'],
-        evidenceIds: evidenceByKind('global-review'),
-      },
-      {
-        id: `${item.issue.id}-release-gate`,
-        kind: 'release_gate',
-        label: 'Release Gate',
-        required: true,
-        status: blockedReason
-          ? 'blocked'
-          : releaseReady
-            ? 'passed'
-            : ['PHASE_6_CONVERGE', 'PHASE_7_GLOBAL_REVIEW', 'PHASE_8_ANNOTATE', 'CLOSED'].includes(
-                  phase,
-                )
-              ? 'current'
-              : 'pending',
-        owner: 'codex',
-        humanGate: 'decision',
-        phase: 'PHASE_8_ANNOTATE',
-        evidenceTypes: ['convergence-pr', 'annotations'],
-        evidenceIds: [...evidenceByKind('convergence-pr'), ...evidenceByKind('annotations')],
-        blockedReason,
-      },
-      {
-        id: `${item.issue.id}-retro`,
-        kind: 'retro',
-        label: 'Reflect',
-        required: false,
-        status: item.issue.status === 'ARCHIVED' ? 'passed' : releaseReady ? 'current' : 'pending',
-        owner: 'codex',
-        humanGate: 'none',
-        evidenceTypes: ['annotations'],
-        evidenceIds: evidenceByKind('annotations'),
-      },
-    ];
-
-    return {
-      id:
-        snapshot?.id ??
-        workflowDefault?.recipeId ??
-        `default-${this.evidence.inferWorkflowKind(item)}`,
-      name: snapshot?.name ?? 'Default Codex / Claude Code delivery',
-      version: snapshot?.version ?? 1,
-      appliesTo: snapshot?.appliesTo ?? [this.evidence.inferWorkflowKind(item)],
-      capturedAt: snapshot?.capturedAt ?? workflowDefault?.updated ?? updated,
-      source: snapshot?.source ?? (workflowDefault ? 'workspace' : 'default'),
-      baselineEvidence:
-        snapshot?.baselineEvidence ?? this.buildWorkflowBaselineEvidence(item, workflowDefault),
-      steps,
-    };
+    return this.evidence.buildWorkflowRecipe(item);
   }
 
   private buildWorkflowBaselineEvidence(
@@ -6966,293 +5663,36 @@ export class LoopsService {
       LoopIssueDetail['deliveryGovernance']
     >['workflowDefaults'][number],
   ): LoopWorkflowRecipe['baselineEvidence'] {
-    const loopKind = this.evidence.inferWorkflowKind(item);
-    const workflowId = workflowDefault?.recipeId ?? `default-${loopKind}`;
-    return [
-      {
-        id: `${item.issue.id}-baseline-blueprint`,
-        kind: 'blueprint',
-        label: 'Blueprint version',
-        value: `${workflowId}@v1`,
-        evidenceRef: item.issue.rawPayloadRef,
-      },
-      {
-        id: `${item.issue.id}-baseline-runtime`,
-        kind: 'runtime',
-        label: 'Runtime plan',
-        value: 'Codex review/control + Claude Code implementation',
-      },
-      {
-        id: `${item.issue.id}-baseline-eval`,
-        kind: 'eval',
-        label: 'Eval suite',
-        value: 'architecture, delivery, runtime, test, cost hard gates',
-      },
-      {
-        id: `${item.issue.id}-baseline-gates`,
-        kind: 'gate',
-        label: 'Human and release gates',
-        value: 'spec approval, review gates, release gate',
-      },
-    ];
+    return this.evidence.buildWorkflowBaselineEvidence(item, workflowDefault);
   }
 
   private buildReviewGates(item: LoopListItem | LoopIssueDetail): LoopReviewGate[] {
-    const updated = item.state?.updated ?? item.issue.updated;
-    const blockedReason = this.deliveryBlockedReason(item);
-    const specApproved = this.isSpecApproved(item);
-    const implementationDone = this.isImplementationDone(item);
-    const reviewPassed = this.isReviewPassed(item);
-    const findingsCount = this.reviewFindingsCount(item);
-    const evidenceByKind = this.evidenceIdsByKind(item);
-
-    const gates: LoopReviewGate[] = [
-      {
-        id: `${item.issue.id}-gate-product`,
-        kind: 'product',
-        status:
-          blockedReason && item.state?.phase === 'PHASE_2_REVIEW'
-            ? 'blocked'
-            : specApproved
-              ? 'passed'
-              : 'pending',
-        reviewer: 'human',
-        confidence: specApproved ? 0.9 : undefined,
-        findingsCount: 0,
-        evidenceId: evidenceByKind('spec')[0],
-        requiredByStepId: `${item.issue.id}-spec-review`,
-        updated,
-      },
-      {
-        id: `${item.issue.id}-gate-architecture`,
-        kind: 'architecture',
-        status: this.phaseAtLeast(item, 'PHASE_3_DECOMPOSE') ? 'passed' : 'pending',
-        reviewer: 'codex',
-        confidence: this.phaseAtLeast(item, 'PHASE_3_DECOMPOSE') ? 0.8 : undefined,
-        findingsCount: 0,
-        evidenceId: evidenceByKind('shards')[0],
-        requiredByStepId: `${item.issue.id}-implementation`,
-        updated,
-      },
-      {
-        id: `${item.issue.id}-gate-code`,
-        kind: 'code',
-        status: blockedReason
-          ? 'blocked'
-          : reviewPassed
-            ? 'passed'
-            : findingsCount > 0
-              ? 'needs_changes'
-              : implementationDone
-                ? 'pending'
-                : 'pending',
-        reviewer: 'codex',
-        confidence: reviewPassed ? 0.85 : undefined,
-        findingsCount,
-        evidenceId: evidenceByKind('review-record')[0] ?? evidenceByKind('global-review')[0],
-        requiredByStepId: `${item.issue.id}-code-review`,
-        updated,
-      },
-      {
-        id: `${item.issue.id}-gate-security`,
-        kind: 'security',
-        status: this.isReleaseReady(item) ? 'passed' : 'pending',
-        reviewer: 'codex',
-        confidence: this.isReleaseReady(item) ? 0.7 : undefined,
-        findingsCount: 0,
-        evidenceId: evidenceByKind('global-review')[0],
-        requiredByStepId: `${item.issue.id}-release-gate`,
-        updated,
-      },
-    ];
-    const governance = this.asDetail(item)?.deliveryGovernance;
-    const requiredKinds = governance?.requiredReviewGates?.gateKinds;
-    const scopedGates = requiredKinds?.length
-      ? gates.filter((gate) => requiredKinds.includes(gate.kind))
-      : gates;
-    const overrides = governance?.reviewGateOverrides ?? [];
-    return scopedGates.map((gate) => {
-      const override = overrides.find((item) => item.gateKind === gate.kind);
-      if (!override) return gate;
-      return {
-        ...gate,
-        status: override.status,
-        reviewer: 'human',
-        confidence:
-          override.status === 'passed' || override.status === 'waived' ? 1 : gate.confidence,
-        waiverReason:
-          override.status === 'waived' || override.status === 'blocked'
-            ? (override.reason ?? `Governed by ${override.actor}`)
-            : gate.waiverReason,
-        updated: override.updated,
-      };
-    });
+    return this.evidence.buildReviewGates(item);
   }
 
   private buildReleaseGate(item: LoopListItem | LoopIssueDetail): LoopReleaseGate {
-    const updated = item.state?.updated ?? item.issue.updated;
-    const evidenceByKind = this.evidenceIdsByKind(item);
     const detail = this.asDetail(item);
     const secondOpinion = detail ? this.buildSecondOpinion(detail) : undefined;
-    const governance = detail?.deliveryGovernance;
-    const reviewGates = this.buildReviewGates(item);
-    const canaryPassed = !governance?.releaseCanary || governance.releaseCanary.status === 'passed';
-    const checklist = {
-      specApproved: this.isSpecApproved(item),
-      implementationEvidence: this.isImplementationDone(item),
-      testsPassed: this.testsPassed(item),
-      requiredReviewsPassed: reviewGates.every(
-        (gate) => gate.status === 'passed' || gate.status === 'waived',
-      ),
-      secondOpinionPassed: secondOpinion
-        ? !secondOpinion.requiredForRelease || secondOpinion.status === 'passed'
-        : true,
-      browserQaPassed: this.isBrowserQaPassed(item),
-      docsUpdated: true,
-      prReady: Boolean(detail?.convergencePr || item.issue.status === 'CLOSED'),
-      rollbackNote: Boolean(
-        detail?.convergencePr ||
-        item.issue.status === 'CLOSED' ||
-        governance?.releaseCanary?.rollbackNote,
-      ),
-      canaryPassed,
-    };
-    const blocker = this.deliveryBlockedReason(item);
-    return {
-      id: `${item.issue.id}-release-gate`,
-      status: blocker
-        ? 'blocked'
-        : item.issue.status === 'CLOSED' || item.state?.finalized
-          ? 'shipped'
-          : Object.values(checklist).every(Boolean)
-            ? 'ready'
-            : 'pending',
-      checklist,
-      evidenceIds: [
-        ...evidenceByKind('spec'),
-        ...evidenceByKind('implementation-record'),
-        ...evidenceByKind('test-record'),
-        ...evidenceByKind('review-record'),
-        ...evidenceByKind('global-review'),
-        ...evidenceByKind('convergence-pr'),
-      ],
-      blocker,
-      updated,
-    };
+    return this.evidence.buildReleaseGate(item, secondOpinion);
   }
 
   private buildSecondOpinion(detail: LoopIssueDetail): LoopSecondOpinion {
-    if (detail.secondOpinion) {
-      return this.applySecondOpinionPolicy(detail, detail.secondOpinion);
-    }
-    const primaryEvidenceIds = [
-      ...detail.reviewRecords.map((record) => record.id),
-      ...(detail.globalReview ? [detail.globalReview.id] : []),
-    ];
-    const primaryFindings = buildPrimarySecondOpinionFindings({
-      reviewRecords: detail.reviewRecords,
-      globalReview: detail.globalReview,
-    });
-    const comparison = compareSecondOpinionFindings({ primary: primaryFindings, secondary: [] });
-    const primaryPassed = Boolean(
-      detail.globalReview?.verdict === 'PASS' ||
-      (detail.reviewRecords.length > 0 &&
-        detail.reviewRecords.every((record) => record.verdict === 'PASS')),
-    );
-    const primaryStatus: LoopSecondOpinion['primary']['status'] =
-      primaryEvidenceIds.length === 0
-        ? 'not_run'
-        : primaryFindings.length > 0
-          ? 'needs_changes'
-          : primaryPassed
-            ? 'passed'
-            : 'pending';
-    const secondaryStatus: LoopSecondOpinion['secondary']['status'] = detail.globalReview
-      ? 'pending'
-      : 'not_run';
-    const requiredForRelease =
-      detail.deliveryGovernance?.secondOpinionPolicy?.requiredForRelease ?? false;
-    const conflictHumanGate =
-      detail.deliveryGovernance?.secondOpinionPolicy?.conflictHumanGate ?? true;
-    const hasConflict = comparison.conflictCount > 0 && conflictHumanGate;
-
-    return this.applySecondOpinionPolicy(detail, {
-      id: `${detail.issue.id}-second-opinion`,
-      status: hasConflict
-        ? 'conflict'
-        : requiredForRelease
-          ? this.isSecondOpinionReviewerPassed(secondaryStatus) && primaryStatus === 'passed'
-            ? 'passed'
-            : primaryStatus === 'needs_changes'
-              ? 'needs_changes'
-              : 'pending'
-          : 'not_required',
-      primary: {
-        role: 'primary',
-        reviewer: 'codex',
-        status: primaryStatus,
-        findingsCount: primaryFindings.length,
-        findings: primaryFindings,
-        evidenceIds: primaryEvidenceIds,
-        summary:
-          primaryEvidenceIds.length > 0
-            ? `Codex primary review has ${primaryFindings.length} finding(s) across shard and global review evidence.`
-            : 'Codex primary review has not produced evidence yet.',
-      },
-      secondary: {
-        role: 'secondary',
-        reviewer: 'claude-code',
-        status: secondaryStatus,
-        findingsCount: 0,
-        findings: [],
-        evidenceIds: [],
-        summary:
-          secondaryStatus === 'pending'
-            ? 'Claude Code secondary review is not required for release yet; enable the second-opinion worker to compare findings.'
-            : 'Claude Code secondary review has not run yet.',
-      },
-      comparison: {
-        ...comparison,
-      },
-      requiredForRelease,
-      updated: detail.state.updated ?? detail.issue.updated,
-    });
+    return this.evidence.buildSecondOpinion(detail);
   }
 
   private applySecondOpinionPolicy(
     detail: LoopIssueDetail,
     report: LoopSecondOpinion,
   ): LoopSecondOpinion {
-    const policy = detail.deliveryGovernance?.secondOpinionPolicy;
-    if (!policy) return report;
-    const status =
-      policy.conflictHumanGate && report.comparison.conflictCount > 0
-        ? 'conflict'
-        : policy.requiredForRelease
-          ? report.secondary.status === 'passed' && report.primary.status === 'passed'
-            ? 'passed'
-            : report.status === 'needs_changes' || report.primary.status === 'needs_changes'
-              ? 'needs_changes'
-              : 'pending'
-          : report.status;
-    return {
-      ...report,
-      status,
-      requiredForRelease: policy.requiredForRelease,
-      updated: policy.updated,
-    };
+    return this.evidence.applySecondOpinionPolicy(detail, report);
   }
 
   private isSecondOpinionReviewerPassed(status: LoopSecondOpinion['secondary']['status']): boolean {
-    return status === 'passed';
+    return this.evidence.isSecondOpinionReviewerPassed(status);
   }
 
   private deliveryBlockedReason(item: LoopListItem | LoopIssueDetail): string | undefined {
-    if (item.state?.paused || item.state?.phase === 'PAUSED') return 'Loop is paused';
-    if (item.state?.globalVerdict && item.state.globalVerdict !== 'PASS') {
-      return `Global review ${item.state.globalVerdict}`;
-    }
-    return undefined;
+    return this.evidence.deliveryBlockedReason(item);
   }
 
   // 结构优化 Step 5：inferWorkflowKind 已下沉到 `LoopsEvidenceService`
@@ -7271,44 +5711,23 @@ export class LoopsService {
   }
 
   private isSpecApproved(item: LoopListItem | LoopIssueDetail): boolean {
-    const detail = this.asDetail(item);
-    return Boolean(
-      detail?.spec?.status === 'APPROVED' ||
-      (item.state?.specVersion &&
-        item.state.specVersion !== 'v0' &&
-        this.phaseAtLeast(item, 'PHASE_3_DECOMPOSE')),
-    );
+    return this.evidence.isSpecApproved(item);
   }
 
   private isImplementationDone(item: LoopListItem | LoopIssueDetail): boolean {
-    const shardsDone = item.state?.shardsDone ?? 0;
-    const shardsTotal = item.state?.shardsTotal ?? 0;
-    return shardsTotal > 0 && shardsDone >= shardsTotal;
+    return this.evidence.isImplementationDone(item);
   }
 
   private isReviewPassed(item: LoopListItem | LoopIssueDetail): boolean {
-    return item.issue.status === 'CLOSED' || item.state?.globalVerdict === 'PASS';
+    return this.evidence.isReviewPassed(item);
   }
 
   private isBrowserQaPassed(item: LoopListItem | LoopIssueDetail): boolean {
-    const reports = this.asDetail(item)?.browserQaReports ?? [];
-    if (reports.length > 0) {
-      return reports[0]?.status === 'passed';
-    }
-    const phase = item.state?.phase ?? 'PHASE_0_INTAKE';
-    return (
-      item.issue.status === 'CLOSED' ||
-      ['PHASE_7_GLOBAL_REVIEW', 'PHASE_8_ANNOTATE', 'CLOSED'].includes(phase)
-    );
+    return this.evidence.isBrowserQaPassed(item);
   }
 
   private isReleaseReady(item: LoopListItem | LoopIssueDetail): boolean {
-    return (
-      (item.issue.status === 'CLOSED' || item.state?.finalized || item.state?.phase === 'CLOSED') &&
-      this.isSpecApproved(item) &&
-      this.isImplementationDone(item) &&
-      this.isReviewPassed(item)
-    );
+    return this.evidence.isReleaseReady(item);
   }
 
   /**
@@ -7323,56 +5742,11 @@ export class LoopsService {
     releaseGate: LoopReleaseGate,
     secondOpinion?: LoopSecondOpinion,
   ): void {
-    const blockers: string[] = [];
-    if (!releaseGate.checklist.specApproved) {
-      blockers.push('Spec is not approved');
-    }
-    if (!releaseGate.checklist.implementationEvidence) {
-      blockers.push('Implementation evidence is missing');
-    }
-    if (!releaseGate.checklist.testsPassed) {
-      blockers.push('Tests have not all passed');
-    }
-    if (!releaseGate.checklist.requiredReviewsPassed) {
-      blockers.push('Required reviews have not all passed or been waived');
-    }
-    if (secondOpinion?.requiredForRelease && secondOpinion.status === 'conflict') {
-      // gstack/0 P1-5: Check whether conflict resolutions have been recorded.
-      const resolutions = detail.deliveryGovernance?.secondOpinionResolutions ?? [];
-      const conflictFingerprints = secondOpinion.comparison.conflictFingerprints;
-      const resolvedFingerprints = new Set(
-        resolutions
-          .map((resolution) => resolution.conflictFingerprint)
-          .filter((fingerprint): fingerprint is string => Boolean(fingerprint)),
-      );
-      const unresolvedCount =
-        conflictFingerprints.length > 0
-          ? conflictFingerprints.filter((fingerprint) => !resolvedFingerprints.has(fingerprint))
-              .length
-          : Math.max(secondOpinion.comparison.conflictCount - resolutions.length, 0);
-      if (unresolvedCount > 0) {
-        blockers.push(
-          `Second opinion has ${unresolvedCount} unresolved conflict(s); resolve or waive before shipping`,
-        );
-      }
-    }
-    if (!releaseGate.checklist.browserQaPassed) {
-      blockers.push('Browser QA has not passed');
-    }
-    if (!releaseGate.checklist.rollbackNote) {
-      blockers.push('Rollback note is missing — required for all releases');
-    }
-    if (releaseGate.checklist.canaryPassed === false) {
-      blockers.push('Release canary has not passed');
-    }
-
-    // R32a: Rules Center enforcement — architectural rules that must pass before release.
-    const rulesViolations = this.checkRulesCompliance(detail);
-    if (rulesViolations.length > 0) {
-      blockers.push(
-        `Rules Center violations detected:\n${rulesViolations.map((v) => `  - ${v}`).join('\n')}`,
-      );
-    }
+    const blockers = this.evidence.buildReleaseGateBlockers({
+      detail,
+      releaseGate,
+      secondOpinion,
+    });
 
     if (blockers.length > 0) {
       this.log('warn', `[Loops] Release gate blocked finalize for ${detail.issue.id}`, {
@@ -7391,262 +5765,23 @@ export class LoopsService {
    * Returns a list of violation descriptions; empty = all enforced rules passed.
    */
   private checkRulesCompliance(detail: LoopIssueDetail): string[] {
-    const violations: string[] = [];
-    const records = detail.implementationRecords ?? [];
-    const changedFiles = records.flatMap((r) => r.changedFiles ?? []);
-
-    // Architecture rule: no direct Prisma access outside DB Service
-    // (enforced — checked via changed file patterns)
-    const sensitiveFiles = changedFiles.filter(
-      (f) =>
-        f.includes('.env') ||
-        f.includes('secret') ||
-        f.includes('credentials') ||
-        f.includes('private_key'),
-    );
-    if (sensitiveFiles.length > 0) {
-      violations.push(`[Architecture] Sensitive files modified: ${sensitiveFiles.join(', ')}`);
-    }
-
-    // Security rule: no console.log in production paths
-    // (attention — logged but not blocked unless severity=critical)
-    const srcFiles = changedFiles.filter(
-      (f) => f.startsWith('apps/api/src/') || f.startsWith('apps/web/app/'),
-    );
-    if (srcFiles.length > 0 && !detail.testRecords.some((t) => t.status === 'TEST-PASS')) {
-      violations.push('[Testing] No passing test records found for source file changes');
-    }
-
-    // Contract rule: API changes require contract updates
-    const apiFiles = changedFiles.filter((f) => f.startsWith('apps/api/src/'));
-    const contractFiles = changedFiles.filter((f) => f.startsWith('packages/contracts/'));
-    if (apiFiles.length > 0 && contractFiles.length === 0) {
-      violations.push(
-        '[Architecture] API source files changed without contract updates — verify Zod/ts-rest contract',
-      );
-    }
-
-    // External API rule: external service calls must go through Client layer
-    const controllerFiles = changedFiles.filter((f) => f.includes('controller'));
-    if (controllerFiles.length > 0) {
-      const implNotes = records.map((r) => r.notes ?? '').join(' ');
-      const summary = records.map((r) => r.summary).join(' ');
-      const combined = `${implNotes} ${summary}`.toLowerCase();
-      if (/axios|fetch|http\.request/.test(combined)) {
-        violations.push(
-          '[Architecture] Controller changes with direct HTTP calls detected — use Client layer',
-        );
-      }
-    }
-
-    // Workspace rule: all shards must have implementation records
-    const implementedShardIds = new Set(records.map((r) => r.shardId));
-    const unimplementedShards = detail.shards.filter(
-      (s) => s.status !== 'TODO' && !implementedShardIds.has(s.id),
-    );
-    if (unimplementedShards.length > 0) {
-      violations.push(
-        `[Workspace] ${unimplementedShards.length} shard(s) in non-TODO status without implementation records`,
-      );
-    }
-
-    return violations;
+    return this.evidence.checkRulesCompliance(detail);
   }
 
   private testsPassed(item: LoopListItem | LoopIssueDetail): boolean {
-    const detail = this.asDetail(item);
-    if (!detail) return this.isReviewPassed(item);
-    return (
-      detail.testRecords.length > 0 &&
-      detail.testRecords.every((record) => record.status === 'TEST-PASS')
-    );
+    return this.evidence.testsPassed(item);
   }
 
   private reviewFindingsCount(item: LoopListItem | LoopIssueDetail): number {
-    const detail = this.asDetail(item);
-    if (!detail) return item.state?.globalVerdict && item.state.globalVerdict !== 'PASS' ? 1 : 0;
-    return (
-      detail.reviewRecords.reduce((total, record) => total + record.issues.length, 0) +
-      (detail.globalReview?.issues.length ?? 0)
-    );
+    return this.evidence.reviewFindingsCount(item);
   }
 
   private phaseAtLeast(item: LoopListItem | LoopIssueDetail, phase: LoopPhase): boolean {
-    if (item.issue.status === 'CLOSED' || item.state?.finalized) return true;
-    const order: Partial<Record<LoopPhase, number>> = {
-      PHASE_0_INTAKE: 0,
-      PHASE_1_SPEC: 1,
-      PHASE_2_REVIEW: 2,
-      PHASE_3_DECOMPOSE: 3,
-      PHASE_4_IMPLEMENT: 4,
-      PHASE_5_REVIEW: 5,
-      PHASE_6_CONVERGE: 6,
-      PHASE_7_GLOBAL_REVIEW: 7,
-      PHASE_8_ANNOTATE: 8,
-      CLOSED: 9,
-      PAUSED: -1,
-    };
-    return (order[item.state?.phase ?? 'PHASE_0_INTAKE'] ?? 0) >= (order[phase] ?? 0);
+    return this.evidence.phaseAtLeast(item, phase);
   }
 
   private buildEvidenceArtifacts(detail: LoopIssueDetail): LoopEvidenceArtifact[] {
-    const issueId = detail.issue.id;
-    const artifacts: LoopEvidenceArtifact[] = [
-      {
-        id: `${issueId}-raw-payload`,
-        label: 'Raw Payload',
-        kind: 'raw-payload',
-        path: detail.issue.rawPayloadRef,
-        status: 'present',
-        summary: `Original ${detail.issue.sourceChannel}/${detail.issue.sourceKind} request from ${detail.issue.submitterName ?? detail.issue.submitterId}.`,
-      },
-      {
-        id: `${issueId}-issue`,
-        label: 'Issue Record',
-        kind: 'issue',
-        path: `.loops/issues/${issueId}.json`,
-        status: 'present',
-        summary: `${detail.issue.priority} ${detail.issue.status} issue with ${detail.issue.acceptanceCriteria.length} initial acceptance criteria.`,
-      },
-      {
-        id: `${issueId}-intake`,
-        label: 'Intake Record',
-        kind: 'intake',
-        path: `.loops/intakes/${detail.intake.id}.json`,
-        status: 'present',
-        summary: `${detail.intake.status} intake normalized from ${detail.intake.sourceChannel}/${detail.intake.sourceKind}.`,
-      },
-      {
-        id: `${issueId}-spec`,
-        label: 'Spec',
-        kind: 'spec',
-        path: `.loops/specs/${issueId}/spec.${detail.state.specVersion}.json`,
-        status: detail.spec ? 'present' : 'pending',
-        summary: detail.spec
-          ? `${detail.spec.status} spec ${detail.spec.version} maps ${detail.issue.acceptanceCriteria.length} initial acceptance criteria.`
-          : `Spec ${detail.state.specVersion} has not been generated yet.`,
-      },
-      {
-        id: `${issueId}-shards`,
-        label: 'Shards',
-        kind: 'shards',
-        path: `.loops/shards/${issueId}/shards.json`,
-        status: detail.shards.length > 0 ? 'present' : 'pending',
-        count: detail.shards.length,
-        summary:
-          detail.shards.length > 0
-            ? `${detail.shards.filter((shard) => shard.status === 'DONE').length}/${detail.shards.length} shards done; ${detail.shards.filter((shard) => shard.status === 'IN_PROGRESS').length} in progress.`
-            : 'No implementation shards have been decomposed yet.',
-      },
-      {
-        id: `${issueId}-test-matrix`,
-        label: 'Test Matrix',
-        kind: 'test-matrix',
-        path: `.loops/tests/${issueId}/matrix.json`,
-        status: detail.testMatrix ? 'present' : 'pending',
-        count: detail.testMatrix?.requiredTests.length,
-        summary: detail.testMatrix
-          ? `${detail.testMatrix.requiredTests.length} required tests across ${detail.testMatrix.regressionScope.length} regression targets.`
-          : 'Test matrix is pending until decomposition completes.',
-      },
-      {
-        id: `${issueId}-annotations`,
-        label: 'Annotations',
-        kind: 'annotations',
-        path: `.loops/annotations/${issueId}.json`,
-        status: detail.annotations.length > 0 ? 'present' : 'pending',
-        count: detail.annotations.length,
-        summary:
-          detail.annotations.length > 0
-            ? `${detail.annotations.length} reviewer annotations captured for requirement coverage.`
-            : 'No reviewer annotations have been recorded yet.',
-      },
-    ];
-
-    artifacts.push(
-      ...detail.implementationRecords.map((record) => ({
-        id: record.id,
-        label: `Implementation ${record.shardId}`,
-        kind: 'implementation-record' as const,
-        path: `.loops/runs/${issueId}/${record.shardId}/${record.round}/implementation.json`,
-        status: 'present' as const,
-        round: record.round,
-        count: record.changedFiles.length,
-        summary: `${record.status} implementation for ${record.shardId}; ${record.changedFiles.length} changed files recorded.`,
-      })),
-      ...detail.testRecords.map((record) => ({
-        id: record.id,
-        label: `Test ${record.shardId}`,
-        kind: 'test-record' as const,
-        path: `.loops/tests/${issueId}/records/${record.id}.json`,
-        status: 'present' as const,
-        round: record.round,
-        count: record.commands.length,
-        summary: `${record.status} test run for ${record.shardId}; ${record.commands.length} commands executed.`,
-      })),
-      ...detail.reviewRecords.map((record) => ({
-        id: record.id,
-        label: `Review ${record.shardId}`,
-        kind: 'review-record' as const,
-        path: `.loops/runs/${issueId}/${record.shardId}/${record.round}/review.json`,
-        status: 'present' as const,
-        round: record.round,
-        count: record.issues.length,
-        summary: `${record.verdict} review for ${record.shardId}; ${record.issues.length} issues recorded.`,
-      })),
-    );
-
-    artifacts.push({
-      id: `${issueId}-global-review`,
-      label: 'Global Review',
-      kind: 'global-review',
-      path: `.loops/runs/${issueId}/global-review.json`,
-      status: detail.globalReview ? 'present' : 'pending',
-      round: detail.globalReview?.round,
-      summary: detail.globalReview
-        ? `${detail.globalReview.verdict} global review with ${detail.globalReview.issues.length} cross-shard issues.`
-        : 'Global review has not been run yet.',
-    });
-    artifacts.push({
-      id: `${issueId}-convergence-pr`,
-      label: 'Convergence PR',
-      kind: 'convergence-pr',
-      path: `.loops/runs/${issueId}/convergence-pr.json`,
-      status: detail.convergencePr ? 'present' : 'pending',
-      count: detail.convergencePr?.commits.length,
-      summary: detail.convergencePr
-        ? `Convergence package references ${detail.convergencePr.commits.length} commits.`
-        : 'Convergence PR evidence is pending until finalization.',
-    });
-    const latestBrowserQa = detail.browserQaReports?.[0];
-    artifacts.push({
-      id: latestBrowserQa?.id ?? `${issueId}-browser-qa`,
-      label: 'Browser QA',
-      kind: 'browser-qa',
-      path: latestBrowserQa
-        ? `.loops/runs/${issueId}/browser-qa/${latestBrowserQa.id}.json`
-        : `.loops/runs/${issueId}/browser-qa`,
-      status: latestBrowserQa ? 'present' : 'pending',
-      count: latestBrowserQa
-        ? latestBrowserQa.consoleErrors.length + latestBrowserQa.networkFailures.length
-        : undefined,
-      summary: latestBrowserQa
-        ? `${latestBrowserQa.status} browser QA for ${latestBrowserQa.targetUrl}; ${latestBrowserQa.screenshots.length} screenshots, ${latestBrowserQa.traces?.length ?? 0} traces, ${latestBrowserQa.visualDiffs?.length ?? 0} visual checks and ${latestBrowserQa.handoffs?.length ?? 0} handoffs captured.`
-        : 'Browser QA report has not been run yet.',
-    });
-    artifacts.push({
-      id: detail.secondOpinion?.id ?? `${issueId}-second-opinion`,
-      label: 'Second Opinion',
-      kind: 'second-opinion',
-      path: `.loops/runs/${issueId}/second-opinion.json`,
-      status: detail.secondOpinion ? 'present' : 'pending',
-      count: detail.secondOpinion?.comparison.conflictCount,
-      summary: detail.secondOpinion
-        ? `${detail.secondOpinion.status} second opinion; secondary reviewer ${detail.secondOpinion.secondary.status}.`
-        : 'Second opinion worker has not produced evidence yet.',
-    });
-
-    return artifacts;
+    return this.evidence.buildEvidenceArtifacts(detail);
   }
 
   private buildLoopLearnings(
@@ -7738,52 +5873,7 @@ export class LoopsService {
   }
 
   private buildRequirementsCoverage(detail: LoopIssueDetail): LoopRequirementCoverage {
-    const items = detail.issue.acceptanceCriteria.map((criterion, index) => {
-      const normalized = this.normalizeCoverageText(criterion);
-      const shardIds = detail.shards
-        .filter((shard) =>
-          shard.acceptance.some((item) => this.coverageTextMatches(item, normalized)),
-        )
-        .map((shard) => shard.id);
-      const testIds =
-        detail.testMatrix?.requiredTests
-          .filter(
-            (test) =>
-              shardIds.includes(test.shardId) || this.coverageTextMatches(test.title, normalized),
-          )
-          .map((test) => test.id) ?? [];
-      const implementationRecordIds = detail.implementationRecords
-        .filter((record) => shardIds.includes(record.shardId))
-        .map((record) => record.id);
-      const reviewRecordIds = detail.reviewRecords
-        .filter((record) => shardIds.includes(record.shardId) && record.verdict === 'PASS')
-        .map((record) => record.id);
-      const inSpec = detail.spec ? this.coverageTextMatches(detail.spec.body, normalized) : false;
-      const status = this.resolveRequirementStatus({
-        inSpec,
-        shardIds,
-        testIds,
-        implementationRecordIds,
-        reviewRecordIds,
-        globalVerdict: detail.state.globalVerdict,
-      });
-
-      return {
-        id: `REQ-${index + 1}`,
-        criterion,
-        inSpec,
-        shardIds,
-        testIds,
-        implementationRecordIds,
-        reviewRecordIds,
-        status,
-      };
-    });
-
-    return {
-      summary: this.summarizeRequirementsCoverage(items),
-      items,
-    };
+    return this.evidence.buildRequirementsCoverage(detail);
   }
 
   private resolveRequirementStatus(input: {
@@ -7794,70 +5884,31 @@ export class LoopsService {
     reviewRecordIds: string[];
     globalVerdict?: LoopStateItem['globalVerdict'];
   }): LoopRequirementCoverageItem['status'] {
-    if (input.globalVerdict === 'PASS' && input.reviewRecordIds.length > 0) return 'accepted';
-    if (input.reviewRecordIds.length > 0) return 'reviewed';
-    if (input.testIds.length > 0 && input.implementationRecordIds.length > 0) return 'tested';
-    if (input.implementationRecordIds.length > 0) return 'implemented';
-    if (input.inSpec && input.shardIds.length > 0 && input.testIds.length > 0) return 'planned';
-    return 'missing';
+    return this.evidence.resolveRequirementStatus(input);
   }
 
   private summarizeRequirementsCoverage(
     items: LoopRequirementCoverageItem[],
   ): LoopRequirementCoverageSummary {
-    const summary = this.emptyCoverageSummary(items.length);
-    for (const item of items) {
-      summary[item.status] += 1;
-    }
-    summary.percent =
-      summary.total === 0 ? 100 : Math.round((summary.accepted / summary.total) * 100);
-    return summary;
+    return this.evidence.summarizeRequirementsCoverage(items);
   }
 
   private aggregateCoverageSummaries(
     summaries: LoopRequirementCoverageSummary[],
   ): LoopRequirementCoverageSummary {
-    const total = summaries.reduce((acc, item) => acc + item.total, 0);
-    const summary = this.emptyCoverageSummary(total);
-    for (const item of summaries) {
-      summary.accepted += item.accepted;
-      summary.reviewed += item.reviewed;
-      summary.tested += item.tested;
-      summary.implemented += item.implemented;
-      summary.planned += item.planned;
-      summary.missing += item.missing;
-    }
-    summary.percent = total === 0 ? 100 : Math.round((summary.accepted / total) * 100);
-    return summary;
+    return this.evidence.aggregateCoverageSummaries(summaries);
   }
 
   private emptyCoverageSummary(total = 0): LoopRequirementCoverageSummary {
-    return {
-      total,
-      accepted: 0,
-      reviewed: 0,
-      tested: 0,
-      implemented: 0,
-      planned: 0,
-      missing: 0,
-      percent: total === 0 ? 100 : 0,
-    };
+    return this.evidence.emptyCoverageSummary(total);
   }
 
   private coverageTextMatches(text: string, normalizedNeedle: string) {
-    const haystack = this.normalizeCoverageText(text);
-    return Boolean(
-      normalizedNeedle &&
-      (haystack.includes(normalizedNeedle) || normalizedNeedle.includes(haystack)),
-    );
+    return this.evidence.coverageTextMatches(text, normalizedNeedle);
   }
 
   private normalizeCoverageText(value: string) {
-    return value
-      .toLowerCase()
-      .replace(/^-+\s*/, '')
-      .replace(/\[[^\]]+\]/g, '')
-      .replace(/[^\p{Letter}\p{Number}]+/gu, '');
+    return this.evidence.normalizeCoverageText(value);
   }
 
   /** gstack P2: Serve a Browser QA artifact file (screenshot, trace, diff) for inline preview. */

@@ -6,3 +6,10 @@
  */
 export * from './ip-info';
 export * from './loops';
+export * from './loops-quality';
+export * from './loops-runners';
+export * from './loops-integrations';
+export * from './loops-eval';
+export * from './loops-admin';
+export * from './loops-triggers';
+export * from './loops-remote-runners';

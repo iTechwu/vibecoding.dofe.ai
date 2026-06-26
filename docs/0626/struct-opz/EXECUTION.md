@@ -25,23 +25,198 @@
 
 > 基线：执行前 `pnpm --filter @repo/api type-check` EXIT 0（无错误），作为每步验证 gate。
 
-| Step                                        | 状态 | 落地范围 / 说明                                                                                                                                                                              | 最近循环  |
-| ------------------------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| Step 0 · Facade 骨架                        | ✅   | `libs/domain/services/loops` 建立 `LoopsDomainModule`，接入 API `loops.module.ts`；controller 不变                                                                                           | Loop 1    |
-| Step 1 · 下沉 store/lock/util               | ✅   | 1a utils；1b locks（+specs+token）；1c store+persistence+notification+runtime-config/learning-memory；CI 新增 loops reverse-import 边界检查；`quality:gate` EXIT 0                           | Loop 2–5  |
-| Step 2 · Issue Intake                       | 🚧   | intake 记录构造**全部**（createIssueId/normalizeSubmitter/resolveTargetRepo/writeIssueRecord/captureRuleSnapshot/resolveSimpleTargetRepo）→ `loops-issues`；list/getIssue 待 Step 5 enricher | Loop 6, 9 |
-| Step 3 · Engine 状态机                      | 🚧   | 纯状态推导原语（nextResumePhase/nextSpecVersion/findRunnableShard/formatPhase+PHASE_LABELS）→ `loops-engine`；推进方法待 Step 4/5                                                            | Loop 7    |
-| Step 4 · Runner / Runtime                   | 🚧   | runtime 三件套（docker.client + workspace-profile + runtime-images）→ `loops-runtime`；adapters/runner/agent-runtime-detection/docker-sandbox 待 loops-runners 后续批                        | Loop 8    |
-| Step 5 · Evidence / Quality                 | 🚧   | 纯 `inferWorkflowKind` → `loops-evidence`；evidence builder/gate/coverage/enricher 群待后续大头（解锁 list/getIssue）                                                                        | Loop 10   |
-| Step 6 · Eval / Bench                       | ⏳   | 待实施                                                                                                                                                                                       | —         |
-| Step 7 · Integrations / MCP / CI / PR       | ⏳   | 待实施                                                                                                                                                                                       | —         |
-| Step 8 · Trigger / Remote Runner            | ⏳   | 待实施                                                                                                                                                                                       | —         |
-| Step 9 · Admin / Archive / Tool / Blueprint | ⏳   | 待实施                                                                                                                                                                                       | —         |
-| Step 10 · 收敛 API module                   | ⏳   | 待实施                                                                                                                                                                                       | —         |
+| Step                                        | 状态 | 落地范围 / 说明                                                                                                                                                                                                                                 | 最近循环    |
+| ------------------------------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| Step 0 · Facade 骨架                        | ✅   | `libs/domain/services/loops` 建立 `LoopsDomainModule`，接入 API `loops.module.ts`；controller 不变                                                                                                                                              | Loop 1      |
+| Step 1 · 下沉 store/lock/util               | ✅   | 1a utils；1b locks（+specs+token）；1c store+persistence+notification+runtime-config/learning-memory；CI 新增 loops reverse-import 边界检查；`quality:gate` EXIT 0                                                                              | Loop 2–5    |
+| Step 2 · Issue Intake                       | 🚧   | intake 记录构造**全部** + `list` / `listFromFile` / `getIssue` query/read pipeline → `loops-issues`；API facade 保留 HTTP 日志/异常映射与兼容入口                                                                                               | Cycle 31–37 |
+| Step 3 · Engine 状态机                      | 🚧   | 纯状态推导原语（nextResumePhase/nextSpecVersion/findRunnableShard/formatPhase+PHASE_LABELS）→ `loops-engine`；推进方法待 Step 4/5                                                                                                               | Loop 7      |
+| Step 4 · Runner / Runtime                   | 🚧   | runtime detection/docker sandbox/workspace profile/runtime constants → `loops-runtime`；runner service + adapters + utils → `loops-runners`；adapter provider wiring 仍在 API module                                                            | Cycle 7–12  |
+| Step 5 · Evidence / Quality                 | 🚧   | quality workers 已下沉；evidence 已下沉 workflow/baseline/markdown/runtime-security/second-opinion-policy/release-blockers/coverage/artifacts/review-release gates/delivery controls/list enricher/second opinion builder；API 仅留兼容 wrapper | Cycle 31    |
+| Step 6 · Eval / Bench                       | 🚧   | Eval aggregation worker、eval suite/run builder、eval trend baseline builder、request-time aggregation builder、loop bench metric helper 已下沉到 `loops-eval`；trend worker IO 仍在 legacy facade                                              | Cycle 38–41 |
+| Step 7 · Integrations / MCP / CI / PR       | 🚧   | PR provider、MCP client、MCP secret 已下沉到 `loops-integrations`；CI publication builder 与 notification sender re-home 仍待处理                                                                                                               | Cycle 4     |
+| Step 8 · Trigger / Remote Runner            | 🚧   | schedule trigger CRUD → `loops-triggers`；remote runner list/lease/job → `loops-remote-runners`；fire/execution pipeline 仍在 facade                                                                                                            | Cycle 13–15 |
+| Step 9 · Admin / Archive / Tool / Blueprint | 🚧   | capability registry + tool registry CRUD + delivery blueprint marketplace + archive control wrapper + archive collection service → `loops-admin`；eval aggregation port 待 Step 6/Next N4 收口                                                  | Cycle 53–57 |
+| Step 10 · 收敛 API module                   | ⏳   | 待实施                                                                                                                                                                                                                                          | —           |
 
 ## 循环执行日志
 
 每次循环固定结构：**实施 → 标注 → 审查待实施项 → 标注**。下方按循环倒序追加。
+
+### Loop 47 · 2026-06-26 · Step 9 收敛验证与剩余项审查
+
+#### 实施
+
+- 执行 domain services 反向依赖扫描，确认 `loops-admin` 没有 import `apps/api/src/modules/loops`。
+- 执行 focused tests：`loops-admin.service.spec.ts`。
+- 执行 API type-check。
+
+#### 标注
+
+- Step 9 状态更新为：capability registry、tool registry CRUD、delivery blueprint marketplace 已下沉到 `loops-admin`。
+- 标注：Archive / cross-tenant archive 仍留 API facade，因为当前依赖 legacy `LoopsService` 的 detail/list 能力与对象存储装配。
+
+#### 审查待实施项
+
+| Step    | 剩余工作               | 备注                                                                     |
+| ------- | ---------------------- | ------------------------------------------------------------------------ |
+| Step 9  | Archive 下沉           | 需先抽 archive 所需的 loop detail/list port，避免 domain 反向依赖 facade |
+| Step 10 | API module/facade 收敛 | 可在更多 public 方法下沉后统一减少 wrapper 与 provider                   |
+| Step 8  | `fireScheduleTrigger`  | 需 issue creation port                                                   |
+| Step 3  | engine 主流程推进      | 仍是最高风险项                                                           |
+
+#### 再标注文档
+
+- 本批 Cycle 43-47 共 5 次循环动作完成，满足“至少 5 次循环动作”要求。
+- 下一批建议优先做 Step 9 Archive port 设计，或 Step 8 fire trigger issue creation port。
+
+#### 验证
+
+```bash
+rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)|require\\(['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)" apps/api/libs/domain/services
+pnpm --filter @repo/api test -- loops-admin.service.spec.ts --runInBand
+pnpm --filter @repo/api type-check
+```
+
+结果：
+
+- 反向依赖扫描无命中。
+- `loops-admin.service.spec.ts` 通过，2 个测试通过。
+- API type-check 通过。
+
+### Loop 46 · 2026-06-26 · Step 9 文档标注与总览校准
+
+#### 实施
+
+- 更新 `EXECUTION.md` Step 9 总览：tool / blueprint 已从 legacy facade 下沉到 `loops-admin`。
+- 更新 `IMPLEMENTATION-ANNOTATIONS.md` Cycle 43-47 执行记录。
+
+#### 标注
+
+- 标注 `loops-admin` 当前目录形态为 `1 service + 1 module + n`：
+  - `loops-admin.service.ts`
+  - `loops-admin.module.ts`
+  - `loops-capability-registry.ts`
+  - `loops-admin.service.spec.ts`
+  - `index.ts`
+
+#### 审查待实施项
+
+- 文档待办同步：删除旧的“tool/blueprint 仍待拆”描述，改为“Archive 仍待拆”。
+- 保留 Step 10 待办：API facade 目前仍保留兼容 wrapper，不在本批直接改 controller 注入关系。
+
+#### 再标注文档
+
+- Cycle 46 完成；文档状态与代码状态一致。
+
+#### 验证
+
+- 文档变更随 Cycle 47 的 type-check / focused tests 一起收口。
+
+### Loop 45 · 2026-06-26 · Step 9 结构审查
+
+#### 实施
+
+- 审查 `loops-admin` module wiring：`LoopsAdminModule` imports `LoopsStoreModule`，providers/exports `LoopsAdminService` 与 `LoopsCapabilityRegistry`。
+- 审查 `LoopsDomainModule` 已 re-export `LoopsAdminModule`，API `loops.module.ts` 继续只 import `LoopsDomainModule`。
+- 审查 `LoopsService` 注入 `LoopsAdminService` 并用 `adminLogSink()` 保持日志兼容。
+
+#### 标注
+
+- 标注该切片未改 ts-rest contract、controller audit log、store persistence 格式。
+- 标注 `LoopsService` 的 public 方法签名保持兼容，后续 Step 10 再考虑 controller 直连 domain service。
+
+#### 审查待实施项
+
+- `loops-admin` 不应接入 `PermissionService` / controller decorator / request user；权限与审计仍属于 API/controller 层。
+- Archive 仍需窄 port；不能让 domain service 注入 legacy `LoopsService`。
+
+#### 再标注文档
+
+- Cycle 45 完成；进入文档总览同步。
+
+#### 验证
+
+- 结构审查由 Cycle 47 的反向依赖扫描覆盖。
+
+### Loop 44 · 2026-06-26 · Step 9 admin service focused tests
+
+#### 实施
+
+- 新增 `apps/api/libs/domain/services/loops-admin/loops-admin.service.spec.ts`。
+- 使用临时 `LOOPS_WORKSPACE_ROOT` 和真实 `LoopsFileStoreService` 验证：
+  - tool register/list/health-check/persisted health。
+  - 空 blueprint store 自动 seed 默认蓝图并可读取。
+
+#### 标注
+
+- 标注 Step 9 的 tool / blueprint 下沉具备 domain service 级别测试覆盖。
+- 测试范围刻意不覆盖 controller 审计与 ts-rest response wrapper，二者未在本批改变。
+
+#### 审查待实施项
+
+- 仍待补：后续若迁 Archive，需要对应 archive service/port focused tests。
+- 仍待补：Step 10 若移除 facade wrapper，需要 controller/service integration tests。
+
+#### 再标注文档
+
+- Cycle 44 完成，进入结构审查。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api test -- loops-admin.service.spec.ts --runInBand
+pnpm --filter @repo/api type-check
+```
+
+结果：
+
+- `loops-admin.service.spec.ts` 通过，2 个测试通过。
+- API type-check 通过。
+
+### Loop 43 · Step 9 下沉 Tool Registry 与 Delivery Blueprint Marketplace
+
+#### 实施
+
+- 新增 `LoopsAdminService` 到 `apps/api/libs/domain/services/loops-admin/`。
+- `LoopsAdminService` 承接：
+  - `listTools`
+  - `getTool`
+  - `registerTool`
+  - `updateTool`
+  - `toolHealthCheck`
+  - `testTool`
+  - `listBlueprints`
+  - `getBlueprint`
+  - `createBlueprint`
+  - `updateBlueprint`
+  - `rollbackBlueprint`
+  - 默认 blueprint seed。
+- `LoopsAdminModule` imports `LoopsStoreModule`，注册并导出 `LoopsAdminService`。
+- `loops-admin/index.ts` 导出 `LoopsAdminService`。
+- `LoopsService` 注入 `LoopsAdminService`，相关 public API 改为委托；新增 `adminLogSink()` 保留原结构化日志行为。
+
+#### 标注
+
+- Step 9 状态：tool registry 与 delivery blueprint marketplace 已下沉。
+- API facade 保留 public 方法、controller contract、审计日志与异常传播兼容。
+
+#### 审查待实施项
+
+- Archive 仍未下沉：`LoopsCrossTenantArchiveService` 当前仍由 legacy facade 包装，且依赖对象存储/SSO 装配。
+- Step 10 暂不执行：不在本批删除 wrappers，避免同时改变 controller 注入与 domain 下沉。
+
+#### 再标注文档
+
+- Cycle 43 完成，下一轮补 focused tests。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api type-check
+```
+
+结果：API type-check 通过。
 
 ### Loop 10 · 2026-06-26 · Step 5 启动（inferWorkflowKind → loops-evidence）+ 本批收口
 
