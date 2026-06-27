@@ -1,5 +1,6 @@
 import * as path from 'path';
 import type { LoopAgentKind, LoopRuntimeMode } from '@repo/contracts';
+import { planRuntimeInvocation } from '@dofe/infra-runtime';
 import {
   LOOPS_RUNTIME_CONFIG_DIR,
   LOOPS_RUNTIME_CONFIG_ENV,
@@ -71,20 +72,19 @@ export interface PlanAgentInvocationInput {
  * planner owns the run boundary so adapters never assemble `docker` commands.
  */
 export function planAgentInvocation(input: PlanAgentInvocationInput): AgentInvocation {
-  if (input.mode === 'docker') {
-    const docker = buildDockerAgentCommand({
-      agent: input.agent,
-      workspaceRoot: input.hostWorkspaceRoot,
-      agentArgs: input.buildAgentArgs(input.containerWorkdir),
-    });
-    return { command: docker.command, args: docker.args };
-  }
-  const local = buildLocalAgentCommand({
-    agent: input.agent,
-    workspaceRoot: input.hostWorkspaceRoot,
-    agentArgs: input.buildAgentArgs(input.hostWorkspaceRoot),
+  const definition = runtimeAgentDefinition(input.agent);
+  const invocation = planRuntimeInvocation({
+    mode: input.mode,
+    agent: definition,
+    hostWorkspaceRoot: input.hostWorkspaceRoot,
+    containerWorkdir: input.containerWorkdir,
+    configHostRoot: path.resolve(resolveLoopsRuntimeDir()),
+    configContainerRoot: CONTAINER_CONFIG_BASE,
+    agentArgs: input.buildAgentArgs,
   });
-  return { command: local.command, args: local.args, cwd: local.cwd };
+  return input.mode === 'docker'
+    ? { ...invocation, args: stripDefaultRwVolumeArgs(invocation.args) }
+    : invocation;
 }
 
 /**
@@ -92,10 +92,17 @@ export function planAgentInvocation(input: PlanAgentInvocationInput): AgentInvoc
  * workspace root as cwd. Pure — no process spawn.
  */
 export function buildLocalAgentCommand(input: BuildAgentCommandInput): LocalAgentCommand {
+  const invocation = planRuntimeInvocation({
+    mode: 'local-cli',
+    agent: runtimeAgentDefinition(input.agent),
+    hostWorkspaceRoot: input.workspaceRoot,
+    containerWorkdir: CONTAINER_WORKDIR,
+    agentArgs: () => [...input.agentArgs],
+  });
   return {
-    command: LOOPS_RUNTIME_LOCAL_COMMAND[input.agent],
-    args: [...input.agentArgs],
-    cwd: input.workspaceRoot,
+    command: invocation.command,
+    args: invocation.args,
+    cwd: invocation.cwd ?? input.workspaceRoot,
   };
 }
 
@@ -109,33 +116,39 @@ export function buildLocalAgentCommand(input: BuildAgentCommandInput): LocalAgen
  * adapter that supplies `agentArgs`. Pure — no process spawn, no secret values.
  */
 export function buildDockerAgentCommand(input: BuildAgentCommandInput): DockerAgentCommand {
-  const image = LOOPS_RUNTIME_IMAGES[input.agent];
   const configDirName = LOOPS_RUNTIME_CONFIG_DIR[input.agent];
   const configEnv = LOOPS_RUNTIME_CONFIG_ENV[input.agent];
   // The host config dir is created on demand by the workspace profile service;
   // the path passed to `-v` is deterministic regardless of existence.
-  const hostConfigDir = path.resolve(resolveLoopsRuntimeDir(), configDirName);
   const containerConfigDir = `${CONTAINER_CONFIG_BASE}/${configDirName}`;
+  const invocation = planRuntimeInvocation({
+    mode: 'docker',
+    agent: runtimeAgentDefinition(input.agent),
+    hostWorkspaceRoot: input.workspaceRoot,
+    containerWorkdir: CONTAINER_WORKDIR,
+    configHostRoot: path.resolve(resolveLoopsRuntimeDir()),
+    configContainerRoot: CONTAINER_CONFIG_BASE,
+    agentArgs: () => [...input.agentArgs],
+  });
 
   return {
-    command: 'docker',
-    args: [
-      'run',
-      '--rm',
-      '-v',
-      `${input.workspaceRoot}:${CONTAINER_WORKDIR}`,
-      '-v',
-      `${hostConfigDir}:${containerConfigDir}`,
-      '-w',
-      CONTAINER_WORKDIR,
-      '-e',
-      `${configEnv}=${containerConfigDir}`,
-      image,
-      LOOPS_RUNTIME_LOCAL_COMMAND[input.agent],
-      ...input.agentArgs,
-    ],
+    command: invocation.command,
+    args: stripDefaultRwVolumeArgs(invocation.args),
     workspaceRoot: input.workspaceRoot,
     cwd: CONTAINER_WORKDIR,
     env: { [configEnv]: containerConfigDir },
   };
+}
+
+function runtimeAgentDefinition(agent: LoopAgentKind) {
+  return {
+    command: LOOPS_RUNTIME_LOCAL_COMMAND[agent],
+    dockerImage: LOOPS_RUNTIME_IMAGES[agent],
+    configDirName: LOOPS_RUNTIME_CONFIG_DIR[agent],
+    configEnvName: LOOPS_RUNTIME_CONFIG_ENV[agent],
+  };
+}
+
+function stripDefaultRwVolumeArgs(args: string[]): string[] {
+  return args.map((arg) => (arg.endsWith(':rw') ? arg.slice(0, -3) : arg));
 }

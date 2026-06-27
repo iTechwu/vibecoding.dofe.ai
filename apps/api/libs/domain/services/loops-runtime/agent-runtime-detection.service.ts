@@ -9,12 +9,26 @@ import type {
 } from '@repo/contracts';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
+import {
+  buildRuntimeChecks,
+  pickRuntimeCandidate,
+  type RuntimeCheckMessages,
+} from '@dofe/infra-runtime';
 import { runProcess } from '@app/services/loops-runners';
 import { LOOPS_RUNTIME_LOCAL_COMMAND } from '@app/services/loops-runtime';
 import { LoopsDockerClient } from '@app/services/loops-runtime';
 
 const AGENTS: LoopAgentKind[] = ['codex', 'claude-code'];
 const DEFAULT_DETECT_TIMEOUT_MS = 8000;
+const CHECK_MESSAGES: RuntimeCheckMessages = {
+  LOCAL_CLI_MISSING: 'Local CLI not detected. Use Docker or view the setup guide.',
+  DOCKER_DAEMON_DOWN: 'Docker is not running. Start Docker and retry detection.',
+  DOCKER_IMAGE_MISSING:
+    'The fallback image has not been pulled. Pull the image to enable Docker mode.',
+  WORKSPACE_REQUIRED: 'Docker mode requires a workspace. Select a workspace first.',
+  WORKSPACE_NOT_MOUNTABLE: 'The workspace path cannot be mounted. Fix the workspace root.',
+  AUTH_REQUIRED: 'The CLI is not authenticated. Configure credentials.',
+};
 
 /**
  * Probes the host for agent runtime facts (0622 · B1).
@@ -52,8 +66,15 @@ export class AgentRuntimeDetectionService {
     const docker = await this.detectDocker(agent, image);
     const preferredMode = workspace.agents[agent].mode;
 
-    const selected = this.pickSelected(preferredMode, local, docker);
-    const checks = this.buildChecks(agent, workspace, local, docker, selected);
+    const selected = pickRuntimeCandidate(preferredMode, local, docker);
+    const checks = buildRuntimeChecks({
+      preferredMode,
+      workspaceStatus: workspace.status,
+      local,
+      docker,
+      selected,
+      messages: CHECK_MESSAGES,
+    }) as LoopRuntimeCheck[];
 
     return {
       agent,
@@ -119,91 +140,6 @@ export class AgentRuntimeDetectionService {
       version: status === 'ready' ? daemon.version : undefined,
       workspaceRequired: true,
     };
-  }
-
-  // --------------------------------------------------------------------------
-  // Selection + diagnostics
-  // --------------------------------------------------------------------------
-
-  private pickSelected(
-    preferred: LoopWorkspaceProfile['agents'][LoopAgentKind]['mode'],
-    local: LoopRuntimeCandidate | undefined,
-    docker: LoopRuntimeCandidate | undefined,
-  ): LoopRuntimeCandidate | undefined {
-    const preferredCandidate = preferred === 'docker' ? docker : local;
-    if (preferredCandidate?.status === 'ready') return preferredCandidate;
-    // Fall back to whichever candidate is ready (local-cli wins ties).
-    if (local?.status === 'ready') return local;
-    if (docker?.status === 'ready') return docker;
-    return undefined;
-  }
-
-  private buildChecks(
-    _agent: LoopAgentKind,
-    workspace: LoopWorkspaceProfile,
-    local: LoopRuntimeCandidate | undefined,
-    docker: LoopRuntimeCandidate | undefined,
-    selected: LoopRuntimeCandidate | undefined,
-  ): LoopRuntimeCheck[] {
-    const checks: LoopRuntimeCheck[] = [];
-    const workspaceOk = workspace.status === 'VALIDATED';
-
-    const dockerPreferred =
-      workspace.agents[_agent].mode === 'docker' || selected?.mode === 'docker';
-
-    if (!workspaceOk) {
-      checks.push(
-        workspace.status === 'ERROR'
-          ? this.check('WORKSPACE_NOT_MOUNTABLE', 'critical', 'select-workspace')
-          : this.check('WORKSPACE_REQUIRED', 'critical', 'select-workspace'),
-      );
-    }
-
-    if (local && local.status !== 'ready') {
-      // Only warn when Docker cannot cover for it.
-      const dockerCovers = docker?.status === 'ready' && workspaceOk;
-      checks.push(
-        this.check(
-          'LOCAL_CLI_MISSING',
-          dockerCovers ? 'info' : 'warning',
-          dockerCovers ? 'use-docker' : 'view-setup-guide',
-        ),
-      );
-    }
-
-    if (docker) {
-      if (docker.status === 'error') {
-        checks.push(this.check('DOCKER_DAEMON_DOWN', 'critical', 'open-docker'));
-      } else if (docker.status === 'missing') {
-        checks.push(this.check('DOCKER_IMAGE_MISSING', 'warning', 'pull-image'));
-      }
-    }
-
-    // If the user wants Docker but the workspace blocks the mount, surface the
-    // workspace check above as the critical blocker; no duplicate here.
-    if (dockerPreferred && !workspaceOk && !checks.some((c) => c.code === 'WORKSPACE_REQUIRED')) {
-      checks.push(this.check('WORKSPACE_REQUIRED', 'critical', 'select-workspace'));
-    }
-
-    return checks;
-  }
-
-  private check(
-    code: LoopRuntimeCheck['code'],
-    level: LoopRuntimeCheck['level'],
-    action: string,
-    message?: string,
-  ): LoopRuntimeCheck {
-    const messages: Record<LoopRuntimeCheck['code'], string> = {
-      LOCAL_CLI_MISSING: 'Local CLI not detected. Use Docker or view the setup guide.',
-      DOCKER_DAEMON_DOWN: 'Docker is not running. Start Docker and retry detection.',
-      DOCKER_IMAGE_MISSING:
-        'The fallback image has not been pulled. Pull the image to enable Docker mode.',
-      WORKSPACE_REQUIRED: 'Docker mode requires a workspace. Select a workspace first.',
-      WORKSPACE_NOT_MOUNTABLE: 'The workspace path cannot be mounted. Fix the workspace root.',
-      AUTH_REQUIRED: 'The CLI is not authenticated. Configure credentials.',
-    };
-    return { code, level, action, message: message ?? messages[code] };
   }
 
   // --------------------------------------------------------------------------

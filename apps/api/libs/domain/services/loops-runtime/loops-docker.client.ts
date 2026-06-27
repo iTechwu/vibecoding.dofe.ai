@@ -1,9 +1,13 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
-  getDockerConnectionOptions,
-  getLocalImageId,
-  pullImage as pullDockerImage,
-} from '@dofe/infra-docker/docker.utils';
+  createDockerClient,
+  inspectDockerImage,
+  probeDockerDaemon,
+  pullDockerImage,
+  redactDockerAuth,
+  registryAuthFromEnv,
+  safeDockerMessage,
+} from '@dofe/infra-docker';
 import Docker from 'dockerode';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
@@ -21,13 +25,6 @@ export interface DockerPullOutcome {
   ok: boolean;
   /** `failed` outcomes carry a human-readable, non-sensitive message. */
   message: string;
-}
-
-/** Registry auth material for a private-registry pull. Never logged verbatim. */
-interface RegistryAuth {
-  username: string;
-  password: string;
-  serveraddress: string;
 }
 
 /**
@@ -59,42 +56,24 @@ export class LoopsDockerClient {
 
   /** Probe the Docker daemon through Docker Engine. */
   async probeDaemon(): Promise<DockerDaemonProbe> {
-    try {
-      const docker = this.client();
-      await this.withTimeout(docker.ping(), DEFAULT_TIMEOUT_MS, 'docker ping');
-      const version = (await this.withTimeout(
-        docker.version(),
-        DEFAULT_TIMEOUT_MS,
-        'docker version',
-      )) as { Version?: string; ServerVersion?: string };
-      return {
-        ok: true,
-        version: (version.ServerVersion ?? version.Version)?.slice(0, 120),
-      };
-    } catch (error) {
+    const result = await probeDockerDaemon(this.client(), DEFAULT_TIMEOUT_MS);
+    if (!result.ok) {
       this.logger?.debug?.('Loops Docker daemon probe failed', {
-        error: this.safeError(error),
+        error: result.message,
       });
-      return { ok: false };
     }
+    return { ok: result.ok, version: result.version };
   }
 
   /** Whether a given image is present locally through Docker Engine inspect. */
   async imagePresent(image: string): Promise<boolean> {
-    try {
-      const imageId = await this.withTimeout(
-        getLocalImageId(this.client(), image),
-        DEFAULT_TIMEOUT_MS,
-        'docker image inspect',
-      );
-      return imageId !== null;
-    } catch (error) {
+    const result = await inspectDockerImage(this.client(), image, DEFAULT_TIMEOUT_MS);
+    if (!result.present) {
       this.logger?.debug?.('Loops Docker image inspect failed', {
         image,
-        error: this.safeError(error),
       });
-      return false;
     }
+    return result.present;
   }
 
   /**
@@ -107,112 +86,40 @@ export class LoopsDockerClient {
    * `@dofe/infra-docker` util. Credentials are never logged or returned.
    */
   async pull(image: string): Promise<DockerPullOutcome> {
-    const auth = this.registryAuth(image);
-    try {
-      if (auth) {
-        await this.pullAuthenticated(image, auth, this.timeoutMs(PULL_TIMEOUT_MS));
-      } else {
-        await pullDockerImage(this.client(), image, this.timeoutMs(PULL_TIMEOUT_MS));
-      }
-      return { ok: true, message: `Image ${image} pulled successfully.` };
-    } catch (error) {
-      const raw = this.safeError(error);
-      const message = this.redactAuth(raw, auth);
-      const dockerMissing = /not found|no such|not installed|enoent|connect|socket|daemon/i.test(
-        message,
-      );
-      const unauthorized = /unauthorized|authentication required|\b401\b|forbidden|denied/i.test(
-        message,
-      );
-      // `auth: auth ? 'present' : 'none'` — never log the auth object itself.
-      this.logger?.warn?.('Loops Docker image pull failed', {
-        image,
-        auth: auth ? 'present' : 'none',
-        error: message,
-      });
-      return {
-        ok: false,
-        message: dockerMissing
-          ? 'Docker is not available. Start Docker and try again.'
-          : unauthorized
-            ? 'Registry authentication failed. Check the Docker registry credentials.'
-            : 'Docker image pull failed.',
-      };
-    }
-  }
-
-  /**
-   * Authenticated pull via Dockerode (`{ authconfig }`). Mirrors the
-   * `@dofe/infra-docker` `pullImage` flow but attaches registry credentials,
-   * which the shared util cannot do. Uses the same timeout envelope as the
-   * unauthenticated path.
-   */
-  private pullAuthenticated(image: string, auth: RegistryAuth, timeoutMs: number): Promise<void> {
-    const docker = this.client();
-    const pull = new Promise<void>((resolve, reject) => {
-      docker.pull(image, { authconfig: auth }, (err, stream) => {
-        if (err) return reject(err);
-        if (!stream) return resolve();
-        docker.modem.followProgress(stream, (progressErr) =>
-          progressErr ? reject(progressErr) : resolve(),
-        );
-      });
+    const auth = registryAuthFromEnv(image);
+    const outcome = await pullDockerImage(this.client(), {
+      image,
+      registryAuth: auth,
+      timeoutMs: this.timeoutMs(PULL_TIMEOUT_MS),
     });
-    return this.withTimeout(pull, timeoutMs, 'docker pull (authenticated)');
-  }
+    if (outcome.ok) return outcome;
 
-  /**
-   * Build registry auth from env, but only for images that actually live on the
-   * configured registry — sending credentials to an unrelated host is a leak
-   * risk. Returns `undefined` when no credentials are configured (caller falls
-   * back to the unauthenticated util path).
-   */
-  private registryAuth(image: string): RegistryAuth | undefined {
-    const username = process.env.DOCKER_REGISTRY_USERNAME?.trim();
-    const password = process.env.DOCKER_REGISTRY_PASSWORD?.trim();
-    if (!username || !password) return undefined;
-    const configuredServer = this.stripScheme(process.env.DOCKER_REGISTRY_SERVER?.trim() ?? '');
-    const imageRegistry = this.registryFromImage(image);
-    const target = configuredServer || imageRegistry;
-    if (!target) return undefined;
-    // When a server is configured, authenticate only images that actually come
-    // from it — withholds creds for Docker Hub or unrelated registries (a
-    // leak-risk guard). `imageRegistry` is `''` for Docker Hub library images.
-    if (configuredServer && configuredServer !== imageRegistry) return undefined;
-    return { username, password, serveraddress: this.normalizeServer(target) };
-  }
-
-  /** Extract the registry host from an image reference (first `/` segment). */
-  private registryFromImage(image: string): string {
-    const host = image.split('/')[0] ?? '';
-    // A registry host contains `.` or `:` (or is `localhost`); a bare name is a
-    // Docker Hub library path, not a private registry.
-    return /[.:]/.test(host) ? host : '';
-  }
-
-  private stripScheme(server: string): string {
-    return server.replace(/^https?:\/\//i, '');
-  }
-
-  private normalizeServer(server: string): string {
-    if (!server) return '';
-    return /^https?:\/\//i.test(server) ? server : `https://${server}`;
-  }
-
-  /** Replace any literal username/password occurrence before logging/returning. */
-  private redactAuth(message: string, auth: RegistryAuth | undefined): string {
-    if (!auth) return message;
-    let out = message;
-    if (auth.password) out = out.split(auth.password).join('***');
-    if (auth.username) out = out.split(auth.username).join('***');
-    return out;
+    const message = redactDockerAuth(safeDockerMessage(outcome.message), auth);
+    const dockerMissing = /not found|no such|not installed|enoent|connect|socket|daemon/i.test(
+      message,
+    );
+    const unauthorized = /unauthorized|authentication required|\b401\b|forbidden|denied/i.test(
+      message,
+    );
+    // `auth: auth ? 'present' : 'none'` — never log the auth object itself.
+    this.logger?.warn?.('Loops Docker image pull failed', {
+      image,
+      auth: auth ? 'present' : 'none',
+      error: message,
+    });
+    return {
+      ok: false,
+      message: dockerMissing
+        ? 'Docker is not available. Start Docker and try again.'
+        : unauthorized
+          ? 'Registry authentication failed. Check the Docker registry credentials.'
+          : 'Docker image pull failed.',
+    };
   }
 
   private client(): Docker {
     if (!this.docker) {
-      this.docker = new Docker(
-        getDockerConnectionOptions(process.env.DOCKER_HOST ?? '/var/run/docker.sock'),
-      );
+      this.docker = createDockerClient({ dockerHost: process.env.DOCKER_HOST });
     }
     return this.docker;
   }
@@ -233,10 +140,5 @@ export class LoopsDockerClient {
   private timeoutMs(defaultMs: number): number {
     const parsed = Number(process.env.LOOPS_RUNTIME_DETECT_TIMEOUT_MS);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultMs;
-  }
-
-  private safeError(error: unknown): string {
-    const message = error instanceof Error ? error.message : String(error);
-    return message.slice(0, 240);
   }
 }
