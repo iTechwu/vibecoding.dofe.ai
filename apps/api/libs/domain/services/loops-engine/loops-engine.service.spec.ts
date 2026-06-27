@@ -352,6 +352,38 @@ describe('LoopsEngineService', () => {
       } as LoopShard;
     }
 
+    function buildShardRunnerPort(fresh: LoopDetail = approvedDetail([])) {
+      return {
+        readFreshDetail: jest.fn().mockResolvedValue(fresh),
+        runAgent: jest.fn().mockResolvedValue({
+          id: 'impl-1',
+          shardId: 'shard-1',
+          changedFiles: ['src/a.ts'],
+        }),
+        persistImplementation: jest.fn().mockResolvedValue({
+          ...fresh,
+          testMatrix: { suites: [{ id: 'suite-1' }] },
+        }),
+        runTests: jest.fn().mockResolvedValue({
+          id: 'test-1',
+          status: 'TEST-PASS',
+        }),
+        reviewTests: jest.fn().mockResolvedValue({
+          testVerdict: 'TEST-PASS',
+          summary: 'tests passed',
+          issues: [],
+          fixInstructions: [],
+        }),
+        review: jest.fn().mockResolvedValue({
+          verdict: 'PASS',
+          summary: 'looks good',
+          issues: [],
+          fixInstructions: [],
+        }),
+        applyReview: jest.fn().mockResolvedValue(undefined),
+      };
+    }
+
     beforeEach(() => {
       mockedReadRuntimeConfig.mockResolvedValue({
         contextBudget: 24000,
@@ -375,17 +407,25 @@ describe('LoopsEngineService', () => {
       const engine = new LoopsEngineService(store as never);
       const detail = approvedDetail([shard('shard-1')]);
       const fresh = approvedDetail([{ ...shard('shard-1'), status: 'DONE' }]);
-      const port = {
-        readFreshDetail: jest.fn().mockResolvedValue(fresh),
-        runRunnableShard: jest.fn().mockResolvedValue(undefined),
-      };
+      const port = buildShardRunnerPort(fresh);
 
       const result = await engine.runLoopUnlocked('issue-1', detail, port);
 
-      expect(port.runRunnableShard).toHaveBeenCalledWith(
+      expect(port.runAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          issue: detail.issue,
+          shard: expect.objectContaining({ id: 'shard-1' }),
+        }),
+      );
+      expect(port.persistImplementation).toHaveBeenCalledWith(
         'issue-1',
-        detail,
-        expect.objectContaining({ id: 'shard-1' }),
+        'shard-1',
+        expect.objectContaining({ id: 'impl-1' }),
+      );
+      expect(port.applyReview).toHaveBeenCalledWith(
+        'issue-1',
+        'shard-1',
+        expect.objectContaining({ verdict: 'PASS', summary: 'looks good' }),
       );
       expect(store.appendLog).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'SCHEDULER_BATCH', advanced: 1 }),
@@ -398,14 +438,11 @@ describe('LoopsEngineService', () => {
       const engine = new LoopsEngineService(store as never);
       const detail = approvedDetail([{ ...shard('shard-1'), status: 'DONE' }]);
       const fresh = { ...detail };
-      const port = {
-        readFreshDetail: jest.fn().mockResolvedValue(fresh),
-        runRunnableShard: jest.fn(),
-      };
+      const port = buildShardRunnerPort(fresh);
 
       await engine.runLoopUnlocked('issue-1', detail, port);
 
-      expect(port.runRunnableShard).not.toHaveBeenCalled();
+      expect(port.runAgent).not.toHaveBeenCalled();
       expect(store.upsertState).toHaveBeenCalledWith(
         expect.objectContaining({ phase: 'PHASE_6_CONVERGE', shardsDone: 1 }),
       );
@@ -415,7 +452,7 @@ describe('LoopsEngineService', () => {
       const store = buildSchedulerStore();
       const engine = new LoopsEngineService(store as never);
       const detail = approvedDetail([{ ...shard('shard-1'), status: 'BLOCKED' }]);
-      const port = { readFreshDetail: jest.fn(), runRunnableShard: jest.fn() };
+      const port = buildShardRunnerPort();
 
       await expect(engine.runLoopUnlocked('issue-1', detail, port)).rejects.toThrow(
         'No runnable shard is available',
@@ -428,17 +465,14 @@ describe('LoopsEngineService', () => {
       const interrupted = shard('shard-1', { status: 'IN_PROGRESS' });
       const detail = approvedDetail([interrupted]);
       const recovered = approvedDetail([shard('shard-1')]); // post-recovery: TODO → runnable
-      const port = {
-        readFreshDetail: jest.fn().mockResolvedValue(recovered),
-        runRunnableShard: jest.fn().mockResolvedValue(undefined),
-      };
+      const port = buildShardRunnerPort(recovered);
 
       await engine.runLoopUnlocked('issue-1', detail, port);
 
       expect(store.writeShardProgress).toHaveBeenCalledWith(
         expect.objectContaining({ from: 'INTERRUPTED', to: 'TODO', shardId: 'shard-1' }),
       );
-      expect(port.runRunnableShard).toHaveBeenCalled();
+      expect(port.runAgent).toHaveBeenCalled();
       expect(store.appendLog).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'SCHEDULER_RECOVERED_INTERRUPTED_SHARDS' }),
       );
@@ -453,14 +487,11 @@ describe('LoopsEngineService', () => {
       const engine = new LoopsEngineService(store as never);
       const detail = approvedDetail([shard('shard-1', { estContext: 500 })]);
       const fresh = approvedDetail([{ ...shard('shard-1'), status: 'BLOCKED' }]);
-      const port = {
-        readFreshDetail: jest.fn().mockResolvedValue(fresh),
-        runRunnableShard: jest.fn(),
-      };
+      const port = buildShardRunnerPort(fresh);
 
       await engine.runLoopUnlocked('issue-1', detail, port);
 
-      expect(port.runRunnableShard).not.toHaveBeenCalled();
+      expect(port.runAgent).not.toHaveBeenCalled();
       expect(store.writeShardProgress).toHaveBeenCalledWith(
         expect.objectContaining({ to: 'BLOCKED', shardId: 'shard-1' }),
       );
@@ -471,7 +502,7 @@ describe('LoopsEngineService', () => {
 
     it('rejects a paused loop or a non-approved spec', async () => {
       const engine = new LoopsEngineService(buildSchedulerStore() as never);
-      const port = { readFreshDetail: jest.fn(), runRunnableShard: jest.fn() };
+      const port = buildShardRunnerPort();
       await expect(
         engine.runLoopUnlocked(
           'issue-1',
@@ -486,6 +517,317 @@ describe('LoopsEngineService', () => {
           port,
         ),
       ).rejects.toThrow('Approved spec is required');
+    });
+
+    it('downgrades the shard review to NEEDS-WORK when test review fails', async () => {
+      const store = buildSchedulerStore();
+      const engine = new LoopsEngineService(store as never);
+      const detail = approvedDetail([shard('shard-1')]);
+      const port = buildShardRunnerPort(detail);
+      port.reviewTests.mockResolvedValueOnce({
+        testVerdict: 'TEST-FAIL',
+        summary: 'unit suite failed',
+        issues: [{ severity: 'major', desc: 'red test' }],
+        fixInstructions: ['Fix the failing unit test.'],
+      });
+      port.review.mockResolvedValueOnce({
+        verdict: 'PASS',
+        summary: 'implementation looks ok',
+        issues: [],
+        fixInstructions: [],
+      });
+
+      await engine.runRunnableShard('issue-1', detail, detail.shards[0], port);
+
+      expect(store.writeShardProgress).toHaveBeenCalledWith(
+        expect.objectContaining({ from: 'TODO', to: 'IN_PROGRESS', shardId: 'shard-1' }),
+      );
+      expect(port.applyReview).toHaveBeenCalledWith(
+        'issue-1',
+        'shard-1',
+        expect.objectContaining({
+          reviewer: 'codex',
+          verdict: 'NEEDS-WORK',
+          summary: '测试复核未通过：unit suite failed',
+          issues: [{ severity: 'major', desc: 'red test' }],
+          fixInstructions: ['Fix the failing unit test.'],
+        }),
+      );
+    });
+  });
+
+  describe('applyResume', () => {
+    it('clears paused, demotes PAUSED phase, and emits a LOOP_INTERVENTION log', async () => {
+      const store = { upsertState: jest.fn(), appendLog: jest.fn() };
+      const engine = new LoopsEngineService(store as never);
+      const detail = buildDetail({ state: { phase: 'PAUSED', paused: true } as LoopStateItem });
+
+      await engine.applyResume('issue-1', detail);
+
+      expect(store.upsertState).toHaveBeenCalledWith(
+        expect.objectContaining({ paused: false, phase: 'PHASE_4_IMPLEMENT' }),
+      );
+      expect(store.appendLog).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'LOOP_INTERVENTION', action: 'resume' }),
+      );
+    });
+
+    it('keeps a non-PAUSED phase unchanged when resuming', async () => {
+      const store = { upsertState: jest.fn(), appendLog: jest.fn() };
+      const engine = new LoopsEngineService(store as never);
+      await engine.applyResume(
+        'issue-1',
+        buildDetail({ state: { phase: 'PHASE_4_IMPLEMENT', paused: true } as LoopStateItem }),
+      );
+      expect(store.upsertState).toHaveBeenCalledWith(
+        expect.objectContaining({ phase: 'PHASE_4_IMPLEMENT', paused: false }),
+      );
+    });
+  });
+
+  describe('reloop', () => {
+    beforeEach(() => {
+      mockedReadRuntimeConfig.mockResolvedValue({
+        contextBudget: 24000,
+        maxParallel: 1,
+        maxRetry: 2,
+        maxReloop: 3,
+        maxShardRedo: 3,
+        shardTimeoutSec: 900,
+        cost: { tokenCapPerLoop: 5000000, callCapPerLoop: 500 },
+        tests: {
+          defaultCommands: [],
+          regressionCommands: [],
+          allowedCommands: [],
+          coverageFloor: {},
+        },
+      });
+    });
+
+    it('writes a DRAFT reloop spec + PHASE_2_REVIEW state and returns the response', async () => {
+      const store = { writeSpec: jest.fn() };
+      const engine = new LoopsEngineService(store as never);
+      const detail = buildDetail({
+        spec: { status: 'NEEDS-WORK', body: 'orig', version: 'v1' } as LoopSpec,
+        state: { specVersion: 'v1', round: 1, reloopCount: 0 } as LoopStateItem,
+      });
+
+      const result = await engine.reloop('issue-1', detail, { reviewer: 'alice', notes: 'fix' });
+
+      const [issue, spec, state] = store.writeSpec.mock.calls[0];
+      expect(issue).toBe(detail.issue);
+      expect(spec).toEqual(expect.objectContaining({ version: 'v2', status: 'DRAFT' }));
+      expect(spec.body).toContain('自动回环修订 v2');
+      expect(state).toEqual(
+        expect.objectContaining({
+          phase: 'PHASE_2_REVIEW',
+          round: 2,
+          reloopCount: 1,
+          specVersion: 'v2',
+        }),
+      );
+      expect(result).toEqual(
+        expect.objectContaining({
+          issueId: 'issue-1',
+          specVersion: 'v2',
+          round: 2,
+          reloopCount: 1,
+          maxReloop: 3,
+        }),
+      );
+    });
+
+    it('throws when max reloop count is reached', async () => {
+      const engine = new LoopsEngineService({ writeSpec: jest.fn() } as never);
+      const detail = buildDetail({
+        state: { specVersion: 'v1', reloopCount: 3 } as LoopStateItem,
+      });
+      await expect(engine.reloop('issue-1', detail, {})).rejects.toThrow(
+        'Max re-loop count reached',
+      );
+    });
+  });
+
+  describe('finalize', () => {
+    function buildFinalizePort(opts: { globalVerdict?: 'PASS' | 'NEEDS-WORK' | 'FAIL' }) {
+      const detail = buildDetail({
+        state: { globalVerdict: opts.globalVerdict ?? 'PASS' } as LoopStateItem,
+      });
+      return {
+        detail,
+        port: {
+          getDetail: jest.fn().mockResolvedValue(detail),
+          enforceReleaseGateOrThrow: jest.fn(),
+          openConvergencePr: jest.fn().mockResolvedValue({ id: 'pr-1', url: 'u' }),
+          annotateFinalize: jest.fn().mockResolvedValue([{ target: 'shard-1' }]),
+          buildLearnings: jest.fn().mockReturnValue([{ id: 'learn-1' }]),
+          publishPrComment: jest.fn().mockResolvedValue(undefined),
+          readDetail: jest
+            .fn()
+            .mockResolvedValue({ ...detail, state: { ...detail.state, finalized: true } }),
+        },
+      };
+    }
+
+    it('returns the detail without side-effects when already terminal', async () => {
+      const store = { writeFinalize: jest.fn() };
+      const engine = new LoopsEngineService(store as never);
+      const { port } = buildFinalizePort({});
+      const terminal = buildDetail({
+        state: { finalized: true, globalVerdict: 'PASS' } as LoopStateItem,
+      });
+      port.getDetail.mockResolvedValueOnce(terminal);
+
+      const result = await engine.finalize('issue-1', port);
+
+      expect(result).toBe(terminal);
+      expect(port.enforceReleaseGateOrThrow).not.toHaveBeenCalled();
+      expect(store.writeFinalize).not.toHaveBeenCalled();
+    });
+
+    it('throws when globalVerdict is not PASS', async () => {
+      const engine = new LoopsEngineService({ writeFinalize: jest.fn() } as never);
+      const { port } = buildFinalizePort({ globalVerdict: 'NEEDS-WORK' });
+      await expect(engine.finalize('issue-1', port)).rejects.toThrow(
+        'Global review PASS is required',
+      );
+    });
+
+    it('orchestrates gate → convergence PR → annotate → learnings → writeFinalize(CLOSED) → PR comment', async () => {
+      const store = { writeFinalize: jest.fn() };
+      const engine = new LoopsEngineService(store as never);
+      const { port } = buildFinalizePort({});
+
+      await engine.finalize('issue-1', port);
+
+      expect(port.enforceReleaseGateOrThrow).toHaveBeenCalled();
+      expect(port.openConvergencePr).toHaveBeenCalled();
+      expect(port.annotateFinalize).toHaveBeenCalled();
+      expect(port.buildLearnings).toHaveBeenCalled();
+      expect(store.writeFinalize).toHaveBeenCalledWith(
+        expect.objectContaining({
+          state: expect.objectContaining({ phase: 'CLOSED', finalized: true }),
+        }),
+      );
+      expect(port.publishPrComment).toHaveBeenCalledWith(
+        'issue-1',
+        expect.objectContaining({ id: 'pr-1' }),
+      );
+    });
+  });
+
+  describe('reviewGlobal', () => {
+    function buildGlobalReviewPort(opts: {
+      evidenceIssues?: Array<{ severity: 'minor' | 'major' | 'critical'; desc: string }>;
+      regressionStatus?: string;
+      reviewVerdict?: 'PASS' | 'NEEDS-WORK' | 'FAIL';
+    }) {
+      const detail = buildDetail({ state: { phase: 'PHASE_6_CONVERGE' } as LoopStateItem });
+      const reviewDetail = { ...detail };
+      const port = {
+        getDetail: jest.fn().mockResolvedValue(detail),
+        collectEvidenceIssues: jest.fn().mockResolvedValue(opts.evidenceIssues ?? []),
+        runRegression: jest.fn().mockResolvedValue({
+          status: opts.regressionStatus ?? 'TEST-PASS',
+          failedTests:
+            opts.regressionStatus === 'TEST-FAIL' ? [{ name: 'suite.a', reason: 'boom' }] : [],
+          fixInstructions: [],
+        }),
+        runAgentGlobalReview: jest.fn().mockResolvedValue({
+          review: {
+            verdict: opts.reviewVerdict ?? 'PASS',
+            issues: [],
+            fixInstructions: [],
+            summary: 'ok',
+          },
+          reviewDetail,
+        }),
+        autoReloop: jest.fn().mockResolvedValue(reviewDetail),
+        readDetail: jest.fn().mockResolvedValue(reviewDetail),
+      };
+      return { port, detail };
+    }
+
+    it('returns the detail without side-effects when terminal', async () => {
+      const store = { writeGlobalReview: jest.fn() };
+      const engine = new LoopsEngineService(store as never);
+      const { port } = buildGlobalReviewPort({});
+      const terminal = buildDetail({ state: { finalized: true } as LoopStateItem });
+      port.getDetail.mockResolvedValueOnce(terminal);
+
+      const result = await engine.reviewGlobal('issue-1', port);
+
+      expect(result).toBe(terminal);
+      expect(port.collectEvidenceIssues).not.toHaveBeenCalled();
+      expect(store.writeGlobalReview).not.toHaveBeenCalled();
+    });
+
+    it('writes NEEDS-WORK + PHASE_4_IMPLEMENT when current-round evidence is incomplete', async () => {
+      const store = { writeGlobalReview: jest.fn() };
+      const engine = new LoopsEngineService(store as never);
+      const { port } = buildGlobalReviewPort({
+        evidenceIssues: [{ severity: 'major', desc: 'shard-1 not DONE' }],
+      });
+
+      await engine.reviewGlobal('issue-1', port);
+
+      expect(port.runRegression).not.toHaveBeenCalled();
+      expect(store.writeGlobalReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          record: expect.objectContaining({ verdict: 'NEEDS-WORK', reviewer: 'system' }),
+          state: expect.objectContaining({
+            phase: 'PHASE_4_IMPLEMENT',
+            globalVerdict: 'NEEDS-WORK',
+          }),
+        }),
+      );
+    });
+
+    it('writes NEEDS-WORK when global regression fails (maps failedTests → issues)', async () => {
+      const store = { writeGlobalReview: jest.fn() };
+      const engine = new LoopsEngineService(store as never);
+      const { port } = buildGlobalReviewPort({ regressionStatus: 'TEST-FAIL' });
+
+      await engine.reviewGlobal('issue-1', port);
+
+      expect(port.runAgentGlobalReview).not.toHaveBeenCalled();
+      const [args] = store.writeGlobalReview.mock.calls[0];
+      expect(args.record.issues).toEqual([
+        expect.objectContaining({ severity: 'major', desc: expect.stringContaining('suite.a') }),
+      ]);
+    });
+
+    it('writes PHASE_8_ANNOTATE when agent global review passes', async () => {
+      const store = { writeGlobalReview: jest.fn() };
+      const engine = new LoopsEngineService(store as never);
+      const { port } = buildGlobalReviewPort({ reviewVerdict: 'PASS' });
+
+      await engine.reviewGlobal('issue-1', port);
+
+      expect(port.autoReloop).not.toHaveBeenCalled();
+      expect(store.writeGlobalReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          record: expect.objectContaining({ verdict: 'PASS', reviewer: 'codex' }),
+          state: expect.objectContaining({ phase: 'PHASE_8_ANNOTATE', globalVerdict: 'PASS' }),
+        }),
+      );
+    });
+
+    it('delegates to autoReloop when agent verdict is non-PASS', async () => {
+      const store = { writeGlobalReview: jest.fn() };
+      const engine = new LoopsEngineService(store as never);
+      const { port } = buildGlobalReviewPort({ reviewVerdict: 'NEEDS-WORK' });
+
+      await engine.reviewGlobal('issue-1', port);
+
+      expect(port.autoReloop).toHaveBeenCalledWith(
+        expect.objectContaining({
+          issueId: 'issue-1',
+          record: expect.objectContaining({ verdict: 'NEEDS-WORK' }),
+        }),
+      );
+      // Non-PASS path delegates to autoReloop instead of writing PHASE_8_ANNOTATE here.
+      expect(store.writeGlobalReview).not.toHaveBeenCalled();
     });
   });
 });

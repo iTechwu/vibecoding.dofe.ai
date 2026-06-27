@@ -9,4 +9,6 @@ export {
   LoopsEngineService,
   type LoopsEngineAdvancePort,
   type LoopsEngineShardRunnerPort,
+  type LoopsEngineFinalizePort,
+  type LoopsEngineGlobalReviewPort,
 } from './loops-engine.service';

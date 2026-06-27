@@ -6,7 +6,7 @@ import {
   NotFoundException,
   Optional,
 } from '@nestjs/common';
-import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
+import { createHmac, randomUUID, timingSafeEqual } from 'crypto';
 import type {
   CreateLoopIssueRequest,
   CreateLoopIssueSimpleRequest,
@@ -137,6 +137,7 @@ import {
   type LoopsRemoteShardExecutionJob,
   type LoopsRemoteShardExecutionPort,
   type LoopsRemoteShardExecutionResult,
+  type LoopsRemoteShardRuntimePort,
 } from '@app/services/loops-remote-runners';
 import {
   AgentRuntimeDetectionService,
@@ -162,6 +163,8 @@ import {
   LoopsEngineService,
   type LoopsEngineAdvancePort,
   type LoopsEngineShardRunnerPort,
+  type LoopsEngineFinalizePort,
+  type LoopsEngineGlobalReviewPort,
 } from '@app/services/loops-engine';
 import { LoopsEvidenceService } from '@app/services/loops-evidence';
 import { readLoopsRuntimeConfig } from '@app/services/loops-store';
@@ -600,19 +603,9 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
   }
 
   private async resumeAndRead(issueId: string, detail: LoopIssueDetail) {
-    const now = new Date().toISOString();
-    await this.store.upsertState({
-      ...detail.state,
-      paused: false,
-      phase: detail.state.phase === 'PAUSED' ? 'PHASE_4_IMPLEMENT' : detail.state.phase,
-      updated: now,
-    });
-    await this.store.appendLog({
-      type: 'LOOP_INTERVENTION',
-      issue: issueId,
-      action: 'resume',
-      actor: 'loops-engine',
-    });
+    // 结构优化 nextstep Step N1：resume 状态变更（upsertState + appendLog）已下沉到
+    // `LoopsEngineService.applyResume`；facade 负责 enriched read-back（syncAndRead）。
+    await this.engine.applyResume(issueId, detail);
     return this.syncAndRead(issueId);
   }
 
@@ -628,182 +621,63 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
   private get shardRunnerPort(): LoopsEngineShardRunnerPort {
     return {
       readFreshDetail: (issueId: string) => this.syncAndRead(issueId),
-      runRunnableShard: (issueId: string, detail: LoopIssueDetail, shard: LoopShard) =>
-        this.runRunnableShard(issueId, detail, shard),
+      runAgent: (input) =>
+        this.claudeAdapter
+          .run(input)
+          .then((result: { record: LoopImplementationRecord }) => result.record),
+      persistImplementation: (issueId: string, shardId: string, record: LoopImplementationRecord) =>
+        this.persistImplementationRecord(issueId, shardId, record),
+      runTests: async (issueId: string, shardId: string) =>
+        this.runShardTests(issueId, shardId, {
+          commands: await this.store.readDefaultTestCommands(),
+          runner: 'loops-runner',
+        }),
+      reviewTests: (input) => this.agentAdapter.reviewTests(input),
+      review: (input) => this.agentAdapter.review(input),
+      applyReview: (issueId: string, shardId: string, request: LoopReviewShardRequest) =>
+        this.reviewShard(issueId, shardId, request).then(() => undefined),
     };
   }
 
   async reviewGlobal(issueId: string) {
-    const detail = await this.getIssue(issueId);
-    if (this.isTerminal(detail)) {
-      return detail;
-    }
-    const evidenceIssues = this.collectGlobalEvidenceIssues(detail);
-    if (evidenceIssues.length > 0) {
-      const now = new Date().toISOString();
-      const record: LoopGlobalReviewRecord = {
-        id: `global-review-${issueId}-r${detail.state.round}-${Date.now()}`,
-        issueId,
-        reviewer: 'system',
-        round: detail.state.round,
-        verdict: 'NEEDS-WORK',
-        issues: evidenceIssues,
-        fixInstructions: ['补齐当前 round 的 implementation/test/review 证据后重新整体复查。'],
-        summary: 'Global review blocked: current-round evidence is incomplete.',
-        created: now,
-      };
-      await this.store.writeGlobalReview({
-        issueId,
-        record,
-        annotations: detail.annotations,
-        state: {
-          ...detail.state,
-          phase: 'PHASE_4_IMPLEMENT',
-          globalVerdict: 'NEEDS-WORK',
-          updated: now,
-        },
-      });
-      return this.syncAndRead(issueId);
-    }
+    // 结构优化 nextstep Step N1：reviewGlobal 三分支决策（证据完整性 / 全局回归 /
+    // agent 整体复查）+ record 构造 + 状态写入 + annotation 映射已下沉到
+    // `LoopsEngineService.reviewGlobal`，经 `globalReviewPort` 把证据收集 / 回归 /
+    // agent review / autoReloop / enriched read-back 注入 domain。
+    return this.engine.reviewGlobal(issueId, this.globalReviewPort);
+  }
 
-    const regressionRecord = await this.runGlobalRegression(detail);
-    if (regressionRecord.status !== 'TEST-PASS') {
-      const now = new Date().toISOString();
-      const record: LoopGlobalReviewRecord = {
-        id: `global-review-${issueId}-r${detail.state.round}-${Date.now()}`,
-        issueId,
-        reviewer: 'system',
-        round: detail.state.round,
-        verdict: 'NEEDS-WORK',
-        issues: regressionRecord.failedTests.map((item) => ({
-          severity: 'major' as const,
-          desc: `Global regression failed: ${item.name}: ${item.reason}`,
-        })),
-        fixInstructions:
-          regressionRecord.fixInstructions.length > 0
-            ? regressionRecord.fixInstructions
-            : ['修复全局回归失败后重新执行整体复查。'],
-        summary: 'Global review blocked: regression tests failed.',
-        created: now,
-      };
-      await this.store.writeGlobalReview({
-        issueId,
-        record,
-        annotations: detail.annotations,
-        state: {
-          ...detail.state,
-          phase: 'PHASE_4_IMPLEMENT',
-          globalVerdict: 'NEEDS-WORK',
-          updated: now,
-        },
-      });
-      return this.syncAndRead(issueId);
-    }
-
-    const reviewDetail = await this.syncAndRead(issueId);
-    const review = await this.agentAdapter.reviewGlobal({
-      issue: reviewDetail.issue,
-      spec: reviewDetail.spec,
-      shards: reviewDetail.shards,
-      implementationRecords: reviewDetail.implementationRecords,
-      reviewRecords: reviewDetail.reviewRecords,
-      testRecords: reviewDetail.testRecords,
-      testMatrix: reviewDetail.testMatrix,
-      annotations: reviewDetail.annotations,
-    });
-    const now = new Date().toISOString();
-    const record: LoopGlobalReviewRecord = {
-      id: `global-review-${issueId}-r${detail.state.round}-${Date.now()}`,
-      issueId,
-      reviewer: 'codex',
-      round: detail.state.round,
-      verdict: review.verdict,
-      issues: review.issues,
-      fixInstructions: review.fixInstructions,
-      summary: review.summary,
-      created: now,
-    };
-    const nextAnnotations = reviewDetail.annotations.map((annotation) =>
-      annotation.target === issueId
-        ? {
-            ...annotation,
-            annotator: 'codex' as const,
-            verdict:
-              review.verdict === 'PASS'
-                ? ('pass' as const)
-                : review.verdict === 'FAIL'
-                  ? ('fail' as const)
-                  : ('needs-work' as const),
-            notes: `整体复查 ${review.verdict}：${review.summary}`,
-          }
-        : annotation,
-    );
-    if (review.verdict !== 'PASS') {
-      return this.autoReloopAfterGlobalReview({
-        issueId,
-        detail: reviewDetail,
-        record,
-        annotations: nextAnnotations,
-        now,
-      });
-    }
-
-    await this.store.writeGlobalReview({
-      issueId,
-      record,
-      annotations: nextAnnotations,
-      state: {
-        ...reviewDetail.state,
-        phase: 'PHASE_8_ANNOTATE',
-        globalVerdict: review.verdict,
-        updated: now,
+  /** Adapter exposing facade global-review builders as the engine port. */
+  private get globalReviewPort(): LoopsEngineGlobalReviewPort {
+    return {
+      getDetail: (issueId: string) => this.getIssue(issueId),
+      collectEvidenceIssues: (detail: LoopIssueDetail) =>
+        Promise.resolve(this.collectGlobalEvidenceIssues(detail)),
+      runRegression: (detail: LoopIssueDetail) => this.runGlobalRegression(detail),
+      runAgentGlobalReview: async (detail: LoopIssueDetail) => {
+        const reviewDetail = await this.syncAndRead(detail.issue.id);
+        const review = await this.agentAdapter.reviewGlobal({
+          issue: reviewDetail.issue,
+          spec: reviewDetail.spec,
+          shards: reviewDetail.shards,
+          implementationRecords: reviewDetail.implementationRecords,
+          reviewRecords: reviewDetail.reviewRecords,
+          testRecords: reviewDetail.testRecords,
+          testMatrix: reviewDetail.testMatrix,
+          annotations: reviewDetail.annotations,
+        });
+        return { review, reviewDetail };
       },
-    });
-    return this.syncAndRead(issueId);
+      autoReloop: (input) => this.autoReloopAfterGlobalReview(input),
+      readDetail: (issueId: string) => this.syncAndRead(issueId),
+    };
   }
 
   async reloop(issueId: string, request: { reviewer?: string; notes?: string }) {
+    // 结构优化 nextstep Step N1：reloop（max-reloop 校验 + 下一轮 spec/state 构造 +
+    // writeSpec）已下沉到 `LoopsEngineService.reloop`；facade 负责 enriched 预读。
     const detail = await this.getIssue(issueId);
-    const maxReloop = (await readLoopsRuntimeConfig()).maxReloop;
-    if ((detail.state.reloopCount ?? 0) >= maxReloop) {
-      throw new BadRequestException('Max re-loop count reached');
-    }
-
-    const now = new Date().toISOString();
-    const nextRound = detail.state.round + 1;
-    const reloopCount = detail.state.reloopCount + 1;
-    const specVersion = this.engine.nextSpecVersion(detail.state.specVersion);
-    const spec = this.buildReloopSpec({
-      detail,
-      specVersion,
-      now,
-      reviewer: request.reviewer ?? 'human',
-      notes: `notes: ${request.notes ?? '整体复查后进入下一轮修订。'}`,
-    });
-    const state: LoopStateItem = {
-      ...detail.state,
-      phase: 'PHASE_2_REVIEW',
-      round: nextRound,
-      specVersion,
-      shardsTotal: 0,
-      shardsDone: 0,
-      shardsInProgress: 0,
-      reloopCount,
-      globalVerdict: undefined,
-      finalized: false,
-      updated: now,
-    };
-
-    await this.store.writeSpec(detail.issue, spec, state);
-    return {
-      issueId,
-      specVersion,
-      round: nextRound,
-      reloopCount,
-      maxReloop,
-      phase: state.phase,
-      paused: state.paused,
-    };
+    return this.engine.reloop(issueId, detail, request);
   }
 
   async naturalCommand(
@@ -932,7 +806,7 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
     const nextRound = input.detail.state.round + 1;
     const reloopCount = input.detail.state.reloopCount + 1;
     const specVersion = this.engine.nextSpecVersion(input.detail.state.specVersion);
-    const spec = this.buildReloopSpec({
+    const spec = this.engine.buildReloopSpec({
       detail: input.detail,
       specVersion,
       now: input.now,
@@ -983,111 +857,87 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
     return this.syncAndRead(input.issueId);
   }
 
-  private buildReloopSpec(input: {
-    detail: Awaited<ReturnType<LoopsService['getIssue']>>;
-    specVersion: string;
-    now: string;
-    reviewer: string;
-    notes: string;
-  }): LoopSpec {
-    const baseBody = input.detail.spec?.body ?? input.detail.issue.body;
-    return {
-      id: `spec-${input.detail.issue.id.replace('issue-', '')}-${input.specVersion}`,
-      issueId: input.detail.issue.id,
-      version: input.specVersion,
-      status: 'DRAFT',
-      created: input.now,
-      contextBudget: input.detail.spec?.contextBudget ?? 24000,
-      body: `${baseBody}\n\n## 自动回环修订 ${input.specVersion}\nreviewer: ${input.reviewer}\n${input.notes}\n`,
-    };
+  async finalize(issueId: string) {
+    // 结构优化 nextstep Step N1：finalize 收敛态编排（顺序 + CLOSED/finalized 状态写入）
+    // 已下沉到 `LoopsEngineService.finalize`，经 `finalizePort` 把 release-gate / git
+    // adapter / evidence-artifacts / agent annotate / learnings / PR 评论等重依赖 builder
+    // 注入 domain。
+    return this.engine.finalize(issueId, this.finalizePort);
   }
 
-  async finalize(issueId: string) {
-    const detail = await this.getIssue(issueId);
-    if (this.isTerminal(detail)) {
-      return detail;
-    }
-    if (detail.state.globalVerdict !== 'PASS') {
-      throw new BadRequestException('Global review PASS is required before finalize');
-    }
-    // gstack/0 P0-2: Release Gate hard blocking — enforce checklist before proceeding.
-    const releaseGate = this.buildReleaseGate(detail);
-    const secondOpinion = this.buildSecondOpinion(detail);
-    this.enforceReleaseGate(detail, releaseGate, secondOpinion);
-    const now = new Date().toISOString();
-    const commits: LoopsCommitShardResult[] = [];
-    for (const shard of detail.shards) {
-      const record = detail.implementationRecords.find((item) => item.shardId === shard.id);
-      commits.push(
-        await this.gitAdapter.commitShard({
-          issue: detail.issue,
-          shard,
-          changedFiles: record?.changedFiles ?? shard.filesHint,
-        }),
-      );
-    }
-    const convergencePr = await this.gitAdapter.createConvergencePr({
-      issue: detail.issue,
-      shards: detail.shards,
-      annotations: detail.annotations,
-      commits,
-      evidenceArtifacts: this.buildEvidenceArtifacts(detail),
-    });
-    const annotations = await this.agentAdapter.annotateFinalize({
-      issue: detail.issue,
-      spec: detail.spec,
-      shards: detail.shards,
-      annotations: detail.annotations,
-      globalVerdict: detail.state.globalVerdict,
-      testMatrix: detail.testMatrix,
-      globalReview: detail.globalReview,
-      convergencePr,
-    });
-    const learnings = this.buildLoopLearnings(detail, convergencePr, now);
-    await this.store.writeFinalize({
-      issue: detail.issue,
-      annotations,
-      convergencePr,
-      learnings,
-      state: {
-        ...detail.state,
-        phase: 'CLOSED',
-        finalized: true,
-        updated: now,
+  /** Adapter exposing facade finalize builders as the engine finalization port. */
+  private get finalizePort(): LoopsEngineFinalizePort {
+    return {
+      getDetail: (issueId: string) => this.getIssue(issueId),
+      enforceReleaseGateOrThrow: (detail: LoopIssueDetail) => {
+        const releaseGate = this.buildReleaseGate(detail);
+        const secondOpinion = this.buildSecondOpinion(detail);
+        this.enforceReleaseGate(detail, releaseGate, secondOpinion);
       },
-    });
-
-    // R6 PR comment auto-publish: post delivery evidence as a PR comment when
-    // a PR provider is configured and a convergence PR was opened.
-    if (this.prProvider && convergencePr?.url && convergencePr.id) {
-      try {
-        const finalizedDetail = await this.store.readDetail(issueId);
-        const evidence = this.buildDeliveryEvidence(finalizedDetail);
-        const result = await this.prProvider.createPrComment({
-          prId: convergencePr.id,
-          body: evidence.markdown,
+      openConvergencePr: async (detail: LoopIssueDetail) => {
+        const commits: LoopsCommitShardResult[] = [];
+        for (const shard of detail.shards) {
+          const record = detail.implementationRecords.find((item) => item.shardId === shard.id);
+          commits.push(
+            await this.gitAdapter.commitShard({
+              issue: detail.issue,
+              shard,
+              changedFiles: record?.changedFiles ?? shard.filesHint,
+            }),
+          );
+        }
+        return this.gitAdapter.createConvergencePr({
+          issue: detail.issue,
+          shards: detail.shards,
+          annotations: detail.annotations,
+          commits,
+          evidenceArtifacts: this.buildEvidenceArtifacts(detail),
         });
-        if (result.created) {
-          this.log('info', `[Loops] PR evidence comment published for ${issueId}`, {
-            issueId,
+      },
+      annotateFinalize: (detail: LoopIssueDetail, convergencePr) =>
+        this.agentAdapter.annotateFinalize({
+          issue: detail.issue,
+          spec: detail.spec,
+          shards: detail.shards,
+          annotations: detail.annotations,
+          // engine.finalize 已校验 globalVerdict === 'PASS' 后才调本 port
+          globalVerdict: detail.state.globalVerdict ?? 'PASS',
+          testMatrix: detail.testMatrix,
+          globalReview: detail.globalReview,
+          convergencePr,
+        }),
+      buildLearnings: (detail: LoopIssueDetail, convergencePr, now: string) =>
+        this.buildLoopLearnings(detail, convergencePr, now),
+      publishPrComment: async (issueId: string, convergencePr) => {
+        if (!this.prProvider || !convergencePr?.url || !convergencePr.id) return;
+        try {
+          const finalizedDetail = await this.store.readDetail(issueId);
+          const evidence = this.buildDeliveryEvidence(finalizedDetail);
+          const result = await this.prProvider.createPrComment({
             prId: convergencePr.id,
-            commentUrl: result.url,
+            body: evidence.markdown,
           });
-        } else {
-          this.log('warn', `[Loops] PR evidence comment failed for ${issueId}`, {
+          if (result.created) {
+            this.log('info', `[Loops] PR evidence comment published for ${issueId}`, {
+              issueId,
+              prId: convergencePr.id,
+              commentUrl: result.url,
+            });
+          } else {
+            this.log('warn', `[Loops] PR evidence comment failed for ${issueId}`, {
+              issueId,
+              reason: result.reason,
+            });
+          }
+        } catch (error) {
+          this.log('warn', `[Loops] PR evidence comment error for ${issueId}`, {
             issueId,
-            reason: result.reason,
+            error: error instanceof Error ? error.message : String(error),
           });
         }
-      } catch (error) {
-        this.log('warn', `[Loops] PR evidence comment error for ${issueId}`, {
-          issueId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    return this.syncAndRead(issueId);
+      },
+      readDetail: (issueId: string) => this.syncAndRead(issueId),
+    };
   }
 
   async runBrowserQa(issueId: string, request: LoopBrowserQaRequest) {
@@ -1698,7 +1548,7 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
     };
   }
 
-  private get remoteRunnersLogSink(): LoopsRemoteRunnersLogSink {
+  get remoteRunnersLogSink(): LoopsRemoteRunnersLogSink {
     return {
       log: (level, message, meta) => this.log(level, message, meta),
     };
@@ -2790,84 +2640,38 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
   async executeRemoteShardJob(
     job: LoopsRemoteShardExecutionJob,
   ): Promise<LoopsRemoteShardExecutionResult> {
-    const start = Date.now();
-    const { issueId, shardId, workerKind, runtimeBackend, artifactRoot, command, sandboxProfile } =
-      job;
-    const artifacts: Array<{
-      kind: string;
-      ref: string;
-      sha256?: string;
-      sizeBytes?: number;
-    }> = [];
+    return this.remoteRunnersService.executeRemoteShardJob(
+      job,
+      this.remoteShardRuntimePort,
+      this.remoteRunnersLogSink,
+    );
+  }
 
-    try {
-      const detail = await this.getIssue(issueId);
-      const shard = detail.shards.find((s) => s.id === shardId);
-      if (!shard) {
-        return {
-          status: 'failed',
-          artifacts,
-          error: `Shard ${shardId} not found in issue ${issueId}`,
-          durationMs: Date.now() - start,
-        };
-      }
-
-      switch (workerKind) {
-        case 'implement': {
-          // -------------------------------------------------------------------
-          // PHASE 4: Run CLI adapter to implement the shard
-          // -------------------------------------------------------------------
-          this.log(
-            'info',
-            `[RemoteRunner] Starting implementation: ${shardId} on ${runtimeBackend}`,
-            {
-              issueId,
-              shardId,
-              runtimeBackend,
-            },
-          );
-
-          // Mark shard IN_PROGRESS
-          const inProgressShards = detail.shards.map((item) =>
-            item.id === shardId ? { ...item, status: 'IN_PROGRESS' as const } : item,
-          );
-          await this.store.writeShardProgress({
-            issueId,
-            from: shard.status,
-            to: 'IN_PROGRESS',
-            actor: `remote-runner:${runtimeBackend}`,
-            shardId,
-            state: {
-              ...detail.state,
-              phase: 'PHASE_4_IMPLEMENT',
-              shardsInProgress: 1,
-              updated: new Date().toISOString(),
-            },
-            shards: inProgressShards,
+  get remoteShardRuntimePort(): LoopsRemoteShardRuntimePort {
+    return {
+      readDetail: (issueId: string) => this.getIssue(issueId),
+      runImplementation: async (input) => {
+        if (input.runtimeBackend === 'docker' && this.dockerSandbox) {
+          const dockerResult = await this.dockerSandbox.executeOrThrow({
+            image: input.sandboxProfile ?? 'dofe-ai/sandbox:latest',
+            command:
+              input.command ??
+              `codex implement --shard ${input.shard.id} --issue ${input.issue.id}`,
+            workdir: input.issue.targetRepo,
+            mountPath: input.issue.targetRepo,
+            networkMode: 'none',
+            readonlyRootfs: false,
+            capDrop: ['ALL'],
+            capAdd: [],
+            timeoutSec: 600,
+            memoryLimitMb: 2048,
           });
-
-          // Execute via the appropriate runtime backend
-          let record: LoopImplementationRecord;
-          if (runtimeBackend === 'docker' && this.dockerSandbox) {
-            // Docker sandbox execution: wrap command in sandbox profile
-            const dockerResult = await this.dockerSandbox.executeOrThrow({
-              image: sandboxProfile ?? 'dofe-ai/sandbox:latest',
-              command: command ?? `codex implement --shard ${shardId} --issue ${issueId}`,
-              workdir: detail.issue.targetRepo,
-              mountPath: detail.issue.targetRepo,
-              networkMode: 'none',
-              readonlyRootfs: false,
-              capDrop: ['ALL'],
-              capAdd: [],
-              timeoutSec: 600,
-              memoryLimitMb: 2048,
-            });
-            // Build implementation record from Docker output
-            record = {
-              id: `impl-record-${shardId}-r${detail.state.round}-${Date.now()}`,
-              issueId,
-              shardId,
-              round: detail.state.round,
+          return {
+            record: {
+              id: `impl-record-${input.shard.id}-r${input.round}-${Date.now()}`,
+              issueId: input.issue.id,
+              shardId: input.shard.id,
+              round: input.round,
               implementer: `remote-runner:docker`,
               status: dockerResult.exitCode === 0 ? 'IMPLEMENTED' : 'NEEDS-WORK',
               summary: `Docker sandbox execution: exit ${dockerResult.exitCode}`,
@@ -2875,301 +2679,55 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
               notes: dockerResult.stdout.slice(0, 2000),
               tokens: 0,
               created: new Date().toISOString(),
-            };
-            const logArtifact = this.writeArtifact(artifactRoot, 'worker.log', dockerResult.stdout);
-            artifacts.push(logArtifact);
-          } else {
-            // Direct CLI adapter execution (Codex or Claude Code)
-            const result = await this.claudeAdapter.run({
-              issue: detail.issue,
-              shard,
-              round: detail.state.round,
-              cwd: detail.issue.targetRepo,
-            });
-            record = {
-              ...result.record,
-              implementer: `remote-runner:${runtimeBackend}`,
-            };
-          }
-
-          // Persist implementation record
-          await this.persistImplementationRecord(issueId, shardId, record);
-
-          // Write handoff artifact
-          const handoff = this.writeArtifact(
-            artifactRoot,
-            'handoff.json',
-            JSON.stringify(
-              {
-                shardId,
-                runtimeBackend,
-                implementationId: record.id,
-                status: record.status,
-                summary: record.summary,
-                changedFiles: record.changedFiles,
-                executedAt: new Date().toISOString(),
-              },
-              null,
-              2,
-            ),
-          );
-          artifacts.push(handoff);
-
-          this.log('info', `[RemoteRunner] Implementation completed: ${shardId}`, {
-            issueId,
-            shardId,
-            runtimeBackend,
-            status: record.status,
-          });
-
-          return {
-            status: 'completed',
-            artifacts,
-            summary: record.summary,
-            durationMs: Date.now() - start,
+            },
+            logContent: dockerResult.stdout,
           };
         }
 
-        case 'test': {
-          // -------------------------------------------------------------------
-          // Run test commands via LoopsRunnerService
-          // -------------------------------------------------------------------
-          this.log('info', `[RemoteRunner] Starting tests: ${shardId}`, {
-            issueId,
-            shardId,
-            runtimeBackend,
-          });
-
-          const testRecord = await this.runner.runShardTests({
-            issueId,
-            shardId,
-            round: detail.state.round,
-            cwd: detail.issue.targetRepo,
-            request: {
-              commands: command ? [command] : undefined,
-              runner: `remote-runner:${runtimeBackend}`,
-            },
-            sandboxProfile:
-              runtimeBackend === 'docker'
-                ? {
-                    network: sandboxProfile === 'strict' ? 'deny' : 'allowlist',
-                    writeScope: 'repo',
-                    shellEnforcement: 'allowlist',
-                    secretMode: 'redacted',
-                  }
-                : undefined,
-          });
-
-          // Persist test record and update annotations/shards/state
-          const testStatus: LoopAnnotation['testStatus'] =
-            testRecord.status === 'TEST-PASS' ? 'pass' : 'fail';
-          const testVerdict: LoopAnnotation['verdict'] =
-            testRecord.status === 'TEST-PASS' ? 'unreviewed' : 'needs-work';
-          const nextAnnotations = detail.annotations.map((a) =>
-            a.target === shardId
+        const result = await this.claudeAdapter.run({
+          issue: input.issue,
+          shard: input.shard,
+          round: input.round,
+          cwd: input.issue.targetRepo,
+        });
+        return {
+          record: {
+            ...result.record,
+            implementer: `remote-runner:${input.runtimeBackend}`,
+          },
+        };
+      },
+      persistImplementation: async (
+        issueId: string,
+        shardId: string,
+        record: LoopImplementationRecord,
+      ) => {
+        await this.persistImplementationRecord(issueId, shardId, record);
+      },
+      runTests: (input) =>
+        this.runner.runShardTests({
+          issueId: input.issueId,
+          shardId: input.shardId,
+          round: input.round,
+          cwd: input.cwd,
+          request: {
+            commands: input.command ? [input.command] : undefined,
+            runner: `remote-runner:${input.runtimeBackend}`,
+          },
+          sandboxProfile:
+            input.runtimeBackend === 'docker'
               ? {
-                  ...a,
-                  testStatus,
-                  verdict: testVerdict,
-                  notes:
-                    testRecord.failedTests.length > 0
-                      ? `Test failures: ${testRecord.failedTests.map((f) => f.name).join(', ')}`
-                      : 'Tests passed — awaiting review.',
+                  network: input.sandboxProfile === 'strict' ? 'deny' : 'allowlist',
+                  writeScope: 'repo',
+                  shellEnforcement: 'allowlist',
+                  secretMode: 'redacted',
                 }
-              : a,
-          );
-          const nextShards = detail.shards.map((item) =>
-            item.id === shardId && testRecord.status === 'TEST-FAIL'
-              ? { ...item, status: 'NEEDS-WORK' as const }
-              : item,
-          );
-          await this.store.writeTestRecord({
-            issueId,
-            shardId,
-            record: testRecord,
-            annotations: nextAnnotations,
-            shards: nextShards,
-            state: {
-              ...detail.state,
-              phase: 'PHASE_5_REVIEW',
-              updated: new Date().toISOString(),
-            },
-          });
-
-          // Write test evidence artifact
-          const testArtifact = this.writeArtifact(
-            artifactRoot,
-            'test-results.json',
-            JSON.stringify(
-              {
-                shardId,
-                runtimeBackend,
-                testRecordId: testRecord.id,
-                status: testRecord.status,
-                commandCount: testRecord.commands.length,
-                failedTests: testRecord.failedTests,
-                coverage: testRecord.coverage,
-                executedAt: new Date().toISOString(),
-              },
-              null,
-              2,
-            ),
-          );
-          artifacts.push(testArtifact);
-
-          this.log('info', `[RemoteRunner] Tests ${testRecord.status}: ${shardId}`, {
-            issueId,
-            shardId,
-            status: testRecord.status,
-          });
-
-          return {
-            status: 'completed',
-            artifacts,
-            summary: `Tests ${testRecord.status}: ${testRecord.failedTests.length} failures`,
-            durationMs: Date.now() - start,
-          };
-        }
-
-        case 'review': {
-          // -------------------------------------------------------------------
-          // Run AI review via agent adapter
-          // -------------------------------------------------------------------
-          this.log('info', `[RemoteRunner] Starting review: ${shardId}`, {
-            issueId,
-            shardId,
-            runtimeBackend,
-          });
-
-          const implRecord = detail.implementationRecords.find(
-            (r) => r.shardId === shardId && r.round === detail.state.round,
-          );
-          if (!implRecord) {
-            return {
-              status: 'failed',
-              artifacts,
-              error: `No implementation record found for shard ${shardId} at round ${detail.state.round}`,
-              durationMs: Date.now() - start,
-            };
-          }
-
-          const testRecord = detail.testRecords.find(
-            (r) => r.shardId === shardId && r.round === detail.state.round,
-          );
-
-          // Run agent review
-          const review = await this.agentAdapter.review({
-            shard,
-            implementationRecord: implRecord,
-            testRecord,
-          });
-
-          // Write review verdict artifact BEFORE applying state (preserve for evidence)
-          const reviewArtifact = this.writeArtifact(
-            artifactRoot,
-            'review-verdict.json',
-            JSON.stringify(
-              {
-                shardId,
-                runtimeBackend,
-                verdict: review.verdict,
-                issues: review.issues,
-                fixInstructions: review.fixInstructions,
-                summary: review.summary,
-                reviewedAt: new Date().toISOString(),
-              },
-              null,
-              2,
-            ),
-          );
-          artifacts.push(reviewArtifact);
-
-          // Apply review verdict via reviewShard (handles NEEDS-WORK redo limit, etc.)
-          await this.reviewShard(issueId, shardId, {
-            reviewer: `remote-runner:${runtimeBackend}`,
-            verdict: review.verdict,
-            summary: review.summary,
-            issues: review.issues,
-            fixInstructions: review.fixInstructions,
-          });
-
-          this.log('info', `[RemoteRunner] Review ${review.verdict}: ${shardId}`, {
-            issueId,
-            shardId,
-            verdict: review.verdict,
-          });
-
-          return {
-            status: 'completed',
-            artifacts,
-            summary: `Review ${review.verdict}: ${review.summary}`,
-            durationMs: Date.now() - start,
-          };
-        }
-
-        default:
-          return {
-            status: 'failed',
-            artifacts,
-            error: `Unknown workerKind: ${workerKind}`,
-            durationMs: Date.now() - start,
-          };
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.log('error', `[RemoteRunner] Job failed: ${workerKind} on ${shardId}`, {
-        issueId: job.issueId,
-        shardId: job.shardId,
-        workerKind,
-        error: message,
-      });
-
-      // Write error log artifact
-      try {
-        const errArtifact = this.writeArtifact(
-          artifactRoot,
-          'worker.log',
-          `ERROR [${new Date().toISOString()}] ${workerKind} on ${job.shardId}: ${message}\n${error instanceof Error ? error.stack : ''}`,
-        );
-        artifacts.push(errArtifact);
-      } catch {
-        // Best effort
-      }
-
-      return {
-        status: 'failed',
-        artifacts,
-        error: message,
-        summary: `Execution failed: ${message.slice(0, 200)}`,
-        durationMs: Date.now() - start,
-      };
-    }
-  }
-
-  /**
-   * Write a job artifact to the file store and return its metadata.
-   */
-  private writeArtifact(
-    artifactRoot: string,
-    filename: string,
-    content: string,
-  ): {
-    kind: string;
-    ref: string;
-    sha256?: string;
-    sizeBytes?: number;
-  } {
-    const ref = `${artifactRoot}/${filename}`;
-    const sha256 = createHash('sha256').update(content).digest('hex');
-    const sizeBytes = Buffer.byteLength(content, 'utf8');
-    try {
-      this.store.writeRemoteRunnerArtifact(ref, content);
-    } catch (err) {
-      this.log('warn', `[RemoteRunner] Failed to write artifact: ${ref}`, {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-    return { kind: filename.replace(/\.\w+$/, ''), ref, sha256, sizeBytes };
+              : undefined,
+        }),
+      review: (input) => this.agentAdapter.review(input),
+      applyReview: (issueId: string, shardId: string, request: LoopReviewShardRequest) =>
+        this.reviewShard(issueId, shardId, request).then(() => undefined),
+    };
   }
 
   // =========================================================================
@@ -4722,121 +4280,9 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
 
   // 结构优化 Step 3：nextResumePhase / nextSpecVersion / findRunnableShard /
   // formatPhase 已下沉到 `LoopsEngineService`（经 `this.engine.*` 委托）。
-
-  private async blockShardForContextBudget(
-    issueId: string,
-    detail: LoopIssueDetail,
-    shard: LoopShard,
-    contextBudget: number,
-  ): Promise<void> {
-    const now = new Date().toISOString();
-    const nextShards = detail.shards.map((item) =>
-      item.id === shard.id ? { ...item, status: 'BLOCKED' as const } : item,
-    );
-    const nextAnnotations = detail.annotations.map((annotation) =>
-      annotation.target === shard.id
-        ? {
-            ...annotation,
-            implStatus: 'skipped' as const,
-            testStatus: 'skipped' as const,
-            verdict: 'needs-work' as const,
-            coverage: 'none' as const,
-            risk: 'high' as const,
-            notes: `Shard est_context=${shard.estContext} exceeds context_budget=${contextBudget}; re-decompose before implementation.`,
-          }
-        : annotation,
-    );
-    await this.store.writeShardProgress({
-      issueId,
-      from: shard.status,
-      to: 'BLOCKED',
-      actor: 'loops-scheduler',
-      shardId: shard.id,
-      state: {
-        ...detail.state,
-        phase: 'PHASE_4_IMPLEMENT',
-        shardsInProgress: 0,
-        updated: now,
-      },
-      shards: nextShards,
-      annotations: nextAnnotations,
-    });
-    await this.store.appendLog({
-      type: 'CONTEXT_BUDGET_EXCEEDED',
-      loop: issueId,
-      shard: shard.id,
-      est_context: shard.estContext,
-      context_budget: contextBudget,
-      status: 'BLOCKED',
-    });
-    await this.store.writeNotification({
-      issueId,
-      channel: 'web',
-      kind: 'CONTEXT_BUDGET_EXCEEDED',
-      recipient: 'human',
-      title: `Shard blocked by context budget: ${shard.id}`,
-      body: `Shard ${shard.id} est_context=${shard.estContext} exceeds context_budget=${contextBudget}. Re-decompose before implementation.`,
-      actionHref: `/loops/${issueId}`,
-    });
-  }
-
-  private async runRunnableShard(
-    issueId: string,
-    detail: LoopIssueDetail,
-    shard: LoopShard,
-  ): Promise<void> {
-    const started = new Date().toISOString();
-    const inProgressShards = detail.shards.map((item) =>
-      item.id === shard.id ? { ...item, status: 'IN_PROGRESS' as const } : item,
-    );
-    await this.store.writeShardProgress({
-      issueId,
-      from: shard.status,
-      to: 'IN_PROGRESS',
-      actor: 'loops-scheduler',
-      shardId: shard.id,
-      state: {
-        ...detail.state,
-        phase: 'PHASE_4_IMPLEMENT',
-        shardsInProgress: 1,
-        updated: started,
-      },
-      shards: inProgressShards,
-    });
-
-    const { record } = await this.claudeAdapter.run({
-      issue: detail.issue,
-      shard,
-      round: detail.state.round,
-      cwd: detail.issue.targetRepo,
-    });
-    const implementationDetail = await this.persistImplementationRecord(issueId, shard.id, record);
-    const testRecord = await this.runShardTests(issueId, shard.id, {
-      commands: await this.store.readDefaultTestCommands(),
-      runner: 'loops-runner',
-    });
-    const testReview = await this.agentAdapter.reviewTests({
-      matrix: implementationDetail.testMatrix,
-      testRecord,
-    });
-    const review = await this.agentAdapter.review({
-      shard,
-      implementationRecord: record,
-      testRecord,
-    });
-
-    const verdict =
-      testReview.testVerdict === 'TEST-PASS' ? review.verdict : ('NEEDS-WORK' as const);
-    await this.reviewShard(issueId, shard.id, {
-      reviewer: 'codex',
-      verdict,
-      summary:
-        verdict === review.verdict ? review.summary : `测试复核未通过：${testReview.summary}`,
-      issues: verdict === review.verdict ? review.issues : testReview.issues,
-      fixInstructions:
-        verdict === review.verdict ? review.fixInstructions : testReview.fixInstructions,
-    });
-  }
+  // 结构优化 nextstep Step N1：blockShardForContextBudget / recoverInterruptedShards /
+  // runRunnableShard 已随 runLoopUnlocked 调度下沉到 `LoopsEngineService`，facade 不再保留副本
+  //（claudeAdapter / persist / runShardTests / review 经 `shardRunnerPort` 注入 engine）。
 
   private buildRiskQueue(
     items: LoopListItem[],

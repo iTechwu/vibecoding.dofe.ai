@@ -1,7 +1,27 @@
 import { BadRequestException, Injectable, Optional } from '@nestjs/common';
-import type { LoopDetail, LoopShard, LoopSpec, LoopStateItem } from '@repo/contracts';
+import type {
+  LoopAnnotation,
+  LoopConvergencePr,
+  LoopDetail,
+  LoopGlobalReviewRecord,
+  LoopImplementationRecord,
+  LoopIssue,
+  LoopLearning,
+  LoopReloopResponse,
+  LoopReviewShardRequest,
+  LoopShard,
+  LoopSpec,
+  LoopStateItem,
+  LoopTestMatrix,
+  LoopTestRecord,
+} from '@repo/contracts';
 import { LoopsFileStoreService, readLoopsRuntimeConfig } from '@app/services/loops-store';
-import { type LoopsAgentAdapter } from '@app/services/loops-runners';
+import {
+  type LoopsAgentAdapter,
+  type LoopsReviewIssue,
+  type LoopsReviewOutput,
+  type LoopsTestReviewOutput,
+} from '@app/services/loops-runners';
 
 /** Human-readable labels for loop phases (used by `formatPhase`). */
 const PHASE_LABELS: Record<string, string> = {
@@ -183,6 +203,279 @@ export class LoopsEngineService {
   }
 
   /**
+   * Resume a paused loop: clear `paused`, demote PAUSED phase back to
+   * PHASE_4_IMPLEMENT, and emit a `LOOP_INTERVENTION` log. Only the state
+   * mutation lives here (原 facade `resumeAndRead` 前半段); the enriched
+   * read-back stays facade-side (`syncAndRead`).
+   */
+  async applyResume(issueId: string, detail: LoopDetail): Promise<void> {
+    if (!this.store) {
+      throw new Error('LoopsEngineService requires store for applyResume');
+    }
+    const now = new Date().toISOString();
+    await this.store.upsertState({
+      ...detail.state,
+      paused: false,
+      phase: detail.state.phase === 'PAUSED' ? 'PHASE_4_IMPLEMENT' : detail.state.phase,
+      updated: now,
+    });
+    await this.store.appendLog({
+      type: 'LOOP_INTERVENTION',
+      issue: issueId,
+      action: 'resume',
+      actor: 'loops-engine',
+    });
+  }
+
+  /**
+   * 自动回环（原 facade `reloop`）：max-reloop 校验 → 下一轮 spec 版本 + reloop 计数 →
+   * 写 DRAFT reloop spec + PHASE_2_REVIEW state。返回 `LoopReloopResponse`（不含 detail，
+   * 无需 enriched read-back）。spec 构造（`buildReloopSpec`）为纯函数，一并下沉。
+   */
+  async reloop(
+    issueId: string,
+    detail: LoopDetail,
+    request: { reviewer?: string; notes?: string },
+  ): Promise<LoopReloopResponse> {
+    if (!this.store) {
+      throw new Error('LoopsEngineService requires store for reloop');
+    }
+    const maxReloop = (await readLoopsRuntimeConfig()).maxReloop;
+    if ((detail.state.reloopCount ?? 0) >= maxReloop) {
+      throw new BadRequestException('Max re-loop count reached');
+    }
+
+    const now = new Date().toISOString();
+    const nextRound = detail.state.round + 1;
+    const reloopCount = detail.state.reloopCount + 1;
+    const specVersion = this.nextSpecVersion(detail.state.specVersion);
+    const spec = this.buildReloopSpec({
+      detail,
+      specVersion,
+      now,
+      reviewer: request.reviewer ?? 'human',
+      notes: `notes: ${request.notes ?? '整体复查后进入下一轮修订。'}`,
+    });
+    const state: LoopStateItem = {
+      ...detail.state,
+      phase: 'PHASE_2_REVIEW',
+      round: nextRound,
+      specVersion,
+      shardsTotal: 0,
+      shardsDone: 0,
+      shardsInProgress: 0,
+      reloopCount,
+      globalVerdict: undefined,
+      finalized: false,
+      updated: now,
+    };
+
+    await this.store.writeSpec(detail.issue, spec, state);
+    return {
+      issueId,
+      specVersion,
+      round: nextRound,
+      reloopCount,
+      maxReloop,
+      phase: state.phase,
+      paused: state.paused,
+    };
+  }
+
+  /** Build the DRAFT reloop spec (pure; original facade `buildReloopSpec`). */
+  buildReloopSpec(input: {
+    detail: LoopDetail;
+    specVersion: string;
+    now: string;
+    reviewer: string;
+    notes: string;
+  }): LoopSpec {
+    const baseBody = input.detail.spec?.body ?? input.detail.issue.body;
+    return {
+      id: `spec-${input.detail.issue.id.replace('issue-', '')}-${input.specVersion}`,
+      issueId: input.detail.issue.id,
+      version: input.specVersion,
+      status: 'DRAFT',
+      created: input.now,
+      contextBudget: input.detail.spec?.contextBudget ?? 24000,
+      body: `${baseBody}\n\n## 自动回环修订 ${input.specVersion}\nreviewer: ${input.reviewer}\n${input.notes}\n`,
+    };
+  }
+
+  /**
+   * 终态收敛（原 facade `finalize`）：globalVerdict PASS 校验 → release-gate 硬门禁 →
+   * 开收敛 PR（commit 各 shard）→ annotateFinalize → learnings → writeFinalize（CLOSED/
+   * finalized）→ PR 评论发布。编排顺序与状态写入在 domain；release-gate / git adapter /
+   * evidence-artifacts / agent annotate / learnings / PR 评论等 builder 经
+   * `LoopsEngineFinalizePort` 注入（最大依赖面），避免 domain 拖入 evidence/git/PR 实现。
+   */
+  async finalize(issueId: string, port: LoopsEngineFinalizePort): Promise<LoopDetail> {
+    if (!this.store) {
+      throw new Error('LoopsEngineService requires store for finalize');
+    }
+    const detail = await port.getDetail(issueId);
+    if (this.isTerminal(detail)) {
+      return detail;
+    }
+    if (detail.state.globalVerdict !== 'PASS') {
+      throw new BadRequestException('Global review PASS is required before finalize');
+    }
+    // gstack/0 P0-2: Release Gate hard blocking — enforce checklist before proceeding.
+    port.enforceReleaseGateOrThrow(detail);
+    const now = new Date().toISOString();
+    const convergencePr = await port.openConvergencePr(detail);
+    const annotations = await port.annotateFinalize(detail, convergencePr);
+    const learnings = port.buildLearnings(detail, convergencePr, now);
+    await this.store.writeFinalize({
+      issue: detail.issue,
+      annotations,
+      convergencePr,
+      learnings,
+      state: {
+        ...detail.state,
+        phase: 'CLOSED',
+        finalized: true,
+        updated: now,
+      },
+    });
+    await port.publishPrComment(issueId, convergencePr);
+    return port.readDetail(issueId);
+  }
+
+  /**
+   * PHASE_6_CONVERGE → 整体复查（原 facade `reviewGlobal`）：三分支决策——
+   * (1) 当前 round 证据不完整 → NEEDS-WORK；(2) 全局回归失败 → NEEDS-WORK；
+   * (3) agent reviewGlobal → PASS（→ PHASE_8_ANNOTATE）/ 非 PASS（→ autoReloop）。
+   * record 构造 + 状态写入 + annotation 映射在 domain；证据收集 / 回归 / agent review /
+   * autoReloop / enriched read-back 经 `LoopsEngineGlobalReviewPort` 注入。行为与 legacy 一致。
+   */
+  async reviewGlobal(issueId: string, port: LoopsEngineGlobalReviewPort): Promise<LoopDetail> {
+    if (!this.store) {
+      throw new Error('LoopsEngineService requires store for reviewGlobal');
+    }
+    const detail = await port.getDetail(issueId);
+    if (this.isTerminal(detail)) {
+      return detail;
+    }
+
+    // (1) current-round evidence completeness gate
+    const evidenceIssues = await port.collectEvidenceIssues(detail);
+    if (evidenceIssues.length > 0) {
+      const now = new Date().toISOString();
+      const record: LoopGlobalReviewRecord = {
+        id: `global-review-${issueId}-r${detail.state.round}-${Date.now()}`,
+        issueId,
+        reviewer: 'system',
+        round: detail.state.round,
+        verdict: 'NEEDS-WORK',
+        issues: evidenceIssues,
+        fixInstructions: ['补齐当前 round 的 implementation/test/review 证据后重新整体复查。'],
+        summary: 'Global review blocked: current-round evidence is incomplete.',
+        created: now,
+      };
+      await this.store.writeGlobalReview({
+        issueId,
+        record,
+        annotations: detail.annotations,
+        state: {
+          ...detail.state,
+          phase: 'PHASE_4_IMPLEMENT',
+          globalVerdict: 'NEEDS-WORK',
+          updated: now,
+        },
+      });
+      return port.readDetail(issueId);
+    }
+
+    // (2) global regression gate
+    const regression = await port.runRegression(detail);
+    if (regression.status !== 'TEST-PASS') {
+      const now = new Date().toISOString();
+      const record: LoopGlobalReviewRecord = {
+        id: `global-review-${issueId}-r${detail.state.round}-${Date.now()}`,
+        issueId,
+        reviewer: 'system',
+        round: detail.state.round,
+        verdict: 'NEEDS-WORK',
+        issues: regression.failedTests.map((item) => ({
+          severity: 'major' as const,
+          desc: `Global regression failed: ${item.name}: ${item.reason}`,
+        })),
+        fixInstructions:
+          regression.fixInstructions.length > 0
+            ? regression.fixInstructions
+            : ['修复全局回归失败后重新执行整体复查。'],
+        summary: 'Global review blocked: regression tests failed.',
+        created: now,
+      };
+      await this.store.writeGlobalReview({
+        issueId,
+        record,
+        annotations: detail.annotations,
+        state: {
+          ...detail.state,
+          phase: 'PHASE_4_IMPLEMENT',
+          globalVerdict: 'NEEDS-WORK',
+          updated: now,
+        },
+      });
+      return port.readDetail(issueId);
+    }
+
+    // (3) agent global review
+    const { review, reviewDetail } = await port.runAgentGlobalReview(detail);
+    const now = new Date().toISOString();
+    const record: LoopGlobalReviewRecord = {
+      id: `global-review-${issueId}-r${detail.state.round}-${Date.now()}`,
+      issueId,
+      reviewer: 'codex',
+      round: detail.state.round,
+      verdict: review.verdict,
+      issues: review.issues,
+      fixInstructions: review.fixInstructions,
+      summary: review.summary,
+      created: now,
+    };
+    const nextAnnotations = reviewDetail.annotations.map((annotation) =>
+      annotation.target === issueId
+        ? {
+            ...annotation,
+            annotator: 'codex' as const,
+            verdict:
+              review.verdict === 'PASS'
+                ? ('pass' as const)
+                : review.verdict === 'FAIL'
+                  ? ('fail' as const)
+                  : ('needs-work' as const),
+            notes: `整体复查 ${review.verdict}：${review.summary}`,
+          }
+        : annotation,
+    );
+    if (review.verdict !== 'PASS') {
+      return port.autoReloop({
+        issueId,
+        detail: reviewDetail,
+        record,
+        annotations: nextAnnotations,
+        now,
+      });
+    }
+
+    await this.store.writeGlobalReview({
+      issueId,
+      record,
+      annotations: nextAnnotations,
+      state: {
+        ...reviewDetail.state,
+        phase: 'PHASE_8_ANNOTATE',
+        globalVerdict: review.verdict,
+        updated: now,
+      },
+    });
+    return port.readDetail(issueId);
+  }
+
+  /**
    * PHASE_4_IMPLEMENT shard 调度（原 facade `runLoopUnlocked`）：在 context budget /
    * maxParallel 约束下挑选可执行 shard，经 port 执行，并处理 interrupted 恢复、
    * context-budget 阻塞、全部 DONE → PHASE_6_CONVERGE 收敛。store 编排（recover /
@@ -231,7 +524,7 @@ export class LoopsEngineService {
         currentDetail = await port.readFreshDetail(issueId);
         continue;
       }
-      await port.runRunnableShard(issueId, currentDetail, shard);
+      await this.runRunnableShard(issueId, currentDetail, shard, port);
       advanced += 1;
       currentDetail = await port.readFreshDetail(issueId);
       if (currentDetail.state.paused) {
@@ -283,6 +576,72 @@ export class LoopsEngineService {
       return port.readFreshDetail(issueId);
     }
     throw new BadRequestException('No runnable shard is available');
+  }
+
+  /**
+   * Execute a single runnable shard（原 facade `runRunnableShard`）：mark IN_PROGRESS →
+   * agent implement（claude adapter）→ persist implementation record → run tests →
+   * review-tests → review → derive verdict（TEST-PASS 取 review.verdict，否则 NEEDS-WORK）
+   * → apply review。IN_PROGRESS 状态写入与 verdict 推导在 domain；agent/persist/runner/
+   * review 实现（最大依赖面）经 `LoopsEngineShardRunnerPort` 注入。行为与 legacy 一致。
+   */
+  async runRunnableShard(
+    issueId: string,
+    detail: LoopDetail,
+    shard: LoopShard,
+    port: LoopsEngineShardRunnerPort,
+  ): Promise<void> {
+    if (!this.store) {
+      throw new Error('LoopsEngineService requires store for runRunnableShard');
+    }
+    const started = new Date().toISOString();
+    const inProgressShards = detail.shards.map((item) =>
+      item.id === shard.id ? { ...item, status: 'IN_PROGRESS' as const } : item,
+    );
+    await this.store.writeShardProgress({
+      issueId,
+      from: shard.status,
+      to: 'IN_PROGRESS',
+      actor: 'loops-scheduler',
+      shardId: shard.id,
+      state: {
+        ...detail.state,
+        phase: 'PHASE_4_IMPLEMENT',
+        shardsInProgress: 1,
+        updated: started,
+      },
+      shards: inProgressShards,
+    });
+
+    const record = await port.runAgent({
+      issue: detail.issue,
+      shard,
+      round: detail.state.round,
+      cwd: detail.issue.targetRepo,
+    });
+    const implementationDetail = await port.persistImplementation(issueId, shard.id, record);
+    const testRecord = await port.runTests(issueId, shard.id);
+    const testReview = await port.reviewTests({
+      matrix: implementationDetail.testMatrix,
+      testRecord,
+    });
+    const review = await port.review({
+      shard,
+      implementationRecord: record,
+      testRecord,
+    });
+
+    const verdict =
+      testReview.testVerdict === 'TEST-PASS' ? review.verdict : ('NEEDS-WORK' as const);
+    await port.applyReview(issueId, shard.id, {
+      reviewer: 'codex',
+      verdict,
+      summary:
+        verdict === review.verdict ? review.summary : `测试复核未通过：${testReview.summary}`,
+      issues: verdict === review.verdict ? review.issues : testReview.issues,
+      fixInstructions:
+        verdict === review.verdict ? review.fixInstructions : testReview.fixInstructions,
+    });
   }
 
   /**
@@ -452,13 +811,81 @@ export interface LoopsEngineAdvancePort {
 }
 
 /**
- * Shard-execution port for the engine `runLoopUnlocked` scheduler. The facade
- * supplies the heavy per-shard execution (`runRunnableShard`: agentAdapter +
- * persist + runShardTests + reviewShard) and the enriched fresh-detail read
- * (`readFreshDetail` = `syncAndRead`), so the scheduling loop can live in the
- * domain without dragging the agent/persistence/evidence surface into it.
+ * Shard-execution port for the engine `runLoopUnlocked` scheduler + the engine's
+ * own `runRunnableShard` pipeline. The facade supplies the heavy per-shard steps
+ * (claude adapter implement, persist implementation record, run tests, agent
+ * review-tests / review, apply review verdict) and the enriched fresh-detail
+ * read (`readFreshDetail` = `syncAndRead`), so the full implement→test→review→
+ * verdict pipeline can live in the domain without dragging the
+ * agent/persistence/runner/evidence surface into the engine.
  */
 export interface LoopsEngineShardRunnerPort {
   readFreshDetail(issueId: string): Promise<LoopDetail>;
-  runRunnableShard(issueId: string, detail: LoopDetail, shard: LoopShard): Promise<void>;
+  runAgent(input: {
+    issue: LoopIssue;
+    shard: LoopShard;
+    round: number;
+    cwd: string;
+  }): Promise<LoopImplementationRecord>;
+  persistImplementation(
+    issueId: string,
+    shardId: string,
+    record: LoopImplementationRecord,
+  ): Promise<LoopDetail>;
+  runTests(issueId: string, shardId: string): Promise<LoopTestRecord>;
+  reviewTests(input: {
+    matrix?: LoopTestMatrix;
+    testRecord?: LoopTestRecord;
+  }): Promise<LoopsTestReviewOutput>;
+  review(input: {
+    shard: LoopShard;
+    implementationRecord: LoopImplementationRecord;
+    testRecord?: LoopTestRecord;
+  }): Promise<LoopsReviewOutput>;
+  applyReview(issueId: string, shardId: string, request: LoopReviewShardRequest): Promise<void>;
+}
+
+/**
+ * Finalization port for the engine `finalize`收敛态. The facade supplies the
+ * release-gate enforcement, convergence-PR creation (commit loop + git adapter +
+ * evidence artifacts), agent annotate, learnings builder, and best-effort PR
+ * comment — the heaviest dependency surface — so the finalize ordering + state
+ * write can live in the domain.
+ */
+export interface LoopsEngineFinalizePort {
+  getDetail(issueId: string): Promise<LoopDetail>;
+  enforceReleaseGateOrThrow(detail: LoopDetail): void;
+  openConvergencePr(detail: LoopDetail): Promise<LoopConvergencePr>;
+  annotateFinalize(detail: LoopDetail, convergencePr: LoopConvergencePr): Promise<LoopAnnotation[]>;
+  buildLearnings(detail: LoopDetail, convergencePr: LoopConvergencePr, now: string): LoopLearning[];
+  publishPrComment(issueId: string, convergencePr: LoopConvergencePr): Promise<void>;
+  readDetail(issueId: string): Promise<LoopDetail>;
+}
+
+/**
+ * Global-review port for the engine `reviewGlobal` 整体复查. The facade supplies
+ * the current-round evidence-completeness check (requirements coverage fallback),
+ * the global regression run (runner + runtime config), the agent reviewGlobal
+ * (with enriched re-read), the auto-reloop sub-flow, and the enriched read-back —
+ * so the 3-branch decision + record/state writes can live in the domain.
+ */
+export interface LoopsEngineGlobalReviewPort {
+  getDetail(issueId: string): Promise<LoopDetail>;
+  collectEvidenceIssues(detail: LoopDetail): Promise<LoopsReviewIssue[]>;
+  runRegression(detail: LoopDetail): Promise<{
+    status: string;
+    failedTests: Array<{ name: string; reason: string }>;
+    fixInstructions: string[];
+  }>;
+  runAgentGlobalReview(
+    detail: LoopDetail,
+  ): Promise<{ review: LoopsReviewOutput; reviewDetail: LoopDetail }>;
+  autoReloop(input: {
+    issueId: string;
+    detail: LoopDetail;
+    record: LoopGlobalReviewRecord;
+    annotations: LoopAnnotation[];
+    now: string;
+  }): Promise<LoopDetail>;
+  readDetail(issueId: string): Promise<LoopDetail>;
 }

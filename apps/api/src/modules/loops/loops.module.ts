@@ -30,7 +30,10 @@ import {
 } from '@app/services/loops-admin';
 import { LOOPS_ISSUE_CREATION_PORT } from '@app/services/loops-triggers';
 import { LoopsIssuesService } from '@app/services/loops-issues';
-import { LOOPS_REMOTE_SHARD_EXECUTION_PORT } from '@app/services/loops-remote-runners';
+import {
+  LOOPS_REMOTE_SHARD_EXECUTION_PORT,
+  LoopsRemoteRunnersService,
+} from '@app/services/loops-remote-runners';
 import { LOOPS_EVAL_EVIDENCE_PORT } from '@app/services/loops-eval';
 
 @Module({
@@ -76,12 +79,16 @@ import { LOOPS_EVAL_EVIDENCE_PORT } from '@app/services/loops-eval';
       provide: LOOPS_ISSUE_CREATION_PORT,
       useExisting: LoopsIssuesService,
     },
-    // 结构优化 nextstep Step N4：remote shard execution port 实现仍属 facade
-    //（依赖未下沉的 engine 状态机 / CLI adapter / Docker sandbox）；processor 经此
-    // token 注入，不再依赖 `LoopsService` 类。Step N1 后把实现迁入 domain。
+    // 结构优化 nextstep Step N4：remote shard execution 编排已迁入
+    // `LoopsRemoteRunnersService`；facade 仅提供 CLI/Docker/runtime adapter port。
     {
       provide: LOOPS_REMOTE_SHARD_EXECUTION_PORT,
-      useExisting: LoopsService,
+      useFactory: (remoteRunners: LoopsRemoteRunnersService, service: LoopsService) =>
+        remoteRunners.createShardExecutionPort(
+          service.remoteShardRuntimePort,
+          service.remoteRunnersLogSink,
+        ),
+      inject: [LoopsRemoteRunnersService, LoopsService],
     },
     // 结构优化 nextstep Step N2 收尾：eval evidence port 经 facade 的
     // `evalEvidencePort` 适配（list/readDetail/cost enrichment 仍在 facade），
