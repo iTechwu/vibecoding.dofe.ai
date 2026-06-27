@@ -542,8 +542,8 @@ importers:
   apps/web:
     dependencies:
       '@dofe/file-sdk-web':
-        specifier: 0.1.12
-        version: 0.1.12
+        specifier: 0.1.13
+        version: 0.1.13
       '@dofe/infra-contracts':
         specifier: 0.1.78
         version: 0.1.78
@@ -1418,8 +1418,8 @@ packages:
     resolution: {integrity: sha512-Xc3VhU02wqZ1HvHRJUwL09HkZSTvidqY5Ya0NXBSYOxAp+Ln9dcJr9fySI+CkONzP3PekQo9WdzCv0PGER/mOA==}
     engines: {node: '>=14.17.0'}
 
-  '@dofe/file-sdk-web@0.1.12':
-    resolution: {integrity: sha512-jr5mkZOoDlxd2goghTqj18gwRSekkwkrgeblEZ+Q+xOWv8GFtyJb4i+4DJQPs0YF1Ij6YKuyQ9fRiSfC561GFg==}
+  '@dofe/file-sdk-web@0.1.13':
+    resolution: {integrity: sha512-NLZmhuEW0VY+DZPhZBaq5RbFY0LSYr0mp5qy+94KXlTUhFh9sWa8mRMIi+5xgT8EfXOTkG4rPy6GcJ7HkjG/Ig==}
 
   '@dofe/file-sdk@0.1.12':
     resolution: {integrity: sha512-N0qlzdjRw6qLkd0zlTX5UM4cviSRybeNjsaUVPE13WTBdnqLWjS98ufCMl0z4IRQFChU2t+mHbOAGKseFDPFXQ==}
@@ -10689,7 +10689,7 @@ snapshots:
 
   '@discoveryjs/json-ext@1.1.0': {}
 
-  '@dofe/file-sdk-web@0.1.12': {}
+  '@dofe/file-sdk-web@0.1.13': {}
 
   '@dofe/file-sdk@0.1.12': {}
 

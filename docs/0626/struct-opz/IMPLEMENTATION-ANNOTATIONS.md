@@ -16,12 +16,12 @@
 | Step 0 · 建立目标目录与兼容 Facade             | 已完成   | `LoopsDomainModule` 已作为 domain 装配入口                                                                                                                      |
 | Step 1 · 下沉低耦合工具、Store 与 Lock         | 已完成   | `loops-store` / `loops-locks` 已下沉                                                                                                                            |
 | Step 2 · 拆 Issue Intake 与查询能力            | 部分完成 | intake + 完整 createIssue 编排 + query/read pipeline 已下沉，API 保留兼容 wrapper                                                                               |
-| Step 3 · 拆 Loop Engine 状态机                 | 部分完成 | 纯状态推导原语已下沉，主流程推进仍待拆                                                                                                                          |
+| Step 3 · 拆 Loop Engine 状态机                 | 部分完成 | 纯推导+谓词+spec/decompose+advance 调度+runLoopUnlocked 调度已下沉；finalize/reloop/reviewGlobal/resumeAndRead + runLoop workLock + runRunnableShard 仍待迁     |
 | Step 4 · 拆 Runner、Runtime 与 Workspace       | 部分完成 | runner/runtime 主体已下沉，adapter provider wiring 留 API module                                                                                                |
 | Step 5 · 拆 Evidence、Quality 与 Release Gates | 部分完成 | evidence/quality 主要 builder/gate/enricher 已下沉，API 保留兼容 wrapper                                                                                        |
-| Step 6 · 拆 Eval 与 Bench 聚合                 | 部分完成 | eval/bench 纯 builder + trend/aggregation worker IO 编排已下沉，evidence/DB/Redis 适配仍由 facade port                                                          |
+| Step 6 · 拆 Eval 与 Bench 聚合                 | 部分完成 | builder + trend/aggregation worker IO + DB/Redis 适配（runner）已下沉，processor 解耦 facade；evidence 收集仍由 facade port                                     |
 | Step 7 · 拆 Integrations、MCP、CI、PR 与通知   | 部分完成 | PR/MCP/secret + CI checks registry + CI publication builder + notification sender re-home 完成；testCiCheck provider publish/permission/persistence 仍属 facade |
-| Step 8 · 拆 Trigger 与 Remote Runner Pool      | 部分完成 | Cycle 13 完成 schedule trigger CRUD                                                                                                                             |
+| Step 8 · 拆 Trigger 与 Remote Runner Pool      | 部分完成 | trigger fire + issue creation port + artifact IO + shard execution port 已下沉/解耦；shard execution 实现仍由 facade（阻塞于 N1）                               |
 | Step 9 · 拆 Admin、Archive、Tool 与 Blueprint  | 部分完成 | Cycle 53-57 完成 archive collection service                                                                                                                     |
 | Step 10 · 收敛 API Module 与删除旧聚合         | 待实施   | -                                                                                                                                                               |
 
@@ -30,7 +30,7 @@
 截至 nextstep Cycle 60 后，已经完成多批“实施 → 标注文档 → 审查待实施项 → 再标注文档”的循环。当前剩余项如下：
 
 - Step 2：`list` / `listFromFile` / `getIssue` query/read pipeline + 完整 `createIssue` intake 编排（含 workflow recipe 派生）已下沉到 `loops-issues`；API facade 保留兼容入口与 HTTP 日志/异常映射。
-- Step 3：完整状态机方法仍在 API `LoopsService`，当前仅下沉了纯状态推导原语。
+- Step 3：纯推导 + 谓词 + `generateSpec`/`decompose` + `advance` 递归调度 + `runLoopUnlocked` shard 调度（含 recover/block/converge，经 `LoopsEngineShardRunnerPort` 注入 `runRunnableShard`/`readFreshDetail`）已下沉到 `loops-engine`；`finalize`/`reloop`/`reviewGlobal`/`resumeAndRead` + `runLoop` workLock 包装 + `runRunnableShard` 重执行仍在 API `LoopsService`，分子批迁移中（N1 最高风险节点）。
 - Step 4：runner services/adapters 已下沉；adapter provider wiring 仍在 API module，作为 API 装配逻辑保留。
 - Step 5：workflow baseline evidence、delivery evidence markdown、runtime security exceptions、second opinion policy、release gate blockers、requirements coverage builder、evidence artifact builder、review/release gate builder、delivery controls、list enricher、second opinion builder 等已下沉；API `LoopsService` 仅保留兼容 wrapper。
 - Step 6：Eval suite builder、Eval run builder、Eval trend baseline builder、request-time aggregation builder 与 loop bench metric helper + trend worker IO 编排 + aggregation worker 编排 + DB/Redis 适配（`LoopsEvalAggregationRunnerService`）已下沉到 `loops-eval`；`LoopsEvalAggregationProcessor` 不再注入 facade 类；evidence 收集仍由 `LOOPS_EVAL_EVIDENCE_PORT`（facade）提供。
@@ -2743,5 +2743,380 @@ rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\
 结果：
 
 - issues + facade + triggers + eval + ci-checks focused tests 通过（4 + 68 + 7 + 7 + 6）。
+- API type-check 通过。
+- domain 反向依赖扫描无命中。
+
+## nextstep Cycle 77 · Step N4 Remote Artifact IO re-home 实施
+
+### 实施
+
+- `loops-remote-runners` 新增 `LoopsRemoteArtifactStoragePort` + `LoopsRemoteRunnersLogSink`；`LoopsRemoteRunnersService.uploadRemoteRunnerArtifacts`。
+- `LoopsService.uploadRemoteRunnerArtifacts` 收敛 thin wrapper，`remoteArtifactStoragePort` getter 适配 `crossTenantArchive.fileStorage`。
+
+### 标注文档
+
+- Step N4 artifact IO 已下沉到 `loops-remote-runners`。
+
+### 审查待实施项
+
+- 待实施：shard execution port；shard execution 实现阻塞于 N1。
+
+### 再标注文档
+
+- nextstep Cycle 77 完成，进入 shard execution port。
+
+### 验证
+
+- API type-check 通过；facade loops.service.spec.ts 68 个测试通过。
+
+## nextstep Cycle 78 · Step N4 Shard Execution Port + Processor 解耦实施
+
+### 实施
+
+- `loops-remote-runners` 新增 `LOOPS_REMOTE_SHARD_EXECUTION_PORT` + 三个共享类型/port interface。
+- `LoopsService implements LoopsRemoteShardExecutionPort`，`executeRemoteShardJob` 用共享类型。
+- `LoopsRemoteRunnerProcessor` 改注入 `LOOPS_REMOTE_SHARD_EXECUTION_PORT`，不再依赖 `LoopsService` 类。
+- `loops.module.ts` 绑定 port 到 facade（实现阻塞于 N1）。
+
+### 标注文档
+
+- Step N4 processor 解耦 facade 类；shard execution 实现迁入待 N1。
+
+### 审查待实施项
+
+- 待实施：N1 engine 是 shard execution 迁入前置。
+
+### 再标注文档
+
+- nextstep Cycle 78 完成，进入 N2 收尾。
+
+### 验证
+
+- API type-check 通过；processor 不再 import `LoopsService`；反向依赖扫描无命中。
+
+## nextstep Cycle 79 · Step N2 收尾 Eval Aggregation Runner + Processor 解耦实施
+
+### 实施
+
+- `loops-eval` 新增 `LOOPS_EVAL_EVIDENCE_PORT` token；新增 `LoopsEvalAggregationRunnerService`（DB + Redis worker + evidencePort），`runAggregation` / `cacheHealth`。`LoopsEvalModule imports LoopEvalAggregationModule`。
+- `LoopsService` 注入 `evalAggregationRunner`，`runEvalAggregationWorker` 优先委托 runner；`evalEvidencePort` getter 改 public。
+- `LoopsEvalAggregationProcessor` 改注入 runner + domainLogSink，不再依赖 `LoopsService` 类。
+- `loops.module.ts` 绑定 `LOOPS_EVAL_EVIDENCE_PORT` 到 facade（factory）。
+
+### 标注文档
+
+- Step N2 收尾：DB/Redis aggregation 适配下沉 domain runner；processor 解耦 facade；evidence 收集仍由 facade port。
+
+### 审查待实施项
+
+- 待实施：evidence collection 下沉后移除 facade evidence port；trend worker 同构 runner。
+
+### 再标注文档
+
+- nextstep Cycle 79 完成，进入 focused tests。
+
+### 验证
+
+- API type-check 通过；facade + eval 75 个测试通过；两 processor 不再 import `LoopsService`。
+
+## nextstep Cycle 80 · Step N4 + N2 收尾 Focused Tests
+
+### 实施
+
+- 新增 `loops-remote-runners.service.spec.ts`（3 测试：无 port / 多 kind 上传+签 URL / 单 kind 失败跳过）。
+- 新增 `loops-eval-aggregation-runner.service.spec.ts`（6 测试：persist+warm / db 缺失只 warm / worker 缺失不处理 / empty-evidence fallback / cacheHealth 透传 / 未配置）。
+
+### 标注文档
+
+- Step N4 artifact IO + Step N2 收尾 aggregation runner 已有 domain focused tests 覆盖。
+
+### 审查待实施项
+
+- 仍待：N1 engine（shard execution 迁入前置）；evidence collection 下沉。
+
+### 再标注文档
+
+- nextstep Cycle 80 完成，进入结构审查 + 文档 + 收敛。
+
+### 验证
+
+- remote-runners 3 + aggregation-runner 6 测试通过。
+
+## nextstep Cycle 81 · Step N4 + N2 收尾 结构审查 + 文档同步 + 收敛验证
+
+### 实施
+
+- domain 反向依赖扫描无命中；确认三个 processor（trigger-scheduler / remote-runner / eval-aggregation）均不再 import `LoopsService` 类。
+- 更新 nextstep README Step 6/8、BACKLOG N2/N4、struct-opz EXECUTION Step 6/8、本文件顶部 Step 6/8 + 总体状态表。
+
+### 标注文档
+
+- 本批完成至少 5 次循环动作（77 artifact IO / 78 shard execution port / 79 aggregation runner / 80 focused tests / 81 结构审查+文档+收敛）。
+- 准确标注 N2 收尾与 N4 当前状态，未改对外 contract / queue name。
+
+### 审查待实施项
+
+- 待实施：N1 engine（最高风险，shard execution 迁入 + facade 收敛前置）、N6 收尾、N2 残余（evidence collection 下沉）、N5 archive re-home、N7 facade 收敛。
+
+### 再标注文档
+
+- nextstep Cycle 81 完成；remote artifact IO + shard execution port + eval aggregation runner 已下沉/解耦，三个 processor 全部脱离 facade 类依赖。
+
+### 验证
+
+```bash
+pnpm --filter @repo/api test -- loops-remote-runners.service.spec.ts loops-eval-aggregation-runner.service.spec.ts loops-issues.service.spec.ts loops.service.spec.ts loops-triggers.service.spec.ts loops-eval.service.spec.ts loops-ci-checks.service.spec.ts loops-notification-sender.service.spec.ts loops-admin.service.spec.ts loops-archive-collection.service.spec.ts --runInBand
+pnpm --filter @repo/api type-check
+rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)|require\\(['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)" apps/api/libs/domain/services
+```
+
+结果：
+
+- 10 个 test suite 通过，112 个测试通过。
+- API type-check 通过。
+- domain 反向依赖扫描无命中。
+
+## nextstep Cycle 82 · Step N1 Engine spec/decompose 流下沉实施
+
+### 实施
+
+- `LoopsEngineService` 构造新增 `@Optional() store`；`LoopsEngineModule imports LoopsStoreModule`。
+- 下沉纯谓词 `isTerminal`、cost guard `applyCostGuard`（原 facade `costGuardedState`）。
+- 下沉推进流 `generateSpec(detail, agentAdapter)` / `decompose(detail, agentAdapter)`；`LoopsAgentAdapter` 经 facade per-call 透传。
+- `LoopsService.generateSpec`/`decompose` 收敛 thin wrapper；`isTerminal`/`costGuardedState` 委托 engine。
+
+### 标注文档
+
+- Step N1 进入多批迁移：spec/decompose 推进流 + 纯谓词 + cost guard 已下沉到 `loops-engine`。
+
+### 审查待实施项
+
+- 待实施：`reviewSpec` + `advance`/`runLoop`/`runLoopUnlocked`（深度递归 + workLock，最高风险子批）；`finalize`/`reloop`；`resumeAndRead`。
+
+### 再标注文档
+
+- nextstep Cycle 82 完成，进入 focused tests。
+
+### 验证
+
+- API type-check 通过；facade loops.service.spec.ts 68 个测试通过。
+
+## nextstep Cycle 83 · Step N1 Engine Focused Tests
+
+### 实施
+
+- 新增 `loops-engine.service.spec.ts`：isTerminal/nextSpecVersion/nextResumePhase、applyCostGuard、generateSpec（v1/修订/拒绝）、decompose（写入/no-op/拒绝）。
+
+### 标注文档
+
+- Step N1 spec/decompose 推进流已有 domain focused tests 覆盖。
+
+### 审查待实施项
+
+- 仍待：advance/runLoop/finalize/reloop 子批。
+
+### 再标注文档
+
+- nextstep Cycle 83 完成，进入结构审查 + 文档 + 收敛。
+
+### 验证
+
+- `loops-engine.service.spec.ts` 11 个测试通过。
+
+## nextstep Cycle 84 · Step N1 结构审查 + 文档同步 + 收敛验证
+
+### 实施
+
+- domain 反向依赖扫描无命中；engine 仅依赖 contracts/nest/store/runners(interface)。
+- facade generateSpec/decompose 为 thin delegate；isTerminal/costGuardedState 委托 engine。
+- 更新 nextstep README Step 3、BACKLOG N1、struct-opz EXECUTION Step 3、本文件顶部 Step 3 + 总体状态表。
+
+### 标注文档
+
+- 本批完成 N1 第一个子批（82 实施 / 83 tests / 84 结构审查+文档+收敛）。
+- 准确标注 N1 当前状态，未改对外 contract / spec·decompose 行为。
+
+### 审查待实施项
+
+- N1 后续子批：reviewSpec+advance+runLoop+runLoopUnlocked（最高风险）、finalize+reloop、resumeAndRead。
+- 其他：N6 收尾、N5 archive re-home、N7 facade 收敛。
+
+### 再标注文档
+
+- nextstep Cycle 84 完成；engine spec/decompose 推进流已下沉，N1 进入多批迁移轨道。
+
+### 验证
+
+```bash
+pnpm --filter @repo/api test -- loops-engine.service.spec.ts loops.service.spec.ts loops-issues.service.spec.ts loops-triggers.service.spec.ts loops-eval.service.spec.ts loops-eval-aggregation-runner.service.spec.ts loops-ci-checks.service.spec.ts loops-notification-sender.service.spec.ts loops-remote-runners.service.spec.ts loops-admin.service.spec.ts loops-archive-collection.service.spec.ts --runInBand
+pnpm --filter @repo/api type-check
+rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)|require\\(['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)" apps/api/libs/domain/services
+```
+
+结果：
+
+- 11 个 test suite 通过，123 个测试通过。
+- API type-check 通过。
+- domain 反向依赖扫描无命中。
+
+## nextstep Cycle 85 · Step N1 advance 递归调度下沉实施
+
+### 实施
+
+- `loops-engine` 新增 `LoopsEngineAdvancePort`；`LoopsEngineService.advance(issueId, port)` 承接完整 PHASE 决策递归。
+- `LoopsService.advance` 收敛 thin wrapper，`advancePort` getter 把各 transition 映射为 port（spec/decompose 委托 engine；finalize/reviewGlobal/runLoop/resume 仍属 facade）。
+- barrel 导出 `LoopsEngineAdvancePort`。
+
+### 标注文档
+
+- Step N1：advance 递归调度（核心决策）已下沉到 domain，经 port 注入 transition，避免 engine↔facade 类环依赖。
+
+### 审查待实施项
+
+- 待实施：runLoop/runLoopUnlocked、finalize/reloop、reviewGlobal、resumeAndRead/recoverInterruptedShards。
+
+### 再标注文档
+
+- nextstep Cycle 85 完成，进入 focused tests。
+
+### 验证
+
+- API type-check 通过；facade loops.service.spec.ts 68 个测试通过（含全链路 advance 递归）。
+
+## nextstep Cycle 86 · Step N1 advance Focused Tests
+
+### 实施
+
+- `loops-engine.service.spec.ts` 新增 advance dispatcher 测试组（mock port）：generateSpec/DRAFT 返回/REJECTED 抛错/decompose/finalize/runLoop/paused resume/CLOSED 返回。
+
+### 标注文档
+
+- Step N1 advance 决策已有 domain focused tests 覆盖各分支。
+
+### 审查待实施项
+
+- 仍待：runLoop/runLoopUnlocked、finalize/reloop、reviewGlobal、resume 子批。
+
+### 再标注文档
+
+- nextstep Cycle 86 完成，进入结构审查 + 文档 + 收敛。
+
+### 验证
+
+- `loops-engine.service.spec.ts` 19 个测试通过（11 旧 + 8 新 advance）。
+
+## nextstep Cycle 87 · Step N1 结构审查 + 文档同步 + 收敛验证
+
+### 实施
+
+- domain 反向依赖扫描无命中；facade advance 为 thin delegate。
+- 更新 nextstep README Step 3、BACKLOG N1、struct-opz EXECUTION Step 3、本文件顶部 Step 3 + 总体状态表。
+
+### 标注文档
+
+- 本批完成 N1 第二个子批（85 advance 调度 / 86 tests / 87 结构审查+文档+收敛）。
+- 准确标注 N1 当前状态，未改对外 contract / advance 决策行为。
+
+### 审查待实施项
+
+- N1 后续子批：runLoop/runLoopUnlocked + shard 调度 helper（最高风险）、finalize/reloop、reviewGlobal。
+- 其他：N6 收尾、N5 archive re-home、N7 facade 收敛。
+
+### 再标注文档
+
+- nextstep Cycle 87 完成；advance 递归调度已下沉，N1 多批迁移推进中。
+
+### 验证
+
+```bash
+pnpm --filter @repo/api test -- loops-engine.service.spec.ts loops.service.spec.ts loops-issues.service.spec.ts loops-triggers.service.spec.ts loops-eval.service.spec.ts loops-eval-aggregation-runner.service.spec.ts loops-ci-checks.service.spec.ts loops-notification-sender.service.spec.ts loops-remote-runners.service.spec.ts loops-admin.service.spec.ts loops-archive-collection.service.spec.ts --runInBand
+pnpm --filter @repo/api type-check
+rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)|require\\(['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)" apps/api/libs/domain/services
+```
+
+结果：
+
+- 11 个 test suite 通过，131 个测试通过。
+- API type-check 通过。
+- domain 反向依赖扫描无命中。
+
+## nextstep Cycle 88 · Step N1 runLoopUnlocked shard 调度下沉实施
+
+### 实施
+
+- `loops-engine` 新增 `LoopsEngineShardRunnerPort`；`LoopsEngineService.runLoopUnlocked(issueId, detail, port)` 承接 shard 调度循环 + recover/block/converge + 多种 log。
+- `recoverInterruptedShards` / `blockShardForContextBudget` 转为 engine 私有方法（store 编排）。
+- `LoopsService.runLoopUnlocked` 收敛 thin delegate（shardRunnerPort）；facade 保留 runLoop（workLock 包装）+ runRunnableShard（重执行）。
+
+### 标注文档
+
+- Step N1：shard 调度核心已下沉到 domain，重执行经 port 注入。
+
+### 审查待实施项
+
+- 待实施：finalize/reloop、reviewGlobal、resumeAndRead；runRunnableShard port 化评估。
+
+### 再标注文档
+
+- nextstep Cycle 88 完成，进入 focused tests。
+
+### 验证
+
+- API type-check 通过；facade loops.service.spec.ts 68 个测试通过。
+
+## nextstep Cycle 89 · Step N1 runLoopUnlocked Focused Tests
+
+### 实施
+
+- `loops-engine.service.spec.ts` 新增调度测试组（mock store + port + readLoopsRuntimeConfig）：runnable 执行/SCHEDULER_BATCH、全 DONE→CONVERGE、无可运行抛错、IN_PROGRESS recover、estContext 超预算 block+notify、paused/非 APPROVED 抛错。
+
+### 标注文档
+
+- Step N1 shard 调度核心已有 domain focused tests 覆盖各分支。
+
+### 审查待实施项
+
+- 仍待：finalize/reloop、reviewGlobal、resumeAndRead 子批。
+
+### 再标注文档
+
+- nextstep Cycle 89 完成，进入结构审查 + 文档 + 收敛。
+
+### 验证
+
+- `loops-engine.service.spec.ts` 25 个测试通过（19 旧 + 6 新调度）。
+
+## nextstep Cycle 90 · Step N1 结构审查 + 文档同步 + 收敛验证
+
+### 实施
+
+- domain 反向依赖扫描无命中；facade runLoopUnlocked 为 thin delegate；runLoop 保留 workLock。
+- 更新 nextstep README Step 3、BACKLOG N1、struct-opz EXECUTION Step 3、本文件顶部 Step 3 + 总体状态表。
+
+### 标注文档
+
+- 本批完成 N1 第三个子批（88 调度实施 / 89 tests / 90 结构审查+文档+收敛）。
+- 准确标注 N1 当前状态，未改对外 contract / shard 调度行为。
+
+### 审查待实施项
+
+- N1 后续子批：finalize/reloop、reviewGlobal、resumeAndRead、runRunnableShard port 化评估。
+- 其他：N6 收尾、N5 archive re-home、N7 facade 收敛。
+
+### 再标注文档
+
+- nextstep Cycle 90 完成；runLoopUnlocked shard 调度核心已下沉，N1 多批迁移推进中（已下沉 spec/decompose/advance/runLoopUnlocked 四大流）。
+
+### 验证
+
+```bash
+pnpm --filter @repo/api test -- loops-engine.service.spec.ts loops.service.spec.ts loops-issues.service.spec.ts loops-triggers.service.spec.ts loops-eval.service.spec.ts loops-eval-aggregation-runner.service.spec.ts loops-ci-checks.service.spec.ts loops-notification-sender.service.spec.ts loops-remote-runners.service.spec.ts loops-admin.service.spec.ts loops-archive-collection.service.spec.ts --runInBand
+pnpm --filter @repo/api type-check
+rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)|require\\(['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)" apps/api/libs/domain/services
+```
+
+结果：
+
+- 11 个 test suite 通过，137 个测试通过。
 - API type-check 通过。
 - domain 反向依赖扫描无命中。

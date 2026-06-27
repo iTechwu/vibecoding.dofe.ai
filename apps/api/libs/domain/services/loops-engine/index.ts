@@ -1,8 +1,12 @@
 /**
  * Loops Engine barrel — `@app/services/loops-engine`.
  *
- * 结构优化 Step 3：loop 状态机纯推导原语（nextResumePhase/nextSpecVersion/
- * findRunnableShard/formatPhase）。
+ * 结构优化 Step 3 + nextstep Step N1：loop 状态机纯推导原语 + spec/decompose 推进流
+ * + advance 递归调度。
  */
 export { LoopsEngineModule } from './loops-engine.module';
-export { LoopsEngineService } from './loops-engine.service';
+export {
+  LoopsEngineService,
+  type LoopsEngineAdvancePort,
+  type LoopsEngineShardRunnerPort,
+} from './loops-engine.service';

@@ -3,20 +3,13 @@
  *
  * Public API preserved for backward compatibility with existing consumers.
  */
-import { FileUploader } from '@dofe/file-sdk-web';
+import { FileUploader, type UploadOptions } from '@dofe/file-sdk-web';
 import { UploadError, UploadErrorCode } from './errors';
 import type { UploadMetadata } from './api';
 
 const uploader = new FileUploader({
   apiBase: '/api/proxy/sso',
 });
-
-// NOTE: @dofe/file-sdk-web@0.1.12 ships AbortSignal through upload() at runtime
-// but its published UploadOptions type omits `signal`. Drop this intersection
-// once @dofe/file-sdk-web@0.1.13+ is published and pinned here.
-type UploadOptionsWithSignal = Parameters<FileUploader['upload']>[1] & {
-  signal: AbortSignal;
-};
 
 /** Track active uploads for cancellation */
 const activeUploads = new Map<string, AbortController>();
@@ -62,7 +55,7 @@ export async function uploadFile(params: UploadParams): Promise<UploadResult> {
   activeUploads.set(uploadKey, controller);
 
   try {
-    const uploadOptions: UploadOptionsWithSignal = {
+    const uploadOptions: UploadOptions = {
       scope: 'general',
       metadata,
       signal: controller.signal,

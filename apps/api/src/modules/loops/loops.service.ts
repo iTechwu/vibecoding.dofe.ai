@@ -19,7 +19,6 @@ import type {
   LoopAssetPermissionItem,
   LoopAssetPermissionsResponse,
   LoopBenchMetricKey,
-  LoopBenchTrendSnapshot,
   LoopBenchTrendSummary,
   LoopBenchTrendWorkerResponse,
   LoopCapabilitiesResponse,
@@ -59,9 +58,7 @@ import type {
   LoopEvidenceArtifact,
   LoopGlobalReviewRecord,
   LoopImplementationRecord,
-  LoopIntake,
   LoopInterventionRequest,
-  LoopIssue,
   LoopIssuesQuery,
   LoopLearning,
   LoopLearningGovernanceRequest,
@@ -161,7 +158,11 @@ import {
 import type { LoopsPersistenceService } from '@app/services/loops-store';
 import { LOOPS_PERSISTENCE } from '@app/services/loops-store';
 import { LoopsIssuesService } from '@app/services/loops-issues';
-import { LoopsEngineService } from '@app/services/loops-engine';
+import {
+  LoopsEngineService,
+  type LoopsEngineAdvancePort,
+  type LoopsEngineShardRunnerPort,
+} from '@app/services/loops-engine';
 import { LoopsEvidenceService } from '@app/services/loops-evidence';
 import { readLoopsRuntimeConfig } from '@app/services/loops-store';
 import { LoopsWorkLockService } from '@app/services/loops-locks';
@@ -337,7 +338,10 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
     this.issues =
       issues ??
       new LoopsIssuesService(this.store, this.persistence, this.workspaceProfile, this.evidence);
-    this.engine = engine ?? new LoopsEngineService();
+    // 结构优化 nextstep Step N1：engine 承接 spec/decompose 推进，需 store + agentAdapter；
+    // standalone（spec）由 facade 透传，Nest graph 内由 LoopsEngineModule 提供 engine、
+    // agentAdapter 经 LOOPS_AGENT_ADAPTER token 注入。
+    this.engine = engine ?? new LoopsEngineService(this.store);
     this.evalService = evalService ?? new LoopsEvalService();
     this.ciChecksService = ciChecksService ?? new LoopsCiChecksService();
     this.evalAggregationRunner = evalAggregationRunner;
@@ -487,35 +491,10 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
   }
 
   async generateSpec(issueId: string) {
+    // 结构优化 nextstep Step N1：spec 推进（plan + writeSpec + cost guard）已下沉到
+    // `LoopsEngineService.generateSpec`；facade 负责 enriched detail 预读与 read-back。
     const detail = await this.getIssue(issueId);
-    if (detail.spec && detail.spec.status !== 'REVISION_REQUESTED') {
-      throw new BadRequestException('Spec already exists and is not waiting for revision');
-    }
-
-    const now = new Date().toISOString();
-    const version = this.engine.nextSpecVersion(detail.state.specVersion);
-    const plannedSpec = await this.agentAdapter.plan(detail.issue, now);
-    const spec: LoopSpec = {
-      ...plannedSpec,
-      id:
-        version === 'v1'
-          ? plannedSpec.id
-          : `spec-${detail.issue.id.replace('issue-', '')}-${version}`,
-      version,
-      status: 'DRAFT',
-      body:
-        version === 'v1'
-          ? plannedSpec.body
-          : `${plannedSpec.body}\n\n## 修订说明\n本版本由 ${detail.state.specVersion} 修订生成，等待人工重新审核。\n`,
-    };
-    const state: LoopStateItem = {
-      ...detail.state,
-      phase: 'PHASE_2_REVIEW',
-      specVersion: version,
-      updated: now,
-    };
-
-    await this.store.writeSpec(detail.issue, spec, await this.costGuardedState(state));
+    await this.engine.generateSpec(detail, this.agentAdapter);
     return this.syncAndRead(issueId);
   }
 
@@ -567,39 +546,12 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
   }
 
   async decompose(issueId: string) {
+    // 结构优化 nextstep Step N1：decompose 推进（agentAdapter.decompose/designTests +
+    // writeShards + cost guard）已下沉到 `LoopsEngineService.decompose`；facade 负责
+    // enriched detail 预读与 read-back，并在 no-op（terminal / 已拆解）时原样返回。
     const detail = await this.getIssue(issueId);
-    if (this.isTerminal(detail)) {
-      return detail;
-    }
-    if (detail.shards.length > 0) {
-      return detail;
-    }
-    if (!detail.spec || detail.spec.status !== 'APPROVED') {
-      throw new BadRequestException('Approved spec is required before decompose');
-    }
-
-    const now = new Date().toISOString();
-    const { shards, annotations } = await this.agentAdapter.decompose(detail.issue, detail.spec);
-    const testMatrix = await this.agentAdapter.designTests(detail.issue, detail.spec, shards, now);
-    const state: LoopStateItem = {
-      ...detail.state,
-      phase: 'PHASE_4_IMPLEMENT',
-      shardsTotal: shards.length,
-      shardsDone: 0,
-      shardsInProgress: 0,
-      updated: now,
-    };
-    const guardedState = await this.costGuardedState(state);
-
-    await this.store.writeShards({
-      issue: detail.issue,
-      spec: detail.spec,
-      shards,
-      testMatrix,
-      annotations,
-      state: guardedState,
-    });
-    return this.syncAndRead(issueId);
+    const decomposed = await this.engine.decompose(detail, this.agentAdapter);
+    return decomposed ? this.syncAndRead(issueId) : detail;
   }
 
   async runLoop(issueId: string) {
@@ -614,59 +566,37 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
   }
 
   async advance(issueId: string) {
-    let detail = await this.getIssue(issueId);
-    const maxSteps = Math.max(detail.shards.length + 8, 12);
+    // 结构优化 nextstep Step N1：advance 递归调度（phase 决策 + 步数上限）已下沉到
+    // `LoopsEngineService.advance`，经 `advancePort` 把各 transition 实现注入 domain
+    //（spec/decompose 委托 engine；finalize/reviewGlobal/runLoop/resume 仍属 facade），
+    // 避免 engine↔facade 类环依赖。决策顺序与 legacy 完全一致。
+    return this.engine.advance(issueId, this.advancePort);
+  }
 
-    for (let step = 0; step < maxSteps; step += 1) {
-      if (detail.state.paused) {
-        detail = await this.resumeAndRead(issueId, detail);
-        continue;
-      }
-      if (detail.issue.status === 'CLOSED' || detail.state.phase === 'CLOSED') {
-        return detail;
-      }
-      if (!detail.spec || detail.spec.status === 'REVISION_REQUESTED') {
-        return this.generateSpec(issueId);
-      }
-      if (detail.spec.status === 'DRAFT') {
-        return detail;
-      }
-      if (detail.spec.status !== 'APPROVED') {
-        throw new BadRequestException('Approved spec is required before advancing loop automation');
-      }
-      if (detail.shards.length === 0 || detail.state.phase === 'PHASE_3_DECOMPOSE') {
-        detail = await this.decompose(issueId);
-        continue;
-      }
-      if (detail.state.globalVerdict === 'PASS' && !detail.state.finalized) {
-        detail = await this.finalize(issueId);
-        continue;
-      }
-      if (detail.state.phase === 'PHASE_6_CONVERGE') {
-        detail = await this.reviewGlobal(issueId);
-        continue;
-      }
-      if (detail.state.globalVerdict && detail.state.globalVerdict !== 'PASS') {
-        return detail;
-      }
-      detail = await this.runLoop(issueId);
-    }
-
-    await this.store.appendLog({
-      type: 'LOOP_ADVANCE_LIMIT',
-      issue: issueId,
-      status: detail.state.phase,
-      payload: {
-        maxSteps,
-      },
-    });
-    return detail;
+  /** Adapter exposing facade transitions as the engine `advance` port. */
+  private get advancePort(): LoopsEngineAdvancePort {
+    return {
+      getDetail: (issueId: string) => this.getIssue(issueId),
+      resumeAndRead: (issueId: string, detail: LoopIssueDetail) =>
+        this.resumeAndRead(issueId, detail),
+      generateSpec: (issueId: string) => this.generateSpec(issueId),
+      decompose: (issueId: string) => this.decompose(issueId),
+      finalize: (issueId: string) => this.finalize(issueId),
+      reviewGlobal: (issueId: string) => this.reviewGlobal(issueId),
+      runLoop: (issueId: string) => this.runLoop(issueId),
+      appendAdvanceLimitLog: (issueId: string, phase: string, maxSteps: number) =>
+        this.store.appendLog({
+          type: 'LOOP_ADVANCE_LIMIT',
+          issue: issueId,
+          status: phase,
+          payload: { maxSteps },
+        }),
+    };
   }
 
   private isTerminal(detail: LoopIssueDetail) {
-    return (
-      detail.issue.status === 'CLOSED' || detail.state.phase === 'CLOSED' || detail.state.finalized
-    );
+    // 结构优化 nextstep Step N1：terminal 谓词已下沉到 `LoopsEngineService.isTerminal`。
+    return this.engine.isTerminal(detail);
   }
 
   private async resumeAndRead(issueId: string, detail: LoopIssueDetail) {
@@ -687,130 +617,20 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
   }
 
   private async runLoopUnlocked(issueId: string, detail: LoopIssueDetail) {
-    if (detail.state.paused) {
-      throw new BadRequestException('Paused loop cannot be advanced');
-    }
-    if (!detail.spec || detail.spec.status !== 'APPROVED') {
-      throw new BadRequestException('Approved spec is required before running loop');
-    }
-
-    const { contextBudget, maxParallel } = await readLoopsRuntimeConfig();
-    let currentDetail = detail;
-    let advanced = 0;
-    let blocked = 0;
-    let recovered = 0;
-
-    while (advanced < maxParallel) {
-      let shard = this.engine.findRunnableShard(currentDetail.shards);
-      if (!shard) {
-        const recoveredDetail = await this.recoverInterruptedShards(issueId, currentDetail);
-        if (recoveredDetail) {
-          recovered += 1;
-          currentDetail = recoveredDetail;
-          shard = this.engine.findRunnableShard(currentDetail.shards);
-        }
-      }
-      if (!shard) {
-        break;
-      }
-      if (shard.estContext >= contextBudget) {
-        await this.blockShardForContextBudget(issueId, currentDetail, shard, contextBudget);
-        blocked += 1;
-        currentDetail = await this.syncAndRead(issueId);
-        continue;
-      }
-      await this.runRunnableShard(issueId, currentDetail, shard);
-      advanced += 1;
-      currentDetail = await this.syncAndRead(issueId);
-      if (currentDetail.state.paused) {
-        break;
-      }
-    }
-
-    if (advanced > 0) {
-      await this.store.appendLog({
-        type: 'SCHEDULER_BATCH',
-        loop: issueId,
-        max_parallel: maxParallel,
-        context_budget: contextBudget,
-        advanced,
-        blocked,
-        recovered,
-      });
-      return this.syncAndRead(issueId);
-    }
-
-    if (blocked > 0 || recovered > 0) {
-      await this.store.appendLog({
-        type: 'SCHEDULER_BATCH',
-        loop: issueId,
-        max_parallel: maxParallel,
-        context_budget: contextBudget,
-        advanced,
-        blocked,
-        recovered,
-      });
-      return this.syncAndRead(issueId);
-    }
-
-    // Convergence must be judged against the freshest shard snapshot
-    // (`currentDetail`, updated inside the loop above), not the stale
-    // `detail` captured before the first advancement — otherwise a loop that
-    // drives the final shard to DONE within this call could be mis-promoted
-    // or, conversely, fail to promote to PHASE_6_CONVERGE.
-    if (
-      currentDetail.shards.length > 0 &&
-      currentDetail.shards.every((item) => item.status === 'DONE')
-    ) {
-      const now = new Date().toISOString();
-      await this.store.upsertState({
-        ...currentDetail.state,
-        phase: 'PHASE_6_CONVERGE',
-        shardsDone: currentDetail.shards.length,
-        shardsInProgress: 0,
-        updated: now,
-      });
-      return this.syncAndRead(issueId);
-    }
-    throw new BadRequestException('No runnable shard is available');
+    // 结构优化 nextstep Step N1：shard 调度循环（findRunnableShard + recover + block +
+    // context budget + 收敛 PHASE_6_CONVERGE + SCHEDULER_BATCH log）已下沉到
+    // `LoopsEngineService.runLoopUnlocked`，经 `shardRunnerPort` 把重执行（runRunnableShard）
+    // 与 enriched read-back（syncAndRead）注入 domain。
+    return this.engine.runLoopUnlocked(issueId, detail, this.shardRunnerPort);
   }
 
-  private async recoverInterruptedShards(
-    issueId: string,
-    detail: LoopIssueDetail,
-  ): Promise<LoopIssueDetail | undefined> {
-    const interrupted = detail.shards.filter((shard) =>
-      ['IN_PROGRESS', 'TIMEOUT'].includes(shard.status),
-    );
-    if (interrupted.length === 0) return undefined;
-
-    const now = new Date().toISOString();
-    const nextShards = detail.shards.map((shard) =>
-      interrupted.some((item) => item.id === shard.id)
-        ? { ...shard, status: 'TODO' as const }
-        : shard,
-    );
-    await this.store.writeShardProgress({
-      issueId,
-      shardId: interrupted.map((shard) => shard.id).join(','),
-      from: 'INTERRUPTED',
-      to: 'TODO',
-      actor: 'loops-scheduler',
-      shards: nextShards,
-      state: {
-        ...detail.state,
-        phase: 'PHASE_4_IMPLEMENT',
-        shardsInProgress: 0,
-        paused: false,
-        updated: now,
-      },
-    });
-    await this.store.appendLog({
-      type: 'SCHEDULER_RECOVERED_INTERRUPTED_SHARDS',
-      loop: issueId,
-      shards: interrupted.map((shard) => shard.id),
-    });
-    return this.syncAndRead(issueId);
+  /** Adapter exposing facade shard execution + enriched read as the engine scheduler port. */
+  private get shardRunnerPort(): LoopsEngineShardRunnerPort {
+    return {
+      readFreshDetail: (issueId: string) => this.syncAndRead(issueId),
+      runRunnableShard: (issueId: string, detail: LoopIssueDetail, shard: LoopShard) =>
+        this.runRunnableShard(issueId, detail, shard),
+    };
   }
 
   async reviewGlobal(issueId: string) {
@@ -4896,14 +4716,8 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
     state: LoopStateItem,
     delta: { calls?: number; tokens?: number } = {},
   ): Promise<LoopStateItem> {
-    const calls = delta.calls ?? 1;
-    const tokens = delta.tokens ?? 0;
-    return this.store.enforceCostGuard({
-      ...state,
-      costCalls: state.costCalls + calls,
-      costTokens: state.costTokens + tokens,
-      updated: new Date().toISOString(),
-    });
+    // 结构优化 nextstep Step N1：cost guard 编排已下沉到 `LoopsEngineService.applyCostGuard`。
+    return this.engine.applyCostGuard(state, delta);
   }
 
   // 结构优化 Step 3：nextResumePhase / nextSpecVersion / findRunnableShard /

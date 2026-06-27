@@ -64,6 +64,7 @@ allowBuilds:
   ssh2: true
   tos-crc64-js: true
   unrs-resolver: true
+minimumReleaseAge: 24h
 minimumReleaseAgeExclude:
   - '@dofe/infra-clients@0.1.78'
   - '@dofe/infra-common@0.1.78'
@@ -109,6 +110,4 @@ minimumReleaseAgeExclude:
   - '@shikijs/types@4.3.0'
   - node-releases@2.0.50
   - shiki@4.3.0
-  - '@dofe/sso-contracts@0.1.72'
-  - '@dofe/sso-nestjs@0.1.58'
-  - '@dofe/sso-node@0.1.59'
+  - '@dofe/file-sdk-web@0.1.13'

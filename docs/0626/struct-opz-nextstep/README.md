@@ -23,7 +23,7 @@
 
 仍需收紧：
 
-- Step 3：engine 主流程推进方法仍在 legacy `LoopsService`。
+- Step 3：纯推导 + 谓词 + `generateSpec`/`decompose` + `advance` 递归调度 + `runLoopUnlocked` shard 调度（含 recover/block/converge）已下沉到 `loops-engine`；`finalize`/`reloop`/`reviewGlobal`/`resumeAndRead` + `runLoop` workLock 包装 + `runRunnableShard` 重执行仍在 facade（N1 分子批迁移）。
 - Step 6：Eval suite/run/bench builder + trend worker IO + aggregation worker 编排 + DB/Redis 适配（`LoopsEvalAggregationRunnerService`）已下沉；processor 解耦 facade；evidence 收集仍由 `LOOPS_EVAL_EVIDENCE_PORT`（facade）提供。
 - Step 7：CI checks registry + CI publication evidence builder + notification sender（re-home 到 `loops-integrations`）已下沉；testCiCheck 的 provider publish / permission / publication persistence 仍属 facade。
 - Step 8：schedule trigger CRUD + `fireScheduleTrigger` 编排 + issue creation port 实现已下沉；remote runner list/lease/job + artifact IO（`uploadRemoteRunnerArtifacts` + `LoopsRemoteArtifactStoragePort`）+ shard execution port（`LOOPS_REMOTE_SHARD_EXECUTION_PORT`，processor 解耦 facade）已下沉/解耦；shard execution 实现仍由 facade 提供（阻塞于 N1 engine）。

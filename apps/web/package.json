@@ -20,7 +20,7 @@
     "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
-    "@dofe/file-sdk-web": "0.1.12",
+    "@dofe/file-sdk-web": "0.1.13",
     "@dofe/infra-contracts": "0.1.78",
     "@dofe/infra-web-runtime": "0.1.78",
     "@dofe/sso-browser": "0.1.78",
