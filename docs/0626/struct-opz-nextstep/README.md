@@ -26,7 +26,7 @@
 - Step 3：纯推导 + 谓词 + `generateSpec`/`decompose` + `advance` 递归调度 + `runLoopUnlocked` shard 调度 + `runRunnableShard` 重执行 + `reloop`/`applyResume`/`finalize`/`reviewGlobal`（经各 port 注入重依赖 builder）已下沉到 `loops-engine`；`runLoop` workLock 包装仍在 facade（N1 分子批迁移）。
 - Step 6：Eval suite/run/bench builder + trend worker IO + aggregation worker 编排 + DB/Redis 适配（`LoopsEvalAggregationRunnerService`）已下沉；processor 解耦 facade；evidence 收集仍由 `LOOPS_EVAL_EVIDENCE_PORT`（facade）提供。
 - Step 7：CI checks registry + CI publication evidence builder + notification sender（re-home 到 `loops-integrations`）已下沉；testCiCheck 的 provider publish / permission / publication persistence 仍属 facade。
-- Step 8：schedule trigger CRUD + `fireScheduleTrigger` 编排 + issue creation port 实现已下沉；remote runner list/lease/job + artifact IO（`uploadRemoteRunnerArtifacts` + `LoopsRemoteArtifactStoragePort`）+ shard execution port（`LOOPS_REMOTE_SHARD_EXECUTION_PORT`，processor 解耦 facade）已下沉/解耦；shard execution 实现仍由 facade 提供（阻塞于 N1 engine）。
+- Step 8：schedule trigger CRUD + `fireScheduleTrigger` 编排 + issue creation port 实现已下沉；remote runner list/lease/job + artifact IO（`uploadRemoteRunnerArtifacts` + `LoopsRemoteArtifactStoragePort`）+ shard execution port + shard execution job lifecycle（implement/test/review 编排）已下沉到 `loops-remote-runners`；CLI/Docker/reviewShard 重依赖经 runtime port 由 API adapter 提供。
 - Step 9：Archive control wrapper 与 collection port 已下沉到 `loops-admin`；eval aggregation 接入仍待 Step N4 收口。
 - Step 10：API module / facade wrapper 最终收敛仍未开始。
 

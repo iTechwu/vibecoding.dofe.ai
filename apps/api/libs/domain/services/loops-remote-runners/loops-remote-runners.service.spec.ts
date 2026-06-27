@@ -133,6 +133,7 @@ describe('LoopsRemoteRunnersService.executeRemoteShardJob', () => {
       implementationRecords: [],
       testRecords: [],
       reviewRecords: [],
+      ...overrides,
     } as LoopDetail;
   }
 
@@ -234,7 +235,7 @@ describe('LoopsRemoteRunnersService.executeRemoteShardJob', () => {
       runtimePort,
     );
 
-    expect(result.status).toBe('completed');
+    expect(result).toEqual(expect.objectContaining({ status: 'completed' }));
     expect(runtimePort.runTests).toHaveBeenCalledWith(
       expect.objectContaining({
         command: 'pnpm test',
@@ -257,9 +258,10 @@ describe('LoopsRemoteRunnersService.executeRemoteShardJob', () => {
   });
 
   it('runs review and applies the verdict through the runtime port', async () => {
+    const seededRuntime = buildRuntimePort();
     const detail = buildDetail({
-      implementationRecords: [buildRuntimePort().implementationRecord],
-      testRecords: [buildRuntimePort().testRecord],
+      implementationRecords: [seededRuntime.implementationRecord],
+      testRecords: [seededRuntime.testRecord],
     });
     const { service, runtimePort } = buildExecutionService(detail);
 
@@ -274,7 +276,7 @@ describe('LoopsRemoteRunnersService.executeRemoteShardJob', () => {
       runtimePort,
     );
 
-    expect(result.status).toBe('completed');
+    expect(result).toEqual(expect.objectContaining({ status: 'completed' }));
     expect(runtimePort.review).toHaveBeenCalledWith(
       expect.objectContaining({
         shard: expect.objectContaining({ id: 'shard-1' }),

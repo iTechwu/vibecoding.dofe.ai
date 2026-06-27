@@ -40,10 +40,9 @@ export interface LoopsRemoteRunnersLogSink {
 }
 
 /**
- * 结构优化 nextstep Step N4：remote shard execution port. 实际执行（CLI adapter /
- * Docker sandbox / state mutation）仍依赖未下沉的 engine 状态机（Step N1），故 port
- * 实现暂由 facade 提供并经 `LOOPS_REMOTE_SHARD_EXECUTION_PORT` 绑定；processor 经
- * port 注入，不再依赖 `LoopsService` 类。N1 完成后再把实现迁入 domain。
+ * 结构优化 nextstep Step N4：remote shard execution port. job lifecycle 编排
+ * 已迁入 `LoopsRemoteRunnersService.executeRemoteShardJob`；CLI adapter / Docker
+ * sandbox / reviewShard 等重依赖经 `LoopsRemoteShardRuntimePort` 注入。
  */
 export const LOOPS_REMOTE_SHARD_EXECUTION_PORT = 'LOOPS_REMOTE_SHARD_EXECUTION_PORT';
 

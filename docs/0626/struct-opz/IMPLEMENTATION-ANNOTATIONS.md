@@ -21,7 +21,7 @@
 | Step 5 · 拆 Evidence、Quality 与 Release Gates | 部分完成 | evidence/quality 主要 builder/gate/enricher 已下沉，API 保留兼容 wrapper                                                                                                  |
 | Step 6 · 拆 Eval 与 Bench 聚合                 | 部分完成 | builder + trend/aggregation worker IO + DB/Redis 适配（runner）已下沉，processor 解耦 facade；evidence 收集仍由 facade port                                               |
 | Step 7 · 拆 Integrations、MCP、CI、PR 与通知   | 部分完成 | PR/MCP/secret + CI checks registry + CI publication builder + notification sender re-home 完成；testCiCheck provider publish/permission/persistence 仍属 facade           |
-| Step 8 · 拆 Trigger 与 Remote Runner Pool      | 部分完成 | trigger fire + issue creation port + artifact IO + shard execution port 已下沉/解耦；shard execution 实现仍由 facade（阻塞于 N1）                                         |
+| Step 8 · 拆 Trigger 与 Remote Runner Pool      | 部分完成 | trigger fire + issue creation port + artifact IO + shard execution job lifecycle 已下沉；CLI/Docker/reviewShard 重依赖经 API runtime port 注入                            |
 | Step 9 · 拆 Admin、Archive、Tool 与 Blueprint  | 部分完成 | Cycle 53-57 完成 archive collection service                                                                                                                               |
 | Step 10 · 收敛 API Module 与删除旧聚合         | 待实施   | -                                                                                                                                                                         |
 
@@ -35,7 +35,7 @@
 - Step 5：workflow baseline evidence、delivery evidence markdown、runtime security exceptions、second opinion policy、release gate blockers、requirements coverage builder、evidence artifact builder、review/release gate builder、delivery controls、list enricher、second opinion builder 等已下沉；API `LoopsService` 仅保留兼容 wrapper。
 - Step 6：Eval suite builder、Eval run builder、Eval trend baseline builder、request-time aggregation builder 与 loop bench metric helper + trend worker IO 编排 + aggregation worker 编排 + DB/Redis 适配（`LoopsEvalAggregationRunnerService`）已下沉到 `loops-eval`；`LoopsEvalAggregationProcessor` 不再注入 facade 类；evidence 收集仍由 `LOOPS_EVAL_EVIDENCE_PORT`（facade）提供。
 - Step 7：CI checks registry、CI publication evidence builder 已下沉到 `loops-integrations`（`LoopsCiChecksService`）；`LoopsNotificationSender` 已 re-home 从 `loops-store` 到 `loops-integrations`（store 经 `imports: LoopsIntegrationsModule` 注入）；testCiCheck 的 provider publish / permission / publication persistence 仍属 facade。
-- Step 8：schedule trigger CRUD + `fireScheduleTrigger` 编排 + issue creation port 实现已下沉；remote runner list/lease/job + artifact IO（`uploadRemoteRunnerArtifacts` + `LoopsRemoteArtifactStoragePort`）+ shard execution port（`LOOPS_REMOTE_SHARD_EXECUTION_PORT`，`LoopsRemoteRunnerProcessor` 不再注入 facade 类）已下沉/解耦；shard execution 实现仍由 facade 提供（阻塞于 N1 engine 状态机）。
+- Step 8：schedule trigger CRUD + `fireScheduleTrigger` 编排 + issue creation port 实现已下沉；remote runner list/lease/job + artifact IO（`uploadRemoteRunnerArtifacts` + `LoopsRemoteArtifactStoragePort`）+ shard execution job lifecycle 已下沉到 `loops-remote-runners`；`LoopsRemoteRunnerProcessor` 不再注入 facade 类，CLI/Docker/reviewShard 重依赖经 API runtime port 注入。
 - Step 9：capability registry、tool registry、delivery blueprint marketplace、archive control wrapper、archive collection service 已下沉；eval aggregation 接入仍待 Step 6/Next N4 收口。
 - Step 10：API module 仍需进一步瘦身；`LoopsService` 仍为 legacy 聚合 facade + 大量私有方法。
 
@@ -3431,5 +3431,130 @@ rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\
 ### 验证
 
 - `loops-engine.service.spec.ts` 38 个测试通过。
+- API type-check 通过。
+- domain 反向依赖扫描无命中。
+
+## nextstep Cycle 103 · Step N4 Remote Shard Execution 迁入评估与实施
+
+### 实施
+
+- 评估 `LoopsService.executeRemoteShardJob`：job lifecycle / state mutation / artifact manifest 可迁入 domain；CLI/Docker/runner/reviewShard 保留为 runtime adapter port。
+- `loops-remote-runners` 新增 `LoopsRemoteShardRuntimePort`。
+- `LoopsRemoteRunnersService.executeRemoteShardJob` 承接 implement/test/review 三条 job lifecycle。
+- `LoopsService.executeRemoteShardJob` 收敛 thin delegate；新增 `remoteShardRuntimePort` getter 适配重依赖。
+- `LOOPS_REMOTE_SHARD_EXECUTION_PORT` 从 `useExisting: LoopsService` 改为 domain service factory。
+
+### 标注文档
+
+- Step N4：remote shard execution job lifecycle 已迁入 domain。
+
+### 审查待实施项
+
+- 待实施：processor/provider focused spec；runtime adapter class 化评估。
+
+### 再标注文档
+
+- nextstep Cycle 103 完成，进入 focused tests。
+
+### 验证
+
+- API type-check 通过。
+
+## nextstep Cycle 104 · Step N4 Remote Execution Focused Tests
+
+### 实施
+
+- 扩展 `loops-remote-runners.service.spec.ts`，覆盖 implement/test/review 三条 domain 编排。
+
+### 标注文档
+
+- N4 remote execution implement/test/review 三条编排已有 focused tests 覆盖。
+
+### 审查待实施项
+
+- 仍待：processor/provider focused spec；runtime adapter class 化评估。
+
+### 再标注文档
+
+- nextstep Cycle 104 完成，进入结构审查。
+
+### 验证
+
+- 3 个 focused test suite 通过，112 个测试通过。
+
+## nextstep Cycle 105 · Step N4 结构审查与注释校准
+
+### 实施
+
+- domain 反向依赖扫描无命中。
+- 确认 processor 仍只依赖 `LOOPS_REMOTE_SHARD_EXECUTION_PORT`。
+- 确认 module token 不再 `useExisting: LoopsService`。
+- 更新 remote-runners service / processor 注释。
+
+### 标注文档
+
+- 剩余结构债从“shard execution 实现归属”收窄为“runtime adapter 仍在 facade getter”。
+
+### 审查待实施项
+
+- 下一步：provider focused spec；Step N7 runtime adapter class 化。
+
+### 再标注文档
+
+- nextstep Cycle 105 完成，进入文档总览同步。
+
+### 验证
+
+- domain 反向依赖扫描无命中。
+
+## nextstep Cycle 106 · 文档总览同步
+
+### 实施
+
+- 更新 nextstep README/BACKLOG。
+- 更新 struct-opz EXECUTION 顶部 Step 8 总览。
+- 更新本文件顶部 Step 8 状态。
+
+### 标注文档
+
+- 标注 Step 8 已完成 remote shard execution job lifecycle 下沉。
+
+### 审查待实施项
+
+- 下一批优先：N1 runLoop workLock、N4 provider spec、N7 facade/module 收敛准备。
+
+### 再标注文档
+
+- nextstep Cycle 106 完成，进入最终验证。
+
+### 验证
+
+- 文档变更随 Cycle 107 收口。
+
+## nextstep Cycle 107 · 本批收敛验证与下一轮待办
+
+### 实施
+
+- 执行 remote-runners focused tests。
+- 执行 API type-check。
+- 执行 domain 反向依赖扫描。
+
+### 标注文档
+
+- 本批完成至少 5 次循环动作：103 实施、104 tests、105 结构审查、106 文档同步、107 验证。
+
+### 审查待实施项
+
+- N1：runLoop workLock 包装 port 化。
+- N4：processor/provider focused spec；runtime adapter class 化评估。
+- N2/N6/N5/N7 仍按 nextstep BACKLOG 推进。
+
+### 再标注文档
+
+- nextstep Cycle 107 完成；N4 remote shard execution 实现已从 facade 迁入 domain service。
+
+### 验证
+
+- `loops-remote-runners.service.spec.ts` 6 个测试通过。
 - API type-check 通过。
 - domain 反向依赖扫描无命中。

@@ -476,6 +476,21 @@ export class LoopsEngineService {
   }
 
   /**
+   * Run the PHASE_4 loop inside the issue/repo work lock (original facade
+   * `runLoop`). The lock backend stays behind a narrow port so the engine owns
+   * the terminal guard + lock boundary without importing lock implementations.
+   */
+  async runLoop(issueId: string, port: LoopsEngineRunLoopPort): Promise<LoopDetail> {
+    const detail = await port.getDetail(issueId);
+    if (this.isTerminal(detail)) {
+      return detail;
+    }
+    return port.withIssueAndRepoLock({ issueId, targetRepo: detail.issue.targetRepo }, () =>
+      this.runLoopUnlocked(issueId, detail, port.shardRunnerPort),
+    );
+  }
+
+  /**
    * PHASE_4_IMPLEMENT shard 调度（原 facade `runLoopUnlocked`）：在 context budget /
    * maxParallel 约束下挑选可执行 shard，经 port 执行，并处理 interrupted 恢复、
    * context-budget 阻塞、全部 DONE → PHASE_6_CONVERGE 收敛。store 编排（recover /
@@ -808,6 +823,20 @@ export interface LoopsEngineAdvancePort {
   reviewGlobal(issueId: string): Promise<LoopDetail>;
   runLoop(issueId: string): Promise<LoopDetail>;
   appendAdvanceLimitLog(issueId: string, phase: string, maxSteps: number): Promise<void>;
+}
+
+/**
+ * Run-loop lock port. The facade/API layer supplies lock acquisition while the
+ * engine owns the terminal guard and delegates the locked body to
+ * `runLoopUnlocked`.
+ */
+export interface LoopsEngineRunLoopPort {
+  getDetail(issueId: string): Promise<LoopDetail>;
+  withIssueAndRepoLock(
+    input: { issueId: string; targetRepo: string },
+    run: () => Promise<LoopDetail>,
+  ): Promise<LoopDetail>;
+  shardRunnerPort: LoopsEngineShardRunnerPort;
 }
 
 /**

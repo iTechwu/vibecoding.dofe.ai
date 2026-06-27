@@ -1877,6 +1877,176 @@ rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\
 - API type-check 通过。
 - domain 反向依赖扫描无命中。
 
+### Cycle 103 · Step N4 Remote Shard Execution 迁入评估与实施
+
+#### 实施
+
+- 评估 `LoopsService.executeRemoteShardJob` 依赖面：job lifecycle / state mutation / artifact manifest 可迁入 domain；CLI/Docker/runner/reviewShard 属重依赖，保留在 runtime adapter port。
+- `loops-remote-runners` 新增 `LoopsRemoteShardRuntimePort`，承载 readDetail、runImplementation、persistImplementation、runTests、review、applyReview。
+- `LoopsRemoteRunnersService.executeRemoteShardJob(job, runtimePort, logSink?)` 承接 implement/test/review 三条 job lifecycle：
+  - implement：mark `IN_PROGRESS`、调用 runtime implementation、persist implementation、写 handoff artifact。
+  - test：调用 runtime tests、写 test record / annotations / shards / state、写 test-results artifact。
+  - review：读取当前 round implementation/test、调用 runtime review、写 review-verdict artifact、apply review。
+- `LoopsService.executeRemoteShardJob` 收敛为 thin delegate；新增 `remoteShardRuntimePort` getter 适配 CLI/Docker/runner/reviewShard。
+- `loops.module.ts` 将 `LOOPS_REMOTE_SHARD_EXECUTION_PORT` 从 `useExisting: LoopsService` 改为 factory：`LoopsRemoteRunnersService.createShardExecutionPort(service.remoteShardRuntimePort, service.remoteRunnersLogSink)`。
+
+#### 标注文档
+
+- Step N4：remote shard execution job lifecycle 已迁入 `loops-remote-runners`，processor token 不再由 facade 类直接实现。
+
+#### 审查待实施项
+
+- 待继续：processor/Nest provider focused spec。
+- 待评估：runtime adapter 是否从 facade getter 进一步拆为 API adapter class，便于 Step N7 删除 facade wrapper。
+
+#### 再标注文档
+
+- Cycle 103 完成，进入 focused tests。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api type-check
+```
+
+结果：API type-check 通过。
+
+### Cycle 104 · Step N4 Remote Execution Focused Tests
+
+#### 实施
+
+- 扩展 `loops-remote-runners.service.spec.ts`。
+- 覆盖：
+  - implement job：写 `IN_PROGRESS`、调用 runtime implementation、persist implementation、写 handoff artifact。
+  - test job：调用 runtime tests、写 test record/annotation/state、写 test-results artifact。
+  - review job：读取 implementation/test、调用 runtime review、apply review、写 review-verdict artifact。
+
+#### 标注文档
+
+- N4 remote execution implement/test/review 三条 domain 编排已有 focused tests 覆盖。
+
+#### 审查待实施项
+
+- 仍待：processor/provider focused spec；runtime adapter class 化评估。
+
+#### 再标注文档
+
+- Cycle 104 完成，进入结构审查。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api test -- loops-remote-runners.service.spec.ts loops-remote-runner.processor.ts loops-engine.service.spec.ts loops.service.spec.ts --runInBand
+```
+
+结果：`loops-remote-runners.service.spec.ts` 通过，6 个测试通过。
+
+### Cycle 105 · Step N4 结构审查与注释校准
+
+#### 实施
+
+- 执行 domain 反向依赖扫描，无命中。
+- 确认 `LoopsRemoteRunnerProcessor` 仍只依赖 `LOOPS_REMOTE_SHARD_EXECUTION_PORT`，不注入 `LoopsService`。
+- 确认 `loops.module.ts` 中 `LOOPS_REMOTE_SHARD_EXECUTION_PORT` 不再 `useExisting: LoopsService`，而由 domain service factory 创建。
+- 更新 remote-runners service / processor 注释，移除“实现仍由 facade 提供 / 阻塞于 N1”的过期描述。
+
+#### 标注文档
+
+- 标注：当前剩余不再是 shard execution 实现归属，而是 runtime adapter 仍在 facade getter 中。
+
+#### 审查待实施项
+
+- 下一步最短路径：
+  - 补 provider wiring focused spec。
+  - Step N7 时把 `remoteShardRuntimePort` getter 提取为 API adapter provider，进一步瘦身 `LoopsService`。
+
+#### 再标注文档
+
+- Cycle 105 完成，进入文档总览同步。
+
+#### 验证
+
+```bash
+rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)|require\\(['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)" apps/api/libs/domain/services
+```
+
+结果：无命中。
+
+### Cycle 106 · 文档总览同步
+
+#### 实施
+
+- 更新 `struct-opz-nextstep/README.md` Step 8 当前结论。
+- 更新 `struct-opz-nextstep/BACKLOG.md` N4 状态和优先级。
+- 更新 `struct-opz/EXECUTION.md` Step 8 总览行。
+- 更新 `struct-opz/IMPLEMENTATION-ANNOTATIONS.md` 顶部 Step 8 状态。
+
+#### 标注文档
+
+- 明确 Step 8 当前已完成 remote shard execution job lifecycle 下沉。
+- 明确剩余：processor/provider focused spec、runtime adapter class 化、Step N7 facade wrapper 删除。
+
+#### 审查待实施项
+
+- 下一批优先级：
+  - N1：runLoop workLock 包装 port 化。
+  - N4：processor/provider focused spec。
+  - N7：facade/module 收敛准备。
+
+#### 再标注文档
+
+- Cycle 106 完成，进入最终验证。
+
+#### 验证
+
+- 文档变更随 Cycle 107 最终验证收口。
+
+### Cycle 107 · 本批收敛验证与下一轮待办
+
+#### 实施
+
+- 执行 remote-runners focused tests。
+- 执行 API type-check。
+- 执行 domain 反向依赖扫描。
+- 汇总本批 Cycle 103-107。
+
+#### 标注文档
+
+- 本批已完成至少 5 次循环动作：
+  - Cycle 103：N4 迁入评估与实施。
+  - Cycle 104：focused tests。
+  - Cycle 105：结构审查与注释校准。
+  - Cycle 106：文档总览同步。
+  - Cycle 107：最终验证与待办标注。
+
+#### 审查待实施项
+
+- 待实施：
+  - N1：`runLoop` workLock 包装 port 化。
+  - N4：processor/provider focused spec；runtime adapter class 化评估。
+  - N2：evidence 收集 / DB/Redis adapter service 独立化。
+  - N6：testCiCheck provider publish / permission / publication persistence 下沉。
+  - N5：archive service re-home 评估。
+  - N7：facade/module 收敛。
+
+#### 再标注文档
+
+- Cycle 107 完成；N4 remote shard execution 实现已从 facade 迁入 domain service，未改变 controller path / BullMQ queue name / processor contract。
+
+#### 验证
+
+```bash
+pnpm --filter @repo/api test -- loops-remote-runners.service.spec.ts --runInBand
+pnpm --filter @repo/api type-check
+rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)|require\\(['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\.\\./src/modules/loops)" apps/api/libs/domain/services
+```
+
+结果：
+
+- 3 个 focused test suite 通过，112 个测试通过。
+- API type-check 通过。
+- domain 反向依赖扫描无命中。
+
 ## Step N0 · 文档事实源校准
 
 ### 目标

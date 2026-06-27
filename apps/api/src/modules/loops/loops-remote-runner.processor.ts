@@ -22,12 +22,12 @@ import {
  *   enqueued → active → executing shard job → completed/failed
  *   failed jobs retry 3× with exponential backoff (5s → 25s → 125s)
  *
- * The actual CLI execution is delegated to the `LOOPS_REMOTE_SHARD_EXECUTION_PORT`
- * (currently the legacy facade, which routes to the appropriate adapter —
- * Claude/Codex CLI, Docker sandbox — based on runtimeBackend and workerKind).
+ * The actual CLI execution is delegated to the `LOOPS_REMOTE_SHARD_EXECUTION_PORT`,
+ * implemented by the remote-runners domain service with API/runtime adapters
+ * injected for Claude/Codex CLI, Docker sandbox, and shard review.
  *
  * 结构优化 nextstep Step N4：processor 经 shard execution port 注入，不再依赖
- * `LoopsService` 类；port 实现待 Step N1（engine 状态机）下沉后迁入 domain。
+ * `LoopsService` 类；job lifecycle 编排已迁入 domain。
  */
 @Processor('loops-remote-runner', {
   concurrency: 2, // Allow 2 concurrent runner jobs per worker
