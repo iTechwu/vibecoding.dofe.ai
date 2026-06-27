@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   CircleDollarSign,
   ClipboardList,
+  Command,
   Cpu,
   Inbox,
   GitBranch,
@@ -17,9 +18,11 @@ import {
   KanbanSquare,
   Lightbulb,
   ListChecks,
+  PanelRight,
   Play,
   Plus,
   RefreshCw,
+  Search,
   ShieldCheck,
   Users,
   Workflow,
@@ -48,7 +51,6 @@ import {
   useRunLoopBenchTrendWorker,
   useLoopsWorkspaces,
   useGovernLoopLearning,
-  useGovernLoopDelivery,
   useRunLoopLearningAutoMergeWorker,
   useRunLoopLearningIndexWorker,
   usePullLoopsImage,
@@ -62,7 +64,6 @@ import {
   AGING_QUEUE_SLA_POLICY,
   aggregateLoops,
   buildAgingQueue,
-  buildAgentHandoffTimeline,
   buildBlueprintMarketplace,
   buildDashboardGuide,
   buildDeliveryFlow,
@@ -92,7 +93,6 @@ import {
   buildWorkforceOverview,
   buildWorkflowRecipe,
   type EvalCheckStatus,
-  type HandoffStepState,
   type RuntimeBackendStatus,
   type WorkforcePersona,
   type WorkforcePersonaStatus,
@@ -100,6 +100,13 @@ import {
   type RiskLevel,
 } from './loops-dashboard-model';
 import { formatLoopEvent, formatLoopLabel, formatLoopStatus } from './loops-display';
+
+const WORKBENCH_NAV_ITEMS = [
+  { href: '#loop-board', labelKey: 'board', icon: KanbanSquare },
+  { href: '#review-inbox', labelKey: 'decisions', icon: Inbox },
+  { href: '#exception-center', labelKey: 'exceptions', icon: AlertTriangle },
+  { href: '#runtime-panel', labelKey: 'runtime', icon: Cpu },
+] as const;
 
 function riskClass(level: RiskLevel) {
   if (level === 'critical') {
@@ -164,22 +171,6 @@ function workforcePersonaClass(status: WorkforcePersonaStatus) {
   return 'border-border bg-muted/40 text-muted-foreground';
 }
 
-function handoffStepClass(state: HandoffStepState) {
-  if (state === 'current') {
-    return 'border-foreground bg-foreground text-background';
-  }
-  if (state === 'blocked') {
-    return 'border-red-200 bg-red-50 text-red-950 dark:border-red-900/70 dark:bg-red-950/20 dark:text-red-100';
-  }
-  if (state === 'next') {
-    return 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100';
-  }
-  if (state === 'done') {
-    return 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100';
-  }
-  return 'border-border bg-muted/30 text-muted-foreground';
-}
-
 const WORKFORCE_PERSONA_LABELS: Record<WorkforcePersona['id'], string> = {
   'intake-analyst': 'Intake Analyst',
   'spec-writer': 'Spec Writer',
@@ -226,6 +217,24 @@ function MetricCard({
   );
 }
 
+function WorkbenchStat({
+  label,
+  value,
+  note,
+}: {
+  label: string;
+  value: string | number;
+  note: string;
+}) {
+  return (
+    <div className="min-w-0 border-l border-border/70 pl-3">
+      <p className="text-[11px] font-medium uppercase text-muted-foreground">{label}</p>
+      <p className="mt-1 text-xl font-semibold tabular-nums">{value}</p>
+      <p className="mt-1 truncate text-xs text-muted-foreground">{note}</p>
+    </div>
+  );
+}
+
 export default function LoopsPage() {
   const locale = useLocale();
   const t = useTranslations('loops.dashboard');
@@ -256,6 +265,7 @@ export default function LoopsPage() {
     return reason;
   };
   const [agingNow, setAgingNow] = useState<Date | null>(null);
+  const [commandQuery, setCommandQuery] = useState('');
   const listQuery = useLoopsList({ page: 1, limit: 20 });
   const doctorQuery = useLoopsDoctor();
   const costQuery = useLoopsCost();
@@ -392,6 +402,41 @@ export default function LoopsPage() {
     exceptionItems: exceptionCenter.items.length,
     deliveredItems: loopBoard.find((column) => column.id === 'delivered')?.items.length ?? 0,
   });
+  const boardItems = loopBoard.flatMap((column) =>
+    column.items.map((item) => ({ ...item, columnId: column.id })),
+  );
+  const focusLoop =
+    boardItems.find((item) => item.columnId === 'blocked') ??
+    boardItems.find((item) => item.columnId === 'running') ??
+    boardItems[0];
+  const commandItems = [
+    {
+      id: 'new',
+      label: t('command.items.newIssue'),
+      meta: t('command.meta.newIssue'),
+      href: '/loops/new',
+    },
+    {
+      id: 'review',
+      label: t('command.items.reviewInbox'),
+      meta: t('command.meta.reviewInbox', { count: reviewInbox.length }),
+      href: '#review-inbox',
+    },
+    {
+      id: 'exceptions',
+      label: t('command.items.exceptions'),
+      meta: t('command.meta.exceptions', { count: exceptionCenter.items.length }),
+      href: '#exception-center',
+    },
+    {
+      id: 'board',
+      label: t('command.items.loopBoard'),
+      meta: t('command.meta.loopBoard', { count: fallbackSummary.items.length }),
+      href: '#loop-board',
+    },
+  ].filter((item) =>
+    `${item.label} ${item.meta}`.toLowerCase().includes(commandQuery.trim().toLowerCase()),
+  );
   // Distinct error state: previously a failed list/doctor query rendered as
   // perpetual "loading". Surface it as an explicit banner instead.
   const dataLoadFailed = listQuery.isError || doctorQuery.isError;
@@ -402,30 +447,148 @@ export default function LoopsPage() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-background px-6 py-8">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6">
-        <header className="flex flex-col gap-4 border-b pb-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">{t('eyebrow')}</p>
-            <h1 className="text-3xl font-semibold tracking-normal">{t('title')}</h1>
+    <main className="dark min-h-screen bg-[#0b0b0d] px-4 py-4 text-foreground sm:px-6">
+      <div className="mx-auto flex max-w-[1560px] flex-col gap-4">
+        <header className="overflow-hidden rounded-lg border border-white/10 bg-card/80">
+          <div className="flex flex-col gap-4 border-b border-border/70 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                {t('eyebrow')}
+              </p>
+              <h1 className="mt-1 text-2xl font-semibold tracking-normal">{t('title')}</h1>
+              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                {t('workbench.subtitle')}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background/70 px-3 text-sm font-medium hover:bg-muted/50 disabled:opacity-60"
+                disabled={resume.isPending}
+                onClick={() => resume.mutate({ body: {} })}
+                type="button"
+              >
+                <RefreshCw className="size-4" />
+                {resume.isPending ? t('resuming') : t('resume')}
+              </button>
+              <Link
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-foreground px-3 text-sm font-medium text-background hover:bg-foreground/90"
+                href="/loops/new"
+              >
+                <Plus className="size-4" />
+                {t('newIssue')}
+              </Link>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <button
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-md border px-4 text-sm font-medium hover:bg-muted/30 disabled:opacity-60"
-              disabled={resume.isPending}
-              onClick={() => resume.mutate({ body: {} })}
-              type="button"
-            >
-              <RefreshCw className="size-4" />
-              {resume.isPending ? t('resuming') : t('resume')}
-            </button>
-            <Link
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-foreground px-4 text-sm font-medium text-background"
-              href="/loops/new"
-            >
-              <Plus className="size-4" />
-              {t('newIssue')}
-            </Link>
+
+          <div className="grid grid-cols-1 gap-0 lg:grid-cols-[220px_minmax(0,1fr)_320px]">
+            <aside className="border-b border-border/70 p-3 lg:border-b-0 lg:border-r">
+              <div className="flex items-center gap-2 px-2 py-1 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                <Command className="size-3.5" />
+                {t('workbench.railTitle')}
+              </div>
+              <nav aria-label={t('workbench.railTitle')} className="mt-3 flex flex-col gap-1">
+                {WORKBENCH_NAV_ITEMS.map(({ href, labelKey, icon: Icon }) => (
+                  <a
+                    className="flex h-8 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                    href={href}
+                    key={href}
+                  >
+                    <Icon className="size-4" />
+                    <span className="truncate">{t(`workbench.nav.${labelKey}`)}</span>
+                  </a>
+                ))}
+              </nav>
+            </aside>
+
+            <section className="min-w-0 border-b border-border/70 p-4 lg:border-b-0 lg:border-r">
+              <div className="rounded-lg border border-border bg-background/80 p-3">
+                <label className="flex items-center gap-2 text-sm" htmlFor="loop-command-input">
+                  <Search className="size-4 text-muted-foreground" />
+                  <span className="sr-only">{t('command.placeholder')}</span>
+                  <input
+                    className="h-8 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                    id="loop-command-input"
+                    onChange={(event) => setCommandQuery(event.target.value)}
+                    placeholder={t('command.placeholder')}
+                    value={commandQuery}
+                  />
+                </label>
+                <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                  {commandItems.map((item) => (
+                    <Link
+                      className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-sm transition hover:bg-muted/50"
+                      href={item.href}
+                      key={item.id}
+                    >
+                      <span className="font-medium">{item.label}</span>
+                      <span className="mt-1 block truncate text-xs text-muted-foreground">
+                        {item.meta}
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-5">
+                <WorkbenchStat
+                  label={t('metrics.active')}
+                  note={t('metrics.activeNote', { total: summary.total })}
+                  value={summary.active}
+                />
+                <WorkbenchStat
+                  label={t('metrics.inLoop')}
+                  note={t('metrics.inLoopNote')}
+                  value={summary.inLoop}
+                />
+                <WorkbenchStat
+                  label={t('workbench.attentionShort')}
+                  note={t('metrics.attentionNote', {
+                    paused: summary.paused,
+                    guards: costSummary?.tripped ?? fallbackSummary.costTripped.length,
+                  })}
+                  value={summary.attention}
+                />
+                <WorkbenchStat
+                  label={t('workbench.qualityShort')}
+                  note={t('performance.passRateNote')}
+                  value={`${performanceSnapshot.passRate}%`}
+                />
+                <WorkbenchStat
+                  label={t('metrics.closed')}
+                  note={t('metrics.closedNote')}
+                  value={summary.closed}
+                />
+              </div>
+            </section>
+
+            <aside className="p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                    {t('workbench.focusTitle')}
+                  </p>
+                  <p className="mt-1 text-sm font-medium">
+                    {focusLoop?.title ?? t('loopBoard.empty')}
+                  </p>
+                </div>
+                <PanelRight className="size-4 text-muted-foreground" />
+              </div>
+              {focusLoop ? (
+                <Link
+                  className="mt-3 block rounded-md border border-border bg-background/70 p-3 text-xs transition hover:bg-muted/40"
+                  href={focusLoop.href}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="rounded-md bg-muted px-2 py-1 font-medium">
+                      {t(`loopBoard.columns.${focusLoop.columnId}`)}
+                    </span>
+                    <span className="text-muted-foreground">{focusLoop.priority}</span>
+                  </div>
+                  <p className="mt-3 line-clamp-2 text-muted-foreground">{focusLoop.evidence}</p>
+                  <p className="mt-2 truncate text-muted-foreground">{focusLoop.gitRef}</p>
+                </Link>
+              ) : null}
+            </aside>
           </div>
         </header>
 
@@ -1412,7 +1575,7 @@ export default function LoopsPage() {
           )}
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section className="rounded-lg border p-4" id="loop-board">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <h2 className="text-sm font-semibold">{t('loopBoard.title')}</h2>
@@ -1916,7 +2079,7 @@ export default function LoopsPage() {
           )}
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section className="rounded-lg border p-4" id="exception-center">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <h2 className="text-sm font-semibold">{t('exceptionCenter.title')}</h2>
@@ -1980,7 +2143,7 @@ export default function LoopsPage() {
           )}
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section className="rounded-lg border p-4" id="runtime-panel">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <h2 className="text-sm font-semibold">{t('runtimeBackends.title')}</h2>
@@ -2631,7 +2794,7 @@ export default function LoopsPage() {
             </div>
           </div>
 
-          <div className="rounded-lg border p-4">
+          <div className="rounded-lg border p-4" id="review-inbox">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-sm font-semibold">{t('reviewInbox.title')}</h2>

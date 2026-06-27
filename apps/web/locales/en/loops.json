@@ -6,6 +6,34 @@
     "resuming": "Resuming",
     "loadError": "Failed to load Loops data. Check your connection and retry.",
     "newIssue": "New Issue",
+    "workbench": {
+      "subtitle": "A Cursor-style delivery workbench for creating issues, reviewing decisions, continuing loops, and auditing evidence.",
+      "railTitle": "Workbench",
+      "focusTitle": "Focus Loop",
+      "attentionShort": "Attention",
+      "qualityShort": "Quality",
+      "nav": {
+        "board": "Board",
+        "decisions": "Decisions",
+        "exceptions": "Exceptions",
+        "runtime": "Runtime"
+      }
+    },
+    "command": {
+      "placeholder": "Search commands, loops, exceptions, or create a delivery request...",
+      "items": {
+        "newIssue": "Create issue from request",
+        "reviewInbox": "Review pending decisions",
+        "exceptions": "Open exception center",
+        "loopBoard": "Open loop board"
+      },
+      "meta": {
+        "newIssue": "Start with a simple product request",
+        "reviewInbox": "{count} decision shortcuts",
+        "exceptions": "{count} exception items need attention",
+        "loopBoard": "{count} issues grouped by delivery stage"
+      }
+    },
     "metrics": {
       "active": "Active",
       "activeNote": "{total} total indexed issues",
@@ -673,6 +701,23 @@
     "eyebrow": "Web Issue Intake",
     "title": "New Loops Issue",
     "back": "Back",
+    "workbench": {
+      "subtitle": "Describe the delivery intent once; Dofe turns it into a reviewable issue, spec path, gates, and evidence plan.",
+      "steps": {
+        "intent": {
+          "label": "01 Intent",
+          "title": "Tell Dofe what should change"
+        },
+        "spec": {
+          "label": "02 Spec",
+          "title": "Review the generated delivery frame"
+        },
+        "continue": {
+          "label": "03 Loop",
+          "title": "Continue Loop with evidence"
+        }
+      }
+    },
     "redirecting": "Redirecting to login...",
     "template": "Loop Template",
     "titleLabel": "Title",
@@ -686,6 +731,7 @@
     "creating": "Creating...",
     "create": "Create Issue",
     "simple": {
+      "commandTitle": "Command Dofe with a delivery request",
       "intro": "Describe what you want the agents to do. Title, priority and acceptance criteria are generated for you.",
       "requestLabel": "What do you want the agents to do?",
       "requestPlaceholder": "e.g. Add a Docker fallback for the Codex runtime and show diagnostics in the console",

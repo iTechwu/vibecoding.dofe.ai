@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "kill:web": "lsof -ti:3003 | xargs kill -9 2>/dev/null && echo \"done\" || echo \"no process on port 3003\"",
-    "kill:api": "lsof -ti:3101 | xargs kill -9 2>/dev/null && echo \"done\" || echo \"no process on port 3101\"",
+    "kill:api": "lsof -ti:13100 | xargs kill -9 2>/dev/null && echo \"done\" || echo \"no process on port 13100\"",
     "dev": "pnpm kill:web && pnpm kill:api && turbo run dev",
     "dev:web": "pnpm kill:web && turbo run dev --filter=@repo/web",
     "dev:api": "pnpm kill:api && turbo run dev --filter=@repo/api",

@@ -6,6 +6,34 @@
     "resuming": "恢复中",
     "loadError": "Loops 数据加载失败。请检查网络或稍后重试。",
     "newIssue": "新建 Issue",
+    "workbench": {
+      "subtitle": "融合 Cursor 工作台体验的交付控制面，用于创建需求、审阅决策、继续 Loop 和审计证据。",
+      "railTitle": "工作台",
+      "focusTitle": "焦点 Loop",
+      "attentionShort": "关注",
+      "qualityShort": "质量",
+      "nav": {
+        "board": "看板",
+        "decisions": "决策项",
+        "exceptions": "异常",
+        "runtime": "运行时"
+      }
+    },
+    "command": {
+      "placeholder": "搜索命令、Loop、异常，或创建交付需求...",
+      "items": {
+        "newIssue": "从需求创建 Issue",
+        "reviewInbox": "审阅待决策项",
+        "exceptions": "打开异常中心",
+        "loopBoard": "打开 Loop 看板"
+      },
+      "meta": {
+        "newIssue": "从一句产品需求开始",
+        "reviewInbox": "{count} 个决策快捷入口",
+        "exceptions": "{count} 个异常需要关注",
+        "loopBoard": "{count} 个 issue 按交付阶段分组"
+      }
+    },
     "metrics": {
       "active": "活跃",
       "activeNote": "共索引 {total} 个 issue",
@@ -673,6 +701,23 @@
     "eyebrow": "Web Issue 录入",
     "title": "新建 Loops Issue",
     "back": "返回",
+    "workbench": {
+      "subtitle": "只描述一次交付意图，Dofe 会生成可审阅的 issue、spec 路径、关卡和证据计划。",
+      "steps": {
+        "intent": {
+          "label": "01 意图",
+          "title": "告诉 Dofe 要改变什么"
+        },
+        "spec": {
+          "label": "02 Spec",
+          "title": "审阅生成的交付框架"
+        },
+        "continue": {
+          "label": "03 Loop",
+          "title": "带证据继续推进 Loop"
+        }
+      }
+    },
     "redirecting": "正在跳转到登录...",
     "template": "Loop 模板",
     "titleLabel": "标题",
@@ -686,6 +731,7 @@
     "creating": "创建中...",
     "create": "创建 Issue",
     "simple": {
+      "commandTitle": "用交付需求指挥 Dofe",
       "intro": "用一句话描述你想让 agent 做的事。标题、优先级和验收标准会自动生成。",
       "requestLabel": "你想让 agent 做什么？",
       "requestPlaceholder": "例如：为 Codex 运行时增加 Docker 兜底，并在控制台显示诊断",

@@ -8,6 +8,7 @@ import { normaliseSimpleIssue } from '@repo/contracts';
 import type { LoopLearning, LoopPriority, LoopSimpleIssueTemplate } from '@repo/contracts';
 import { useCreateSimpleLoopIssue, useLoopsWorkspaces } from '@/lib/api/contracts/hooks';
 import { LOOP_ISSUE_TEMPLATES } from './loop-issue-templates';
+import { Command, Sparkles } from 'lucide-react';
 
 const TEMPLATE_OPTIONS: Array<{ id: LoopSimpleIssueTemplate; labelKey: string }> = [
   { id: 'auto', labelKey: 'simple.templateAuto' },
@@ -47,7 +48,10 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
 
   const workspaces = workspacesQuery.data?.body?.data?.workspaces ?? EMPTY_WORKSPACES;
   const currentWorkspace = workspacesQuery.data?.body?.data?.current;
-  const recentLearnings = workspacesQuery.data?.body?.data?.recentLearnings ?? [];
+  const recentLearnings = useMemo(
+    () => workspacesQuery.data?.body?.data?.recentLearnings ?? [],
+    [workspacesQuery.data?.body?.data?.recentLearnings],
+  );
 
   const [request, setRequest] = useState('');
   const [workspaceId, setWorkspaceId] = useState(currentWorkspace ?? '');
@@ -152,13 +156,22 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
 
   return (
     <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
-      <p className="text-sm text-muted-foreground">{t('simple.intro')}</p>
+      <div className="flex items-start gap-3 rounded-md border border-border bg-background/70 p-3">
+        <Command className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <div className="min-w-0">
+          <p className="text-sm font-medium">{t('simple.commandTitle')}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t('simple.intro')}</p>
+        </div>
+      </div>
 
       {/* Primary input: the request. */}
       <label className="flex flex-col gap-2 text-sm font-medium">
-        <span>{t('simple.requestLabel')}</span>
+        <span className="flex items-center gap-2">
+          <Sparkles className="size-4 text-muted-foreground" />
+          {t('simple.requestLabel')}
+        </span>
         <textarea
-          className="min-h-32 rounded-md border bg-background px-3 py-2 text-sm"
+          className="min-h-36 rounded-md border bg-background px-3 py-3 text-sm leading-6 outline-none transition focus:border-foreground/50 focus:ring-2 focus:ring-foreground/10"
           onChange={(e) => setRequest(e.target.value)}
           placeholder={t('simple.requestPlaceholder')}
           value={request}
@@ -172,7 +185,7 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
         <label className="flex flex-col gap-2 text-sm font-medium">
           <span>{t('simple.workspaceLabel')}</span>
           <select
-            className="h-10 rounded-md border bg-background px-3 text-sm disabled:opacity-60"
+            className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:border-foreground/50 focus:ring-2 focus:ring-foreground/10 disabled:opacity-60"
             disabled={workspacesQuery.isLoading || workspaceBlocked}
             onChange={(e) => setWorkspaceId(e.target.value)}
             value={selectedWorkspace?.workspaceId ?? ''}
@@ -196,7 +209,7 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
         <label className="flex flex-col gap-2 text-sm font-medium">
           <span>{t('simple.templateLabel')}</span>
           <select
-            className="h-10 rounded-md border bg-background px-3 text-sm"
+            className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:border-foreground/50 focus:ring-2 focus:ring-foreground/10"
             onChange={(e) => setTemplate(e.target.value as LoopSimpleIssueTemplate)}
             value={template}
           >
@@ -210,7 +223,10 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
       </div>
 
       {/* Live preview of the normalised issue (read-only). */}
-      <section aria-label={t('simple.previewTitle')} className="rounded-md border bg-muted/30 p-4">
+      <section
+        aria-label={t('simple.previewTitle')}
+        className="rounded-md border bg-background/70 p-4"
+      >
         <h2 className="text-xs font-semibold text-muted-foreground">{t('simple.previewTitle')}</h2>
         {preview ? (
           <dl className="mt-3 flex flex-col gap-3 text-sm">
@@ -367,7 +383,7 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
           <label className="flex flex-col gap-2 text-sm font-medium">
             <span>{t('simple.advancedTitle')}</span>
             <input
-              className="h-10 rounded-md border bg-background px-3 text-sm"
+              className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:border-foreground/50 focus:ring-2 focus:ring-foreground/10"
               onChange={(e) => setTitleOverride(e.target.value)}
               placeholder={preview?.title ?? ''}
               value={titleOverride}
@@ -377,7 +393,7 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
             <label className="flex flex-col gap-2 text-sm font-medium">
               <span>{t('simple.advancedPriority')}</span>
               <select
-                className="h-10 rounded-md border bg-background px-3 text-sm"
+                className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:border-foreground/50 focus:ring-2 focus:ring-foreground/10"
                 onChange={(e) => setPriorityOverride(e.target.value as LoopPriority | '')}
                 value={priorityOverride}
               >
@@ -392,7 +408,7 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
             <label className="flex flex-col gap-2 text-sm font-medium">
               <span>{t('simple.advancedTargetRepo')}</span>
               <input
-                className="h-10 rounded-md border bg-background px-3 text-sm"
+                className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:border-foreground/50 focus:ring-2 focus:ring-foreground/10"
                 onChange={(e) => setTargetRepoOverride(e.target.value)}
                 placeholder={effectiveTargetRepo}
                 value={targetRepoOverride}
@@ -402,7 +418,7 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
           <label className="flex flex-col gap-2 text-sm font-medium">
             <span>{t('simple.advancedCriteria')}</span>
             <textarea
-              className="min-h-24 rounded-md border bg-background px-3 py-2 text-sm"
+              className="min-h-24 rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-foreground/50 focus:ring-2 focus:ring-foreground/10"
               onChange={(e) => setCriteriaOverride(e.target.value)}
               placeholder={t('simple.advancedCriteriaPlaceholder')}
               value={criteriaOverride}

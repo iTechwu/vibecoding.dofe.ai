@@ -15,8 +15,8 @@ import {
   type RuntimeCheckMessages,
 } from '@dofe/infra-runtime';
 import { runProcess } from '@app/services/loops-runners';
-import { LOOPS_RUNTIME_LOCAL_COMMAND } from '@app/services/loops-runtime';
-import { LoopsDockerClient } from '@app/services/loops-runtime';
+import { LoopsDockerClient } from './loops-docker.client';
+import { LOOPS_RUNTIME_LOCAL_COMMAND } from './loops-runtime-images';
 
 const AGENTS: LoopAgentKind[] = ['codex', 'claude-code'];
 const DEFAULT_DETECT_TIMEOUT_MS = 8000;

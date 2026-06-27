@@ -13,19 +13,43 @@ export default async function NewLoopIssuePage() {
   const t = await getTranslations('loops.newIssue');
 
   return (
-    <main className="min-h-screen bg-background px-6 py-8">
-      <div className="mx-auto max-w-3xl">
-        <div className="mb-6 flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">{t('eyebrow')}</p>
-            <h1 className="text-3xl font-semibold tracking-normal text-balance">{t('title')}</h1>
+    <main className="dark min-h-screen bg-[#0b0b0d] px-4 py-4 text-foreground sm:px-6">
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-4 overflow-hidden rounded-lg border border-white/10 bg-card/80">
+          <div className="flex flex-col gap-4 border-b border-border/70 px-4 py-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                {t('eyebrow')}
+              </p>
+              <h1 className="mt-1 text-2xl font-semibold tracking-normal text-balance">
+                {t('title')}
+              </h1>
+              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                {t('workbench.subtitle')}
+              </p>
+            </div>
+            <Link
+              className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-background/70 px-3 text-sm font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+              href="/loops"
+            >
+              {t('back')}
+            </Link>
           </div>
-          <Link className="text-sm text-muted-foreground hover:text-foreground" href="/loops">
-            {t('back')}
-          </Link>
+          <div className="grid grid-cols-1 divide-y divide-border/70 text-sm sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+            {(['intent', 'spec', 'continue'] as const).map((step) => (
+              <div className="px-4 py-3" key={step}>
+                <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                  {t(`workbench.steps.${step}.label`)}
+                </p>
+                <p className="mt-1 font-medium">{t(`workbench.steps.${step}.title`)}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
-        <SimpleLoopIssueForm defaultTargetRepo={defaultTargetRepo} />
+        <div className="rounded-lg border border-white/10 bg-card/80 p-4">
+          <SimpleLoopIssueForm defaultTargetRepo={defaultTargetRepo} />
+        </div>
       </div>
     </main>
   );
