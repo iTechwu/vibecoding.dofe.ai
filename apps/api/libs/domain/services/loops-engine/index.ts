@@ -8,6 +8,7 @@ export { LoopsEngineModule } from './loops-engine.module';
 export {
   LoopsEngineService,
   type LoopsEngineAdvancePort,
+  type LoopsEngineRunLoopPort,
   type LoopsEngineShardRunnerPort,
   type LoopsEngineFinalizePort,
   type LoopsEngineGlobalReviewPort,

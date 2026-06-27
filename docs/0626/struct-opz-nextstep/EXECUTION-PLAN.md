@@ -2277,3 +2277,207 @@ rg "from ['\\\"].*(apps/api/src/modules/loops|src/modules/loops|\\.\\./\\.\\./\\
 - `apps/api/src/modules/loops` 结构回到架构目标。
 - 循环依赖和 provider 杂糅风险显著降低。
 - 后续功能开发能在清晰 domain 边界内进行。
+
+## 执行批注 · nextstep Cycle 108-112
+
+### Cycle 108 · Step N1 runLoop workLock port 化
+
+- `LoopsEngineService.runLoop` 承接原 facade 的 `getIssue` / terminal guard / `workLock.withIssueAndRepoLock` 包装。
+- 新增 `LoopsEngineRunLoopPort`，包含 detail read、issue/repo lock、`shardRunnerPort`。
+- `LoopsService.runLoop` 收敛为 thin wrapper：`engine.runLoop(issueId, this.runLoopPort)`。
+- 审查剩余：facade builder ports（finalize/reviewGlobal/shard runtime 等）仍承载重依赖，留给 N7 分批删除 wrapper。
+
+### Cycle 109 · Step N1 runLoop focused specs
+
+- 扩展 `loops-engine.service.spec.ts`：
+  - terminal detail 直接返回且不拿锁。
+  - active loop 通过 `withIssueAndRepoLock({ issueId, targetRepo })` 进入 `runLoopUnlocked`。
+- 验证：`pnpm --filter @repo/api test -- loops-engine.service.spec.ts --runInBand` 通过，40 个测试通过。
+
+### Cycle 110 · Step N4 runtime adapter class 与 provider focused spec
+
+- 新增 `LoopsRemoteShardRuntimeAdapter`，作为 API 层 runtime/log port provider seam。
+- `LOOPS_REMOTE_SHARD_EXECUTION_PORT` provider 改为依赖 `LoopsRemoteRunnersService + LoopsRemoteShardRuntimeAdapter`。
+- 抽出 `createRemoteShardExecutionPort` 小 factory，避免 provider focused spec import 整个 `loops.module.ts` 重依赖链。
+- 新增 `loops-remote-shard-runtime.adapter.spec.ts` 覆盖 provider factory 与 adapter class。
+
+### Cycle 111 · N1/N4 结构审查与文档同步
+
+- 确认 `LoopsService.runLoop` 不再直接调用 `workLock.withIssueAndRepoLock`。
+- 确认 `LOOPS_REMOTE_SHARD_EXECUTION_PORT` 不再直接从 `LoopsService` 读取 runtime/log getter。
+- 更新 README、BACKLOG、struct-opz EXECUTION、IMPLEMENTATION-ANNOTATIONS 顶部状态。
+
+### Cycle 112 · 本批收敛验证与下一轮待办
+
+- 本批完成至少 5 次循环动作：108 实施、109 tests、110 provider seam、111 结构/文档同步、112 验证。
+- 验证：
+  - `loops-engine.service.spec.ts` + `loops-remote-shard-runtime.adapter.spec.ts` 通过，42 个测试通过。
+  - `loops-remote-runners.service.spec.ts` + `loops-remote-runner.processor.ts` + `loops-remote-shard-runtime.adapter.spec.ts` 通过，8 个测试通过。
+  - API type-check 通过。
+- 下一步：
+  - N7：以 `LoopsEngineRunLoopPort` 与 `LoopsRemoteShardRuntimeAdapter` 为收敛点，删除已迁 facade wrapper。
+  - N4：runtime adapter 内部的 CLI/Docker/reviewShard 实现仍需从 facade getter 迁出。
+
+## 执行批注 · nextstep Cycle 113-117
+
+### Cycle 113 · Step N7 remote runtime adapter 实现迁出
+
+- `LoopsRemoteShardRuntimeAdapter` 从“委托 facade getter”改为自行组装 `LoopsRemoteShardRuntimePort`。
+- adapter 直接承接：
+  - Claude/Codex runtime implementation。
+  - Docker sandbox implementation。
+  - `LoopsRunnerService.runShardTests`。
+  - `LoopsAgentAdapter.review`。
+- facade 暂保留 read/persist/apply/log 窄桥，避免同时迁移 store mutation 与 review side-effect。
+
+### Cycle 114 · Step N7 facade wrapper 压薄
+
+- `LoopsService.remoteShardRuntimePort` 改为通过 `createRemoteShardRuntimeAdapter(...).runtimePort` 兼容转发，不再内联 implementation/tests/review 实现。
+- 新增 `remoteShardRuntimeFacade` 窄桥，显式暴露 read/persist/apply/log。
+- 新增 `persistRemoteShardImplementation` 兼容桥，封装原 private persistence 行为。
+- `LoopsService` 移除 `implements LoopsRemoteShardExecutionPort`；remote processor 继续经 `LOOPS_REMOTE_SHARD_EXECUTION_PORT` token 消费。
+
+### Cycle 115 · Step N7 focused specs
+
+- 扩展 `loops-remote-shard-runtime.adapter.spec.ts`：
+  - provider factory wiring。
+  - read/persist/apply/log 只经窄 facade bridge。
+  - non-docker implementation 经 Claude adapter。
+  - docker implementation 经 Docker sandbox。
+  - tests 经 runner、review 经 agent adapter。
+
+### Cycle 116 · Step N7 结构审查与文档同步
+
+- 确认 `LoopsRemoteRunnerProcessor` 仍只依赖 `LOOPS_REMOTE_SHARD_EXECUTION_PORT`。
+- 确认 domain services 仍无 API loops 反向 import。
+- 更新 README/BACKLOG/EXECUTION/IMPLEMENTATION-ANNOTATIONS：Step 10 从待实施改为 N7 已启动。
+
+### Cycle 117 · 本批验证与下一轮待办
+
+- 本批完成至少 5 次循环动作：113 adapter 实现迁出、114 facade 压薄、115 focused specs、116 结构/文档同步、117 验证。
+- 验证：
+  - `pnpm --filter @repo/api type-check` 通过。
+  - `pnpm --filter @repo/api test -- loops-remote-shard-runtime.adapter.spec.ts loops-remote-runners.service.spec.ts loops-remote-runner.processor.ts loops.service.spec.ts loops-engine.service.spec.ts --runInBand` 通过，119 个测试通过。
+  - domain 反向依赖扫描无命中。
+- 下一步：
+  - 继续迁出 read/persist/apply/log 窄桥，优先评估 persist/review side-effect 是否可进入 domain/adapter port。
+  - 继续删除已迁 facade wrapper，尤其是 token 已覆盖的 processor-facing wrapper。
+
+## 执行批注 · nextstep Cycle 118-122
+
+### Cycle 118 · Step N7 persist/apply 状态写入 adapter 化
+
+- 新增 `LoopsRemoteShardStateAdapter`，承接 remote shard 的两类状态写入：
+  - `persistImplementation`：implementation record + annotation/shard/state/cost guard。
+  - `applyReview`：review record + max redo + notification + commit shard + cost guard。
+- state adapter 仍通过 read-detail facade 读取 enriched detail，避免本批同时迁移 detail enrichment。
+
+### Cycle 119 · Step N7 facade 私有方法压薄
+
+- `LoopsService.reviewShard` 改为委托 `remoteShardStateAdapter.applyReview`。
+- `LoopsService.persistRemoteShardImplementation` 与私有 `persistImplementationRecord` 改为委托 `remoteShardStateAdapter.persistImplementation`。
+- `remoteShardRuntimeFacade` 从 read/persist/apply/log 收窄为 read/log。
+- `LoopsRemoteShardRuntimeAdapter` 的 persist/apply 回调改为调用 `LoopsRemoteShardStateAdapter`。
+
+### Cycle 120 · Step N7 state adapter focused specs
+
+- 新增 `loops-remote-shard-state.adapter.spec.ts` 覆盖：
+  - implementation persistence 的 annotation/shard/state 写入。
+  - PASS review 的 DONE/converge/commit side effects。
+  - max redo NEEDS-WORK → FAIL 与通知/log side effects。
+- 更新 runtime adapter spec：persist/apply 断言走 state adapter，read/log 才走 facade。
+
+### Cycle 121 · Step N7 结构审查与文档同步
+
+- 确认 `LoopsService` 不再保留 persist/apply 的状态推导实现，只保留兼容委托。
+- 确认 `LoopsRemoteRunnerProcessor` 仍只依赖 `LOOPS_REMOTE_SHARD_EXECUTION_PORT`。
+- 更新 README/BACKLOG/EXECUTION/IMPLEMENTATION-ANNOTATIONS：N7 当前剩余桥从 read/persist/apply/log 收窄为 read/log。
+
+### Cycle 122 · 本批验证与下一轮待办
+
+- 本批完成至少 5 次循环动作：118 state adapter、119 facade 压薄、120 focused specs、121 文档/结构审查、122 验证。
+- 验证：
+  - `pnpm --filter @repo/api type-check` 通过。
+  - `pnpm --filter @repo/api test -- loops-remote-shard-state.adapter.spec.ts loops-remote-shard-runtime.adapter.spec.ts loops-remote-runners.service.spec.ts loops-remote-runner.processor.ts loops.service.spec.ts loops-engine.service.spec.ts --runInBand` 通过，122 个测试通过。
+  - domain 反向依赖扫描无命中。
+- 下一步：
+  - 迁出 read/log 桥：优先评估 detail read 是否应使用 `LoopsIssuesService`/domain read port，log 是否应统一进入 API log sink adapter。
+  - 继续删除已迁 facade wrapper 与旧 skipped e2e 的 facade 直连依赖。
+
+## 执行批注 · nextstep Cycle 123-127
+
+### Cycle 123 · Step N7 readDetail/log adapter 评估与实施
+
+- 评估 `LoopsIssuesService.getIssue`：可经 persistence/store 读取 LoopDetail，并允许 identity enricher；remote execution 不依赖 facade requirements coverage enrichment。
+- 新增 `LoopsRemoteShardDetailAdapter`，直接通过 `LoopsIssuesService.getIssue(issueId, identity)` 提供 remote read detail。
+- 新增 `LoopsRemoteRunnersLogAdapter`，通过可选 Winston logger 提供 remote runner log sink。
+
+### Cycle 124 · Step N7 provider wiring 去 facade 桥接
+
+- `LoopsRemoteShardRuntimeAdapter` 改为依赖 `LoopsRemoteShardDetailAdapter` + `LoopsRemoteRunnersLogAdapter`。
+- `LoopsRemoteShardStateAdapter` 改为依赖 `LoopsRemoteShardDetailAdapter`。
+- `loops.module.ts` 中 runtime/state provider factory 不再注入 `LoopsService`。
+- `LoopsService` direct-call 兼容路径也改用同一组 detail/log/state/runtime adapters。
+
+### Cycle 125 · Step N7 focused specs 校准
+
+- 更新 runtime adapter spec：read/log 断言走 dedicated adapters，persist/apply 断言走 state adapter。
+- state adapter specs 保持覆盖 implementation persistence、PASS review、redo-limit escalation。
+
+### Cycle 126 · Step N7 结构审查与文档同步
+
+- 确认 `remoteShardRuntimeFacade` / `remoteShardStateFacade` / facade provider factory 桥接无残留。
+- 确认 `LoopsRemoteRunnerProcessor` 仍只依赖 `LOOPS_REMOTE_SHARD_EXECUTION_PORT`。
+- 更新 README/BACKLOG/EXECUTION/IMPLEMENTATION-ANNOTATIONS：remote runtime/state/detail/log adapters 不再经 facade 桥接。
+
+### Cycle 127 · 本批验证与下一轮待办
+
+- 本批完成至少 5 次循环动作：123 read/log adapter、124 provider 去桥接、125 focused specs、126 文档/结构审查、127 验证。
+- 验证：
+  - `pnpm --filter @repo/api type-check` 通过。
+  - `pnpm --filter @repo/api test -- loops-remote-shard-state.adapter.spec.ts loops-remote-shard-runtime.adapter.spec.ts loops-remote-runners.service.spec.ts loops-remote-runner.processor.ts loops.service.spec.ts loops-engine.service.spec.ts --runInBand` 通过，122 个测试通过。
+  - domain 反向依赖扫描无命中。
+- 下一步：
+  - 删除/迁移 facade `executeRemoteShardJob` direct-call wrapper 前，先处理 skipped CLI e2e 直连依赖。
+  - 继续收敛其他 processor-facing facade wrappers。
+
+## 执行批注 · nextstep Cycle 128-132
+
+### Cycle 128 · Step N7 skipped CLI e2e direct-call 迁移
+
+- `loops-remote-runner.cli-e2e.spec.ts` 的 skipped full pipeline block 从 `LoopsService.executeRemoteShardJob` 改为 `LOOPS_REMOTE_SHARD_EXECUTION_PORT` 等价组合：
+  - `LoopsRemoteRunnersService.createShardExecutionPort(...)`。
+  - `LoopsRemoteShardRuntimeAdapter`。
+  - `LoopsRemoteShardStateAdapter`。
+  - `LoopsRemoteShardDetailAdapter`。
+  - `LoopsRemoteRunnersLogAdapter`。
+- `LoopsService` 仍仅用于测试 issue 创建与 fixture setup，不再承担 remote execution direct-call 入口。
+
+### Cycle 129 · Step N7 删除 executeRemoteShardJob facade wrapper
+
+- 删除 `LoopsService.executeRemoteShardJob`。
+- 删除 `LoopsService.remoteShardRuntimePort` 及其 direct-call runtime adapter getter。
+- 保留 `reviewShard` / `recordShardImplementation` 的 public API 兼容委托；它们仍经 `LoopsRemoteShardStateAdapter` 复用状态写入逻辑。
+
+### Cycle 130 · Step N7 引用扫描与 focused validation
+
+- 扫描确认代码中不再存在 `svc.executeRemoteShardJob` / `LoopsService.executeRemoteShardJob`。
+- 仅保留：
+  - processor 经 `LOOPS_REMOTE_SHARD_EXECUTION_PORT` 调用。
+  - skipped CLI e2e 经 `shardExecutionPort.executeRemoteShardJob` 调用。
+  - domain service 自身 focused specs 调用 `LoopsRemoteRunnersService.executeRemoteShardJob`。
+
+### Cycle 131 · Step N7 文档同步
+
+- 更新 README/BACKLOG/EXECUTION/IMPLEMENTATION-ANNOTATIONS：
+  - `executeRemoteShardJob` facade wrapper 已删除。
+  - remote processor/skipped CLI e2e 均以 execution port + adapters 为主入口。
+
+### Cycle 132 · 本批验证与下一轮待办
+
+- 本批完成至少 5 次循环动作：128 e2e 迁移、129 wrapper 删除、130 引用扫描、131 文档同步、132 验证。
+- 验证：
+  - `pnpm --filter @repo/api type-check` 通过。
+  - `pnpm --filter @repo/api test -- loops-remote-runner.cli-e2e.spec.ts loops-remote-shard-state.adapter.spec.ts loops-remote-shard-runtime.adapter.spec.ts loops-remote-runners.service.spec.ts loops-remote-runner.processor.ts loops.service.spec.ts loops-engine.service.spec.ts --runInBand` 通过，6 suites / 133 passed / 6 skipped。
+- 下一步：
+  - 继续收敛 remote runner 非执行面 wrappers（list/lease/job/artifact upload）或转向其他 processor-facing facade wrappers。

@@ -428,8 +428,9 @@ describe('R34a · Remote Runner CLI End-to-End', () => {
   // dependencies properly wired. The CLI binary tests above validate the
   // critical execution path; these are skipped until a proper NestJS test
   // module is set up with all required providers.
-  describe.skip('LoopsService.executeRemoteShardJob() — full pipeline (WIP: needs NestJS test harness)', () => {
+  describe.skip('LOOPS_REMOTE_SHARD_EXECUTION_PORT — full pipeline (WIP: needs NestJS test harness)', () => {
     let svc: any;
+    let shardExecutionPort: { executeRemoteShardJob(job: any): Promise<any> };
     let tmpRoot: string;
     let issueId: string;
     let shardId: string;
@@ -446,8 +447,14 @@ describe('R34a · Remote Runner CLI End-to-End', () => {
       const { LoopsService } = await import('./loops.service');
       const { LoopsFileStoreService } = await import('@app/services/loops-store');
       const { LoopsRunnerService } = await import('@app/services/loops-runners');
+      const { LoopsRemoteRunnersService } = await import('@app/services/loops-remote-runners');
       const { DeterministicLoopsAgentAdapter, DeterministicLoopsClaudeAdapter } =
         await import('@app/services/loops-runners');
+      const { LoopsRemoteShardRuntimeAdapter } =
+        await import('./loops-remote-shard-runtime.adapter');
+      const { LoopsRemoteShardStateAdapter } = await import('./loops-remote-shard-state.adapter');
+      const { LoopsRemoteShardDetailAdapter } = await import('./loops-remote-shard-detail.adapter');
+      const { LoopsRemoteRunnersLogAdapter } = await import('./loops-remote-runners-log.adapter');
 
       const { LoopsWorkLockService } = await import('@app/services/loops-locks');
       const store = new LoopsFileStoreService();
@@ -488,6 +495,27 @@ describe('R34a · Remote Runner CLI End-to-End', () => {
         agentAdapter,
         claudeAdapter,
         gitAdapter,
+      );
+      const remoteRunners = new LoopsRemoteRunnersService(store);
+      const detailAdapter = new LoopsRemoteShardDetailAdapter((svc as any).issues);
+      const logAdapter = new LoopsRemoteRunnersLogAdapter();
+      const stateAdapter = new LoopsRemoteShardStateAdapter(
+        detailAdapter,
+        store,
+        (svc as any).engine,
+        gitAdapter as any,
+      );
+      const runtimeAdapter = new LoopsRemoteShardRuntimeAdapter(
+        detailAdapter,
+        logAdapter,
+        runner,
+        claudeAdapter,
+        agentAdapter,
+        stateAdapter,
+      );
+      shardExecutionPort = remoteRunners.createShardExecutionPort(
+        runtimeAdapter.runtimePort,
+        runtimeAdapter.logSink,
       );
 
       // Create a test issue
@@ -549,7 +577,7 @@ describe('R34a · Remote Runner CLI End-to-End', () => {
     });
 
     it('executes implement workerKind and produces artifacts', async () => {
-      const result = await svc.executeRemoteShardJob({
+      const result = await shardExecutionPort.executeRemoteShardJob({
         issueId,
         shardId,
         workerKind: 'implement',
@@ -580,7 +608,7 @@ describe('R34a · Remote Runner CLI End-to-End', () => {
     }, 30000);
 
     it('executes test workerKind and produces test evidence', async () => {
-      const result = await svc.executeRemoteShardJob({
+      const result = await shardExecutionPort.executeRemoteShardJob({
         issueId,
         shardId,
         workerKind: 'test',
@@ -607,7 +635,7 @@ describe('R34a · Remote Runner CLI End-to-End', () => {
     }, 30000);
 
     it('executes review workerKind and produces review verdict', async () => {
-      const result = await svc.executeRemoteShardJob({
+      const result = await shardExecutionPort.executeRemoteShardJob({
         issueId,
         shardId,
         workerKind: 'review',
@@ -634,7 +662,7 @@ describe('R34a · Remote Runner CLI End-to-End', () => {
     }, 30000);
 
     it('handles unknown workerKind gracefully', async () => {
-      const result = await svc.executeRemoteShardJob({
+      const result = await shardExecutionPort.executeRemoteShardJob({
         issueId,
         shardId,
         workerKind: 'custom' as any,
@@ -647,7 +675,7 @@ describe('R34a · Remote Runner CLI End-to-End', () => {
     }, 15000);
 
     it('returns error for non-existent shard', async () => {
-      const result = await svc.executeRemoteShardJob({
+      const result = await shardExecutionPort.executeRemoteShardJob({
         issueId,
         shardId: 'non-existent-shard',
         workerKind: 'implement',
@@ -702,7 +730,7 @@ describe('R34a · Remote Runner CLI End-to-End', () => {
       const allArtifacts: Array<{ kind: string; ref: string }> = [];
 
       // Phase 1: Implement
-      const implResult = await svc.executeRemoteShardJob({
+      const implResult = await shardExecutionPort.executeRemoteShardJob({
         issueId: pid,
         shardId: sid,
         workerKind: 'implement',
@@ -713,7 +741,7 @@ describe('R34a · Remote Runner CLI End-to-End', () => {
       allArtifacts.push(...implResult.artifacts);
 
       // Phase 2: Test
-      const testResult = await svc.executeRemoteShardJob({
+      const testResult = await shardExecutionPort.executeRemoteShardJob({
         issueId: pid,
         shardId: sid,
         workerKind: 'test',
@@ -724,7 +752,7 @@ describe('R34a · Remote Runner CLI End-to-End', () => {
       allArtifacts.push(...testResult.artifacts);
 
       // Phase 3: Review
-      const reviewResult = await svc.executeRemoteShardJob({
+      const reviewResult = await shardExecutionPort.executeRemoteShardJob({
         issueId: pid,
         shardId: sid,
         workerKind: 'review',

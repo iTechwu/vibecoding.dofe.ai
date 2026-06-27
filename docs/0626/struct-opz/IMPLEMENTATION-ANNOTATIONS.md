@@ -11,33 +11,190 @@
 
 ## 总体状态
 
-| Step                                           | 状态     | 标注                                                                                                                                                                      |
-| ---------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Step 0 · 建立目标目录与兼容 Facade             | 已完成   | `LoopsDomainModule` 已作为 domain 装配入口                                                                                                                                |
-| Step 1 · 下沉低耦合工具、Store 与 Lock         | 已完成   | `loops-store` / `loops-locks` 已下沉                                                                                                                                      |
-| Step 2 · 拆 Issue Intake 与查询能力            | 部分完成 | intake + 完整 createIssue 编排 + query/read pipeline 已下沉，API 保留兼容 wrapper                                                                                         |
-| Step 3 · 拆 Loop Engine 状态机                 | 部分完成 | 纯推导+谓词+spec/decompose+advance+runLoopUnlocked+runRunnableShard+reloop/applyResume/finalize/reviewGlobal(port) 已下沉；runLoop workLock + facade builder ports 仍待迁 |
-| Step 4 · 拆 Runner、Runtime 与 Workspace       | 部分完成 | runner/runtime 主体已下沉，adapter provider wiring 留 API module                                                                                                          |
-| Step 5 · 拆 Evidence、Quality 与 Release Gates | 部分完成 | evidence/quality 主要 builder/gate/enricher 已下沉，API 保留兼容 wrapper                                                                                                  |
-| Step 6 · 拆 Eval 与 Bench 聚合                 | 部分完成 | builder + trend/aggregation worker IO + DB/Redis 适配（runner）已下沉，processor 解耦 facade；evidence 收集仍由 facade port                                               |
-| Step 7 · 拆 Integrations、MCP、CI、PR 与通知   | 部分完成 | PR/MCP/secret + CI checks registry + CI publication builder + notification sender re-home 完成；testCiCheck provider publish/permission/persistence 仍属 facade           |
-| Step 8 · 拆 Trigger 与 Remote Runner Pool      | 部分完成 | trigger fire + issue creation port + artifact IO + shard execution job lifecycle 已下沉；CLI/Docker/reviewShard 重依赖经 API runtime port 注入                            |
-| Step 9 · 拆 Admin、Archive、Tool 与 Blueprint  | 部分完成 | Cycle 53-57 完成 archive collection service                                                                                                                               |
-| Step 10 · 收敛 API Module 与删除旧聚合         | 待实施   | -                                                                                                                                                                         |
+| Step                                           | 状态     | 标注                                                                                                                                                                          |
+| ---------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Step 0 · 建立目标目录与兼容 Facade             | 已完成   | `LoopsDomainModule` 已作为 domain 装配入口                                                                                                                                    |
+| Step 1 · 下沉低耦合工具、Store 与 Lock         | 已完成   | `loops-store` / `loops-locks` 已下沉                                                                                                                                          |
+| Step 2 · 拆 Issue Intake 与查询能力            | 部分完成 | intake + 完整 createIssue 编排 + query/read pipeline 已下沉，API 保留兼容 wrapper                                                                                             |
+| Step 3 · 拆 Loop Engine 状态机                 | 部分完成 | 纯推导+谓词+spec/decompose+advance+runLoop workLock+runLoopUnlocked+runRunnableShard+reloop/applyResume/finalize/reviewGlobal(port) 已下沉；facade builder ports 仍待 N7 收敛 |
+| Step 4 · 拆 Runner、Runtime 与 Workspace       | 部分完成 | runner/runtime 主体已下沉，adapter provider wiring 留 API module                                                                                                              |
+| Step 5 · 拆 Evidence、Quality 与 Release Gates | 部分完成 | evidence/quality 主要 builder/gate/enricher 已下沉，API 保留兼容 wrapper                                                                                                      |
+| Step 6 · 拆 Eval 与 Bench 聚合                 | 部分完成 | builder + trend/aggregation worker IO + DB/Redis 适配（runner）已下沉，processor 解耦 facade；evidence 收集仍由 facade port                                                   |
+| Step 7 · 拆 Integrations、MCP、CI、PR 与通知   | 部分完成 | PR/MCP/secret + CI checks registry + CI publication builder + notification sender re-home 完成；testCiCheck provider publish/permission/persistence 仍属 facade               |
+| Step 8 · 拆 Trigger 与 Remote Runner Pool      | 部分完成 | trigger fire + issue creation port + artifact IO + shard execution job lifecycle 已下沉；runtime/state/detail/log adapters 接管 remote execution wiring                       |
+| Step 9 · 拆 Admin、Archive、Tool 与 Blueprint  | 部分完成 | Cycle 53-57 完成 archive collection service                                                                                                                                   |
+| Step 10 · 收敛 API Module 与删除旧聚合         | 部分完成 | N7 已启动：remote execution port 不再由 `LoopsService implements` 提供；remote adapters 不再经 facade 桥接，`executeRemoteShardJob` facade wrapper 已删除                     |
 
 ## 当前剩余待实施项
 
 截至 nextstep Cycle 60 后，已经完成多批“实施 → 标注文档 → 审查待实施项 → 再标注文档”的循环。当前剩余项如下：
 
 - Step 2：`list` / `listFromFile` / `getIssue` query/read pipeline + 完整 `createIssue` intake 编排（含 workflow recipe 派生）已下沉到 `loops-issues`；API facade 保留兼容入口与 HTTP 日志/异常映射。
-- Step 3：纯推导 + 谓词 + `generateSpec`/`decompose` + `advance` 递归调度 + `runLoopUnlocked` shard 调度 + `runRunnableShard` 重执行 + `reloop`/`applyResume`/`finalize`/`reviewGlobal`（经 `LoopsEngineShardRunnerPort`/`LoopsEngineFinalizePort`/`LoopsEngineGlobalReviewPort` 注入重依赖 builder）已下沉到 `loops-engine`；`runLoop` workLock 包装 + facade builder ports 仍在 API `LoopsService`，分子批迁移中（N1 最高风险节点）。
+- Step 3：纯推导 + 谓词 + `generateSpec`/`decompose` + `advance` 递归调度 + `runLoop` workLock 包装 + `runLoopUnlocked` shard 调度 + `runRunnableShard` 重执行 + `reloop`/`applyResume`/`finalize`/`reviewGlobal`（经 `LoopsEngineRunLoopPort`/`LoopsEngineShardRunnerPort`/`LoopsEngineFinalizePort`/`LoopsEngineGlobalReviewPort` 注入重依赖 builder）已下沉到 `loops-engine`；facade builder ports 仍在 API `LoopsService`，等待 N7 收敛。
 - Step 4：runner services/adapters 已下沉；adapter provider wiring 仍在 API module，作为 API 装配逻辑保留。
 - Step 5：workflow baseline evidence、delivery evidence markdown、runtime security exceptions、second opinion policy、release gate blockers、requirements coverage builder、evidence artifact builder、review/release gate builder、delivery controls、list enricher、second opinion builder 等已下沉；API `LoopsService` 仅保留兼容 wrapper。
 - Step 6：Eval suite builder、Eval run builder、Eval trend baseline builder、request-time aggregation builder 与 loop bench metric helper + trend worker IO 编排 + aggregation worker 编排 + DB/Redis 适配（`LoopsEvalAggregationRunnerService`）已下沉到 `loops-eval`；`LoopsEvalAggregationProcessor` 不再注入 facade 类；evidence 收集仍由 `LOOPS_EVAL_EVIDENCE_PORT`（facade）提供。
 - Step 7：CI checks registry、CI publication evidence builder 已下沉到 `loops-integrations`（`LoopsCiChecksService`）；`LoopsNotificationSender` 已 re-home 从 `loops-store` 到 `loops-integrations`（store 经 `imports: LoopsIntegrationsModule` 注入）；testCiCheck 的 provider publish / permission / publication persistence 仍属 facade。
-- Step 8：schedule trigger CRUD + `fireScheduleTrigger` 编排 + issue creation port 实现已下沉；remote runner list/lease/job + artifact IO（`uploadRemoteRunnerArtifacts` + `LoopsRemoteArtifactStoragePort`）+ shard execution job lifecycle 已下沉到 `loops-remote-runners`；`LoopsRemoteRunnerProcessor` 不再注入 facade 类，CLI/Docker/reviewShard 重依赖经 API runtime port 注入。
+- Step 8：schedule trigger CRUD + `fireScheduleTrigger` 编排 + issue creation port 实现已下沉；remote runner list/lease/job + artifact IO（`uploadRemoteRunnerArtifacts` + `LoopsRemoteArtifactStoragePort`）+ shard execution job lifecycle 已下沉到 `loops-remote-runners`；`LoopsRemoteRunnerProcessor` 不再注入 facade 类，runtime/state/detail/log adapters 已接管 remote execution wiring。
 - Step 9：capability registry、tool registry、delivery blueprint marketplace、archive control wrapper、archive collection service 已下沉；eval aggregation 接入仍待 Step 6/Next N4 收口。
-- Step 10：API module 仍需进一步瘦身；`LoopsService` 仍为 legacy 聚合 facade + 大量私有方法。
+- Step 10：API module 收敛已启动；`LoopsService` 仍为 legacy 聚合 facade + 大量私有方法，但 remote execution port 实现声明与 `executeRemoteShardJob` facade wrapper 已移除，remote adapters 不再经 facade 桥接。
+
+## nextstep Cycle 108-112 · N1/N4 收敛准备批
+
+### 实施
+
+- N1：`LoopsEngineService.runLoop` 接管 `getIssue` / terminal guard / `workLock.withIssueAndRepoLock` 包装。
+- N1：新增并导出 `LoopsEngineRunLoopPort`；`LoopsService.runLoop` 降为 `engine.runLoop(issueId, this.runLoopPort)`。
+- N4：新增 `LoopsRemoteShardRuntimeAdapter`，把 remote shard runtime/log port 暴露为 API-layer provider seam。
+- N4：`LOOPS_REMOTE_SHARD_EXECUTION_PORT` provider 改为 `LoopsRemoteRunnersService + LoopsRemoteShardRuntimeAdapter` factory。
+- N4：新增 provider-focused spec，避免 import 整个 `loops.module.ts` 的重依赖链。
+
+### 标注文档
+
+- Step 3 标注为：runLoop workLock 包装已下沉；facade builder ports 留给 N7 收敛。
+- Step 8 标注为：remote shard execution provider seam 已 class 化；runtime 实现内部仍暂委托 facade getter。
+
+### 审查待实施项
+
+- N7：删除已迁 wrapper 前，需继续确认 controller/processor/spec 只依赖 token 或 thin wrapper。
+- N4：`LoopsRemoteShardRuntimeAdapter` 下一步应逐项接管 CLI/Docker/reviewShard 重依赖，最终移除 facade runtime getter。
+- N2/N5/N6/N3 仍按 nextstep BACKLOG 推进。
+
+### 再标注文档
+
+- 本批满足至少 5 次循环动作：Cycle 108 N1 实施、109 N1 tests、110 N4 provider seam、111 文档/结构审查、112 验证。
+
+### 验证
+
+- `pnpm --filter @repo/api test -- loops-engine.service.spec.ts loops-remote-shard-runtime.adapter.spec.ts --runInBand` 通过，42 个测试通过。
+- `pnpm --filter @repo/api test -- loops-remote-runners.service.spec.ts loops-remote-runner.processor.ts loops-remote-shard-runtime.adapter.spec.ts --runInBand` 通过，8 个测试通过。
+- `pnpm --filter @repo/api type-check` 通过。
+
+## nextstep Cycle 113-117 · N7 facade 收敛首批
+
+### 实施
+
+- `LoopsRemoteShardRuntimeAdapter` 接管 remote runtime port 的 implementation/tests/review callbacks。
+- `LoopsService.remoteShardRuntimePort` 改为通过 `createRemoteShardRuntimeAdapter(...).runtimePort` 兼容转发，不再内联 runtime 实现。
+- 新增 `remoteShardRuntimeFacade` 窄桥，当前仅承载 read/persist/apply/log。
+- 新增 `persistRemoteShardImplementation` 兼容桥，复用原 implementation record persistence。
+- `LoopsService` 移除 `implements LoopsRemoteShardExecutionPort`，remote processor 继续经 token 消费 domain execution port。
+
+### 标注文档
+
+- Step 8 标注为：runtime adapter 已接管 CLI/Docker implementation、runner tests、agent review。
+- Step 10 标注为：N7 facade 收敛已启动，facade 仍保留兼容 wrapper 与窄状态桥。
+
+### 审查待实施项
+
+- 下一批 N7：
+  - 迁出 read/persist/apply/log 窄桥。
+  - 删除 token 已覆盖的 processor-facing facade wrapper。
+  - 继续校准 skipped CLI e2e 中直接调用 `LoopsService.executeRemoteShardJob` 的兼容需求。
+
+### 再标注文档
+
+- 本批满足至少 5 次循环动作：Cycle 113 adapter 实现迁出、114 facade 压薄、115 focused specs、116 文档/结构审查、117 验证。
+
+### 验证
+
+- `pnpm --filter @repo/api type-check` 通过。
+- `pnpm --filter @repo/api test -- loops-remote-shard-runtime.adapter.spec.ts loops-remote-runners.service.spec.ts loops-remote-runner.processor.ts loops.service.spec.ts loops-engine.service.spec.ts --runInBand` 通过，119 个测试通过。
+- domain 反向依赖扫描无命中。
+
+## nextstep Cycle 118-122 · N7 persist/apply 状态桥迁出
+
+### 实施
+
+- 新增 `LoopsRemoteShardStateAdapter`，接管 remote shard implementation persistence 与 review application 两类状态写入。
+- `LoopsRemoteShardRuntimeAdapter` 的 `persistImplementation` / `applyReview` runtime port callbacks 改为调用 state adapter。
+- `LoopsService.reviewShard`、`persistRemoteShardImplementation`、私有 `persistImplementationRecord` 改为兼容委托，不再保留状态推导实现。
+- `remoteShardRuntimeFacade` 从 read/persist/apply/log 收窄为 read/log。
+
+### 标注文档
+
+- Step 8 标注为：runtime adapter 接管 execution callbacks；state adapter 接管 persist/apply 状态写入。
+- Step 10 标注为：facade 仍保留兼容 wrapper 与 read/log 桥。
+
+### 审查待实施项
+
+- 下一批 N7：
+  - 迁出 read/log 桥。
+  - 评估 skipped CLI e2e 对 `LoopsService.executeRemoteShardJob` 的直连兼容需求。
+  - 继续删除已迁 processor-facing facade wrapper。
+
+### 再标注文档
+
+- 本批满足至少 5 次循环动作：Cycle 118 state adapter、119 facade 压薄、120 focused specs、121 文档/结构审查、122 验证。
+
+### 验证
+
+- `pnpm --filter @repo/api type-check` 通过。
+- `pnpm --filter @repo/api test -- loops-remote-shard-state.adapter.spec.ts loops-remote-shard-runtime.adapter.spec.ts loops-remote-runners.service.spec.ts loops-remote-runner.processor.ts loops.service.spec.ts loops-engine.service.spec.ts --runInBand` 通过，122 个测试通过。
+- domain 反向依赖扫描无命中。
+
+## nextstep Cycle 123-127 · N7 read/log 桥迁出
+
+### 实施
+
+- 新增 `LoopsRemoteShardDetailAdapter`，通过 `LoopsIssuesService.getIssue(issueId, identity)` 读取 remote execution 所需 LoopDetail。
+- 新增 `LoopsRemoteRunnersLogAdapter`，通过可选 Winston logger 提供 remote runner log sink。
+- `LoopsRemoteShardRuntimeAdapter` 改为依赖 detail/log/state adapters。
+- `LoopsRemoteShardStateAdapter` 改为依赖 detail adapter。
+- `loops.module.ts` 中 runtime/state provider factory 不再注入 `LoopsService`。
+- `LoopsService` direct-call 兼容路径改为自构造同一组 adapters，不再暴露 `remoteShardRuntimeFacade` / `remoteShardStateFacade`。
+
+### 标注文档
+
+- Step 8 标注为：runtime/state/detail/log adapters 已接管 remote execution wiring。
+- Step 10 标注为：remote adapters 不再经 facade 桥接；facade 仅保留 direct-call 兼容 wrapper。
+
+### 审查待实施项
+
+- 下一批 N7：
+  - 处理 skipped CLI e2e 对 `LoopsService.executeRemoteShardJob` 的直连依赖。
+  - 删除/迁移 facade `executeRemoteShardJob` wrapper。
+  - 继续收敛其他 processor-facing facade wrappers。
+
+### 再标注文档
+
+- 本批满足至少 5 次循环动作：Cycle 123 read/log adapter、124 provider 去桥接、125 focused specs、126 文档/结构审查、127 验证。
+
+### 验证
+
+- `pnpm --filter @repo/api type-check` 通过。
+- `pnpm --filter @repo/api test -- loops-remote-shard-state.adapter.spec.ts loops-remote-shard-runtime.adapter.spec.ts loops-remote-runners.service.spec.ts loops-remote-runner.processor.ts loops.service.spec.ts loops-engine.service.spec.ts --runInBand` 通过，122 个测试通过。
+- domain 反向依赖扫描无命中。
+
+## nextstep Cycle 128-132 · N7 executeRemoteShardJob wrapper 删除
+
+### 实施
+
+- `loops-remote-runner.cli-e2e.spec.ts` 的 skipped full pipeline block 从 `svc.executeRemoteShardJob` 迁到 `shardExecutionPort.executeRemoteShardJob`。
+- skipped e2e 通过 `LoopsRemoteRunnersService.createShardExecutionPort` + runtime/state/detail/log adapters 组装 execution port。
+- 删除 `LoopsService.executeRemoteShardJob` direct-call facade wrapper。
+- 删除 `LoopsService.remoteShardRuntimePort` direct-call runtime getter。
+- `reviewShard` / implementation record public 兼容路径继续经 `LoopsRemoteShardStateAdapter`。
+
+### 标注文档
+
+- Step 10 标注为：`executeRemoteShardJob` facade wrapper 已删除。
+- Step 8 标注为：remote processor 与 skipped CLI e2e 均经 execution port/adapters，而非 legacy facade。
+
+### 审查待实施项
+
+- 下一批 N7：
+  - 评估 remote runner list/lease/job/artifact upload wrappers 的 controller 兼容迁移。
+  - 继续收敛其他 processor-facing facade wrappers。
+
+### 再标注文档
+
+- 本批满足至少 5 次循环动作：Cycle 128 e2e 迁移、129 wrapper 删除、130 引用扫描、131 文档同步、132 验证。
+
+### 验证
+
+- `pnpm --filter @repo/api type-check` 通过。
+- `pnpm --filter @repo/api test -- loops-remote-runner.cli-e2e.spec.ts loops-remote-shard-state.adapter.spec.ts loops-remote-shard-runtime.adapter.spec.ts loops-remote-runners.service.spec.ts loops-remote-runner.processor.ts loops.service.spec.ts loops-engine.service.spec.ts --runInBand` 通过，6 suites / 133 passed / 6 skipped。
 
 ## Cycle 0 · 执行记录初始化
 

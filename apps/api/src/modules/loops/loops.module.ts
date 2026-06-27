@@ -13,9 +13,13 @@ import {
   CliLoopsGitAdapter,
   DeterministicLoopsAgentAdapter,
   DeterministicLoopsClaudeAdapter,
+  LoopsRunnerService,
   LOOPS_AGENT_ADAPTER,
   LOOPS_CLAUDE_ADAPTER,
   LOOPS_GIT_ADAPTER,
+  type LoopsAgentAdapter,
+  type LoopsClaudeAdapter,
+  type LoopsGitAdapter,
 } from '@app/services/loops-runners';
 import { LoopsController } from './loops.controller';
 import { LoopsService } from './loops.service';
@@ -23,6 +27,17 @@ import { LoopsEvalAggregationProcessor } from './loops-eval-aggregation.processo
 import { LoopsRemoteRunnerProcessor } from './loops-remote-runner.processor';
 import { LoopsTriggerSchedulerProcessor } from './loops-trigger-scheduler.processor';
 import { LoopsCrossTenantArchiveService } from './loops-cross-tenant-archive.service';
+import {
+  createRemoteShardExecutionPort,
+  createRemoteShardRuntimeAdapter,
+  LoopsRemoteShardRuntimeAdapter,
+} from './loops-remote-shard-runtime.adapter';
+import {
+  createRemoteShardStateAdapter,
+  LoopsRemoteShardStateAdapter,
+} from './loops-remote-shard-state.adapter';
+import { LoopsRemoteShardDetailAdapter } from './loops-remote-shard-detail.adapter';
+import { LoopsRemoteRunnersLogAdapter } from './loops-remote-runners-log.adapter';
 import { LoopsPrProviderClient } from '@app/services/loops-integrations';
 import {
   LOOPS_ARCHIVE_COLLECTION_PORT,
@@ -35,6 +50,9 @@ import {
   LoopsRemoteRunnersService,
 } from '@app/services/loops-remote-runners';
 import { LOOPS_EVAL_EVIDENCE_PORT } from '@app/services/loops-eval';
+import { LoopsDockerSandboxService } from '@app/services/loops-runtime';
+import { LoopsFileStoreService } from '@app/services/loops-store';
+import { LoopsEngineService } from '@app/services/loops-engine';
 
 @Module({
   // HttpModule is kept for API-layer adapters; integration HTTP providers now
@@ -79,16 +97,13 @@ import { LOOPS_EVAL_EVIDENCE_PORT } from '@app/services/loops-eval';
       provide: LOOPS_ISSUE_CREATION_PORT,
       useExisting: LoopsIssuesService,
     },
-    // 结构优化 nextstep Step N4：remote shard execution 编排已迁入
-    // `LoopsRemoteRunnersService`；facade 仅提供 CLI/Docker/runtime adapter port。
+    // 结构优化 nextstep Step N7：remote shard execution 编排已迁入
+    // `LoopsRemoteRunnersService`；runtime/state/detail/log adapters 由 API layer
+    // 显式装配，不再经 legacy facade 桥接。
     {
       provide: LOOPS_REMOTE_SHARD_EXECUTION_PORT,
-      useFactory: (remoteRunners: LoopsRemoteRunnersService, service: LoopsService) =>
-        remoteRunners.createShardExecutionPort(
-          service.remoteShardRuntimePort,
-          service.remoteRunnersLogSink,
-        ),
-      inject: [LoopsRemoteRunnersService, LoopsService],
+      useFactory: createRemoteShardExecutionPort,
+      inject: [LoopsRemoteRunnersService, LoopsRemoteShardRuntimeAdapter],
     },
     // 结构优化 nextstep Step N2 收尾：eval evidence port 经 facade 的
     // `evalEvidencePort` 适配（list/readDetail/cost enrichment 仍在 facade），
@@ -99,6 +114,59 @@ import { LOOPS_EVAL_EVIDENCE_PORT } from '@app/services/loops-eval';
       inject: [LoopsService],
     },
     LoopsCrossTenantArchiveService,
+    {
+      provide: LoopsRemoteShardRuntimeAdapter,
+      useFactory: (
+        detailAdapter: LoopsRemoteShardDetailAdapter,
+        logAdapter: LoopsRemoteRunnersLogAdapter,
+        runner: LoopsRunnerService,
+        claudeAdapter: LoopsClaudeAdapter,
+        agentAdapter: LoopsAgentAdapter,
+        stateAdapter: LoopsRemoteShardStateAdapter,
+        dockerSandbox: LoopsDockerSandboxService,
+      ) =>
+        createRemoteShardRuntimeAdapter({
+          detailAdapter,
+          logAdapter,
+          runner,
+          claudeAdapter,
+          agentAdapter,
+          stateAdapter,
+          dockerSandbox,
+        }),
+      inject: [
+        LoopsRemoteShardDetailAdapter,
+        LoopsRemoteRunnersLogAdapter,
+        LoopsRunnerService,
+        LOOPS_CLAUDE_ADAPTER,
+        LOOPS_AGENT_ADAPTER,
+        LoopsRemoteShardStateAdapter,
+        LoopsDockerSandboxService,
+      ],
+    },
+    {
+      provide: LoopsRemoteShardStateAdapter,
+      useFactory: (
+        detailAdapter: LoopsRemoteShardDetailAdapter,
+        store: LoopsFileStoreService,
+        engine: LoopsEngineService,
+        gitAdapter: LoopsGitAdapter,
+      ) =>
+        createRemoteShardStateAdapter({
+          detailAdapter,
+          store,
+          engine,
+          gitAdapter,
+        }),
+      inject: [
+        LoopsRemoteShardDetailAdapter,
+        LoopsFileStoreService,
+        LoopsEngineService,
+        LOOPS_GIT_ADAPTER,
+      ],
+    },
+    LoopsRemoteShardDetailAdapter,
+    LoopsRemoteRunnersLogAdapter,
     // 结构优化 Step 1b：工作锁 service + LOOPS_LOCK_BACKEND backend 绑定已下沉到
     // `LoopsLocksModule`（经 `LoopsDomainModule` re-export 注入）。
     DeterministicLoopsAgentAdapter,

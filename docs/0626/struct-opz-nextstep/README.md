@@ -23,12 +23,12 @@
 
 仍需收紧：
 
-- Step 3：纯推导 + 谓词 + `generateSpec`/`decompose` + `advance` 递归调度 + `runLoopUnlocked` shard 调度 + `runRunnableShard` 重执行 + `reloop`/`applyResume`/`finalize`/`reviewGlobal`（经各 port 注入重依赖 builder）已下沉到 `loops-engine`；`runLoop` workLock 包装仍在 facade（N1 分子批迁移）。
+- Step 3：纯推导 + 谓词 + `generateSpec`/`decompose` + `advance` 递归调度 + `runLoop` workLock 包装 + `runLoopUnlocked` shard 调度 + `runRunnableShard` 重执行 + `reloop`/`applyResume`/`finalize`/`reviewGlobal`（经各 port 注入重依赖 builder）已下沉到 `loops-engine`；facade 仍保留 builder/重依赖 ports 作为 N7 收敛前兼容层。
 - Step 6：Eval suite/run/bench builder + trend worker IO + aggregation worker 编排 + DB/Redis 适配（`LoopsEvalAggregationRunnerService`）已下沉；processor 解耦 facade；evidence 收集仍由 `LOOPS_EVAL_EVIDENCE_PORT`（facade）提供。
 - Step 7：CI checks registry + CI publication evidence builder + notification sender（re-home 到 `loops-integrations`）已下沉；testCiCheck 的 provider publish / permission / publication persistence 仍属 facade。
-- Step 8：schedule trigger CRUD + `fireScheduleTrigger` 编排 + issue creation port 实现已下沉；remote runner list/lease/job + artifact IO（`uploadRemoteRunnerArtifacts` + `LoopsRemoteArtifactStoragePort`）+ shard execution port + shard execution job lifecycle（implement/test/review 编排）已下沉到 `loops-remote-runners`；CLI/Docker/reviewShard 重依赖经 runtime port 由 API adapter 提供。
+- Step 8：schedule trigger CRUD + `fireScheduleTrigger` 编排 + issue creation port 实现已下沉；remote runner list/lease/job + artifact IO（`uploadRemoteRunnerArtifacts` + `LoopsRemoteArtifactStoragePort`）+ shard execution port + shard execution job lifecycle（implement/test/review 编排）已下沉到 `loops-remote-runners`；runtime/state/detail/log adapters 已接管 remote shard execution 运行时与状态写入，module provider 不再经 legacy facade 桥接。
 - Step 9：Archive control wrapper 与 collection port 已下沉到 `loops-admin`；eval aggregation 接入仍待 Step N4 收口。
-- Step 10：API module / facade wrapper 最终收敛仍未开始。
+- Step 10：API module / facade wrapper 收敛已启动；`LoopsService` 不再实现 remote shard execution port，`executeRemoteShardJob` facade wrapper 已删除，remote processor/CLI e2e 以 token + runtime/state/detail/log adapters 为主入口。
 
 ## 文档说明
 

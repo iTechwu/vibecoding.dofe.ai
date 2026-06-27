@@ -319,6 +319,47 @@ describe('LoopsEngineService', () => {
     });
   });
 
+  describe('runLoop lock wrapper', () => {
+    it('returns terminal detail without acquiring the work lock', async () => {
+      const engine = new LoopsEngineService();
+      const terminal = buildDetail({ state: { phase: 'CLOSED' } as LoopStateItem });
+      const port = {
+        getDetail: jest.fn().mockResolvedValue(terminal),
+        withIssueAndRepoLock: jest.fn(),
+        shardRunnerPort: {},
+      };
+
+      await expect(engine.runLoop('issue-1', port as never)).resolves.toBe(terminal);
+
+      expect(port.withIssueAndRepoLock).not.toHaveBeenCalled();
+    });
+
+    it('acquires the issue/repo lock and runs the unlocked scheduler for active loops', async () => {
+      const engine = new LoopsEngineService();
+      const detail = buildDetail({ issue: { id: 'issue-1', targetRepo: '/repo' } as LoopIssue });
+      const unlocked = buildDetail({
+        issue: detail.issue,
+        state: { phase: 'PHASE_6_CONVERGE' } as LoopStateItem,
+      });
+      const shardRunnerPort = { readFreshDetail: jest.fn() };
+      const runLoopUnlocked = jest.spyOn(engine, 'runLoopUnlocked').mockResolvedValueOnce(unlocked);
+      const port = {
+        getDetail: jest.fn().mockResolvedValue(detail),
+        withIssueAndRepoLock: jest.fn(async (_input, run: () => Promise<LoopDetail>) => run()),
+        shardRunnerPort,
+      };
+
+      await expect(engine.runLoop('issue-1', port as never)).resolves.toBe(unlocked);
+
+      expect(port.withIssueAndRepoLock).toHaveBeenCalledWith(
+        { issueId: 'issue-1', targetRepo: '/repo' },
+        expect.any(Function),
+      );
+      expect(runLoopUnlocked).toHaveBeenCalledWith('issue-1', detail, shardRunnerPort);
+      runLoopUnlocked.mockRestore();
+    });
+  });
+
   describe('runLoopUnlocked scheduler', () => {
     function buildSchedulerStore() {
       return {

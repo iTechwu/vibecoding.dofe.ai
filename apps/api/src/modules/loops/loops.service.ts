@@ -124,6 +124,8 @@ import {
   type LoopsEvalLogSink,
 } from '@app/services/loops-eval';
 import { LoopsCrossTenantArchiveService } from './loops-cross-tenant-archive.service';
+import { createRemoteShardStateAdapter } from './loops-remote-shard-state.adapter';
+import { LoopsRemoteShardDetailAdapter } from './loops-remote-shard-detail.adapter';
 import { LoopsMcpClientService, LoopsMcpSecretService } from '@app/services/loops-integrations';
 import { LoopsDockerSandboxService } from '@app/services/loops-runtime';
 import type { Prisma, LoopEvalAggregation } from '@prisma/client';
@@ -134,10 +136,6 @@ import {
   LoopsRemoteRunnersService,
   type LoopsRemoteArtifactStoragePort,
   type LoopsRemoteRunnersLogSink,
-  type LoopsRemoteShardExecutionJob,
-  type LoopsRemoteShardExecutionPort,
-  type LoopsRemoteShardExecutionResult,
-  type LoopsRemoteShardRuntimePort,
 } from '@app/services/loops-remote-runners';
 import {
   AgentRuntimeDetectionService,
@@ -162,6 +160,7 @@ import { LoopsIssuesService } from '@app/services/loops-issues';
 import {
   LoopsEngineService,
   type LoopsEngineAdvancePort,
+  type LoopsEngineRunLoopPort,
   type LoopsEngineShardRunnerPort,
   type LoopsEngineFinalizePort,
   type LoopsEngineGlobalReviewPort,
@@ -236,7 +235,7 @@ const AGENT_RUNTIME_DEFINITIONS: AgentRuntimeDefinition[] = [
 ];
 
 @Injectable()
-export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExecutionPort {
+export class LoopsService implements LoopsIssueCreationPort {
   private readonly webhookRateWindows = new Map<string, { count: number; resetAt: number }>();
 
   constructor(
@@ -558,14 +557,9 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
   }
 
   async runLoop(issueId: string) {
-    const detail = await this.getIssue(issueId);
-    if (this.isTerminal(detail)) {
-      return detail;
-    }
-    return this.workLock.withIssueAndRepoLock(
-      { issueId, targetRepo: detail.issue.targetRepo },
-      () => this.runLoopUnlocked(issueId, detail),
-    );
+    // 结构优化 nextstep Step N1：terminal guard + workLock 包装已迁入
+    // `LoopsEngineService.runLoop`；facade 只提供 detail/lock/shard-runner port。
+    return this.engine.runLoop(issueId, this.runLoopPort);
   }
 
   async advance(issueId: string) {
@@ -594,6 +588,15 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
           status: phase,
           payload: { maxSteps },
         }),
+    };
+  }
+
+  /** Adapter exposing facade detail read + work lock as the engine run-loop port. */
+  private get runLoopPort(): LoopsEngineRunLoopPort {
+    return {
+      getDetail: (issueId: string) => this.getIssue(issueId),
+      withIssueAndRepoLock: (input, run) => this.workLock.withIssueAndRepoLock(input, run),
+      shardRunnerPort: this.shardRunnerPort,
     };
   }
 
@@ -1552,6 +1555,15 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
     return {
       log: (level, message, meta) => this.log(level, message, meta),
     };
+  }
+
+  private get remoteShardStateAdapter() {
+    return createRemoteShardStateAdapter({
+      detailAdapter: new LoopsRemoteShardDetailAdapter(this.issues),
+      store: this.store,
+      engine: this.engine,
+      gitAdapter: this.gitAdapter,
+    });
   }
 
   async listMcpServers(
@@ -2621,113 +2633,6 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
     // liveness is checked via the queue health endpoint.
     const running = activeTriggers > 0;
     return { running, activeTriggers, totalFired, totalErrors, lastTickAt };
-  }
-
-  // =========================================================================
-  // Remote Runner Shard Execution (R34a: CLI adapter dispatch)
-  // =========================================================================
-
-  /**
-   * Execute a single Remote Runner shard job via the appropriate CLI adapter
-   * or runner service. This is the async execution path called by
-   * LoopsRemoteRunnerProcessor, decoupled from the HTTP request lifecycle.
-   *
-   * Worker kinds:
-   *   - implement: Run Claude/Codex adapter to implement a shard, persist record
-   *   - test:      Run test commands via LoopsRunnerService, persist test record
-   *   - review:    Run AI review via agent adapter, persist review verdict
-   */
-  async executeRemoteShardJob(
-    job: LoopsRemoteShardExecutionJob,
-  ): Promise<LoopsRemoteShardExecutionResult> {
-    return this.remoteRunnersService.executeRemoteShardJob(
-      job,
-      this.remoteShardRuntimePort,
-      this.remoteRunnersLogSink,
-    );
-  }
-
-  get remoteShardRuntimePort(): LoopsRemoteShardRuntimePort {
-    return {
-      readDetail: (issueId: string) => this.getIssue(issueId),
-      runImplementation: async (input) => {
-        if (input.runtimeBackend === 'docker' && this.dockerSandbox) {
-          const dockerResult = await this.dockerSandbox.executeOrThrow({
-            image: input.sandboxProfile ?? 'dofe-ai/sandbox:latest',
-            command:
-              input.command ??
-              `codex implement --shard ${input.shard.id} --issue ${input.issue.id}`,
-            workdir: input.issue.targetRepo,
-            mountPath: input.issue.targetRepo,
-            networkMode: 'none',
-            readonlyRootfs: false,
-            capDrop: ['ALL'],
-            capAdd: [],
-            timeoutSec: 600,
-            memoryLimitMb: 2048,
-          });
-          return {
-            record: {
-              id: `impl-record-${input.shard.id}-r${input.round}-${Date.now()}`,
-              issueId: input.issue.id,
-              shardId: input.shard.id,
-              round: input.round,
-              implementer: `remote-runner:docker`,
-              status: dockerResult.exitCode === 0 ? 'IMPLEMENTED' : 'NEEDS-WORK',
-              summary: `Docker sandbox execution: exit ${dockerResult.exitCode}`,
-              changedFiles: [],
-              notes: dockerResult.stdout.slice(0, 2000),
-              tokens: 0,
-              created: new Date().toISOString(),
-            },
-            logContent: dockerResult.stdout,
-          };
-        }
-
-        const result = await this.claudeAdapter.run({
-          issue: input.issue,
-          shard: input.shard,
-          round: input.round,
-          cwd: input.issue.targetRepo,
-        });
-        return {
-          record: {
-            ...result.record,
-            implementer: `remote-runner:${input.runtimeBackend}`,
-          },
-        };
-      },
-      persistImplementation: async (
-        issueId: string,
-        shardId: string,
-        record: LoopImplementationRecord,
-      ) => {
-        await this.persistImplementationRecord(issueId, shardId, record);
-      },
-      runTests: (input) =>
-        this.runner.runShardTests({
-          issueId: input.issueId,
-          shardId: input.shardId,
-          round: input.round,
-          cwd: input.cwd,
-          request: {
-            commands: input.command ? [input.command] : undefined,
-            runner: `remote-runner:${input.runtimeBackend}`,
-          },
-          sandboxProfile:
-            input.runtimeBackend === 'docker'
-              ? {
-                  network: input.sandboxProfile === 'strict' ? 'deny' : 'allowlist',
-                  writeScope: 'repo',
-                  shellEnforcement: 'allowlist',
-                  secretMode: 'redacted',
-                }
-              : undefined,
-        }),
-      review: (input) => this.agentAdapter.review(input),
-      applyReview: (issueId: string, shardId: string, request: LoopReviewShardRequest) =>
-        this.reviewShard(issueId, shardId, request).then(() => undefined),
-    };
   }
 
   // =========================================================================
@@ -3975,143 +3880,15 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
   }
 
   async reviewShard(issueId: string, shardId: string, request: LoopReviewShardRequest) {
-    const detail = await this.getIssue(issueId);
-    const shard = detail.shards.find((item) => item.id === shardId);
-    if (!shard) {
-      throw new NotFoundException(`Shard ${shardId} not found`);
-    }
+    return this.remoteShardStateAdapter.applyReview(issueId, shardId, request);
+  }
 
-    const implementationRecord = detail.implementationRecords.find(
-      (record) => record.shardId === shardId && record.round === detail.state.round,
-    );
-    if (!implementationRecord) {
-      throw new BadRequestException('Implementation Record is required before shard review');
-    }
-
-    const testRecord = detail.testRecords.find(
-      (record) => record.shardId === shardId && record.round === detail.state.round,
-    );
-    if (request.verdict === 'PASS' && testRecord?.status !== 'TEST-PASS') {
-      throw new BadRequestException('Shard cannot be DONE until latest round tests pass');
-    }
-
-    const config = await readLoopsRuntimeConfig();
-    const currentNeedsWorkCount = detail.reviewRecords.filter(
-      (record) => record.shardId === shardId && record.verdict === 'NEEDS-WORK',
-    ).length;
-    const redoLimitExceeded =
-      request.verdict === 'NEEDS-WORK' && currentNeedsWorkCount >= config.maxShardRedo;
-    const effectiveVerdict: LoopReviewShardRequest['verdict'] = redoLimitExceeded
-      ? 'FAIL'
-      : request.verdict;
-    const effectiveFixInstructions = redoLimitExceeded
-      ? [
-          ...request.fixInstructions,
-          `Shard exceeded max_shard_redo=${config.maxShardRedo}; escalate to FAILED and require convergence/reloop decision.`,
-        ]
-      : request.fixInstructions;
-
-    const now = new Date().toISOString();
-    const record: LoopReviewRecord = {
-      id: `review-record-${shardId}-r${detail.state.round}-${Date.now()}`,
-      issueId,
-      shardId,
-      round: detail.state.round,
-      reviewer: request.reviewer,
-      verdict: effectiveVerdict,
-      issues: request.issues,
-      fixInstructions: effectiveFixInstructions,
-      summary: redoLimitExceeded
-        ? `${request.summary} Shard exceeded max_shard_redo=${config.maxShardRedo}; escalated to FAILED.`
-        : request.summary,
-      created: now,
-    };
-    const shardStatus: LoopShard['status'] =
-      effectiveVerdict === 'PASS' ? 'DONE' : effectiveVerdict === 'FAIL' ? 'FAILED' : 'NEEDS-WORK';
-    const annotationVerdict: LoopAnnotation['verdict'] =
-      effectiveVerdict === 'PASS' ? 'pass' : effectiveVerdict === 'FAIL' ? 'fail' : 'needs-work';
-    const nextShards = detail.shards.map((item) =>
-      item.id === shardId ? { ...item, status: shardStatus } : item,
-    );
-    const nextAnnotations = detail.annotations.map((annotation) =>
-      annotation.target === shardId
-        ? {
-            ...annotation,
-            implStatus:
-              effectiveVerdict === 'PASS'
-                ? ('done' as const)
-                : effectiveVerdict === 'FAIL'
-                  ? ('failed' as const)
-                  : annotation.implStatus,
-            testStatus:
-              testRecord?.status === 'TEST-PASS' ? ('pass' as const) : annotation.testStatus,
-            verdict: annotationVerdict,
-            coverage: effectiveVerdict === 'PASS' ? ('full' as const) : annotation.coverage,
-            notes:
-              effectiveVerdict === 'PASS'
-                ? `Review Record PASS：${record.summary}`
-                : `Review Record ${effectiveVerdict}：${record.fixInstructions.join('；') || record.summary}`,
-          }
-        : annotation,
-    );
-    const shardsDone = nextShards.filter((item) => item.status === 'DONE').length;
-    const nextState: LoopStateItem = {
-      ...detail.state,
-      phase: shardsDone === nextShards.length ? 'PHASE_6_CONVERGE' : 'PHASE_4_IMPLEMENT',
-      shardsDone,
-      shardsInProgress: 0,
-      updated: now,
-    };
-    // Account the review transition (agentAdapter.review + reviewTests) so the
-    // cost guard sees review-only routes instead of being bypassed by them.
-    const guardedState = await this.costGuardedState(nextState);
-
-    await this.store.writeReviewRecord({
-      issueId,
-      shardId,
-      record,
-      annotations: nextAnnotations,
-      shards: nextShards,
-      state: guardedState,
-    });
-
-    if (redoLimitExceeded) {
-      await this.store.appendLog({
-        type: 'SHARD_REDO_LIMIT',
-        loop: issueId,
-        shard: shardId,
-        max_shard_redo: config.maxShardRedo,
-        needs_work_count: currentNeedsWorkCount + 1,
-        status: 'FAILED',
-      });
-      await this.store.writeNotification({
-        issueId,
-        channel: 'web',
-        kind: 'SHARD_REDO_LIMIT',
-        recipient: request.reviewer,
-        title: `Shard redo limit reached: ${shardId}`,
-        body: `Shard ${shardId} exceeded max_shard_redo=${config.maxShardRedo} and was marked FAILED for convergence or re-loop decision.`,
-        actionHref: `/loops/${issueId}`,
-      });
-    }
-
-    if (effectiveVerdict === 'PASS') {
-      const commit = await this.gitAdapter.commitShard({
-        issue: detail.issue,
-        shard,
-        changedFiles: implementationRecord.changedFiles,
-      });
-      await this.store.appendLog({
-        type: 'SHARD_COMMIT',
-        loop: issueId,
-        shard: shardId,
-        committed: commit.committed,
-        message: commit.message,
-        branch: commit.branch,
-      });
-    }
-
-    return record;
+  async persistRemoteShardImplementation(
+    issueId: string,
+    shardId: string,
+    record: LoopImplementationRecord,
+  ): Promise<void> {
+    await this.remoteShardStateAdapter.persistImplementation(issueId, shardId, record);
   }
 
   private async persistImplementationRecord(
@@ -4119,40 +3896,7 @@ export class LoopsService implements LoopsIssueCreationPort, LoopsRemoteShardExe
     shardId: string,
     record: LoopImplementationRecord,
   ) {
-    const detail = await this.getIssue(issueId);
-    const nextAnnotations = detail.annotations.map((annotation) =>
-      annotation.target === shardId
-        ? {
-            ...annotation,
-            implStatus: 'done' as const,
-            verdict: 'unreviewed' as const,
-            coverage: record.changedFiles.length > 0 ? ('partial' as const) : annotation.coverage,
-            location: Array.from(new Set([...annotation.location, ...record.changedFiles])),
-            notes: `Implementation Record 已登记：${record.summary}`,
-          }
-        : annotation,
-    );
-    const nextShards = detail.shards.map((item) =>
-      item.id === shardId ? { ...item, status: 'IMPLEMENTED' as const } : item,
-    );
-    const nextState = await this.costGuardedState(
-      {
-        ...detail.state,
-        phase: 'PHASE_5_REVIEW',
-        shardsInProgress: 0,
-        updated: new Date().toISOString(),
-      },
-      { calls: 1, tokens: record.tokens ?? 0 },
-    );
-
-    await this.store.writeImplementationRecord({
-      issueId,
-      shardId,
-      record,
-      annotations: nextAnnotations,
-      shards: nextShards,
-      state: nextState,
-    });
+    await this.remoteShardStateAdapter.persistImplementation(issueId, shardId, record);
     return this.syncAndRead(issueId);
   }
 
