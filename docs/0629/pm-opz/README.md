@@ -1217,6 +1217,148 @@ Only environment-dependent validation remains active:
 - 受益: Catches visual density and wrapping problems that unit tests cannot
   observe.
 
+## Fourteenth Follow-up Execution Cycles
+
+### Cycle 66: Dashboard Trigger Portfolio Region
+
+- 状态: Implemented.
+- 目标: Make Trigger Portfolio discoverable as a named dashboard region.
+- 范围: Added `aria-labelledby` to the Trigger Portfolio section and upgraded
+  the dashboard regression to assert source and recent trigger copy within that
+  region.
+- 不做: Do not change trigger aggregation, source grouping, or intake ordering.
+- 受益: Operators can inspect where loops are entering the system without
+  scanning adjacent release or repository panels.
+
+### Cycle 67: Dashboard Repo Context Region
+
+- 状态: Implemented.
+- 目标: Make Repo Context Map discoverable as a named dashboard region.
+- 范围: Added `aria-labelledby` to the Repo Context Map section and upgraded
+  the dashboard regression to assert repository summary and phase counts within
+  that region.
+- 不做: Do not change repository grouping, blocked counts, or issue phase
+  mapping.
+- 受益: Operators can jump directly to repository-level context when deciding
+  which loop or workspace needs attention next.
+
+### Cycle 68: Pending Item Review After Source And Repo Regions
+
+- 状态: Completed.
+- 目标: Re-check the PM/UX queue after trigger/source and repository context
+  panels became named regions.
+- 范围: Reviewed Trigger Portfolio, Repo Context Map, Eval Plan, Release
+  Readiness, Loop Board, Runtime Backends, Review Inbox, Exception Center,
+  intake readiness, and issue-detail regions; confirmed remaining active work
+  still depends on browser/SSO environments.
+- 不做: Do not claim repository or trigger visual density is validated from
+  component tests.
+- 受益: The implementation log now reflects that source and repository context
+  panels are implemented as addressable PM surfaces.
+
+## Current Deferred Boundary After Cycle 68
+
+Use this section as the active follow-up boundary after trigger/repository
+landmark tightening.
+
+### PM-DEFER-01: Real SSO Tenant Validation
+
+- 目标: Validate readiness and persisted tenant context with the real account
+  and tenant path.
+- 范围: After SSO callback/env alignment, run `/loops/new` for `13800138000`
+  under tenant `优惠豚`, create an issue, and confirm readiness, detail tenant
+  context, and audit records agree.
+- 不做: Do not weaken OAuth redirect validation or add local-only tenant
+  switching.
+- 受益: Confirms product UX under real identity state, not only component tests
+  and local storage mocks.
+
+### PM-DEFER-02: Browser Visual Pass For Dense Loop Surfaces
+
+- 目标: Verify the operator focus card, dashboard Trigger Portfolio region,
+  Repo Context Map region, Loop Board region, Runtime Backends region, Eval
+  Plan region, Release Readiness region, Review Inbox region, Exception Center
+  region, request field, workspace selector, create-failure alert, readiness
+  checklist, preview region, submit status, issue-detail Next Action region,
+  detail tenant audit group, evidence coverage region, and evidence chips
+  remain readable at desktop and mobile widths.
+- 范围: Start the Web app and capture `/loops`, `/loops/new`, one create-failure
+  state on `/loops/new`, and one `/loops/:issueId` screenshot for at least
+  desktop and mobile viewports, checking text wrapping, first-screen hierarchy,
+  focus landmarks, dashboard anchor flow into Trigger Portfolio / Repo Context
+  Map / Loop Board / Runtime Backends / Eval Plan / Release Readiness / Review
+  Inbox / Exception Center, request label/hint placement, invalid-state
+  readability, workspace-missing alert and disabled selector readability,
+  create-failure alert placement, detail Next Action placement, tenant audit
+  wrapping, status announcement placement, and anchor flow.
+- 不做: Do not redesign layout during this validation pass.
+- 受益: Catches visual density and wrapping problems that unit tests cannot
+  observe.
+
+### Cycle 69: Deferred Boundary Refresh After Source And Repo Landmarks
+
+- 状态: Completed.
+- 目标: Refresh the active deferred boundary so browser QA includes the newly
+  named Trigger Portfolio and Repo Context Map regions.
+- 范围: Updated the browser visual pass checklist to include dashboard anchor
+  flow and readability checks for trigger/source and repository context panels.
+- 不做: Do not claim browser screenshot QA has run or attach visual artifacts in
+  this code-only pass.
+- 受益: The remaining validation checklist now mirrors the dashboard source and
+  repository landmarks implemented in code.
+
+### Cycle 70: Fourteenth Loop Audit and Validation
+
+- 状态: Completed.
+- 目标: Validate the fourteenth local implementation loop and record the current
+  external validation boundary.
+- 范围: Ran focused Web tests
+  `pnpm --filter @repo/web exec vitest run app/loops/page.test.tsx app/loops/new/simple-loop-issue-form.test.tsx 'app/loops/[issueId]/page.test.tsx'`
+  with 3 files and 38 tests passing; ran
+  `pnpm --filter @repo/web type-check` successfully.
+- 不做: Do not run real SSO tenant validation or browser screenshot QA in this
+  code-only pass.
+- 受益: Cycles 66-69 are verified and type-safe, while remaining work stays
+  accurately constrained to environment-dependent validation.
+
+## Still Deferred After Cycle 70
+
+Only environment-dependent validation remains active:
+
+### PM-DEFER-01: Real SSO Tenant Validation
+
+- 目标: Validate readiness and persisted tenant context with the real account
+  and tenant path.
+- 范围: After SSO callback/env alignment, run `/loops/new` for `13800138000`
+  under tenant `优惠豚`, create an issue, and confirm readiness, detail tenant
+  context, and audit records agree.
+- 不做: Do not weaken OAuth redirect validation or add local-only tenant
+  switching.
+- 受益: Confirms product UX under real identity state, not only component tests
+  and local storage mocks.
+
+### PM-DEFER-02: Browser Visual Pass For Dense Loop Surfaces
+
+- 目标: Verify the operator focus card, dashboard Trigger Portfolio region,
+  Repo Context Map region, Loop Board region, Runtime Backends region, Eval
+  Plan region, Release Readiness region, Review Inbox region, Exception Center
+  region, request field, workspace selector, create-failure alert, readiness
+  checklist, preview region, submit status, issue-detail Next Action region,
+  detail tenant audit group, evidence coverage region, and evidence chips
+  remain readable at desktop and mobile widths.
+- 范围: Start the Web app and capture `/loops`, `/loops/new`, one create-failure
+  state on `/loops/new`, and one `/loops/:issueId` screenshot for at least
+  desktop and mobile viewports, checking text wrapping, first-screen hierarchy,
+  focus landmarks, dashboard anchor flow into Trigger Portfolio / Repo Context
+  Map / Loop Board / Runtime Backends / Eval Plan / Release Readiness / Review
+  Inbox / Exception Center, request label/hint placement, invalid-state
+  readability, workspace-missing alert and disabled selector readability,
+  create-failure alert placement, detail Next Action placement, tenant audit
+  wrapping, status announcement placement, and anchor flow.
+- 不做: Do not redesign layout during this validation pass.
+- 受益: Catches visual density and wrapping problems that unit tests cannot
+  observe.
+
 ### Cycle 59: Deferred Boundary Refresh After Board And Runtime Landmarks
 
 - 状态: Completed.

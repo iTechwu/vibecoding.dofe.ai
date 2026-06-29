@@ -1023,17 +1023,23 @@ describe('LoopsPage', () => {
     expect(
       within(releaseReadiness).getByText('No loops are near release yet.'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Trigger Portfolio')).toBeInTheDocument();
-    expect(screen.getByText('2 issues from 1 sources across 2 repositories')).toBeInTheDocument();
-    expect(screen.getByText('Sources')).toBeInTheDocument();
-    expect(screen.getAllByText('web/web_form').length).toBeGreaterThan(0);
-    expect(screen.getByText('Ada · 2026-06-20T00:00:00.000Z')).toBeInTheDocument();
-    expect(screen.getByText('Repo Context Map')).toBeInTheDocument();
-    expect(screen.getByText('2 issues across 2 repositories · 1 blocked')).toBeInTheDocument();
-    expect(screen.getAllByText('/repo/app').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('/repo/docs').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Implement · 1').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Review · 1').length).toBeGreaterThan(0);
+    const triggerPortfolio = screen.getByRole('region', { name: 'Trigger Portfolio' });
+    expect(
+      within(triggerPortfolio).getByText('2 issues from 1 sources across 2 repositories'),
+    ).toBeInTheDocument();
+    expect(within(triggerPortfolio).getByText('Sources')).toBeInTheDocument();
+    expect(within(triggerPortfolio).getAllByText('web/web_form').length).toBeGreaterThan(0);
+    expect(
+      within(triggerPortfolio).getByText('Ada · 2026-06-20T00:00:00.000Z'),
+    ).toBeInTheDocument();
+    const repoContext = screen.getByRole('region', { name: 'Repo Context Map' });
+    expect(
+      within(repoContext).getByText('2 issues across 2 repositories · 1 blocked'),
+    ).toBeInTheDocument();
+    expect(within(repoContext).getAllByText('/repo/app').length).toBeGreaterThan(0);
+    expect(within(repoContext).getAllByText('/repo/docs').length).toBeGreaterThan(0);
+    expect(within(repoContext).getAllByText('Implement · 1').length).toBeGreaterThan(0);
+    expect(within(repoContext).getAllByText('Review · 1').length).toBeGreaterThan(0);
     expect(screen.getByText('Exception Center')).toBeInTheDocument();
     expect(screen.getByText('1 running · 0 queued · 2 failed · capacity 4')).toBeInTheDocument();
     expect(screen.getByText('Adjust budget or reduce scope')).toBeInTheDocument();

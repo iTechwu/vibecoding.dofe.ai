@@ -1485,10 +1485,12 @@ export default function LoopsPage() {
           </div>
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="trigger-portfolio-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('triggerPortfolio.title')}</h2>
+              <h2 className="text-sm font-semibold" id="trigger-portfolio-title">
+                {t('triggerPortfolio.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('triggerPortfolio.summary', {
                   total: triggerPortfolio.summary.total,
@@ -1572,10 +1574,12 @@ export default function LoopsPage() {
           )}
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="repo-context-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('repoContext.title')}</h2>
+              <h2 className="text-sm font-semibold" id="repo-context-title">
+                {t('repoContext.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('repoContext.summary', {
                   repos: repoContextMap.summary.repos,
