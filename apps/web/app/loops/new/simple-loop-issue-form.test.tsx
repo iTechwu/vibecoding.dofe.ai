@@ -75,6 +75,8 @@ function renderWithIntl(ui: React.ReactElement) {
 describe('SimpleLoopIssueForm (0622 · B5 simple-mode intake)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mutateAsync.mockReset();
+    window.localStorage.clear();
     workspacesQuery = {
       data: {
         body: {
@@ -114,6 +116,43 @@ describe('SimpleLoopIssueForm (0622 · B5 simple-mode intake)', () => {
     expect(screen.queryByText('Advanced settings')).toBeInTheDocument();
     // The submit CTA is present and gated until the request is long enough.
     expect(screen.getByRole('button', { name: 'Create Issue' })).toBeDisabled();
+  });
+
+  it('confirms current tenant before simple issue submission and includes it in the payload', async () => {
+    vi.mocked(window.localStorage.getItem).mockImplementation((key) => {
+      if (key === 'currentTenant') return 'tenant-youhuitun';
+      if (key === 'currentTenantSnapshot') {
+        return JSON.stringify({
+          tenantId: 'tenant-youhuitun',
+          tenantName: '优惠豚',
+          teamId: 'team-1',
+        });
+      }
+      return null;
+    });
+    mutateAsync.mockResolvedValueOnce({ body: { data: { issue: { id: 'issue-simple-tenant' } } } });
+    const user = userEvent.setup();
+    renderWithIntl(<SimpleLoopIssueForm defaultTargetRepo="/repo/vibecoding" />);
+
+    expect(await screen.findByText('Tenant')).toBeInTheDocument();
+    expect(screen.getByText('优惠豚')).toBeInTheDocument();
+    expect(screen.getByText(/tenant-youhuitun/)).toBeInTheDocument();
+
+    await user.type(
+      screen.getByPlaceholderText(/Add a Docker fallback/i),
+      'Add a summary card to the loops dashboard',
+    );
+    await user.click(screen.getByRole('button', { name: 'Create Issue' }));
+
+    expect(mutateAsync).toHaveBeenCalledWith({
+      body: expect.objectContaining({
+        tenantContext: {
+          tenantId: 'tenant-youhuitun',
+          tenantName: '优惠豚',
+          teamId: 'team-1',
+        },
+      }),
+    });
   });
 
   it('keeps submit disabled until the request is at least 10 characters', async () => {

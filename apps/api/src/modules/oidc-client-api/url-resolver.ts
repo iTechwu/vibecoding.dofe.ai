@@ -30,6 +30,11 @@ function cleanUrl(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
+function cleanEnvUrl(name: string): string | undefined {
+  const value = process.env[name]?.trim();
+  return value ? cleanUrl(value) : undefined;
+}
+
 function getAppConfig(configService: ConfigService): AppUrlConfig {
   return {
     baseUrl: configService.get<string>('app.baseUrl'),
@@ -49,6 +54,11 @@ function resolveConfiguredDomainUrl(subDomain: string | undefined, domain: strin
 
 export function resolveOidcApiBaseUrl(configService: ConfigService): string {
   const cfg = getAppConfig(configService);
+  const envUrl =
+    cleanEnvUrl('VIBECODING_APP_BASE_URL') ??
+    cleanEnvUrl('APP_BASE_URL') ??
+    cleanEnvUrl('OIDC_APP_BASE_URL');
+  if (envUrl) return envUrl;
   if (cfg.baseUrl) return cleanUrl(cfg.baseUrl);
 
   const configuredUrl = resolveConfiguredDomainUrl(cfg.apiSubDomain, cfg.domain);
@@ -59,6 +69,11 @@ export function resolveOidcApiBaseUrl(configService: ConfigService): string {
 
 export function resolveOidcFrontendBaseUrl(configService: ConfigService): string {
   const cfg = getAppConfig(configService);
+  const envUrl =
+    cleanEnvUrl('VIBECODING_APP_FRONTEND_URL') ??
+    cleanEnvUrl('APP_FRONTEND_URL') ??
+    cleanEnvUrl('OIDC_APP_FRONTEND_URL');
+  if (envUrl) return envUrl;
   if (cfg.frontendUrl) return cleanUrl(cfg.frontendUrl);
 
   const configuredUrl = resolveConfiguredDomainUrl(cfg.subDomain, cfg.domain);

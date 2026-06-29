@@ -21,7 +21,7 @@ import {
   type SsoTenantItem,
 } from '@dofe/sso-browser';
 import type { LoginSuccess } from '@repo/contracts';
-import { setCurrentTenantId } from '@/lib/storage';
+import { setCurrentTenantSnapshot } from '@/lib/storage';
 
 const SSO_BASE_URL = process.env.NEXT_PUBLIC_SSO_BASE_URL || 'https://sso.dofe.ai';
 
@@ -32,7 +32,18 @@ export interface SsoTenantSnapshot {
 
 function syncCurrentTenantFromSession(data: SsoSessionData): void {
   if (data.currentTenant?.id) {
-    setCurrentTenantId(data.currentTenant.id);
+    const currentTenant = data.currentTenant as SsoTenantInfo & {
+      name?: string | null;
+      tenantName?: string | null;
+      teamId?: string | null;
+    };
+    setCurrentTenantSnapshot({
+      tenantId: currentTenant.id,
+      ...(currentTenant.name || currentTenant.tenantName
+        ? { tenantName: currentTenant.name ?? currentTenant.tenantName ?? undefined }
+        : {}),
+      ...(currentTenant.teamId ? { teamId: currentTenant.teamId } : {}),
+    });
   }
 }
 

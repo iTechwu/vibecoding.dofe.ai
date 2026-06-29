@@ -86,10 +86,14 @@ export class LoopsPersistenceService {
 
     return {
       ...detail,
-      issue: this.toContractIssue(dbDetail.issue),
+      issue: {
+        ...this.toContractIssue(dbDetail.issue),
+        tenantContext: detail.issue.tenantContext,
+      },
       intake: {
         ...intake,
         ruleSnapshot: detail.intake.ruleSnapshot,
+        tenantContext: detail.intake.tenantContext ?? detail.issue.tenantContext,
       },
       state: this.toContractState(dbDetail.state),
     };

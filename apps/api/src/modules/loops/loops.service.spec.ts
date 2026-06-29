@@ -113,6 +113,16 @@ function createFakeBrowserQaWorker(status: 'passed' | 'failed' | 'blocked' = 'pa
       screenshots: status === 'blocked' ? [] : [{ path: input.screenshotRef, label: 'page-load' }],
       consoleErrors: status === 'failed' ? ['Hydration failed'] : [],
       networkFailures: [],
+      ignoredNetworkFailures:
+        status === 'blocked'
+          ? []
+          : [
+              {
+                url: `${input.request.targetUrl}/_next/static/chunk.css`,
+                reason: 'net::ERR_ABORTED',
+                classification: 'navigation-cancelled',
+              },
+            ],
       checkedFlows: input.request.checkedFlows,
       blockedReason: status === 'blocked' ? 'Playwright browser unavailable' : undefined,
       command: 'fake-playwright',
@@ -2468,13 +2478,18 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
         }),
       ],
       handoffs: [expect.objectContaining({ path: expect.stringContaining('handoff.json') })],
+      ignoredNetworkFailures: [
+        expect.objectContaining({
+          classification: 'navigation-cancelled',
+        }),
+      ],
     });
     expect(detail.evidenceArtifacts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           kind: 'browser-qa',
           status: 'present',
-          summary: expect.stringContaining('passed browser QA'),
+          summary: expect.stringContaining('1 ignored navigation cancels'),
         }),
       ]),
     );

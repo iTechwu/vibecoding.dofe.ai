@@ -9,6 +9,7 @@ import type { LoopLearning, LoopPriority, LoopSimpleIssueTemplate } from '@repo/
 import { useCreateSimpleLoopIssue, useLoopsWorkspaces } from '@/lib/api/contracts/hooks';
 import { LOOP_ISSUE_TEMPLATES } from './loop-issue-templates';
 import { Command, Sparkles } from 'lucide-react';
+import { useCurrentLoopTenant } from './use-current-loop-tenant';
 
 const TEMPLATE_OPTIONS: Array<{ id: LoopSimpleIssueTemplate; labelKey: string }> = [
   { id: 'auto', labelKey: 'simple.templateAuto' },
@@ -45,6 +46,7 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
   const { isAuthenticated, isLoading } = useAuth();
   const workspacesQuery = useLoopsWorkspaces();
   const createIssue = useCreateSimpleLoopIssue();
+  const tenantContext = useCurrentLoopTenant();
 
   const workspaces = workspacesQuery.data?.body?.data?.workspaces ?? EMPTY_WORKSPACES;
   const currentWorkspace = workspacesQuery.data?.body?.data?.current;
@@ -143,6 +145,7 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
           priority: priorityOverride || undefined,
           title: titleOverride.trim() || undefined,
           acceptanceCriteria: criteriaLines.length > 0 ? criteriaLines : undefined,
+          tenantContext,
         },
       })
       .then((result) => {
@@ -163,6 +166,20 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
           <p className="mt-1 text-sm text-muted-foreground">{t('simple.intro')}</p>
         </div>
       </div>
+
+      {tenantContext ? (
+        <div className="rounded-md border bg-muted/20 p-3 text-sm">
+          <p className="text-xs text-muted-foreground">{t('tenant')}</p>
+          <p className="mt-1 break-all font-medium">
+            {tenantContext.tenantName ?? tenantContext.tenantId}
+          </p>
+          {tenantContext.tenantName || tenantContext.teamId ? (
+            <p className="mt-1 break-all text-xs text-muted-foreground">
+              {[tenantContext.tenantId, tenantContext.teamId].filter(Boolean).join(' · ')}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* Primary input: the request. */}
       <label className="flex flex-col gap-2 text-sm font-medium">

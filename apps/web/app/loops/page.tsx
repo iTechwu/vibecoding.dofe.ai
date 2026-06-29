@@ -34,6 +34,7 @@ import type {
   LoopMetricsResponse,
   LoopNotificationsResponse,
   LoopAssetPermissionsResponse,
+  PullLoopImageResponse,
 } from '@repo/contracts';
 import {
   useLoopsAgentRuntime,
@@ -266,6 +267,8 @@ export default function LoopsPage() {
   };
   const [agingNow, setAgingNow] = useState<Date | null>(null);
   const [commandQuery, setCommandQuery] = useState('');
+  const [pullingRuntimeImage, setPullingRuntimeImage] = useState<string | null>(null);
+  const [runtimePullErrors, setRuntimePullErrors] = useState<Record<string, string>>({});
   const listQuery = useLoopsList({ page: 1, limit: 20 });
   const doctorQuery = useLoopsDoctor();
   const costQuery = useLoopsCost();
@@ -311,6 +314,34 @@ export default function LoopsPage() {
   const logs = logsQuery.data?.body.data as LoopLogsResponse | undefined;
   const notifications = notificationsQuery.data?.body.data as LoopNotificationsResponse | undefined;
   const currentWorkspace = workspaces.find((ws) => ws.workspaceId === currentWorkspaceId);
+  const pullRuntimeImage = async (agent: 'codex' | 'claude-code') => {
+    const actionKey = `${currentWorkspaceId}:${agent}`;
+    setPullingRuntimeImage(actionKey);
+    try {
+      const result = await pullImage.mutateAsync({
+        params: { workspaceId: currentWorkspaceId },
+        body: { agent },
+      });
+      const outcome = result.body.data as PullLoopImageResponse;
+      if (outcome.status === 'failed') {
+        setRuntimePullErrors((current) => ({ ...current, [actionKey]: outcome.message }));
+        return;
+      }
+      setRuntimePullErrors((current) => {
+        const next = { ...current };
+        delete next[actionKey];
+        return next;
+      });
+      retryDetection();
+    } catch (error) {
+      setRuntimePullErrors((current) => ({
+        ...current,
+        [actionKey]: error instanceof Error ? error.message : String(error),
+      }));
+    } finally {
+      setPullingRuntimeImage(null);
+    }
+  };
   const fallbackSummary = aggregateLoops(data, cost);
   const summary = metrics?.summary ?? fallbackSummary;
   const health = metrics?.health ?? doctor;
@@ -2334,6 +2365,10 @@ export default function LoopsPage() {
                   const modeLabel = t(
                     `agentRuntime.detection.mode.${runtime.selected?.mode ?? runtime.preferredMode}`,
                   );
+                  const pullActionKey = `${currentWorkspaceId}:${runtime.agent}`;
+                  const isPullingImage =
+                    pullImage.isPending && pullingRuntimeImage === pullActionKey;
+                  const pullError = runtimePullErrors[pullActionKey];
                   return (
                     <div className="rounded-md border p-3 text-sm" key={runtime.agent}>
                       <div className="flex items-center justify-between gap-3">
@@ -2356,16 +2391,13 @@ export default function LoopsPage() {
                                 {check.action === 'pull-image' ? (
                                   <button
                                     className="rounded-md border bg-background px-2 py-1 text-xs font-medium hover:bg-muted/30 disabled:opacity-60"
-                                    disabled={pullImage.isPending}
-                                    onClick={() =>
-                                      pullImage.mutateAsync({
-                                        params: { workspaceId: currentWorkspaceId },
-                                        body: { agent: runtime.agent },
-                                      })
-                                    }
+                                    disabled={pullImage.isPending || !currentWorkspaceId}
+                                    onClick={() => pullRuntimeImage(runtime.agent)}
                                     type="button"
                                   >
-                                    {t('agentRuntime.detection.actions.pull-image')}
+                                    {isPullingImage
+                                      ? t('agentRuntime.detection.actions.pulling-image')
+                                      : t('agentRuntime.detection.actions.pull-image')}
                                   </button>
                                 ) : check.action === 'use-docker' ? (
                                   <button
@@ -2414,6 +2446,11 @@ export default function LoopsPage() {
                           {t('agentRuntime.detection.ready', { agent: runtime.agent })}
                         </p>
                       )}
+                      {pullError ? (
+                        <p className="mt-2 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-950 dark:border-red-900/70 dark:bg-red-950/20 dark:text-red-100">
+                          {pullError}
+                        </p>
+                      ) : null}
                     </div>
                   );
                 })

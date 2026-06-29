@@ -53,4 +53,10 @@ export interface AuthenticatedRequest extends FastifyRequest {
 
   /** Decoded user info guaranteed to be present (set by AuthGuard). */
   userInfo: AuthUserInfo;
+
+  /** Optional team scope injected by tenant-aware middleware/guards. */
+  teamId?: string;
+
+  /** Optional tenant scope injected by tenant-aware middleware/guards. */
+  tenantId?: string;
 }

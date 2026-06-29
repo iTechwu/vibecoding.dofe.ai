@@ -11,6 +11,7 @@ import {
   LOOP_ISSUE_TEMPLATES,
   type LoopIssueTemplateId,
 } from './loop-issue-templates';
+import { useCurrentLoopTenant } from './use-current-loop-tenant';
 
 interface NewLoopIssueFormProps {
   /** Server-resolved workspace root; overridable via NEXT_PUBLIC_LOOPS_DEFAULT_REPO. */
@@ -30,6 +31,7 @@ export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueForm
   const router = useRouter();
   const { isAuthenticated, isLoading } = useAuth();
   const createIssue = useCreateLoopIssue();
+  const tenantContext = useCurrentLoopTenant();
   const getTemplateBody = (template: typeof DEFAULT_LOOP_ISSUE_TEMPLATE) =>
     t(`${template.translationKey}.body`);
   const getTemplateCriteria = (template: typeof DEFAULT_LOOP_ISSUE_TEMPLATE) =>
@@ -72,6 +74,7 @@ export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueForm
       body: body.trim(),
       priority,
       acceptanceCriteria: criteria,
+      tenantContext,
     };
     const parsed = CreateLoopIssueRequestSchema.safeParse(payload);
     if (!parsed.success) {
@@ -168,6 +171,20 @@ export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueForm
         />
         {errors.title ? <span className="text-xs text-destructive">{errors.title}</span> : null}
       </label>
+
+      {tenantContext ? (
+        <div className="rounded-md border bg-muted/20 p-3 text-sm">
+          <p className="text-xs text-muted-foreground">{t('tenant')}</p>
+          <p className="mt-1 break-all font-medium">
+            {tenantContext.tenantName ?? tenantContext.tenantId}
+          </p>
+          {tenantContext.tenantName || tenantContext.teamId ? (
+            <p className="mt-1 break-all text-xs text-muted-foreground">
+              {[tenantContext.tenantId, tenantContext.teamId].filter(Boolean).join(' · ')}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       <label className="flex flex-col gap-2 text-sm font-medium">
         {t('targetRepo')}

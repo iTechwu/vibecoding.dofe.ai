@@ -259,6 +259,7 @@ type EvidenceArtifactInput = {
     screenshots: unknown[];
     consoleErrors: unknown[];
     networkFailures: unknown[];
+    ignoredNetworkFailures?: unknown[];
     traces?: unknown[];
     visualDiffs?: unknown[];
     handoffs?: unknown[];
@@ -997,6 +998,7 @@ export class LoopsEvidenceService {
         : 'Convergence PR evidence is pending until finalization.',
     });
     const latestBrowserQa = detail.browserQaReports?.[0];
+    const ignoredBrowserQaFailures = latestBrowserQa?.ignoredNetworkFailures?.length ?? 0;
     artifacts.push({
       id: latestBrowserQa?.id ?? `${issueId}-browser-qa`,
       label: 'Browser QA',
@@ -1009,7 +1011,7 @@ export class LoopsEvidenceService {
         ? latestBrowserQa.consoleErrors.length + latestBrowserQa.networkFailures.length
         : undefined,
       summary: latestBrowserQa
-        ? `${latestBrowserQa.status} browser QA for ${latestBrowserQa.targetUrl}; ${latestBrowserQa.screenshots.length} screenshots, ${latestBrowserQa.traces?.length ?? 0} traces, ${latestBrowserQa.visualDiffs?.length ?? 0} visual checks and ${latestBrowserQa.handoffs?.length ?? 0} handoffs captured.`
+        ? `${latestBrowserQa.status} browser QA for ${latestBrowserQa.targetUrl}; ${latestBrowserQa.screenshots.length} screenshots, ${latestBrowserQa.traces?.length ?? 0} traces, ${latestBrowserQa.visualDiffs?.length ?? 0} visual checks, ${latestBrowserQa.handoffs?.length ?? 0} handoffs and ${ignoredBrowserQaFailures} ignored navigation cancels captured.`
         : 'Browser QA report has not been run yet.',
     });
     artifacts.push({

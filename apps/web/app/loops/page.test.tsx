@@ -28,6 +28,17 @@ const governLearningMutate = vi.fn();
 const autoMergeWorkerMutate = vi.fn();
 const learningIndexWorkerMutate = vi.fn();
 const loopBenchTrendWorkerMutate = vi.fn();
+const pullImageMutate = vi.fn().mockResolvedValue({
+  body: {
+    data: {
+      agent: 'claude-code',
+      image: 'dofe-ai/sandbox:latest',
+      status: 'pulled',
+      message: 'Pulled image.',
+    },
+  },
+});
+const retryAgentRuntime = vi.fn();
 
 vi.mock('@/lib/api/contracts/hooks', () => ({
   useLoopsList: () => ({
@@ -228,8 +239,21 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
             {
               agent: 'claude-code',
               preferredMode: 'docker',
-              selected: { mode: 'docker', status: 'ready', workspaceRequired: true },
-              checks: [],
+              selected: { mode: 'docker', status: 'missing', workspaceRequired: true },
+              docker: {
+                mode: 'docker',
+                status: 'missing',
+                command: 'docker run dofe-ai/sandbox:latest claude',
+                workspaceRequired: true,
+              },
+              checks: [
+                {
+                  code: 'DOCKER_IMAGE_MISSING',
+                  level: 'warning',
+                  message: 'Docker image dofe-ai/sandbox:latest is missing.',
+                  action: 'pull-image',
+                },
+              ],
             },
           ],
         },
@@ -776,8 +800,8 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
   }),
   useUpsertLoopsWorkspace: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useDetectLoopsRuntime: () => ({ isPending: false, mutateAsync: vi.fn() }),
-  usePullLoopsImage: () => ({ isPending: false, mutateAsync: vi.fn() }),
-  useRetryLoopsAgentRuntime: () => vi.fn(),
+  usePullLoopsImage: () => ({ isPending: false, mutateAsync: pullImageMutate }),
+  useRetryLoopsAgentRuntime: () => retryAgentRuntime,
   getBrowserQaArtifactUrl: (_issueId: string, artifactPath: string) =>
     `http://localhost:13100/loops/${_issueId}/browser-qa/artifact/${artifactPath}`,
   useWorkspaceRecipes: () => ({
@@ -813,7 +837,7 @@ describe('LoopsPage', () => {
     vi.useRealTimers();
   });
 
-  it('renders the control plane dashboard from loop metrics', () => {
+  it('renders the control plane dashboard from loop metrics', async () => {
     renderWithIntl(<LoopsPage />);
     act(() => {
       vi.runOnlyPendingTimers();
@@ -841,6 +865,18 @@ describe('LoopsPage', () => {
     expect(screen.getByText('1 running · 1 need attention · 4 registered')).toBeInTheDocument();
     expect(screen.getByText('Implementation Agent')).toBeInTheDocument();
     expect(screen.getByText('Spec Review Agent')).toBeInTheDocument();
+    expect(
+      screen.getAllByText('Docker image dofe-ai/sandbox:latest is missing.').length,
+    ).toBeGreaterThan(0);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Pull image' }));
+      await Promise.resolve();
+    });
+    expect(pullImageMutate).toHaveBeenCalledWith({
+      params: { workspaceId: 'default' },
+      body: { agent: 'claude-code' },
+    });
+    expect(retryAgentRuntime).toHaveBeenCalledTimes(1);
     expect(screen.getByText('Runtime Diagnostics')).toBeInTheDocument();
     expect(screen.getAllByText('Spec draft is waiting for human review').length).toBeGreaterThan(0);
     expect(screen.getByText('Loop Board')).toBeInTheDocument();
@@ -1043,7 +1079,7 @@ describe('LoopsPage', () => {
     expect(screen.getAllByText('1 runtime security exceptions recorded').length).toBeGreaterThan(1);
     expect(screen.getAllByText('Hard gate').length).toBeGreaterThan(0);
     expect(screen.getByText('Runtime Backends')).toBeInTheDocument();
-    expect(screen.getByText('2/2 ready · 0 degraded · 0 unavailable')).toBeInTheDocument();
+    expect(screen.getByText('1/2 ready · 1 degraded · 0 unavailable')).toBeInTheDocument();
     expect(screen.getAllByText('Codex CLI').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Claude Code CLI').length).toBeGreaterThan(0);
     expect(screen.getByText('read/write/test within approved work package')).toBeInTheDocument();
@@ -1057,6 +1093,76 @@ describe('LoopsPage', () => {
     expect(screen.getAllByText('Continue loop').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Review needed').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Needs human input').length).toBeGreaterThan(0);
+  });
+
+  it('surfaces Docker image pull business failures without retrying detection', async () => {
+    pullImageMutate.mockResolvedValueOnce({
+      body: {
+        data: {
+          agent: 'claude-code',
+          image: 'dofe-ai/sandbox:latest',
+          status: 'failed',
+          message: 'Docker image pull finished, but the image is not ready locally.',
+        },
+      },
+    });
+
+    renderWithIntl(<LoopsPage />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Pull image' }));
+      await Promise.resolve();
+    });
+
+    expect(retryAgentRuntime).not.toHaveBeenCalled();
+    expect(
+      screen.getByText('Docker image pull finished, but the image is not ready locally.'),
+    ).toBeInTheDocument();
+  });
+
+  it('surfaces Docker image pull request errors without retrying detection', async () => {
+    pullImageMutate.mockRejectedValueOnce(new Error('Docker pull request failed.'));
+
+    renderWithIntl(<LoopsPage />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Pull image' }));
+      await Promise.resolve();
+    });
+
+    expect(retryAgentRuntime).not.toHaveBeenCalled();
+    expect(screen.getByText('Docker pull request failed.')).toBeInTheDocument();
+  });
+
+  it('clears a previous Docker image pull error after a successful retry', async () => {
+    pullImageMutate
+      .mockRejectedValueOnce(new Error('Docker pull request failed.'))
+      .mockResolvedValueOnce({
+        body: {
+          data: {
+            agent: 'claude-code',
+            image: 'dofe-ai/sandbox:latest',
+            status: 'pulled',
+            message: 'Pulled image.',
+          },
+        },
+      });
+
+    renderWithIntl(<LoopsPage />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Pull image' }));
+      await Promise.resolve();
+    });
+    expect(screen.getByText('Docker pull request failed.')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Pull image' }));
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText('Docker pull request failed.')).not.toBeInTheDocument();
+    expect(retryAgentRuntime).toHaveBeenCalledTimes(1);
   });
 
   it('hydrates without time-dependent markup mismatches', async () => {

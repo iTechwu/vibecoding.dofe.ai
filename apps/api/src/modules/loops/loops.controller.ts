@@ -4,6 +4,8 @@ import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { created, success } from '@dofe/infra-common/ts-rest';
 import { loopsContract as c } from '@repo/contracts/api';
+import type { LoopTenantContext } from '@repo/contracts';
+import { CURRENT_TENANT_HEADER } from '@repo/constants';
 import { Auth } from '@app/auth';
 import type { AuthenticatedRequest } from '@app/auth';
 import { AuditLogService } from '@app/audit-log';
@@ -18,6 +20,28 @@ type BrowserQaArtifactRequest = AuthenticatedRequest & {
     '0'?: string;
   };
 };
+
+function firstHeaderValue(value: string | string[] | undefined): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const trimmed = raw?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
+function pickTenantContext(
+  req: AuthenticatedRequest,
+  bodyTenantContext?: LoopTenantContext,
+): LoopTenantContext | undefined {
+  const headerTenantId = firstHeaderValue(req.headers[CURRENT_TENANT_HEADER]);
+  const tenantId = req.tenantId ?? headerTenantId ?? bodyTenantContext?.tenantId;
+  const teamId = req.teamId ?? bodyTenantContext?.teamId;
+  const tenantName = bodyTenantContext?.tenantName;
+  const tenantContext: LoopTenantContext = {
+    ...(tenantId ? { tenantId } : {}),
+    ...(tenantName ? { tenantName } : {}),
+    ...(teamId ? { teamId } : {}),
+  };
+  return Object.keys(tenantContext).length > 0 ? tenantContext : undefined;
+}
 
 @Auth('api')
 @Controller({
@@ -56,7 +80,10 @@ export class LoopsController {
       // (provider `dofe-sso`), ignoring any client-supplied submitter fields
       // so identity cannot be spoofed. The CLI/internal path calls the service
       // directly without a request and falls back to the `dev` defaults.
-      const result = await this.loopsService.createIssue(body, req.userInfo);
+      const result = await this.loopsService.createIssue(
+        { ...body, tenantContext: pickTenantContext(req, body.tenantContext) },
+        req.userInfo,
+      );
       await this.auditLoopCreate(req, result.issue.id, {
         title: result.issue.title,
         priority: result.issue.priority,
@@ -87,7 +114,10 @@ export class LoopsController {
     return tsRestHandler(c.createSimpleIssue, async ({ body }) => {
       // Same SSO-derived submitter + audit path as the full createIssue; the
       // service normalises the one-sentence request first (0622 · B4).
-      const result = await this.loopsService.createSimpleIssue(body, req.userInfo);
+      const result = await this.loopsService.createSimpleIssue(
+        { ...body, tenantContext: pickTenantContext(req, body.tenantContext) },
+        req.userInfo,
+      );
       await this.auditLoopCreate(req, result.issue.id, {
         title: result.issue.title,
         priority: result.issue.priority,

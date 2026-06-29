@@ -111,8 +111,65 @@ describe('LoopsWorkspaceProfileService (0622 · B2)', () => {
     expect(ghost?.status).toBe('ERROR');
   });
 
+  it('pullImage skips the pull when the fallback image is already present', async () => {
+    const docker = {
+      imagePresent: jest.fn().mockResolvedValue(true),
+      pull: jest.fn(),
+    } as unknown as LoopsDockerClient;
+    const serviceWithDocker = new LoopsWorkspaceProfileService(undefined, docker);
+    const outcome = await serviceWithDocker.pullImage('default', 'codex');
+
+    expect(docker.imagePresent).toHaveBeenCalledWith(expect.stringContaining('codex-cli'));
+    expect(docker.pull).not.toHaveBeenCalled();
+    expect(outcome.status).toBe('already-present');
+    expect(outcome.message).toBe('Docker fallback image is already present.');
+  });
+
+  it('pullImage verifies local readiness after a successful pull', async () => {
+    const docker = {
+      imagePresent: jest.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true),
+      pull: jest.fn().mockResolvedValue({ ok: true, message: 'Pulled image.' }),
+    } as unknown as LoopsDockerClient;
+    const serviceWithDocker = new LoopsWorkspaceProfileService(undefined, docker);
+    const outcome = await serviceWithDocker.pullImage('default', 'codex');
+
+    expect(docker.pull).toHaveBeenCalledWith(expect.stringContaining('codex-cli'));
+    expect(docker.imagePresent).toHaveBeenCalledTimes(2);
+    expect(outcome.status).toBe('pulled');
+    expect(outcome.message).toBe('Pulled image.');
+  });
+
+  it('pullImage reports failure when a successful pull is not inspectable afterward', async () => {
+    const docker = {
+      imagePresent: jest.fn().mockResolvedValue(false),
+      pull: jest.fn().mockResolvedValue({ ok: true, message: 'Pulled image.' }),
+    } as unknown as LoopsDockerClient;
+    const serviceWithDocker = new LoopsWorkspaceProfileService(undefined, docker);
+    const outcome = await serviceWithDocker.pullImage('default', 'codex');
+
+    expect(outcome.status).toBe('failed');
+    expect(outcome.message).toBe('Docker image pull finished, but the image is not ready locally.');
+  });
+
+  it('pullImage reports failure when post-pull image inspection errors', async () => {
+    const docker = {
+      imagePresent: jest
+        .fn()
+        .mockResolvedValueOnce(false)
+        .mockRejectedValueOnce(new Error('Docker inspect failed.')),
+      pull: jest.fn().mockResolvedValue({ ok: true, message: 'Pulled image.' }),
+    } as unknown as LoopsDockerClient;
+    const serviceWithDocker = new LoopsWorkspaceProfileService(undefined, docker);
+
+    const outcome = await serviceWithDocker.pullImage('default', 'codex');
+
+    expect(outcome.status).toBe('failed');
+    expect(outcome.message).toBe('Docker image pull finished, but readiness inspection failed.');
+  });
+
   it('pullImage reports failure via the docker client without throwing', async () => {
     const docker = {
+      imagePresent: jest.fn().mockResolvedValue(false),
       pull: jest.fn().mockResolvedValue({ ok: false, message: 'Docker is not available.' }),
     } as unknown as LoopsDockerClient;
     const serviceWithDocker = new LoopsWorkspaceProfileService(undefined, docker);

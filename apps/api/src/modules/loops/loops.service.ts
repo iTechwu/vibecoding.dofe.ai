@@ -469,6 +469,7 @@ export class LoopsService implements LoopsIssueCreationPort {
         body: normalised.body,
         priority: normalised.priority,
         acceptanceCriteria: normalised.acceptanceCriteria,
+        tenantContext: input.tenantContext,
       },
       authUser,
     );

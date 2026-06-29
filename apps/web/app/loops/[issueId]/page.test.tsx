@@ -1,8 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { LoopDetail } from '@repo/contracts';
 import { NextIntlClientProvider } from 'next-intl';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import loopsMessages from '@/locales/en/loops.json';
+import zhLoopsMessages from '@/locales/zh-CN/loops.json';
 import LoopIssueDetailPage from './page';
 
 const runBrowserQa = vi.fn();
@@ -15,6 +16,8 @@ const recordReleaseCanary = vi.fn();
 const setBrowserQaSessionPolicy = vi.fn();
 const recordRuntimeOverride = vi.fn();
 const setRequiredReviewGates = vi.fn();
+let mockDetail: LoopDetail;
+let mockRuntimeIssueId = 'issue-1';
 
 const detail: LoopDetail = {
   issue: {
@@ -32,6 +35,11 @@ const detail: LoopDetail = {
     body: 'Make Loops trace evidence scannable.',
     acceptanceCriteria: ['Trace timeline is visible'],
     rawPayloadRef: '.loops/intakes/intake-1.raw.json',
+    tenantContext: {
+      tenantId: 'tenant-youhuitun',
+      tenantName: '优惠豚',
+      teamId: 'team-1',
+    },
   },
   intake: {
     id: 'intake-1',
@@ -42,6 +50,11 @@ const detail: LoopDetail = {
     rawPayloadRef: '.loops/intakes/intake-1.raw.json',
     status: 'NORMALIZED',
     created: '2026-06-20T00:00:00.000Z',
+    tenantContext: {
+      tenantId: 'tenant-youhuitun',
+      tenantName: '优惠豚',
+      teamId: 'team-1',
+    },
     ruleSnapshot: {
       workspaceId: 'default',
       root: '/repo/app',
@@ -341,6 +354,13 @@ const detail: LoopDetail = {
       ],
       consoleErrors: ['Hydration warning'],
       networkFailures: [{ url: 'https://example.com/api', status: 500 }],
+      ignoredNetworkFailures: [
+        {
+          url: 'https://example.com/_next/static/chunk.css',
+          reason: 'net::ERR_ABORTED',
+          classification: 'navigation-cancelled',
+        },
+      ],
       checkedFlows: ['page-load'],
       command: 'pnpm --filter @repo/web exec node -e <browser-qa-worker>',
       durationMs: 1200,
@@ -442,7 +462,7 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
   useLoopIssue: () => ({
     data: {
       body: {
-        data: detail,
+        data: mockDetail,
       },
     },
     isLoading: false,
@@ -459,9 +479,9 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
               status: 'running',
               phase: 'PHASE_4_IMPLEMENT',
               supportedPhases: ['PHASE_4_IMPLEMENT'],
-              issueId: 'issue-1',
+              issueId: mockRuntimeIssueId,
               issueTitle: 'Ship trace timeline',
-              href: '/loops/issue-1',
+              href: `/loops/${mockRuntimeIssueId}`,
               meta: 'implementing shard',
               diagnostics: [],
               updated: '2026-06-20T00:10:00.000Z',
@@ -536,15 +556,26 @@ vi.mock('./use-loop-operations', () => ({
   }),
 }));
 
-function renderWithIntl(ui: React.ReactElement) {
+function renderWithIntl(
+  ui: React.ReactElement,
+  opts: { locale?: string; messages?: typeof loopsMessages } = {},
+) {
   return render(
-    <NextIntlClientProvider locale="en" messages={{ loops: loopsMessages }}>
+    <NextIntlClientProvider
+      locale={opts.locale ?? 'en'}
+      messages={{ loops: opts.messages ?? loopsMessages }}
+    >
       {ui}
     </NextIntlClientProvider>,
   );
 }
 
 describe('LoopIssueDetailPage', () => {
+  beforeEach(() => {
+    mockDetail = detail;
+    mockRuntimeIssueId = 'issue-1';
+  });
+
   it('renders a scannable trace timeline from issue logs', () => {
     renderWithIntl(<LoopIssueDetailPage />);
 
@@ -577,6 +608,9 @@ describe('LoopIssueDetailPage', () => {
     expect(screen.getByText('Spec revision')).toBeInTheDocument();
     expect(screen.getByText('intake to v1 · round 1')).toBeInTheDocument();
     expect(screen.getByText('Rule Snapshot')).toBeInTheDocument();
+    expect(screen.getByText('Tenant')).toBeInTheDocument();
+    expect(screen.getByText('优惠豚')).toBeInTheDocument();
+    expect(screen.getByText(/tenant-youhuitun/)).toBeInTheDocument();
     expect(screen.getByText('1/4 rules · Agent readable')).toBeInTheDocument();
     expect(screen.getByText('AGENTS.md · present')).toBeInTheDocument();
     expect(
@@ -607,6 +641,7 @@ describe('LoopIssueDetailPage', () => {
     expect(screen.getByRole('button', { name: 'Run Browser QA' })).toBeInTheDocument();
     expect(screen.getByText('Latest QA artifacts')).toBeInTheDocument();
     expect(screen.getByText('QA target')).toBeInTheDocument();
+    expect(screen.getByText('Ignored navigation cancels')).toBeInTheDocument();
     expect(screen.getByText('Visual diffs')).toBeInTheDocument();
     expect(screen.getByText('12 changed pixels')).toBeInTheDocument();
     expect(screen.getByText('desktop 1440x900')).toBeInTheDocument();
@@ -639,6 +674,46 @@ describe('LoopIssueDetailPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('explains human-gated phases without treating runtime as missing', () => {
+    mockDetail = {
+      ...structuredClone(detail),
+      state: {
+        ...detail.state,
+        phase: 'PHASE_2_REVIEW',
+        shardsTotal: 0,
+        shardsDone: 0,
+        shardsInProgress: 0,
+      },
+    };
+    mockRuntimeIssueId = 'issue-other';
+
+    renderWithIntl(<LoopIssueDetailPage />);
+
+    expect(screen.getByText('awaiting human review')).toBeInTheDocument();
+    expect(screen.getByText('human review is required')).toBeInTheDocument();
+    expect(screen.getByText('resumes after approval')).toBeInTheDocument();
+  });
+
+  it('explains human-gated phases in Chinese locale without treating runtime as missing', () => {
+    mockDetail = {
+      ...structuredClone(detail),
+      state: {
+        ...detail.state,
+        phase: 'PHASE_2_REVIEW',
+        shardsTotal: 0,
+        shardsDone: 0,
+        shardsInProgress: 0,
+      },
+    };
+    mockRuntimeIssueId = 'issue-other';
+
+    renderWithIntl(<LoopIssueDetailPage />, { locale: 'zh-CN', messages: zhLoopsMessages });
+
+    expect(screen.getByText('等待人工审阅')).toBeInTheDocument();
+    expect(screen.getByText('需要人工审阅')).toBeInTheDocument();
+    expect(screen.getByText('批准后恢复')).toBeInTheDocument();
+  });
+
   it('submits Browser QA and second-opinion delivery actions', () => {
     runBrowserQa.mockClear();
     runSecondOpinion.mockClear();
@@ -655,6 +730,44 @@ describe('LoopIssueDetailPage', () => {
     expect(runBrowserQa).toHaveBeenCalledTimes(1);
     expect(setRequiredReviewGates).toHaveBeenCalledTimes(1);
     expect(runSecondOpinion).toHaveBeenCalledTimes(1);
+  });
+
+  it('collapses advanced delivery controls on a newly-created issue detail', () => {
+    mockDetail = {
+      ...structuredClone(detail),
+      shards: [],
+      implementationRecords: [],
+      reviewRecords: [],
+      testRecords: [],
+      logs: [],
+      browserQaReports: [],
+      secondOpinion: undefined,
+      state: {
+        ...detail.state,
+        phase: 'PHASE_1_SPEC',
+        shardsTotal: 0,
+        shardsDone: 0,
+        shardsInProgress: 0,
+      },
+    };
+
+    renderWithIntl(<LoopIssueDetailPage />);
+
+    expect(screen.getByText('Delivery Controls')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Run Browser QA' })).not.toBeVisible();
+
+    fireEvent.click(screen.getByText('Delivery Controls'));
+
+    expect(screen.getByRole('button', { name: 'Run Browser QA' })).toBeVisible();
+  });
+
+  it('keeps delivery controls expanded when the issue already has evidence', () => {
+    renderWithIntl(<LoopIssueDetailPage />);
+
+    expect(screen.getByText('Delivery Controls')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run Browser QA' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Run second opinion' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Record canary' })).toBeVisible();
   });
 
   it('submits batched second-opinion conflict decisions from the drilldown', () => {

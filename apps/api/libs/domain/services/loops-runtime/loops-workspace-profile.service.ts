@@ -182,7 +182,38 @@ export class LoopsWorkspaceProfileService {
       throw new Error(`Workspace not found: ${workspaceId}`);
     }
     const image = workspace.agents[agent].dockerImage;
+    if (await this.docker.imagePresent(image)) {
+      return {
+        agent,
+        image,
+        status: 'already-present',
+        message: 'Docker fallback image is already present.',
+      };
+    }
+
     const outcome = await this.docker.pull(image);
+    if (outcome.ok) {
+      let ready = false;
+      try {
+        ready = await this.docker.imagePresent(image);
+      } catch {
+        return {
+          agent,
+          image,
+          status: 'failed',
+          message: 'Docker image pull finished, but readiness inspection failed.',
+        };
+      }
+      if (!ready) {
+        return {
+          agent,
+          image,
+          status: 'failed',
+          message: 'Docker image pull finished, but the image is not ready locally.',
+        };
+      }
+    }
+
     return {
       agent,
       image,

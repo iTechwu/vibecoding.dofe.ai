@@ -101,6 +101,12 @@ export const LoopSourceKindSchema = z.enum([
   'generic',
 ]);
 
+export const LoopTenantContextSchema = z.object({
+  tenantId: z.string().trim().min(1).optional(),
+  tenantName: z.string().trim().min(1).optional(),
+  teamId: z.string().trim().min(1).optional(),
+});
+
 export const CreateLoopIssueRequestSchema = z.object({
   title: z.string().trim().min(4).max(160),
   targetRepo: z.string().trim().min(1),
@@ -118,6 +124,7 @@ export const CreateLoopIssueRequestSchema = z.object({
   submitterName: z.string().trim().min(1).optional(),
   sourceChannel: LoopSourceChannelSchema.optional(),
   sourceKind: LoopSourceKindSchema.optional(),
+  tenantContext: LoopTenantContextSchema.optional(),
 });
 
 export const LoopIssueSchema = z.object({
@@ -135,6 +142,7 @@ export const LoopIssueSchema = z.object({
   body: z.string(),
   acceptanceCriteria: z.array(z.string()),
   rawPayloadRef: z.string(),
+  tenantContext: LoopTenantContextSchema.optional(),
 });
 
 export const LoopIntakeSchema = z.object({
@@ -147,6 +155,7 @@ export const LoopIntakeSchema = z.object({
   status: z.enum(['RECEIVED', 'NEEDS-CLARIFICATION', 'NORMALIZED', 'REJECTED']),
   created: z.string(),
   ruleSnapshot: LoopRuleSnapshotSchema.optional(),
+  tenantContext: LoopTenantContextSchema.optional(),
 });
 
 export const LoopSpecSchema = z.object({
@@ -485,6 +494,9 @@ export const LoopBrowserQaReportSchema = z.object({
     .optional(),
   consoleErrors: z.array(z.string()),
   networkFailures: z.array(z.object({ url: z.string(), status: z.number().optional() })),
+  ignoredNetworkFailures: z
+    .array(z.object({ url: z.string(), reason: z.string(), classification: z.string() }))
+    .optional(),
   checkedFlows: z.array(z.string()),
   blockedReason: z.string().optional(),
   command: z.string(),
@@ -1689,6 +1701,7 @@ export const CreateLoopIssueSimpleRequestSchema = z.object({
   priority: LoopPrioritySchema.optional(),
   title: z.string().trim().min(4).max(160).optional(),
   acceptanceCriteria: z.array(z.string().trim().min(1)).optional(),
+  tenantContext: LoopTenantContextSchema.optional(),
 });
 
 /** Normalised preview of what the simple request will become before create. */
@@ -1706,6 +1719,7 @@ export type LoopPriority = z.infer<typeof LoopPrioritySchema>;
 export type LoopSourceChannel = z.infer<typeof LoopSourceChannelSchema>;
 export type LoopSourceKind = z.infer<typeof LoopSourceKindSchema>;
 export type LoopSubmitterProvider = z.infer<typeof LoopSubmitterProviderSchema>;
+export type LoopTenantContext = z.infer<typeof LoopTenantContextSchema>;
 export type LoopSubmitter = z.infer<typeof LoopSubmitterSchema>;
 export type LoopRuleSnapshotRule = z.infer<typeof LoopRuleSnapshotRuleSchema>;
 export type LoopRuleSnapshotDiagnostic = z.infer<typeof LoopRuleSnapshotDiagnosticSchema>;

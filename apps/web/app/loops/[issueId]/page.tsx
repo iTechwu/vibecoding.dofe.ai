@@ -453,28 +453,47 @@ type IconComponent = ComponentType<{ className?: string }>;
 function SectionCard({
   children,
   className = '',
+  defaultCollapsed = false,
   title,
   meta,
   icon: Icon,
 }: {
   children: ReactNode;
   className?: string;
+  defaultCollapsed?: boolean;
   title: string;
   meta?: ReactNode;
   icon?: IconComponent;
 }) {
+  const header = (
+    <>
+      <div className="flex min-w-0 items-center gap-3">
+        {Icon ? (
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted/40">
+            <Icon className="size-4" />
+          </span>
+        ) : null}
+        <h2 className="text-balance text-base font-semibold">{title}</h2>
+      </div>
+      {meta ? <div className="shrink-0 text-xs text-muted-foreground">{meta}</div> : null}
+    </>
+  );
+
+  if (defaultCollapsed) {
+    return (
+      <details className={cn('rounded-lg border bg-background', className)}>
+        <summary className="flex cursor-pointer list-none items-start justify-between gap-4 border-b px-4 py-3 sm:px-5 [&::-webkit-details-marker]:hidden">
+          {header}
+        </summary>
+        <div className="p-4 sm:p-5">{children}</div>
+      </details>
+    );
+  }
+
   return (
     <section className={cn('rounded-lg border bg-background', className)}>
       <div className="flex items-start justify-between gap-4 border-b px-4 py-3 sm:px-5">
-        <div className="flex min-w-0 items-center gap-3">
-          {Icon ? (
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted/40">
-              <Icon className="size-4" />
-            </span>
-          ) : null}
-          <h2 className="text-balance text-base font-semibold">{title}</h2>
-        </div>
-        {meta ? <div className="shrink-0 text-xs text-muted-foreground">{meta}</div> : null}
+        {header}
       </div>
       <div className="p-4 sm:p-5">{children}</div>
     </section>
@@ -631,6 +650,16 @@ function getShardAutomationStep(status: string) {
   return 'queued';
 }
 
+function formatTenantContext(detail: LoopDetail) {
+  const tenantContext = detail.intake.tenantContext ?? detail.issue.tenantContext;
+  if (!tenantContext) return undefined;
+  const auditParts = [tenantContext.tenantId, tenantContext.teamId].filter(Boolean);
+  return {
+    name: tenantContext.tenantName ?? tenantContext.tenantId ?? tenantContext.teamId,
+    audit: auditParts.join(' · '),
+  };
+}
+
 function buildExecutionStatus(detail: LoopDetail, runtime?: LoopAgentRuntimeResponse) {
   const runtimeAgent = runtime?.agents.find(
     (agent) =>
@@ -642,6 +671,7 @@ function buildExecutionStatus(detail: LoopDetail, runtime?: LoopAgentRuntimeResp
     : runtimeAgent?.id.includes('codex')
       ? 'codex'
       : inferredAgent;
+  const isHumanGate = agentId === 'human';
   const runtimeMode = runtime?.runtimes?.find((item) => item.agent === agentId)?.selected?.mode;
   const latestEvent = detail.logs[0];
 
@@ -649,6 +679,7 @@ function buildExecutionStatus(detail: LoopDetail, runtime?: LoopAgentRuntimeResp
     agentId,
     agentLabel: runtimeAgent?.label ?? formatAgentName(agentId),
     agentStatus: runtimeAgent?.status,
+    isHumanGate,
     isRuntimeMatched: Boolean(runtimeAgent),
     runtimeMode,
     activeShard: getActiveShard(detail),
@@ -818,10 +849,22 @@ export default function LoopIssueDetailPage() {
   const historicalArtifactCount = evidenceArtifacts.length - currentRoundEvidenceArtifacts.length;
   const specDiffReview = buildSpecDiffReview(detail);
   const executionStatus = buildExecutionStatus(detail, agentRuntime);
+  const tenantContext = formatTenantContext(detail);
   const issueExceptions = buildIssueExceptions(detail, executionStatus, t, locale);
   const hasDeliveryControls = Boolean(
     detail.workflowRecipe || detail.reviewGates?.length || detail.releaseGate,
   );
+  const hasImplementationEvidence = Boolean(
+    detail.shards.length ||
+    detail.implementationRecords.length ||
+    detail.reviewRecords.length ||
+    detail.testRecords.length ||
+    detail.globalReview ||
+    detail.browserQaReports?.length ||
+    detail.secondOpinion,
+  );
+  const shouldCollapseDeliveryControls =
+    hasDeliveryControls && !hasImplementationEvidence && detail.state.phase === 'PHASE_1_SPEC';
   const releaseChecklistEntries = detail.releaseGate
     ? (Object.entries(detail.releaseGate.checklist) as Array<
         [keyof typeof detail.releaseGate.checklist, boolean]
@@ -954,9 +997,11 @@ export default function LoopIssueDetailPage() {
         <SectionCard
           icon={Bot}
           meta={
-            executionStatus.isRuntimeMatched
-              ? t('execution.runtimeMatched')
-              : t('execution.runtimeInferred')
+            executionStatus.isHumanGate
+              ? t('execution.humanGateMeta')
+              : executionStatus.isRuntimeMatched
+                ? t('execution.runtimeMatched')
+                : t('execution.runtimeInferred')
           }
           title={t('execution.title')}
         >
@@ -974,7 +1019,9 @@ export default function LoopIssueDetailPage() {
                     ? formatLoopStatus(executionStatus.agentStatus, locale)
                     : executionStatus.isRuntimeMatched
                       ? t('execution.liveRuntime')
-                      : t('execution.inferredRuntime')
+                      : executionStatus.isHumanGate
+                        ? t('execution.humanGateMuted')
+                        : t('execution.inferredRuntime')
                 }
                 value={executionStatus.agentLabel}
               />
@@ -984,7 +1031,9 @@ export default function LoopIssueDetailPage() {
                 value={
                   executionStatus.runtimeMode
                     ? formatLoopLabel(executionStatus.runtimeMode, locale)
-                    : t('execution.notReported')
+                    : executionStatus.isHumanGate
+                      ? t('execution.humanGateRuntime')
+                      : t('execution.notReported')
                 }
               />
               <MetricTile
@@ -1041,6 +1090,7 @@ export default function LoopIssueDetailPage() {
 
         {hasDeliveryControls ? (
           <SectionCard
+            defaultCollapsed={shouldCollapseDeliveryControls}
             icon={ShieldCheck}
             meta={t('deliveryControls.meta', {
               steps: detail.workflowRecipe?.steps.length ?? 0,
@@ -1223,7 +1273,7 @@ export default function LoopIssueDetailPage() {
                         <p className="mt-2 truncate text-muted-foreground">
                           {latestBrowserQa.title ?? latestBrowserQa.targetUrl}
                         </p>
-                        <div className="mt-3 grid grid-cols-3 gap-2">
+                        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                           <MetricTile
                             label={t('deliveryControls.browserQa.screenshots')}
                             value={latestBrowserQa.screenshots.length}
@@ -1235,6 +1285,10 @@ export default function LoopIssueDetailPage() {
                           <MetricTile
                             label={t('deliveryControls.browserQa.handoffs')}
                             value={latestBrowserQa.handoffs?.length ?? 0}
+                          />
+                          <MetricTile
+                            label={t('deliveryControls.browserQa.ignoredFailures')}
+                            value={latestBrowserQa.ignoredNetworkFailures?.length ?? 0}
                           />
                         </div>
                         {latestBrowserQa.visualDiffs?.length ? (
@@ -1800,6 +1854,17 @@ export default function LoopIssueDetailPage() {
                   <dt className="text-xs text-muted-foreground">{t('intake.source')}</dt>
                   <dd className="mt-1 font-medium">{detail.intake.sourceChannel}</dd>
                 </div>
+                {tenantContext ? (
+                  <div className="rounded-md border bg-muted/20 p-3 md:col-span-2">
+                    <dt className="text-xs text-muted-foreground">{t('intake.tenant')}</dt>
+                    <dd className="mt-1 font-medium">{tenantContext.name}</dd>
+                    {tenantContext.audit ? (
+                      <dd className="mt-1 break-all text-xs text-muted-foreground">
+                        {tenantContext.audit}
+                      </dd>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="rounded-md border bg-muted/20 p-3 md:col-span-2">
                   <dt className="text-xs text-muted-foreground">{t('intake.targetRepo')}</dt>
                   <dd className="mt-1 break-all font-medium">{detail.issue.targetRepo}</dd>

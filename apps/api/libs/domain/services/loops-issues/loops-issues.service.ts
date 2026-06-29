@@ -101,6 +101,7 @@ export class LoopsIssuesService {
     const submitter = this.normalizeSubmitter(input, authUser);
     const sourceChannel = input.sourceChannel ?? 'web';
     const sourceKind = input.sourceKind ?? 'web_form';
+    const tenantContext = input.tenantContext;
     const issue: LoopIssue = {
       id: issueId,
       title: input.title,
@@ -116,6 +117,7 @@ export class LoopsIssuesService {
       body: input.body,
       acceptanceCriteria: input.acceptanceCriteria,
       rawPayloadRef,
+      ...(tenantContext ? { tenantContext } : {}),
     };
     const ruleSnapshot = await this.captureRuleSnapshot(targetRepo, now);
     const intake: LoopIntake = {
@@ -128,6 +130,7 @@ export class LoopsIssuesService {
       status: 'NORMALIZED' as const,
       created: now,
       ruleSnapshot,
+      ...(tenantContext ? { tenantContext } : {}),
     };
     const state: LoopStateItem = {
       issueId,

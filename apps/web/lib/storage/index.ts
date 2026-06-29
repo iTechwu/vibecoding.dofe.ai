@@ -31,7 +31,14 @@ const STORAGE_KEYS = {
   TOKENS: 'tokens',
   ID_TOKEN: 'idToken',
   CURRENT_TENANT: 'currentTenant',
+  CURRENT_TENANT_SNAPSHOT: 'currentTenantSnapshot',
 } as const;
+
+export interface TenantSnapshot {
+  tenantId: string;
+  tenantName?: string;
+  teamId?: string;
+}
 
 function setCookie(name: string, value: string, maxAgeSeconds: number): void {
   if (typeof document === 'undefined') return;
@@ -200,6 +207,7 @@ export function clearAll(): void {
   localStorage.removeItem(STORAGE_KEYS.TOKENS);
   localStorage.removeItem(STORAGE_KEYS.ID_TOKEN);
   localStorage.removeItem(STORAGE_KEYS.CURRENT_TENANT);
+  localStorage.removeItem(STORAGE_KEYS.CURRENT_TENANT_SNAPSHOT);
 
   deleteCookie('tokenPresence');
   deleteCookie('tokenExpire');
@@ -228,9 +236,42 @@ export function getCurrentTenantId(): string {
   return localStorage.getItem(STORAGE_KEYS.CURRENT_TENANT) || '';
 }
 
+export function setCurrentTenantSnapshot(snapshot: TenantSnapshot): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(STORAGE_KEYS.CURRENT_TENANT, snapshot.tenantId);
+  localStorage.setItem(STORAGE_KEYS.CURRENT_TENANT_SNAPSHOT, JSON.stringify(snapshot));
+  window.dispatchEvent(new Event('currentTenantUpdated'));
+}
+
+export function getCurrentTenantSnapshot(): TenantSnapshot | null {
+  if (typeof window === 'undefined') return null;
+  const snapshotStr = localStorage.getItem(STORAGE_KEYS.CURRENT_TENANT_SNAPSHOT);
+  if (snapshotStr) {
+    try {
+      const parsed = JSON.parse(snapshotStr) as Partial<TenantSnapshot>;
+      if (typeof parsed.tenantId === 'string' && parsed.tenantId.trim().length > 0) {
+        return {
+          tenantId: parsed.tenantId.trim(),
+          ...(typeof parsed.tenantName === 'string' && parsed.tenantName.trim().length > 0
+            ? { tenantName: parsed.tenantName.trim() }
+            : {}),
+          ...(typeof parsed.teamId === 'string' && parsed.teamId.trim().length > 0
+            ? { teamId: parsed.teamId.trim() }
+            : {}),
+        };
+      }
+    } catch {
+      // Fall back to the legacy tenant id below.
+    }
+  }
+  const tenantId = getCurrentTenantId();
+  return tenantId ? { tenantId } : null;
+}
+
 export function clearCurrentTenantId(): void {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(STORAGE_KEYS.CURRENT_TENANT);
+  localStorage.removeItem(STORAGE_KEYS.CURRENT_TENANT_SNAPSHOT);
 }
 
 // ============================================================================

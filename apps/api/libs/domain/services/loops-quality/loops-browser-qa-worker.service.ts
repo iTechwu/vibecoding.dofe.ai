@@ -13,11 +13,23 @@ import { runVisualRegression } from './loops-visual-regression.util';
 
 const execFileAsync = promisify(execFile);
 const OUTPUT_LIMIT = 8000;
+export const BROWSER_QA_NAVIGATION_CANCELLED_PATTERN_SOURCE =
+  'ERR_ABORTED|AbortError|NS_BINDING_ABORTED|cancelled|canceled';
+export const BROWSER_QA_NAVIGATION_CANCELLED_PATTERN_FLAGS = 'i';
+export const BROWSER_QA_NAVIGATION_CANCELLED_PATTERN = new RegExp(
+  BROWSER_QA_NAVIGATION_CANCELLED_PATTERN_SOURCE,
+  BROWSER_QA_NAVIGATION_CANCELLED_PATTERN_FLAGS,
+);
+
+export function classifyBrowserQaRequestFailure(reason: string): string | undefined {
+  return BROWSER_QA_NAVIGATION_CANCELLED_PATTERN.test(reason) ? 'navigation-cancelled' : undefined;
+}
 
 type BrowserQaWorkerResult = {
   title?: string;
   consoleErrors: string[];
   networkFailures: Array<{ url: string; status?: number }>;
+  ignoredNetworkFailures?: Array<{ url: string; reason: string; classification: string }>;
   screenshots: Array<{ path: string; label: string; viewportName: string }>;
   traces: Array<{ path: string; label: string; viewportName: string }>;
   handoffs: Array<{ path: string; label: string; viewportName: string }>;
@@ -83,7 +95,7 @@ export class LoopsBrowserQaWorkerService {
         timeout: 60000,
         maxBuffer: 1024 * 1024 * 8,
       });
-      const result = JSON.parse(await fs.readFile(outputPath, 'utf8')) as BrowserQaWorkerResult;
+      const result = this.parseWorkerResult(await fs.readFile(outputPath, 'utf8'));
       const visualDiffs = await this.buildVisualDiffs({
         request: input.request,
         screenshots: result.screenshots,
@@ -117,6 +129,7 @@ export class LoopsBrowserQaWorkerService {
         })),
         consoleErrors: result.consoleErrors,
         networkFailures: result.networkFailures,
+        ignoredNetworkFailures: result.ignoredNetworkFailures,
         checkedFlows: input.request.checkedFlows,
         viewports: input.request.viewports,
         command,
@@ -153,6 +166,37 @@ export class LoopsBrowserQaWorkerService {
   private errorMessage(error: unknown): string {
     const err = error as { stderr?: string; stdout?: string; message?: string };
     return this.truncate(err.stderr ?? err.stdout ?? err.message ?? String(error));
+  }
+
+  private parseWorkerResult(content: string): BrowserQaWorkerResult {
+    const parsed = JSON.parse(content) as Partial<BrowserQaWorkerResult>;
+    const consoleErrors = this.requiredWorkerArray(parsed, 'consoleErrors');
+    const networkFailures = this.requiredWorkerArray(parsed, 'networkFailures');
+    const screenshots = this.requiredWorkerArray(parsed, 'screenshots');
+    const traces = this.requiredWorkerArray(parsed, 'traces');
+    const handoffs = this.requiredWorkerArray(parsed, 'handoffs');
+    return {
+      title: parsed.title,
+      consoleErrors,
+      networkFailures,
+      ignoredNetworkFailures: Array.isArray(parsed.ignoredNetworkFailures)
+        ? parsed.ignoredNetworkFailures
+        : undefined,
+      screenshots,
+      traces,
+      handoffs,
+    };
+  }
+
+  private requiredWorkerArray<K extends keyof BrowserQaWorkerResult>(
+    parsed: Partial<BrowserQaWorkerResult>,
+    key: K,
+  ): Extract<BrowserQaWorkerResult[K], unknown[]> {
+    const value = parsed[key];
+    if (!Array.isArray(value)) {
+      throw new Error(`Browser QA worker output is malformed: ${String(key)} must be an array.`);
+    }
+    return value as Extract<BrowserQaWorkerResult[K], unknown[]>;
   }
 
   private truncate(value: string): string {
@@ -285,6 +329,7 @@ function pathForViewport(filePath, viewportName) {
   const browser = await chromium.launch({ headless: true });
   const consoleErrors = [];
   const networkFailures = [];
+  const ignoredNetworkFailures = [];
   const screenshots = [];
   const traces = [];
   const handoffs = [];
@@ -324,6 +369,21 @@ function buildContextOptions(viewport, authSession) {
         networkFailures.push({ url: response.url(), status: response.status() });
       }
     });
+    page.on('requestfailed', (request) => {
+      const failure = request.failure();
+      const reason = failure && failure.errorText ? failure.errorText : 'request failed';
+      if (new RegExp(${JSON.stringify(BROWSER_QA_NAVIGATION_CANCELLED_PATTERN_SOURCE)}, ${JSON.stringify(
+        BROWSER_QA_NAVIGATION_CANCELLED_PATTERN_FLAGS,
+      )}).test(reason)) {
+        ignoredNetworkFailures.push({
+          url: request.url(),
+          reason,
+          classification: 'navigation-cancelled',
+        });
+        return;
+      }
+      networkFailures.push({ url: request.url() });
+    });
     await page.goto(input.targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.screenshot({ path: screenshotPath, fullPage: true });
     title = title || await page.title();
@@ -347,6 +407,7 @@ function buildContextOptions(viewport, authSession) {
       viewport,
       consoleErrors,
       networkFailures,
+      ignoredNetworkFailures,
       created: new Date().toISOString(),
     }, null, 2));
     handoffs.push({
@@ -360,6 +421,7 @@ function buildContextOptions(viewport, authSession) {
     title,
     consoleErrors,
     networkFailures,
+    ignoredNetworkFailures,
     screenshots,
     traces,
     handoffs,

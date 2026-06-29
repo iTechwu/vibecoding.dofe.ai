@@ -1,4 +1,11 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import {
+  buildSsoE2eEnvFromProcess,
+  expectedLoopsNewUrl,
+  expectedOidcCallback,
+  isUsableLoopsRouteStatus,
+  validateSsoE2eEnv,
+} from './sso-e2e-env';
 
 const enabled = process.env.SSO_E2E_ENABLED === '1';
 const email = process.env.E2E_SSO_EMAIL;
@@ -151,6 +158,24 @@ test('login -> callback -> refresh -> logout and upload token/CDN metadata throu
   baseURL,
 }) => {
   expect(baseURL, 'Playwright baseURL must be configured').toBeTruthy();
+  const envIssues = validateSsoE2eEnv(buildSsoE2eEnvFromProcess(process.env, baseURL!));
+  expect(
+    envIssues,
+    [
+      'SSO E2E environment is not aligned.',
+      ...envIssues,
+      `SSO OAuth client must allow callback: ${expectedOidcCallback(apiOrigin)}`,
+    ].join('\n'),
+  ).toEqual([]);
+
+  const loopsNewUrl = expectedLoopsNewUrl(baseURL!);
+  const intakeResponse = await page.goto(loopsNewUrl);
+  expect(
+    isUsableLoopsRouteStatus(intakeResponse?.status()),
+    `Loops intake route must return 2xx/3xx before SSO E2E: ${loopsNewUrl} returned ${
+      intakeResponse?.status() ?? 'no response'
+    }`,
+  ).toBe(true);
 
   await page.goto(`${loginPath}?callbackUrl=${encodeURIComponent(callbackUrl)}`);
 

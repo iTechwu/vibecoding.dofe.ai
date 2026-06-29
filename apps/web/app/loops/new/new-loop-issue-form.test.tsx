@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import loopsMessages from '@/locales/en/loops.json';
 import NewLoopIssueForm from './new-loop-issue-form';
 
@@ -48,6 +48,12 @@ function renderWithIntl(ui: React.ReactElement) {
 }
 
 describe('NewLoopIssueForm', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mutateAsync.mockReset();
+    window.localStorage.clear();
+  });
+
   it('prefills CrewAI-style templates for complete issue intake', async () => {
     const user = userEvent.setup();
     renderWithIntl(<NewLoopIssueForm defaultTargetRepo="/repo/app" />);
@@ -131,6 +137,42 @@ describe('NewLoopIssueForm', () => {
       }),
     });
     expect(push).toHaveBeenCalledWith('/loops/issue-template-1');
+  });
+
+  it('confirms current tenant before full issue submission and includes it in the payload', async () => {
+    vi.mocked(window.localStorage.getItem).mockImplementation((key) => {
+      if (key === 'currentTenant') return 'tenant-youhuitun';
+      if (key === 'currentTenantSnapshot') {
+        return JSON.stringify({
+          tenantId: 'tenant-youhuitun',
+          tenantName: '优惠豚',
+          teamId: 'team-1',
+        });
+      }
+      return null;
+    });
+    const user = userEvent.setup();
+    mutateAsync.mockResolvedValueOnce({
+      body: { data: { issue: { id: 'issue-template-tenant' } } },
+    });
+    renderWithIntl(<NewLoopIssueForm defaultTargetRepo="/repo/app" />);
+
+    expect(await screen.findByText('Tenant')).toBeInTheDocument();
+    expect(screen.getByText('优惠豚')).toBeInTheDocument();
+    expect(screen.getByText(/tenant-youhuitun/)).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('Title'), 'Fix checkout regression');
+    await user.click(screen.getByRole('button', { name: 'Create Issue' }));
+
+    expect(mutateAsync).toHaveBeenCalledWith({
+      body: expect.objectContaining({
+        tenantContext: {
+          tenantId: 'tenant-youhuitun',
+          tenantName: '优惠豚',
+          teamId: 'team-1',
+        },
+      }),
+    });
   });
 
   it('blocks submit and shows a field error when the payload fails Zod validation (R10)', async () => {

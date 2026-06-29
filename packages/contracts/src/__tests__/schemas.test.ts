@@ -73,6 +73,38 @@ describe('Schemas', () => {
     });
 
     describe('Loops metrics schema', () => {
+      it('should validate loop tenant context in issue intake contracts', () => {
+        const tenantContext = {
+          tenantId: 'tenant-youhuitun',
+          tenantName: '优惠豚',
+          teamId: 'team-1',
+        };
+
+        expect(
+          schemas.CreateLoopIssueRequestSchema.safeParse({
+            title: 'Add tenant scoped loop audit',
+            targetRepo: '.',
+            body: 'Persist and display the selected tenant during loop intake.',
+            priority: 'P1',
+            acceptanceCriteria: ['tenant context is visible'],
+            tenantContext,
+          }).success,
+        ).toBe(true);
+
+        expect(
+          schemas.CreateLoopIssueSimpleRequestSchema.safeParse({
+            request: 'Persist tenant context for the simple issue flow',
+            tenantContext,
+          }).success,
+        ).toBe(true);
+
+        expect(
+          schemas.LoopTenantContextSchema.safeParse({
+            tenantId: ' ',
+          }).success,
+        ).toBe(false);
+      });
+
       it('should validate the Loops capability registry', () => {
         const result = schemas.LoopCapabilitiesResponseSchema.safeParse({
           summary: {

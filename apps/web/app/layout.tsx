@@ -9,6 +9,9 @@ import { defaultLocale, isValidLocale } from '@/i18n/config';
 export const metadata: Metadata = {
   title: BRAND_CONFIG.title,
   description: BRAND_CONFIG.description,
+  icons: {
+    icon: '/logo.svg',
+  },
 };
 
 export default async function RootLayout({
@@ -17,14 +20,11 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const localeHeader = (await headers()).get('x-next-intl-locale');
-  const lang =
-    localeHeader && isValidLocale(localeHeader) ? localeHeader : defaultLocale;
+  const lang = localeHeader && isValidLocale(localeHeader) ? localeHeader : defaultLocale;
 
   return (
     <html lang={lang} suppressHydrationWarning>
-      <body className={`${GeistSans.variable} ${GeistMono.variable}`}>
-        {children}
-      </body>
+      <body className={`${GeistSans.variable} ${GeistMono.variable}`}>{children}</body>
     </html>
   );
 }

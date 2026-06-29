@@ -120,3 +120,8 @@
 {"ts":"2026-06-22T10:10:50.866Z","type":"TEST_RUN","loop":"issue-20260622-85807ff4","shard":"issue-20260622-85807ff4-shard-1","status":"TEST-FAIL","commands":["pnpm test","pnpm lint"]}
 {"ts":"2026-06-22T10:10:55.220Z","type":"HUMAN_INTERVENE","loop":"issue-20260622-85807ff4","action":"take","actor":"human","shard":"issue-20260622-85807ff4-shard-1"}
 {"ts":"2026-06-22T10:10:55.221Z","type":"NOTIFICATION_RECORDED","issue":"issue-20260622-85807ff4","channel":"web","kind":"HUMAN_INTERVENTION","recipient":"human","status":"RECORDED"}
+{"ts":"2026-06-29T09:11:56.793Z","type":"INTAKE_RECEIVED","source":"web","intake":"intake-20260629-a55aca10-a","submitter":"11111111-1111-4111-8111-111111111111"}
+{"ts":"2026-06-29T09:11:56.793Z","type":"ISSUE_NORMALIZED","issue":"issue-20260629-a55aca10","intake":"intake-20260629-a55aca10-a","target_repo":"/Users/techwu/Documents/codes/dofe.ai/vibecoding.dofe.ai"}
+{"ts":"2026-06-29T09:11:56.794Z","type":"NOTIFICATION_RECORDED","issue":"issue-20260629-a55aca10","channel":"web","kind":"ISSUE_RECEIVED","recipient":"11111111-1111-4111-8111-111111111111","status":"RECORDED"}
+{"ts":"2026-06-29T09:12:30.917Z","type":"SPEC_STATE","issue":"issue-20260629-a55aca10","spec":"spec-20260629-a55aca10","to":"DRAFT"}
+{"ts":"2026-06-29T09:12:30.917Z","type":"NOTIFICATION_RECORDED","issue":"issue-20260629-a55aca10","channel":"web","kind":"SPEC_REVIEW_REQUESTED","recipient":"11111111-1111-4111-8111-111111111111","status":"RECORDED"}

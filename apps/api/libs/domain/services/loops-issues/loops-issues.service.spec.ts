@@ -113,6 +113,32 @@ describe('LoopsIssuesService.createIssue orchestration', () => {
     expect(record.intake.sourceChannel).toBe('schedule');
   });
 
+  it('persists tenant context on issue, intake, and raw payload', async () => {
+    const { service } = buildService();
+
+    await service.createIssue({
+      ...baseInput,
+      tenantContext: {
+        tenantId: 'tenant-youhuitun',
+        tenantName: '优惠豚',
+        teamId: 'team-1',
+      },
+    });
+
+    const [record] = (service.writeIssueRecord as jest.Mock).mock.calls[0];
+    expect(record.issue.tenantContext).toEqual({
+      tenantId: 'tenant-youhuitun',
+      tenantName: '优惠豚',
+      teamId: 'team-1',
+    });
+    expect(record.intake.tenantContext).toEqual(record.issue.tenantContext);
+    expect(record.rawPayload).toEqual(
+      expect.objectContaining({
+        tenantContext: record.issue.tenantContext,
+      }),
+    );
+  });
+
   it('throws when evidence is not wired', async () => {
     const store = { intakeId: jest.fn(), readWorkflowDefaults: jest.fn(), writeIssue: jest.fn() };
     const service = new LoopsIssuesService(store as never, undefined, undefined, undefined);
