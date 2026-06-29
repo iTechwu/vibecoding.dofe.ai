@@ -59,6 +59,13 @@ Status:
 - Cycle 38 adds post-pull readiness inspection exception handling so a Docker
   inspect failure returns a structured `failed` pull response instead of
   surfacing a lower-level exception.
+- Cycle 44 adds the same structured failure behavior for the initial pre-pull
+  image inspection, avoiding API exceptions before the pull attempt starts.
+- Cycle 46 wraps the Docker `pull` call itself in the same structured-failure
+  boundary, so a rejecting pull client (for example a Docker client that fails
+  to construct) returns `failed` instead of propagating an unhandled exception.
+  It also adds a regression proving `pullImage` rejects with `Workspace not
+found` before any Docker interaction when the workspace id is unknown.
 
 Next execution plan:
 
@@ -67,8 +74,9 @@ Next execution plan:
 - 范围: Run the dashboard action or `POST /loops/workspaces/:workspaceId/pull-image`
   for Codex and Claude Code, then confirm `/loops/agent-runtime` reports the
   selected Docker candidate as ready; repository tests now cover the local
-  already-present, pulled, post-pull-not-ready, post-pull-inspect-error,
-  dashboard business-failure, and dashboard request-error branches.
+  already-present, initial-inspect-error, pulled, post-pull-not-ready,
+  post-pull-inspect-error, dashboard business-failure, and dashboard
+  request-error branches.
 - 不做: Do not change pinned image digests or registry credential storage in this
   pass.
 - 受益: Runtime fallback is usable when local CLI is unavailable, improving
@@ -108,9 +116,17 @@ Next execution plan:
 
 ### OPZ-03: Remove Secret-Like URLs From Routine Startup Logs
 
-Status: Not implemented in this repository. The observed RabbitMQ lifecycle
-logging comes from the upstream `@dofe/infra-rabbitmq` package, so the fix needs
-to land there or through an exposed logger configuration hook.
+Status: Repository-owned defense layer implemented in Cycle 52. The observed
+RabbitMQ lifecycle logging comes from the upstream `@dofe/infra-rabbitmq`
+package, which injects the shared `WINSTON_MODULE_PROVIDER` logger, so its
+connection logs flow through the logger this repository configures.
+`createAppWinstonConfig` now prepends a `redactSecretUrls` winston format that
+rewrites `scheme://user:pass@` authorities to `scheme://***@` before any
+transport sees them, masking credentials in connection URLs and nested error
+meta even before the upstream package masks them itself. The upstream
+root-cause fix is still the preferred long-term resolution because it also
+covers the package's `console.*` paths (e.g. `rabbitmq-events.module.js`) that
+bypass winston; the dependency bump remains external.
 
 Observed:
 

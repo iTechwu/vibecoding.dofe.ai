@@ -69,6 +69,11 @@ export function validateSsoE2eEnv(env: SsoE2eEnv): string[] {
   const apiOrigin = requiredOriginOf('E2E_API_ORIGIN', env.apiOrigin, issues);
   const webOrigin = requiredOriginOf('E2E_WEB_BASE_URL', env.webBaseUrl, issues);
   const ssoOrigin = requiredOriginOf('E2E_SSO_ORIGIN', env.ssoOrigin, issues);
+  // The SSO login portal may live on a different origin than the SSO API, so it
+  // is not compared against `ssoOrigin`; it only needs to be a reachable URL.
+  if (!originOf(env.ssoLoginOrigin)) {
+    issues.push(`E2E_SSO_LOGIN_ORIGIN (${env.ssoLoginOrigin}) must be a valid URL.`);
+  }
 
   compareOptionalOrigin({
     name: 'NEXT_PUBLIC_SERVER_BASE_URL',
@@ -115,7 +120,7 @@ export function validateSsoE2eEnv(env: SsoE2eEnv): string[] {
 }
 
 export function buildSsoE2eEnvFromProcess(
-  processEnv: NodeJS.ProcessEnv,
+  processEnv: Readonly<Record<string, string | undefined>>,
   webBaseUrl: string,
 ): SsoE2eEnv {
   return {
@@ -135,4 +140,50 @@ export function buildSsoE2eEnvFromProcess(
     ssoApiUrl: processEnv.SSO_API_URL,
     ssoInternalApiUrl: processEnv.SSO_INTERNAL_API_URL,
   };
+}
+
+export interface LoopsRouteProbe {
+  url: string;
+  status: number | undefined;
+  usable: boolean;
+  timedOut?: boolean;
+  error?: string;
+}
+
+const DEFAULT_ROUTE_PROBE_TIMEOUT_MS = 10_000;
+
+/**
+ * Probe whether a Loops intake route (typically `/loops/new`) is reachable and
+ * returns a usable status. Intended for deployment/release verification of a
+ * remote domain (e.g. `vibecoding.test.dofe.ai`) without starting the full
+ * local Web/API/SSO stack. A 2xx page or an expected 3xx auth redirect is
+ * usable; 4xx/5xx, a network failure, or a timeout is not. `fetchImpl` is
+ * injectable so the logic stays unit-testable. A timeout guards against a hung
+ * endpoint so CI/release scripts cannot stall indefinitely.
+ */
+export async function probeLoopsRoute(
+  url: string,
+  fetchImpl: typeof fetch,
+  options: { timeoutMs?: number } = {},
+): Promise<LoopsRouteProbe> {
+  const timeoutMs = options.timeoutMs ?? DEFAULT_ROUTE_PROBE_TIMEOUT_MS;
+  try {
+    const response = await fetchImpl(url, {
+      method: 'GET',
+      redirect: 'manual',
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const status = response.status;
+    return { url, status, usable: isUsableLoopsRouteStatus(status) };
+  } catch (error) {
+    const name = (error as { name?: string } | null)?.name;
+    const isTimeout = name === 'TimeoutError' || name === 'AbortError';
+    return {
+      url,
+      status: undefined,
+      usable: false,
+      timedOut: isTimeout || undefined,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }

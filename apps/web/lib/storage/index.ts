@@ -264,14 +264,15 @@ export function getCurrentTenantSnapshot(): TenantSnapshot | null {
       // Fall back to the legacy tenant id below.
     }
   }
-  const tenantId = getCurrentTenantId();
-  return tenantId ? { tenantId } : null;
+  const tenantId = getCurrentTenantId().trim();
+  return tenantId.length > 0 ? { tenantId } : null;
 }
 
 export function clearCurrentTenantId(): void {
   if (typeof window === 'undefined') return;
   localStorage.removeItem(STORAGE_KEYS.CURRENT_TENANT);
   localStorage.removeItem(STORAGE_KEYS.CURRENT_TENANT_SNAPSHOT);
+  window.dispatchEvent(new Event('currentTenantUpdated'));
 }
 
 // ============================================================================

@@ -125,6 +125,20 @@ describe('LoopsWorkspaceProfileService (0622 · B2)', () => {
     expect(outcome.message).toBe('Docker fallback image is already present.');
   });
 
+  it('pullImage reports failure when the initial image inspection errors', async () => {
+    const docker = {
+      imagePresent: jest.fn().mockRejectedValue(new Error('Docker inspect failed.')),
+      pull: jest.fn(),
+    } as unknown as LoopsDockerClient;
+    const serviceWithDocker = new LoopsWorkspaceProfileService(undefined, docker);
+
+    const outcome = await serviceWithDocker.pullImage('default', 'codex');
+
+    expect(docker.pull).not.toHaveBeenCalled();
+    expect(outcome.status).toBe('failed');
+    expect(outcome.message).toBe('Docker image readiness inspection failed.');
+  });
+
   it('pullImage verifies local readiness after a successful pull', async () => {
     const docker = {
       imagePresent: jest.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true),
@@ -179,5 +193,32 @@ describe('LoopsWorkspaceProfileService (0622 · B2)', () => {
     expect(outcome.status).toBe('failed');
     expect(outcome.agent).toBe('codex');
     expect(outcome.image).toMatch(/codex-cli/);
+  });
+
+  it('pullImage reports failure when the docker client pull itself rejects', async () => {
+    const docker = {
+      imagePresent: jest.fn().mockResolvedValue(false),
+      pull: jest.fn().mockRejectedValue(new Error('docker client crashed')),
+    } as unknown as LoopsDockerClient;
+    const serviceWithDocker = new LoopsWorkspaceProfileService(undefined, docker);
+
+    const outcome = await serviceWithDocker.pullImage('default', 'codex');
+
+    expect(outcome.status).toBe('failed');
+    expect(outcome.message).toBe('Docker image pull failed before completion.');
+  });
+
+  it('pullImage rejects when the workspace does not exist', async () => {
+    const docker = {
+      imagePresent: jest.fn(),
+      pull: jest.fn(),
+    } as unknown as LoopsDockerClient;
+    const serviceWithDocker = new LoopsWorkspaceProfileService(undefined, docker);
+
+    await expect(serviceWithDocker.pullImage('missing-workspace', 'codex')).rejects.toThrow(
+      'Workspace not found: missing-workspace',
+    );
+    expect(docker.imagePresent).not.toHaveBeenCalled();
+    expect(docker.pull).not.toHaveBeenCalled();
   });
 });

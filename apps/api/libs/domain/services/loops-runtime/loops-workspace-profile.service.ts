@@ -182,7 +182,18 @@ export class LoopsWorkspaceProfileService {
       throw new Error(`Workspace not found: ${workspaceId}`);
     }
     const image = workspace.agents[agent].dockerImage;
-    if (await this.docker.imagePresent(image)) {
+    let alreadyPresent: boolean;
+    try {
+      alreadyPresent = await this.docker.imagePresent(image);
+    } catch {
+      return {
+        agent,
+        image,
+        status: 'failed',
+        message: 'Docker image readiness inspection failed.',
+      };
+    }
+    if (alreadyPresent) {
       return {
         agent,
         image,
@@ -191,9 +202,19 @@ export class LoopsWorkspaceProfileService {
       };
     }
 
-    const outcome = await this.docker.pull(image);
+    let outcome: { ok: boolean; message: string };
+    try {
+      outcome = await this.docker.pull(image);
+    } catch {
+      return {
+        agent,
+        image,
+        status: 'failed',
+        message: 'Docker image pull failed before completion.',
+      };
+    }
     if (outcome.ok) {
-      let ready = false;
+      let ready: boolean;
       try {
         ready = await this.docker.imagePresent(image);
       } catch {

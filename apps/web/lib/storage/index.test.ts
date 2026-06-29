@@ -64,6 +64,22 @@ describe('tenant storage', () => {
     expect(getCurrentTenantSnapshot()).toEqual({ tenantId: 'tenant-fallback' });
   });
 
+  it('ignores a whitespace-only legacy tenant id, matching the snapshot path', () => {
+    window.localStorage.setItem('currentTenant', '   ');
+
+    expect(getCurrentTenantSnapshot()).toBeNull();
+  });
+
+  it('trims a padded legacy tenant id when falling back from a malformed snapshot', () => {
+    window.localStorage.setItem('currentTenant', '  tenant-padded  ');
+    window.localStorage.setItem(
+      'currentTenantSnapshot',
+      JSON.stringify({ tenantId: { nested: true } }),
+    );
+
+    expect(getCurrentTenantSnapshot()).toEqual({ tenantId: 'tenant-padded' });
+  });
+
   it('returns null when both the snapshot and legacy tenant id are unusable', () => {
     window.localStorage.setItem(
       'currentTenantSnapshot',

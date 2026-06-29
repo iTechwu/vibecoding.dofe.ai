@@ -343,4 +343,94 @@ describe('LoopsBrowserQaWorkerService', () => {
     expect(report.status).toBe('blocked');
     expect(report.blockedReason).toContain('Browser QA worker output is malformed');
   });
+
+  it('blocks with a readable reason when worker output is not valid JSON', async () => {
+    const service = new LoopsBrowserQaWorkerService();
+    const artifact = (name: string) => path.join(dir, name);
+
+    mockedExecFile.mockImplementation(
+      (
+        _command: string,
+        _args: string[],
+        options: { env?: Record<string, string | undefined> },
+        callback: (error: Error | null, stdout?: string, stderr?: string) => void,
+      ) => {
+        const input = JSON.parse(options.env?.LOOPS_BROWSER_QA_INPUT ?? '{}') as {
+          outputPath: string;
+        };
+        writeFile(input.outputPath, '{not-json')
+          .then(() => callback(null, '', ''))
+          .catch((error) => callback(error as Error));
+      },
+    );
+
+    const report = await service.run({
+      issueId: 'issue-1',
+      reportId: 'browser-qa-1',
+      targetRepo: dir,
+      request: {
+        targetUrl: 'https://example.com',
+        checkedFlows: ['page-load'],
+        viewports: [{ name: 'desktop', width: 1440, height: 900 }],
+      },
+      screenshotPath: artifact('screenshot.png'),
+      screenshotRef: '.loops/runs/issue-1/browser-qa/browser-qa-1/screenshot.png',
+      tracePath: artifact('trace.zip'),
+      traceRef: '.loops/runs/issue-1/browser-qa/browser-qa-1/trace.zip',
+      baselinePath: artifact('baseline.png'),
+      baselineRef: '.loops/runs/issue-1/browser-qa/baseline.png',
+      diffPath: artifact('visual-diff.png'),
+      diffRef: '.loops/runs/issue-1/browser-qa/browser-qa-1/visual-diff.png',
+      handoffPath: artifact('handoff.json'),
+      handoffRef: '.loops/runs/issue-1/browser-qa/browser-qa-1/handoff.json',
+      createdAt: '2026-06-24T00:00:00.000Z',
+    });
+
+    expect(report.status).toBe('blocked');
+    expect(report.blockedReason).toContain('Browser QA worker output is malformed');
+  });
+
+  it('blocks with a readable reason when the worker process crashes during the run', async () => {
+    const service = new LoopsBrowserQaWorkerService();
+    const artifact = (name: string) => path.join(dir, name);
+
+    mockedExecFile.mockImplementation(
+      (
+        _command: string,
+        _args: string[],
+        _options: { env?: Record<string, string | undefined> },
+        callback: (error: Error | null, stdout?: string, stderr?: string) => void,
+      ) => {
+        const crash = new Error('Command failed: node exited with code 1');
+        (crash as Error & { stderr?: string }).stderr =
+          'worker stack trace: Cannot find module playwright';
+        callback(crash, '', 'worker stack trace: Cannot find module playwright');
+      },
+    );
+
+    const report = await service.run({
+      issueId: 'issue-1',
+      reportId: 'browser-qa-1',
+      targetRepo: dir,
+      request: {
+        targetUrl: 'https://example.com',
+        checkedFlows: ['page-load'],
+        viewports: [{ name: 'desktop', width: 1440, height: 900 }],
+      },
+      screenshotPath: artifact('screenshot.png'),
+      screenshotRef: '.loops/runs/issue-1/browser-qa/browser-qa-1/screenshot.png',
+      tracePath: artifact('trace.zip'),
+      traceRef: '.loops/runs/issue-1/browser-qa/browser-qa-1/trace.zip',
+      baselinePath: artifact('baseline.png'),
+      baselineRef: '.loops/runs/issue-1/browser-qa/baseline.png',
+      diffPath: artifact('visual-diff.png'),
+      diffRef: '.loops/runs/issue-1/browser-qa/browser-qa-1/visual-diff.png',
+      handoffPath: artifact('handoff.json'),
+      handoffRef: '.loops/runs/issue-1/browser-qa/browser-qa-1/handoff.json',
+      createdAt: '2026-06-24T00:00:00.000Z',
+    });
+
+    expect(report.status).toBe('blocked');
+    expect(report.blockedReason).toContain('worker stack trace');
+  });
 });

@@ -30,6 +30,7 @@ import { AuthModule } from '@app/auth';
 import { createBullMqRootOptions } from './bullmq.bootstrap';
 import type { BootstrapLogger, RedisVersionCheckClientFactory } from './bullmq.bootstrap';
 import { createI18nRootOptions } from './i18n.bootstrap';
+import { redactSecretUrls } from './log-redaction.util';
 
 type AppModuleImports = NonNullable<ModuleMetadata['imports']>;
 
@@ -38,6 +39,21 @@ const preBootstrapLogger = winston.createLogger({
   transports: [new winston.transports.Console({ format: winston.format.simple() })],
 });
 const loadAppConfig: ConfigFactory = () => getConfig() ?? {};
+
+/**
+ * Build the app winston config with a credential-redaction format prepended
+ * (0629 · OPZ-03). Upstream infra packages (e.g. `@dofe/infra-rabbitmq`) log
+ * through the shared `WINSTON_MODULE_PROVIDER`, so prepending `redactSecretUrls`
+ * masks `scheme://user:pass@` authorities before any transport sees them, while
+ * keeping the upstream `getWinstonConfig` transports and filters intact.
+ */
+export function createAppWinstonConfig(output: LogOutputMode): winston.LoggerOptions {
+  const base = getWinstonConfig(output);
+  return {
+    ...base,
+    format: winston.format.combine(redactSecretUrls(), base.format ?? winston.format.combine()),
+  };
+}
 
 export function createAppModuleImports(
   options: {
@@ -57,7 +73,7 @@ export function createAppModuleImports(
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => {
         const output = configService.get<LogOutputMode>('app.nestLogOutput') || 'file';
-        return getWinstonConfig(output);
+        return createAppWinstonConfig(output);
       },
       inject: [ConfigService],
     }),

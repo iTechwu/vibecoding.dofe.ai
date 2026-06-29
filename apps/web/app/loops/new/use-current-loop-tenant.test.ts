@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { setCurrentTenantSnapshot } from '@/lib/storage';
+import { clearCurrentTenantId, setCurrentTenantSnapshot } from '@/lib/storage';
 import { useCurrentLoopTenant } from './use-current-loop-tenant';
 
 describe('useCurrentLoopTenant', () => {
@@ -62,5 +62,27 @@ describe('useCurrentLoopTenant', () => {
       tenantId: 'tenant-youhuitun',
       tenantName: '优惠豚',
     });
+  });
+
+  it('clears the visible tenant when the current tab clears tenant state', () => {
+    const { result } = renderHook(() => useCurrentLoopTenant());
+
+    act(() => {
+      setCurrentTenantSnapshot({
+        tenantId: 'tenant-youhuitun',
+        tenantName: '优惠豚',
+      });
+    });
+
+    expect(result.current).toEqual({
+      tenantId: 'tenant-youhuitun',
+      tenantName: '优惠豚',
+    });
+
+    act(() => {
+      clearCurrentTenantId();
+    });
+
+    expect(result.current).toBeUndefined();
   });
 });

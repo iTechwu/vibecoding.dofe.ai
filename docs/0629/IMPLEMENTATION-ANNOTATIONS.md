@@ -2,1358 +2,714 @@
 
 Date: 2026-06-29
 
-This file tracks the requested implementation loops. Each loop records:
+This file tracks the implementation loops for the `docs/0629` review findings
+(`buglist/issue-runtime-e2e-bugs.md`, `opzs/agent-runtime-platform-optimizations.md`,
+`uiux-opz/issue-runtime-e2e-review.md`). Each cycle records implementation,
+validation, documentation update, and remaining review.
 
-- implementation action
-- validation
-- documentation update
-- remaining items review
+> **Document note (Cycle 51):** Earlier revisions of this file accumulated
+> duplicated status-entry sections and out-of-order cycles as the loop grew from
+> Pass 1 to Pass 9. Cycle 51 reorganized the file into strict cycle order
+> (Cycle 1 → Cycle 51), removed the duplicate `Latest Entry Point` /
+> `Current Final Close-Out` / `Latest Status Index` sections, and condensed each
+> cycle to its core facts (what changed, how it was validated, which finding it
+> closes). No implementation fact was dropped.
+
+## Current Status (Authoritative)
+
+Latest completed loop: **Pass 11 — Cycle 52 through Cycle 54.**
+
+Repository-owned status (all findings have executable coverage and passed the
+final validation matrix below):
+
+- **BUG-01 / BUG-02 / OPZ-02** — SSO local/test URL alignment + E2E preflight
+  (origin alignment, callback derivation, route status, malformed URLs, internal
+  API tier, login-origin validity, env-builder mapping).
+- **BUG-03 / UX-01** — Tenant context persistence, readable snapshot display,
+  parser hardening, cleanup, browser-event refresh, hook coverage, legacy id
+  normalization.
+- **BUG-04** — SSO E2E `/loops/new` route preflight (fails on 4xx/5xx before
+  login; accepts 2xx + expected 3xx), plus a standalone deployment route probe
+  (`apps/web/scripts/verify-loops-route.mjs`, Cycle 53).
+- **BUG-05** — `apps/web/next-env.d.ts` generated-format regression.
+- **OPZ-01** — Docker fallback readiness: already-present, initial-inspect-error,
+  pulled, post-pull-not-ready, post-pull-inspect-error, pull-reject, and
+  dashboard business/request/retry feedback paths.
+- **OPZ-03** — Application-layer winston credential redaction (`redactSecretUrls`)
+  masks `scheme://user:pass@` authorities in all `WINSTON_MODULE_PROVIDER` logs
+  (Cycle 52). Upstream root-cause fix in `@dofe/infra-rabbitmq` still pending.
+- **UX-02** — Human-gate runtime copy (English + Chinese).
+- **UX-03** — Progressive disclosure (fresh vs evidence-bearing detail).
+- **UX-04** — Favicon 404 removal + Browser QA navigation-cancel classification,
+  malformed output (missing array / invalid JSON), and worker-crash `blocked`.
+
+Remaining external / upstream work (not closeable from this repository):
+
+- Real SSO account login for `13800138000` / tenant `优惠豚` still requires the
+  external SSO OAuth client to allow the selected callback URL.
+- `vibecoding.test.dofe.ai` still needs an external deployment/release to serve
+  `/loops/new`; a standalone probe (`apps/web/scripts/verify-loops-route.mjs`,
+  Cycle 53) now lets CI gate that check once the domain is deployed.
+- Real Docker fallback readiness still needs a local Docker daemon/registry run.
+- RabbitMQ credential URLs are masked at the application winston layer (OPZ-03,
+  Cycle 52). The root-cause masking and benign-shutdown severity normalization
+  (OPZ-04) still need upstream `@dofe/infra-rabbitmq`, because the package's
+  `console.*` paths bypass winston and shutdown severity needs package-internal
+  context this repository cannot observe.
+
+---
+
+## Pass 1 (Cycle 1–5)
 
 ## Cycle 1 - SSO Local/Test URL Alignment
 
-Implementation:
+**Implementation:** Added explicit env URL overrides in
+`apps/api/src/modules/oidc-client-api/url-resolver.ts` (`resolveOidcApiBaseUrl` /
+`resolveOidcFrontendBaseUrl`): API keys `VIBECODING_APP_BASE_URL` /
+`APP_BASE_URL` / `OIDC_APP_BASE_URL`; frontend keys
+`VIBECODING_APP_FRONTEND_URL` / `APP_FRONTEND_URL` / `OIDC_APP_FRONTEND_URL`.
+Loopback E2E overrides win over configured `vibecoding.local` domains.
 
-- Added explicit environment URL overrides in
-  `apps/api/src/modules/oidc-client-api/url-resolver.ts`.
-- Supported API base override keys:
-  - `VIBECODING_APP_BASE_URL`
-  - `APP_BASE_URL`
-  - `OIDC_APP_BASE_URL`
-- Supported frontend base override keys:
-  - `VIBECODING_APP_FRONTEND_URL`
-  - `APP_FRONTEND_URL`
-  - `OIDC_APP_FRONTEND_URL`
+**Validation:** `pnpm --filter @repo/api exec jest src/modules/oidc-client-api/url-resolver.spec.ts --runInBand` passed.
 
-Validation:
-
-- `pnpm --filter @repo/api exec jest src/modules/oidc-client-api/url-resolver.spec.ts --runInBand`
-  passed.
-- Added regression coverage proving loopback E2E overrides win over configured
-  `vibecoding.local` domains.
-
-Documentation update:
-
-- BUG-01 / BUG-02 and OPZ-02 are now partially implemented at the app resolver
-  level.
-- Real SSO still depends on running the API with override values that match the
-  SSO OAuth client registration.
-
-Remaining review:
-
-- Add dev script/env pass-through so the overrides work through `pnpm dev:api`.
-- Re-run the real SSO authorize flow after the dev env pass-through cycle.
+**Docs:** BUG-01 / BUG-02 / OPZ-02 partially implemented at the app resolver level.
 
 ## Cycle 2 - Tenant Context Persistence and Detail Visibility
 
-Implementation:
+**Implementation:** Added `tenantContext` to Loops Zod contracts (full/simple
+issue create, issue records, intake records). Derived tenant context in the
+Loops controller from auth scope (`tenantId`/`teamId`/`x-current-tenant`) with
+body context as fallback. Persisted on issue + intake records; hydrated on
+DB-backed detail reads; carried through simple-issue normalization. Displayed on
+the issue detail intake card.
 
-- Added `tenantContext` to the Loops Zod contracts for full issue creation,
-  simple issue creation, issue records, and intake records.
-- Derived tenant context in the Loops controller from authenticated request
-  scope first (`tenantId` / `teamId` / `x-current-tenant`), with request body
-  context as a compatibility fallback.
-- Persisted tenant context on both issue and intake records, including the raw
-  payload written during issue creation.
-- Preserved `.loops` tenant context when DB-backed detail reads hydrate issue
-  and intake records from the DB index.
-- Carried `tenantContext` through the simple issue normalization path.
-- Displayed tenant context on the issue detail intake card.
+**Validation:** API `loops-issues.service.spec.ts`, contracts `schemas.test.ts`,
+web `app/loops/[issueId]/page.test.tsx` all passed.
 
-Validation:
-
-- `pnpm --filter @repo/api exec jest libs/domain/services/loops-issues/loops-issues.service.spec.ts --runInBand`
-  passed.
-- `pnpm --filter @repo/contracts test -- schemas.test.ts --runInBand` passed.
-- `pnpm --filter @repo/web test -- 'app/loops/[issueId]/page.test.tsx' --runInBand`
-  passed.
-
-Documentation update:
-
-- BUG-03 and UX-01 are now implemented for issue intake persistence and detail
-  visibility.
-
-Remaining review:
-
-- `/loops/new` still needs a visible pre-submit tenant confirmation when the
-  SSO tenant source is available to the frontend.
-- Real tenant membership validation still depends on the upstream SSO/auth
-  guard populating request tenant scope.
+**Docs:** BUG-03 / UX-01 implemented for issue intake persistence and detail visibility.
 
 ## Cycle 3 - Human Gate Runtime UX Clarification
 
-Implementation:
+**Implementation:** Added a human-gate execution state for `human`-owned phases.
+Issue detail runtime panel now shows `awaiting human review`, `human review is
+required`, and `resumes after approval`. Added en/zh-CN locale strings.
 
-- Added a human-gate execution state for phases owned by `human`.
-- Updated the issue detail runtime panel so human review phases show:
-  - `awaiting human review` as the panel meta state
-  - `human review is required` under the current actor
-  - `resumes after approval` instead of `not reported` for runtime mode
-- Added English and Chinese locale strings.
+**Validation:** `pnpm --filter @repo/web test -- 'app/loops/[issueId]/page.test.tsx' --runInBand` passed.
 
-Validation:
-
-- `pnpm --filter @repo/web test -- 'app/loops/[issueId]/page.test.tsx' --runInBand`
-  passed.
-
-Documentation update:
-
-- UX-02 is now implemented for issue detail runtime status.
-
-Remaining review:
-
-- Browser E2E should confirm the exact Chinese copy in the real `PHASE_2_REVIEW`
-  issue flow after the final local run.
+**Docs:** UX-02 implemented for issue detail runtime status.
 
 ## Cycle 4 - Browser Resource Noise Reduction
 
-Implementation:
+**Implementation:** Added `metadata.icons.icon = '/logo.svg'` in the root web
+layout; added a `/favicon.ico` route that redirects default browser favicon
+requests to `/logo.svg` (removes observed 404 without a binary asset).
 
-- Added `metadata.icons.icon = '/logo.svg'` in the root web layout so pages
-  advertise an existing icon asset.
-- Added a `/favicon.ico` route that redirects default browser favicon requests
-  to `/logo.svg`, removing the observed 404 resource failure without adding a
-  binary asset.
+**Validation:** `pnpm --filter @repo/web test -- app/favicon.ico/route.test.ts --runInBand` passed.
 
-Validation:
-
-- `pnpm --filter @repo/web test -- app/favicon.ico/route.test.ts --runInBand`
-  passed.
-
-Documentation update:
-
-- UX-04 is now partially implemented for the concrete 404 resource. Navigation
-  aborts and preload warnings still need browser-runtime classification.
-
-Remaining review:
-
-- Final browser QA should verify `/favicon.ico` no longer returns 404.
-- Expected React Query/navigation cancellations should be documented separately
-  from genuine API failures after runtime console capture.
+**Docs:** UX-04 partially implemented for the concrete 404 resource.
 
 ## Cycle 5 - Dev Runtime Environment and QA Noise Hygiene
 
-Implementation:
+**Implementation:** Added local E2E/auth variables to `turbo.json` `globalEnv` so
+`pnpm dev:api` preserves local bypass + OIDC override values. Normalized
+`apps/web/next-env.d.ts` to the Next dev output format (no quote-style diff).
 
-- Added local E2E/auth-related variables to `turbo.json` `globalEnv` so
-  `pnpm dev:api` / `turbo run dev --filter=@repo/api` preserve intentional
-  local bypass and OIDC override values.
-- Normalized `apps/web/next-env.d.ts` to the format emitted by Next dev, so
-  local QA no longer leaves an unrelated quote-style diff.
+**Validation:** `turbo.json` JSON parse check passed.
 
-Validation:
+**Docs:** OPZ-05 and BUG-05 implemented. OPZ-03 / OPZ-04 remain upstream
+`@dofe/infra-rabbitmq` work.
 
-- `node -e "JSON.parse(require('fs').readFileSync('turbo.json','utf8')); console.log('turbo json ok')"`
-  passed.
-
-Documentation update:
-
-- OPZ-05 and BUG-05 are implemented.
-- OPZ-03 / OPZ-04 remain upstream infra-package work because RabbitMQ lifecycle
-  logging is provided by `@dofe/infra-rabbitmq`, not this repository.
-
-Remaining review:
-
-- Final local API run should verify `MODE_USER_ID=... pnpm dev:api` reaches
-  protected Loops routes.
-- Upstream infra work should mask RabbitMQ credentials and downgrade benign
-  shutdown races.
+## Pass 2 (Cycle 6–10)
 
 ## Cycle 6 - Pre-submit Tenant Confirmation on Issue Intake
 
-Implementation:
+**Implementation:** Added a `/loops/new` tenant hook reading the current SSO
+tenant id; displayed it on simple + full intake forms before submission;
+included `tenantContext.tenantId` in both submit payloads (backend treats
+auth scope as authoritative, body as fallback).
 
-- Added a small `/loops/new` tenant hook that reads the current SSO tenant id
-  from existing web storage.
-- Displayed the current tenant on both simple and full issue intake forms before
-  submission.
-- Included `tenantContext.tenantId` in both simple and full issue submit
-  payloads. The backend still treats request/auth tenant scope as authoritative
-  and uses body context only as a compatibility fallback.
+**Validation:** `pnpm --filter @repo/web test -- app/loops/new/simple-loop-issue-form.test.tsx app/loops/new/new-loop-issue-form.test.tsx --runInBand` passed (12 suites, 77 tests).
 
-Validation:
-
-- `pnpm --filter @repo/web test -- app/loops/new/simple-loop-issue-form.test.tsx app/loops/new/new-loop-issue-form.test.tsx --runInBand`
-  passed: 12 suites, 77 tests.
-
-Documentation update:
-
-- UX-01 is now implemented for both pre-submit confirmation and issue-detail
-  visibility.
-
-Remaining review:
-
-- Real browser SSO E2E should confirm the displayed tenant id/name matches
-  `优惠豚` once the external SSO callback/client configuration is aligned.
+**Docs:** UX-01 implemented for pre-submit confirmation + detail visibility.
 
 ## Cycle 7 - Progressive Disclosure for Fresh Issue Details
 
-Implementation:
+**Implementation:** Added a collapsible mode to the issue-detail `SectionCard`
+shell. Collapsed advanced delivery controls by default for fresh `PHASE_1_SPEC`
+issues lacking shards/implementation/review/test/Browser QA/global review/
+second-opinion evidence. Preserved the expanded operator view for in-progress
+issues.
 
-- Added a collapsible mode to the issue-detail `SectionCard` shell.
-- Collapsed advanced delivery controls by default for fresh `PHASE_1_SPEC`
-  issues that have no shards, implementation records, review records, test
-  records, Browser QA reports, global review, or second-opinion evidence.
-- Preserved the existing expanded operator view for in-progress issues with
-  delivery evidence.
+**Validation:** `pnpm --filter @repo/web test -- 'app/loops/[issueId]/page.test.tsx' --runInBand` passed (12 suites, 78 tests).
 
-Validation:
-
-- `pnpm --filter @repo/web test -- 'app/loops/[issueId]/page.test.tsx' --runInBand`
-  passed: 12 suites, 78 tests.
-
-Documentation update:
-
-- UX-03 is implemented for first-run delivery-control progressive disclosure.
-
-Remaining review:
-
-- Browser E2E should create a fresh issue and confirm the advanced controls are
-  collapsed before implementation evidence exists, then remain expanded on an
-  active/in-progress issue.
+**Docs:** UX-03 implemented for first-run delivery-control progressive disclosure.
 
 ## Cycle 8 - Runtime Docker Fallback Action Feedback
 
-Implementation:
+**Implementation:** Added an active pull state for runtime Docker image prep on
+the Loops dashboard; kept the `pull-image` action for `DOCKER_IMAGE_MISSING` but
+now shows `Pulling image...` while pending; re-triggered agent-runtime
+re-detection after a successful pull mutation.
 
-- Added an active pull state for runtime Docker image preparation on the Loops
-  dashboard.
-- Kept the existing `pull-image` action for `DOCKER_IMAGE_MISSING`, but now the
-  clicked runtime shows `Pulling image...` while the mutation is pending.
-- Triggered agent-runtime re-detection after a successful image pull mutation so
-  operators immediately see the updated fallback readiness.
+**Validation:** `pnpm --filter @repo/web test -- app/loops/page.test.tsx --runInBand` passed (12 suites, 78 tests).
 
-Validation:
-
-- `pnpm --filter @repo/web test -- app/loops/page.test.tsx --runInBand`
-  passed: 12 suites, 78 tests.
-
-Documentation update:
-
-- OPZ-01 is implemented at the dashboard action/result level.
-
-Remaining review:
-
-- Real Docker daemon validation should pull the Codex and Claude Code fallback
-  images and confirm `/loops/agent-runtime` reports Docker candidates ready.
+**Docs:** OPZ-01 implemented at the dashboard action/result level.
 
 ## Cycle 9 - Local/Test SSO Environment Documentation
 
-Implementation:
+**Implementation:** Documented the OIDC URL override pair
+(`VIBECODING_APP_BASE_URL`, `VIBECODING_APP_FRONTEND_URL`) in
+`apps/api/.env.example`; documented the expected local callback URL + SSO tier
+alignment in `apps/web/.env.example`.
 
-- Documented the OIDC app URL override pair in `apps/api/.env.example`:
-  `VIBECODING_APP_BASE_URL` and `VIBECODING_APP_FRONTEND_URL`.
-- Documented the expected local callback URL and SSO tier alignment in
-  `apps/web/.env.example`.
-- Updated BUG-01, BUG-02, and OPZ-02 to distinguish repository-side
-  configuration support from the remaining external SSO OAuth-client
-  registration check.
+**Validation:** Locale JSON parse check passed.
 
-Validation:
-
-- `node -e "for (const f of ['apps/web/locales/en/loops.json','apps/web/locales/zh-CN/loops.json']) JSON.parse(require('fs').readFileSync(f,'utf8')); console.log('locale json ok')"`
-  passed.
-
-Documentation update:
-
-- BUG-01 / BUG-02 / OPZ-02 now point to concrete env variables and callback URL
-  verification instead of an ambiguous config-alignment task.
-
-Remaining review:
-
-- Real SSO E2E must still confirm the external SSO test OAuth client allows
-  `http://127.0.0.1:13100/auth/oidc/callback` or whichever override URL the
-  team chooses for the run.
+**Docs:** BUG-01 / BUG-02 / OPZ-02 now point to concrete env variables + callback
+URL verification.
 
 ## Cycle 10 - Browser QA Navigation Noise Classification
 
-Implementation:
+**Implementation:** Extended the Browser QA report contract with optional
+`ignoredNetworkFailures`. Classified Playwright `requestfailed` events with
+`ERR_ABORTED`/`AbortError`/`NS_BINDING_ABORTED`/`cancelled`/`canceled` as
+`navigation-cancelled` ignored failures; kept true 4xx/5xx + non-abort failures
+as `networkFailures`. Surfaced ignored counts in the issue-detail QA summary.
 
-- Extended the Browser QA report contract with optional
-  `ignoredNetworkFailures` evidence.
-- Classified Playwright `requestfailed` events with `ERR_ABORTED`, `AbortError`,
-  `NS_BINDING_ABORTED`, `cancelled`, or `canceled` as
-  `navigation-cancelled` ignored failures instead of hard QA failures.
-- Kept true HTTP `4xx`/`5xx` responses and non-abort request failures as
-  failing `networkFailures`.
-- Surfaced ignored navigation-cancel counts in the issue-detail Browser QA
-  artifact summary.
+**Validation:** API worker spec, contracts `schemas.test.ts`, web
+`app/loops/[issueId]/page.test.tsx` all passed.
 
-Validation:
+**Docs:** UX-04 implemented for favicon 404 removal + Browser QA navigation-cancel
+classification.
 
-- `pnpm --filter @repo/api exec jest libs/domain/services/loops-quality/loops-browser-qa-worker.service.spec.ts --runInBand`
-  passed: 1 suite, 2 tests.
-- `pnpm --filter @repo/contracts test -- schemas.test.ts --runInBand` passed:
-  1 suite, 18 tests.
-- `pnpm --filter @repo/web test -- 'app/loops/[issueId]/page.test.tsx' --runInBand`
-  passed: 12 suites, 78 tests.
-
-Documentation update:
-
-- UX-04 is implemented for favicon 404 removal and Browser QA navigation-cancel
-  classification.
-
-Remaining review:
-
-- Full browser E2E should confirm real route transitions populate
-  `ignoredNetworkFailures` for expected cancellations while genuine API failures
-  continue to fail Browser QA.
+## Pass 3 (Cycle 11–15)
 
 ## Cycle 11 - Readable Tenant Snapshot on Issue Intake
 
-Implementation:
+**Implementation:** Added a current-tenant snapshot storage helper preserving
+tenant id/name/team id while keeping the legacy `currentTenant` key. Synced
+readable tenant metadata from the SSO session adapter on session restore.
+Updated simple/full `/loops/new` forms to show the readable tenant name first
+with audit identifiers underneath and submit the full tenant context.
 
-- Added a current-tenant snapshot storage helper that preserves tenant id,
-  tenant name, and team id while keeping the legacy `currentTenant` id key.
-- Synced readable tenant metadata from the SSO session adapter into that
-  snapshot when SSO session restore succeeds.
-- Updated simple and full `/loops/new` forms to show the readable tenant name
-  first, with tenant/team audit identifiers underneath, and to submit the full
-  tenant context payload when available.
+**Validation:** `pnpm --filter @repo/web test -- app/loops/new/simple-loop-issue-form.test.tsx app/loops/new/new-loop-issue-form.test.tsx --runInBand` passed (12 suites, 78 tests).
 
-Validation:
-
-- `pnpm --filter @repo/web test -- app/loops/new/simple-loop-issue-form.test.tsx app/loops/new/new-loop-issue-form.test.tsx --runInBand`
-  passed: 12 suites, 78 tests.
-
-Documentation update:
-
-- UX-01 and BUG-03 now record that readable tenant name/team confirmation is
-  repository-side implemented, with real SSO validation still external.
-
-Remaining review:
-
-- Real SSO E2E must confirm the SSO session for `13800138000` exposes the
-  `优惠豚` tenant snapshot and that created issues persist the same tenant
-  context.
+**Docs:** UX-01 / BUG-03 record readable tenant name/team confirmation (repo-side).
 
 ## Cycle 12 - Browser QA Ignored-Noise Evidence Summary
 
-Implementation:
+**Implementation:** Extended Browser QA evidence artifact summaries to include
+the count of ignored navigation cancellations in `ignoredNetworkFailures`;
+kept the artifact `count` focused on true failures so ignored cancels are audit
+evidence without inflating failure counts.
 
-- Extended Browser QA evidence artifact summaries to include the number of
-  ignored navigation cancellations captured in `ignoredNetworkFailures`.
-- Kept the artifact `count` focused on true console/network failures, so ignored
-  navigation cancels are audit evidence but do not inflate failure counts.
-- Updated the Loops service Browser QA test fixture to prove ignored navigation
-  cancels are persisted and reflected in the evidence artifact summary.
+**Validation:** `pnpm --filter @repo/api exec jest src/modules/loops/loops.service.spec.ts --runInBand --testNamePattern='Browser QA'` passed (2 matching tests).
 
-Validation:
-
-- `pnpm --filter @repo/api exec jest src/modules/loops/loops.service.spec.ts --runInBand --testNamePattern='Browser QA'`
-  passed: 1 suite, 2 matching tests.
-
-Documentation update:
-
-- UX-04 now records that ignored navigation-cancel counts are visible in both
-  the issue detail QA artifact card and the evidence artifact summary.
-
-Remaining review:
-
-- Full browser E2E should confirm real route transitions produce ignored
-  navigation-cancel evidence while true API failures still appear in
-  `networkFailures`.
+**Docs:** UX-04 records ignored-cancel counts in both detail card and evidence summary.
 
 ## Cycle 13 - SSO E2E Environment Preflight
 
-Implementation:
+**Implementation:** Added `apps/web/e2e/sso-e2e-env.ts` with reusable validation
+for Web/API/SSO origin alignment + expected OIDC callback URL derivation; unit
+coverage for aligned env + mismatch cases (API/frontend/SSO tier drift). Wired
+into `apps/web/e2e/sso-real.spec.ts` to fail before browser login when env is
+misaligned.
 
-- Added `apps/web/e2e/sso-e2e-env.ts` with reusable validation for Web/API/SSO
-  origin alignment and expected OIDC callback URL derivation.
-- Added unit coverage for aligned local E2E env and common mismatch cases:
-  API origin drift, app base URL drift, frontend URL drift, and SSO tier drift.
-- Wired the validator into `apps/web/e2e/sso-real.spec.ts` so real SSO E2E
-  fails before browser login when local/test env variables are misaligned.
+**Validation:** `pnpm --filter @repo/web test -- e2e/sso-e2e-env.test.ts --runInBand` passed (12 suites, 78 tests).
 
-Validation:
-
-- `pnpm --filter @repo/web test -- e2e/sso-e2e-env.test.ts --runInBand`
-  passed: 12 suites, 78 tests.
-
-Documentation update:
-
-- BUG-01, BUG-02, and OPZ-02 now point to the SSO E2E preflight as the
-  executable way to detect callback/origin alignment problems before attempting
-  credential entry.
-
-Remaining review:
-
-- External SSO OAuth-client registration still needs to allow the callback URL
-  reported by the preflight for the chosen local/test run.
+**Docs:** BUG-01 / BUG-02 / OPZ-02 point to the SSO E2E preflight as the
+executable alignment check.
 
 ## Cycle 14 - Documentation Deduplication and Test-Domain Boundary
 
-Implementation:
+**Implementation:** Removed a duplicate UX-04 next-execution-plan; clarified
+BUG-04 so repository-local validation points to the local Web/API/SSO path +
+preflight, while `vibecoding.test.dofe.ai` remains an external deployment item.
 
-- Removed the duplicate UX-04 next execution plan left after Browser QA
-  navigation-cancel classification was implemented.
-- Clarified BUG-04 so repository-local validation points to the executable
-  local Web/API/SSO path and SSO E2E preflight, while
-  `vibecoding.test.dofe.ai` remains an external deployment/release validation
-  item.
+**Validation:** grep confirmed each finding has a single next-execution plan and
+BUG-04 has a clarified repo/external boundary.
 
-Validation:
+**Docs:** UX-04 / BUG-04 internally consistent.
 
-- `find docs/0629 -type f -maxdepth 2 -print0 | xargs -0 rg -n "Next execution plan:|Cycle 14|vibecoding.test|Status: Repository-side documentation"`
-  confirmed each finding now has a single next execution plan and BUG-04 has a
-  clarified repository/external boundary.
+## Cycle 15 - Third-Pass Final Review
 
-Documentation update:
+**Implementation:** Re-ran a repository-owned review of `docs/0629` and the
+changed Loops intake/runtime/Browser QA surfaces; preserved external/upstream
+residual items separately.
 
-- UX-04 and BUG-04 are now internally consistent with the implemented Browser QA
-  classification and local SSO E2E preflight.
+**Validation:** Web focused tests (intake, detail, dashboard runtime, favicon,
+SSO preflight), API focused tests (OIDC URL, tenant persistence, Browser QA,
+runtime diagnostics), contracts, locale/Turbo JSON, Web/API type-checks all passed.
 
-Remaining review:
+**Docs:** Third-pass validation matrix + remaining external/upstream items recorded.
 
-- Test-domain route availability still needs deployment validation outside this
-  repository.
-
-## Cycle 15 - Final Code Review, Documentation Optimization, and Test Pass
-
-Implementation:
-
-- Re-ran a repository-owned review of `docs/0629` and the changed Loops issue
-  intake/runtime/Browser QA surfaces.
-- Updated this final review section so it reflects Cycle 11 through Cycle 15
-  rather than the prior Cycle 6 through Cycle 10 stopping point.
-- Preserved external/upstream residual items separately from repository-owned
-  implemented work.
-
-Validation:
-
-- Web focused tests passed for issue intake, issue detail, dashboard runtime,
-  favicon route, and SSO E2E env preflight.
-- API focused tests passed for OIDC URL resolution, tenant issue persistence,
-  Browser QA worker/report evidence, and runtime diagnostics.
-- Contracts schema test, locale/Turbo JSON checks, and Web/API type-checks all
-  passed.
-
-Documentation update:
-
-- Final review now lists the third-pass validation matrix and remaining
-  external/upstream items.
-
-Remaining review:
-
-- The only remaining items require external SSO OAuth-client registration,
-  Docker daemon/registry validation, test-domain deployment validation, or
-  upstream `@dofe/infra-rabbitmq` changes.
+## Pass 4 (Cycle 16–20)
 
 ## Cycle 16 - SSO Internal API Tier Preflight
 
-Implementation:
+**Implementation:** Extended the SSO E2E preflight to validate
+`SSO_INTERNAL_API_URL` against the same local/test SSO origin as
+`NEXT_PUBLIC_SSO_BASE_URL` / `SSO_ISSUER` / `SSO_API_URL`; mismatch fails before
+browser login.
 
-- Extended the SSO E2E env preflight to validate `SSO_INTERNAL_API_URL` against
-  the same local/test SSO origin as `NEXT_PUBLIC_SSO_BASE_URL`,
-  `SSO_ISSUER`, and `SSO_API_URL`.
-- Updated the SSO env validator tests so a mismatched internal API tier fails
-  before browser login.
+**Validation:** `pnpm --filter @repo/web test -- e2e/sso-e2e-env.test.ts --runInBand` passed (12 suites, 78 tests).
 
-Validation:
-
-- `pnpm --filter @repo/web test -- e2e/sso-e2e-env.test.ts --runInBand`
-  passed: 12 suites, 78 tests.
-
-Documentation update:
-
-- BUG-02 and OPZ-02 now explicitly state that `SSO_INTERNAL_API_URL` is covered
-  by the executable SSO E2E preflight.
-
-Remaining review:
-
-- External SSO OAuth-client registration is still required before real
-  credential entry can complete.
+**Docs:** BUG-02 / OPZ-02 explicitly cover `SSO_INTERNAL_API_URL`.
 
 ## Cycle 17 - Docker Fallback Pull Readiness Verification
 
-Implementation:
+**Implementation:** Hardened `LoopsWorkspaceProfileService.pullImage` with three
+repo-side outcomes: `already-present` (inspectable before pull), `pulled`
+(pull succeeds + inspectable after), `failed` (pull reports ok but image still
+not locally ready). Added service regression for each path + the non-throwing
+Docker failure path.
 
-- Hardened `LoopsWorkspaceProfileService.pullImage` so runtime image preparation
-  now has three explicit repository-side outcomes:
-  - `already-present` when the Docker fallback image is inspectable before pull.
-  - `pulled` only when pull succeeds and the image is inspectable afterward.
-  - `failed` when pull reports success but the image is still not locally ready.
-- Added service regression coverage for already-present images, successful
-  post-pull readiness, post-pull-not-ready failures, and the existing
-  non-throwing Docker failure path.
+**Validation:** API `loops-workspace-profile.service.spec.ts` +
+`agent-runtime-detection.service.spec.ts` passed (2 suites, 12 tests).
 
-Validation:
-
-- `pnpm --filter @repo/api exec jest libs/domain/services/loops-runtime/loops-workspace-profile.service.spec.ts libs/domain/services/loops-runtime/agent-runtime-detection.service.spec.ts --runInBand`
-  passed: 2 suites, 12 tests.
-
-Documentation update:
-
-- OPZ-01 now records the service-level readiness hardening and keeps real
-  daemon/registry validation as the remaining external verification step.
-
-Remaining review:
-
-- BUG-05 still needs an executable regression that protects the generated
-  `apps/web/next-env.d.ts` format from reintroducing dev-server worktree noise.
+**Docs:** OPZ-01 records service-level readiness hardening.
 
 ## Cycle 18 - Next Env Generated-Format Regression
 
-Implementation:
+**Implementation:** Added `apps/web/__tests__/next-env-format.test.ts` asserting
+the committed `apps/web/next-env.d.ts` matches Next dev output (double-quoted
+generated routes import).
 
-- Added `apps/web/__tests__/next-env-format.test.ts` to assert the committed
-  `apps/web/next-env.d.ts` content matches the Next dev output observed during
-  QA, including the double-quoted generated routes import.
+**Validation:** `pnpm --filter @repo/web test -- __tests__/next-env-format.test.ts --runInBand` passed (13 suites, 79 tests).
 
-Validation:
-
-- `pnpm --filter @repo/web test -- __tests__/next-env-format.test.ts --runInBand`
-  passed: 13 suites, 79 tests.
-
-Documentation update:
-
-- BUG-05 now records the executable regression and includes the new test in the
-  follow-up validation scope.
-
-Remaining review:
-
-- UX-02 and UX-03 are implemented, but the issue-detail regression suite can
-  still be strengthened around the default expanded/collapsed delivery-control
-  states.
+**Docs:** BUG-05 records the executable regression.
 
 ## Cycle 19 - Evidence-Bearing Detail Delivery Controls Regression
 
-Implementation:
+**Implementation:** Added an issue-detail regression verifying evidence-bearing
+issues keep advanced delivery controls expanded by default (Browser QA, second
+opinion, release canary); kept the fresh-issue regression intact so both sides
+of the UX-03 rule are protected.
 
-- Added an issue-detail regression that verifies evidence-bearing issues keep
-  advanced delivery controls expanded by default, including Browser QA, second
-  opinion, and release canary actions.
-- Kept the existing fresh-issue regression intact, so the suite now protects
-  both sides of the UX-03 rule: first-run pages are quieter, active delivery
-  pages stay operator-ready.
+**Validation:** `pnpm --filter @repo/web test -- 'app/loops/[issueId]/page.test.tsx' --runInBand` passed (13 suites, 80 tests).
 
-Validation:
+**Docs:** UX-03 records the complementary regression coverage.
 
-- `pnpm --filter @repo/web test -- 'app/loops/[issueId]/page.test.tsx' --runInBand`
-  passed: 13 suites, 80 tests.
+## Cycle 20 - Fourth-Pass Documentation Optimization and Final Validation
 
-Documentation update:
+**Implementation:** Re-reviewed `docs/0629` after Cycles 16–19; fixed the
+`next-env.d.ts` regression to import Vitest globals explicitly so the Web
+type-check includes it cleanly; preserved external/upstream residuals.
 
-- UX-03 now records the Cycle 19 complementary regression coverage.
+**Validation:** Fourth-pass validation matrix (see below) — all green.
 
-Remaining review:
+**Docs:** Final review reflects Cycle 16–20.
 
-- One final implementation/review cycle remains: optimize the `docs/0629`
-  status documents, run the focused validation matrix, and record any residual
-  repository-owned or external items accurately.
+### Fourth-Pass Final Review and Test Pass
 
-## Cycle 20 - Documentation Optimization and Final Validation Pass
+- Web: 13 suites, 80 tests. API: 6 suites, 31 matching tests. Contracts: 1
+  suite, 18 tests. JSON + Web/API type-check all passed.
+- Residuals: external SSO callback registration, Docker daemon run,
+  `@dofe/infra-rabbitmq` logging.
 
-Implementation:
-
-- Re-reviewed the `docs/0629` status documents after Cycles 16 through 19.
-- Updated the final review section so the active close-out reflects this fourth
-  pass: SSO internal API preflight, Docker fallback readiness hardening,
-  `next-env.d.ts` generated-format regression, and evidence-bearing issue-detail
-  delivery-control regression.
-- Fixed the new `next-env.d.ts` regression test to import Vitest globals
-  explicitly so the Web type-check includes it cleanly.
-- Preserved external/upstream residual items separately from repository-owned
-  implemented work.
-
-Validation:
-
-- See the final automated validation matrix below.
-
-Documentation update:
-
-- The final review now reflects Cycle 16 through Cycle 20 and includes the
-  newly-added API/Web regression tests in the verification story.
-
-Remaining review:
-
-- No additional repository-owned implementation items were identified during
-  this pass beyond the external/upstream validations listed below.
-
-## Final Review and Test Pass
-
-Code review result:
-
-- Completed the requested fourth-pass implementation loop with five additional
-  cycles: Cycle 16 through Cycle 20, building on the earlier Cycle 1 through
-  Cycle 15 work.
-- No blocking repository-owned issues remain in the implemented slices.
-- Scope stayed inside Loops issue intake, issue detail UX, runtime fallback
-  actions, Browser QA evidence, local/test SSO env guidance and preflight,
-  contracts, and `docs/0629` status documents.
-
-Automated validation:
-
-- `pnpm --filter @repo/web test -- app/loops/new/simple-loop-issue-form.test.tsx app/loops/new/new-loop-issue-form.test.tsx 'app/loops/[issueId]/page.test.tsx' app/loops/page.test.tsx app/favicon.ico/route.test.ts __tests__/next-env-format.test.ts e2e/sso-e2e-env.test.ts --runInBand`
-  passed: 13 suites, 80 tests.
-- `pnpm --filter @repo/api exec jest src/modules/oidc-client-api/url-resolver.spec.ts libs/domain/services/loops-issues/loops-issues.service.spec.ts libs/domain/services/loops-quality/loops-browser-qa-worker.service.spec.ts src/modules/loops/loops.service.spec.ts libs/domain/services/loops-runtime/loops-workspace-profile.service.spec.ts libs/domain/services/loops-runtime/agent-runtime-detection.service.spec.ts --runInBand --testNamePattern='Browser QA|tenant|OIDC|runtime status and diagnostics|pullImage|Docker|workspace|runtime'`
-  passed: 6 suites, 31 matching tests.
-- `pnpm --filter @repo/contracts test -- schemas.test.ts --runInBand` passed:
-  1 suite, 18 tests.
-- `node -e "JSON.parse(require('fs').readFileSync('turbo.json','utf8')); for (const f of ['apps/web/locales/en/loops.json','apps/web/locales/zh-CN/loops.json']) JSON.parse(require('fs').readFileSync(f,'utf8')); console.log('json ok')"`
-  passed.
-- `pnpm --filter @repo/web type-check` passed.
-- `pnpm --filter @repo/api type-check` passed.
-- `find docs/0629 -type f -maxdepth 2 -print0 | xargs -0 rg -n "third-pass|Cycle 15 through|duplicate|Partially implemented|still require|still requires|Not implemented|Status:"`
-  found only expected external/upstream residual items.
-
-Residual external or upstream items:
-
-- Real SSO account login for `13800138000` / tenant `优惠豚` still requires the
-  external SSO OAuth client to allow the chosen callback URL, such as
-  `http://127.0.0.1:13100/auth/oidc/callback`.
-- Real Docker fallback readiness still needs a local Docker daemon/registry run
-  to pull the Codex and Claude Code images and confirm runtime redetection.
-- RabbitMQ credential-bearing startup logs and benign shutdown severity still
-  originate from upstream `@dofe/infra-rabbitmq` and remain tracked in
-  `docs/0629/opzs/agent-runtime-platform-optimizations.md`.
+## Pass 5 (Cycle 21–25)
 
 ## Cycle 21 - Dashboard Docker Pull Failure Feedback
 
-Implementation:
+**Implementation:** Extended the dashboard pull flow to read the
+`PullLoopImageResponse` body; if `status: failed`, render the returned message
+inline and do not trigger runtime redetection. Successful `pulled` /
+`already-present` clear the inline error and retry detection.
 
-- Extended the Loops dashboard runtime image pull flow to read the
-  `PullLoopImageResponse` body returned by the API.
-- If the service reports `status: failed`, the dashboard now renders the
-  returned message inline and does not trigger runtime redetection.
-- Successful `pulled` and `already-present` responses still clear the inline
-  error and retry runtime detection.
+**Validation:** `pnpm --filter @repo/web test -- app/loops/page.test.tsx --runInBand` passed (13 suites, 81 tests).
 
-Validation:
-
-- `pnpm --filter @repo/web test -- app/loops/page.test.tsx --runInBand`
-  passed: 13 suites, 81 tests.
-
-Documentation update:
-
-- OPZ-01 now records the dashboard business-failure branch in addition to the
-  service-level pull readiness hardening.
-
-Remaining review:
-
-- BUG-04 still has an external test-domain route gap; repository-side E2E can
-  gain a cheap route preflight so this failure is reported before credential
-  entry.
+**Docs:** OPZ-01 records the dashboard business-failure branch.
 
 ## Cycle 22 - SSO E2E Loops Route Preflight
 
-Implementation:
+**Implementation:** Added `expectedLoopsNewUrl` to the SSO E2E helper; the real
+SSO Playwright flow now visits `/loops/new` before opening login and fails with
+an explicit message if the route returns 404. Added a unit regression for the
+helper.
 
-- Added `expectedLoopsNewUrl` to the SSO E2E env helper.
-- The real SSO Playwright flow now visits `/loops/new` before opening the login
-  path and fails with an explicit message if the Loops intake route returns 404.
-- Added a unit regression for the route URL helper.
+**Validation:** `pnpm --filter @repo/web test -- e2e/sso-e2e-env.test.ts --runInBand` passed (13 suites, 81 tests).
 
-Validation:
-
-- `pnpm --filter @repo/web test -- e2e/sso-e2e-env.test.ts --runInBand`
-  passed: 13 suites, 81 tests.
-
-Documentation update:
-
-- BUG-04 now records that repository-side SSO E2E has a Loops route preflight,
-  while actual `vibecoding.test.dofe.ai` deployment remains external.
-
-Remaining review:
-
-- Real SSO/tenant validation still depends on external OAuth callback
-  registration and a reachable target route, but the repo can further improve
-  tenant pre-submit regression coverage for the full issue form.
+**Docs:** BUG-04 records the repo-side Loops route preflight.
 
 ## Cycle 23 - Tenant Snapshot Parser Hardening
 
-Implementation:
+**Implementation:** Hardened `getCurrentTenantSnapshot` to accept only non-empty
+string tenant ids + optional string `tenantName`/`teamId`; malformed storage
+falls back to the legacy tenant id. Added storage regression for valid,
+malformed-with-fallback, and unusable cases.
 
-- Added storage-level regression coverage for valid tenant snapshots, malformed
-  snapshots with a legacy tenant-id fallback, and unusable tenant storage.
-- Hardened `getCurrentTenantSnapshot` to accept only non-empty string tenant
-  identifiers and optional string `tenantName` / `teamId` fields.
-- Invalid browser storage can no longer inject non-string tenant context into
-  full or simple issue submission payloads.
+**Validation:** `pnpm --filter @repo/web test -- lib/storage/index.test.ts --runInBand` passed (14 suites, 84 tests).
 
-Validation:
-
-- `pnpm --filter @repo/web test -- lib/storage/index.test.ts --runInBand`
-  passed: 14 suites, 84 tests.
-
-Documentation update:
-
-- BUG-03 and UX-01 now record tenant snapshot parser hardening as repository-side
-  protection while real SSO tenant membership validation remains external.
-
-Remaining review:
-
-- UX-02 is implemented in English copy tests, but the documented Chinese-locale
-  human-gate validation still lacks a focused repository-side regression.
+**Docs:** BUG-03 / UX-01 record tenant snapshot parser hardening.
 
 ## Cycle 24 - Chinese Human-Gate Runtime Copy Regression
 
-Implementation:
+**Implementation:** Updated the issue-detail test harness to render with a
+caller-supplied locale + message catalog; added a Chinese-locale regression for
+`PHASE_2_REVIEW` human-gate copy (`等待人工审阅`, `需要人工审阅`, `批准后恢复`).
 
-- Updated the issue-detail test harness so it can render with a caller-supplied
-  locale and message catalog.
-- Added a Chinese-locale regression for `PHASE_2_REVIEW` human-gated issue
-  detail copy, covering `等待人工审阅`, `需要人工审阅`, and `批准后恢复`.
+**Validation:** `pnpm --filter @repo/web test -- 'app/loops/[issueId]/page.test.tsx' --runInBand` passed (14 suites, 85 tests).
 
-Validation:
+**Docs:** UX-02 records English + Chinese human-gate copy coverage.
 
-- `pnpm --filter @repo/web test -- 'app/loops/[issueId]/page.test.tsx' --runInBand`
-  passed: 14 suites, 85 tests.
+## Cycle 25 - Fifth-Pass Current Status Consolidation and Final Validation
 
-Documentation update:
+**Implementation:** Re-reviewed `docs/0629` after Cycles 21–24; treated older
+`Remaining review` paragraphs as historical notes; consolidated repo-owned
+status.
 
-- UX-02 now records repository-side English and Chinese human-gate copy
-  coverage.
+**Validation:** Fifth-pass validation matrix — all green.
 
-Remaining review:
+**Docs:** Fifth-pass close-out state.
 
-- One final cycle remains for document cleanup, stale-status review, and the
-  focused validation matrix for Cycles 21 through 24.
+### Fifth-Pass Final Review and Test Pass
 
-## Cycle 25 - Current Status Consolidation and Final Validation
+- Web: 14 suites, 85 tests. API: 6 suites, 25 matching tests. Contracts: 1
+  suite, 18 tests. JSON + Web/API type-check all passed.
+- Residuals: external SSO callback, `vibecoding.test.dofe.ai` deployment, Docker
+  daemon run, `@dofe/infra-rabbitmq` logging.
 
-Implementation:
-
-- Re-reviewed `docs/0629` after Cycles 21 through 24 and treated older
-  `Remaining review` paragraphs as historical loop notes, not current blockers.
-- Consolidated the current repository-owned status:
-  - OPZ-01 now covers backend pull readiness and dashboard business-failure
-    feedback.
-  - BUG-04 now has an SSO E2E route preflight for `/loops/new`.
-  - BUG-03 / UX-01 now include tenant snapshot parser hardening.
-  - UX-02 now has English and Chinese human-gate copy regression coverage.
-- Preserved the remaining non-repository blockers as external/upstream items:
-  SSO OAuth callback/client registration, real test-domain deployment, real
-  Docker daemon/registry validation, and upstream RabbitMQ logging behavior.
-
-Validation:
-
-- See the final validation matrix below.
-
-Documentation update:
-
-- This section is the current close-out state for the fifth-pass implementation
-  loop, superseding older historical `Remaining review` notes in this file.
-
-Remaining review:
-
-- No new repository-owned implementation item was identified after this pass.
-
-## Fifth-Pass Final Review and Test Pass
-
-Code review result:
-
-- Completed another requested five-cycle implementation loop: Cycle 21 through
-  Cycle 25, building on Cycle 1 through Cycle 20.
-- No blocking repository-owned issue remains in the implemented slices.
-- Scope stayed inside Loops runtime fallback UX, SSO E2E preflight, tenant
-  snapshot safety, issue-detail human-gate UX, and `docs/0629` status tracking.
-
-Automated validation:
-
-- `pnpm --filter @repo/web test -- app/loops/page.test.tsx e2e/sso-e2e-env.test.ts lib/storage/index.test.ts 'app/loops/[issueId]/page.test.tsx' app/loops/new/new-loop-issue-form.test.tsx app/loops/new/simple-loop-issue-form.test.tsx __tests__/next-env-format.test.ts --runInBand`
-  passed: 14 suites, 85 tests.
-- `pnpm --filter @repo/api exec jest libs/domain/services/loops-runtime/loops-workspace-profile.service.spec.ts libs/domain/services/loops-runtime/agent-runtime-detection.service.spec.ts src/modules/oidc-client-api/url-resolver.spec.ts libs/domain/services/loops-issues/loops-issues.service.spec.ts libs/domain/services/loops-quality/loops-browser-qa-worker.service.spec.ts src/modules/loops/loops.service.spec.ts --runInBand --testNamePattern='pullImage|Docker|runtime|OIDC|tenant|Browser QA|runtime status and diagnostics'`
-  passed: 6 suites, 25 matching tests.
-- `pnpm --filter @repo/contracts test -- schemas.test.ts --runInBand` passed:
-  1 suite, 18 tests.
-- `node -e "JSON.parse(require('fs').readFileSync('turbo.json','utf8')); for (const f of ['apps/web/locales/en/loops.json','apps/web/locales/zh-CN/loops.json']) JSON.parse(require('fs').readFileSync(f,'utf8')); console.log('json ok')"`
-  passed.
-- `pnpm --filter @repo/web type-check` passed.
-- `pnpm --filter @repo/api type-check` passed.
-
-Residual external or upstream items:
-
-- Real SSO account login for `13800138000` / tenant `优惠豚` still requires the
-  external SSO OAuth client to allow the selected callback URL.
-- `vibecoding.test.dofe.ai` still needs an external deployment/release check to
-  serve `/loops/new`; the repository SSO E2E now fails early if it does not.
-- Real Docker fallback readiness still needs a local Docker daemon/registry run.
-- RabbitMQ credential-bearing startup logs and benign shutdown severity still
-  originate from upstream `@dofe/infra-rabbitmq`.
-
-## Current Final Close-Out
-
-Latest completed loop:
-
-- Cycle 36 through Cycle 40.
-- Latest validation section: `Eighth-Pass Final Review and Test Pass`.
-
-Repository-owned status:
-
-- SSO preflight malformed URL handling is implemented and covered by executable
-  Vitest tests under `apps/web/__tests__/sso-e2e-env.test.ts`.
-- `/loops/new` tenant refresh is covered at storage-helper and hook-event
-  levels.
-- Docker fallback pull readiness now returns structured failures for post-pull
-  inspect errors.
-- Browser QA malformed worker output now becomes a readable blocked report.
-- No repository-owned blocker remains from this pass.
-
-Latest validation:
-
-- Web focused matrix passed: 16 suites, 100 tests.
-- API focused matrix passed: 6 suites, 27 matching tests.
-- Contracts schema tests passed: 1 suite, 18 tests.
-- JSON config/locale parse check passed.
-- Web and API type-check passed.
-
-Remaining external or upstream work:
-
-- Real SSO account login for `13800138000` / tenant `优惠豚` still requires the
-  external SSO OAuth client to allow the selected callback URL.
-- `vibecoding.test.dofe.ai` still needs an external deployment/release check to
-  serve `/loops/new`.
-- Real Docker fallback readiness still needs a local Docker daemon/registry run.
-- RabbitMQ credential-bearing startup logs and benign shutdown severity still
-  originate from upstream `@dofe/infra-rabbitmq`.
-
-## Latest Status Index
-
-Current close-out:
-
-- The latest completed implementation loop is Cycle 36 through Cycle 40.
-- The latest final validation matrix is `Eighth-Pass Final Review and Test
-Pass`.
-- Historical `Remaining review` notes before Cycle 40 are superseded by the
-  cycle that follows them unless they are repeated in the latest residual list.
-
-Repository-owned status:
-
-- SSO preflight, tenant browser-state refresh, Docker fallback pull readiness,
-  and Browser QA diagnostics have focused regression coverage and passed the
-  final validation matrix.
-- No new repository-owned implementation blocker was identified in this pass.
-
-External or upstream residuals:
-
-- Real SSO account login for `13800138000` / tenant `优惠豚` still requires the
-  external SSO OAuth client to allow the selected callback URL.
-- `vibecoding.test.dofe.ai` still needs an external deployment/release check to
-  serve `/loops/new`; repository SSO E2E now fails early on unusable route
-  status.
-- Real Docker fallback readiness still needs a local Docker daemon/registry run.
-- RabbitMQ credential-bearing startup logs and benign shutdown severity still
-  originate from upstream `@dofe/infra-rabbitmq`.
+## Pass 6 (Cycle 26–30)
 
 ## Cycle 26 - Dashboard Docker Pull Request Error Feedback
 
-Implementation:
+**Implementation:** Updated the runtime image pull handler to catch request/API
+exceptions and render the error inline beside the runtime card; request errors
+behave like business `failed` responses (no redetection until retry).
 
-- Added a dashboard regression for rejected Docker pull mutations.
-- Updated the runtime image pull handler to catch request/API exceptions and
-  render the error message inline beside the runtime card.
-- Request errors now behave like business `failed` pull responses: no runtime
-  redetection is triggered until the operator retries.
+**Validation:** `pnpm --filter @repo/web test -- app/loops/page.test.tsx --runInBand` passed (14 suites, 86 tests).
 
-Validation:
-
-- `pnpm --filter @repo/web test -- app/loops/page.test.tsx --runInBand`
-  passed: 14 suites, 86 tests.
-
-Documentation update:
-
-- OPZ-01 now records dashboard request-error feedback in addition to business
-  failure feedback.
-
-Remaining review:
-
-- SSO E2E route preflight still checks only 404; repository-side validation can
-  make other non-2xx/non-3xx route responses fail before credential entry too.
+**Docs:** OPZ-01 records dashboard request-error feedback.
 
 ## Cycle 27 - SSO E2E Route Status Preflight
 
-Implementation:
+**Implementation:** Added `isUsableLoopsRouteStatus`; tightened the real SSO
+preflight so `/loops/new` must return 2xx/3xx before login; unit coverage for
+accepted statuses + rejected missing/4xx/5xx.
 
-- Added `isUsableLoopsRouteStatus` to the SSO E2E helper.
-- Tightened the real SSO Playwright preflight so `/loops/new` must return a
-  2xx/3xx response before the login flow proceeds.
-- Added unit coverage for accepted route statuses and rejected missing,
-  client-error, and server-error responses.
+**Validation:** `pnpm --filter @repo/web test -- e2e/sso-e2e-env.test.ts --runInBand` passed (14 suites, 86 tests).
 
-Validation:
-
-- `pnpm --filter @repo/web test -- e2e/sso-e2e-env.test.ts --runInBand`
-  passed: 14 suites, 86 tests.
-
-Documentation update:
-
-- BUG-04 now records that repository-side SSO E2E fails early on any unusable
-  Loops intake route response, not only 404.
-
-Remaining review:
-
-- Tenant snapshot parsing is hardened, but storage setter coverage does not yet
-  verify that clearing tenant state removes both legacy and snapshot keys.
+**Docs:** BUG-04 fails early on any unusable route response.
 
 ## Cycle 28 - Tenant Snapshot Cleanup Regression
 
-Implementation:
+**Implementation:** Added Web storage regressions proving `clearCurrentTenantId`
+removes both `currentTenant` and `currentTenantSnapshot`; `clearAll` also clears
+the snapshot with the rest of the browser session.
 
-- Added Web storage regressions proving `clearCurrentTenantId` removes both
-  `currentTenant` and `currentTenantSnapshot`.
-- Added coverage that `clearAll` also clears the readable tenant snapshot along
-  with the rest of the browser session state.
+**Validation:** `pnpm --filter @repo/web test -- lib/storage/index.test.ts --runInBand` passed (14 suites, 88 tests).
 
-Validation:
-
-- `pnpm --filter @repo/web test -- lib/storage/index.test.ts --runInBand`
-  passed: 14 suites, 88 tests.
-
-Documentation update:
-
-- BUG-03 and UX-01 now record cleanup coverage for tenant snapshot state.
-
-Remaining review:
-
-- Browser QA navigation-cancel classification is covered in reports/evidence,
-  but the exact ignored failure classification helper can still gain direct
-  edge-case coverage for common browser cancellation strings.
+**Docs:** BUG-03 / UX-01 record cleanup coverage.
 
 ## Cycle 29 - Browser QA Navigation-Cancel Classification Helper
 
-Implementation:
+**Implementation:** Extracted the navigation-cancel classification into an
+exported helper (`classifyBrowserQaRequestFailure`) used by the worker script
+generation path; direct unit coverage for the five cancel strings; confirmed
+real connection/name failures are not ignored.
 
-- Extracted the Browser QA navigation-cancel classification pattern into an
-  exported helper used by the worker script generation path.
-- Added direct unit coverage for `ERR_ABORTED`, `AbortError`,
-  `NS_BINDING_ABORTED`, `cancelled`, and `canceled`.
-- Confirmed real connection/name failures are not ignored.
+**Validation:** API `loops-browser-qa-worker.service.spec.ts` passed (1 suite, 4 tests).
 
-Validation:
-
-- `pnpm --filter @repo/api exec jest libs/domain/services/loops-quality/loops-browser-qa-worker.service.spec.ts --runInBand`
-  passed: 1 suite, 4 tests.
-
-Documentation update:
-
-- UX-04 now records direct helper coverage for ignored navigation-cancel noise.
-
-Remaining review:
-
-- Final cycle should consolidate Cycle 26 through Cycle 29 and rerun the focused
-  validation matrix including Web, API, contracts, JSON, and type-checks.
+**Docs:** UX-04 records direct helper coverage.
 
 ## Cycle 30 - Sixth-Pass Documentation Optimization and Final Validation
 
-Implementation:
+**Implementation:** Re-reviewed the fifth-pass residuals + Cycles 26–29;
+consolidated repo-owned status.
 
-- Re-reviewed the fifth-pass residual list and Cycles 26 through 29.
-- Consolidated the sixth-pass repository-owned status:
-  - OPZ-01 now handles dashboard Docker pull business failures and request
-    exceptions inline.
-  - BUG-04 now fails SSO E2E before login on any unusable `/loops/new` route
-    status, not just 404.
-  - BUG-03 / UX-01 now cover tenant snapshot parsing and cleanup.
-  - UX-04 now has direct navigation-cancel classification helper coverage.
-- Preserved the remaining external/upstream blockers separately.
+**Validation:** Sixth-pass validation matrix — all green.
 
-Validation:
+### Sixth-Pass Final Review and Test Pass
 
-- See the sixth-pass final validation matrix below.
+- Web: 14 suites, 88 tests. API: 6 suites, 24 matching tests. Contracts: 1
+  suite, 18 tests. JSON + Web/API type-check all passed.
+- Residuals unchanged.
 
-Documentation update:
+## Pass 7 (Cycle 31–35)
 
-- This section is the current close-out state for the sixth-pass implementation
-  loop.
+## Cycle 31 - Docker Pull Retry Error-Clearing Regression
 
-Remaining review:
+**Implementation:** Added a dashboard regression for the operator retry path
+after a Docker pull request error; proves a subsequent successful pull clears
+the previous inline error and triggers redetection. No product change required.
 
-- No new repository-owned implementation item was identified after this pass.
+**Validation:** `pnpm --filter @repo/web test -- app/loops/page.test.tsx --runInBand` passed (14 suites, 89 tests).
 
-## Sixth-Pass Final Review and Test Pass
+**Docs:** OPZ-01 records retry error-clearing coverage.
 
-Code review result:
+## Cycle 32 - SSO Route Redirect Acceptance Clarification
 
-- Completed another requested five-cycle implementation loop: Cycle 26 through
-  Cycle 30, building on Cycle 1 through Cycle 25.
-- No blocking repository-owned issue remains in the implemented slices.
-- Scope stayed inside Loops runtime fallback UX, SSO E2E route preflight,
-  tenant browser-state safety, Browser QA noise classification, and `docs/0629`
-  status tracking.
+**Implementation:** Added an SSO E2E helper regression proving 302 route
+responses are accepted alongside 200 and 308; clarified BUG-04 so 2xx pages +
+expected 3xx auth redirects are acceptable while 4xx/5xx still fail.
 
-Automated validation:
+**Validation:** `pnpm --filter @repo/web test -- e2e/sso-e2e-env.test.ts --runInBand` passed (14 suites, 89 tests).
 
-- `pnpm --filter @repo/web test -- app/loops/page.test.tsx e2e/sso-e2e-env.test.ts lib/storage/index.test.ts 'app/loops/[issueId]/page.test.tsx' app/loops/new/new-loop-issue-form.test.tsx app/loops/new/simple-loop-issue-form.test.tsx __tests__/next-env-format.test.ts --runInBand`
-  passed: 14 suites, 88 tests.
-- `pnpm --filter @repo/api exec jest libs/domain/services/loops-quality/loops-browser-qa-worker.service.spec.ts libs/domain/services/loops-runtime/loops-workspace-profile.service.spec.ts libs/domain/services/loops-runtime/agent-runtime-detection.service.spec.ts src/modules/oidc-client-api/url-resolver.spec.ts libs/domain/services/loops-issues/loops-issues.service.spec.ts src/modules/loops/loops.service.spec.ts --runInBand --testNamePattern='classifyBrowserQaRequestFailure|pullImage|Docker|runtime|OIDC|tenant|runtime status and diagnostics'`
-  passed: 6 suites, 24 matching tests.
-- `pnpm --filter @repo/contracts test -- schemas.test.ts --runInBand` passed:
-  1 suite, 18 tests.
-- `node -e "JSON.parse(require('fs').readFileSync('turbo.json','utf8')); for (const f of ['apps/web/locales/en/loops.json','apps/web/locales/zh-CN/loops.json']) JSON.parse(require('fs').readFileSync(f,'utf8')); console.log('json ok')"`
-  passed.
-- `pnpm --filter @repo/web type-check` passed.
-- `pnpm --filter @repo/api type-check` passed.
+**Docs:** BUG-04 distinguishes acceptable auth redirects from unusable failures.
 
-Residual external or upstream items:
+## Cycle 33 - Tenant Snapshot Update Event Regression
 
-- Real SSO account login for `13800138000` / tenant `优惠豚` still requires the
-  external SSO OAuth client to allow the selected callback URL.
-- `vibecoding.test.dofe.ai` still needs an external deployment/release check to
-  serve `/loops/new`; repository SSO E2E now fails early on unusable route
-  status.
-- Real Docker fallback readiness still needs a local Docker daemon/registry run.
-- RabbitMQ credential-bearing startup logs and benign shutdown severity still
-  originate from upstream `@dofe/infra-rabbitmq`.
+**Implementation:** Added Web storage regression coverage for the
+`currentTenantUpdated` event emitted by `setCurrentTenantSnapshot`, protecting
+the `/loops/new` live tenant confirmation path.
+
+**Validation:** `pnpm --filter @repo/web test -- lib/storage/index.test.ts --runInBand` passed (14 suites, 90 tests).
+
+**Docs:** BUG-03 / UX-01 record tenant snapshot event coverage.
+
+## Cycle 34 - Browser QA Cancellation Pattern Source Reuse
+
+**Implementation:** Split the Browser QA navigation-cancel matcher into exported
+`source` and `flags` constants; the helper and embedded Playwright worker script
+both derive their regex from the same source metadata (reduces drift).
+
+**Validation:** API `loops-browser-qa-worker.service.spec.ts` passed (1 suite, 4 tests).
+
+**Docs:** UX-04 records worker script shares the helper pattern source.
+
+## Cycle 35 - Seventh-Pass Documentation Optimization and Final Validation
+
+**Implementation:** Re-reviewed Cycles 31–34; consolidated repo-owned status.
+
+**Validation:** Seventh-pass validation matrix — all green.
+
+### Seventh-Pass Final Review and Test Pass
+
+- Web: 14 suites, 90 tests. API: 6 suites, 24 matching tests. Contracts: 1
+  suite, 18 tests. JSON + Web/API type-check all passed.
+- Residuals unchanged.
+
+## Pass 8 (Cycle 36–40)
 
 ## Cycle 36 - SSO Preflight Invalid URL Regression
 
-Implementation:
+**Implementation:** Extended `validateSsoE2eEnv` to collect invalid URL values as
+readable preflight issues instead of throwing; moved helper unit coverage out of
+the Vitest-excluded `e2e` directory into `apps/web/__tests__/sso-e2e-env.test.ts`;
+locked output for malformed `NEXT_PUBLIC_SERVER_BASE_URL` / `SSO_ISSUER`.
 
-- Added executable Web E2E env helper coverage for invalid URL values in SSO
-  preflight inputs.
-- The regression locks the expected operator-facing output for malformed
-  `NEXT_PUBLIC_SERVER_BASE_URL` and `SSO_ISSUER` values before browser login.
-- Moved helper unit coverage out of the Vitest-excluded `e2e` directory into
-  `apps/web/__tests__/sso-e2e-env.test.ts`.
-- Updated `validateSsoE2eEnv` to collect invalid URL values as readable
-  preflight issues instead of throwing.
+**Validation:** `pnpm --filter @repo/web test -- __tests__/sso-e2e-env.test.ts --runInBand` passed (16 suites, 100 tests).
 
-Validation:
-
-- `pnpm --filter @repo/web test -- __tests__/sso-e2e-env.test.ts --runInBand`
-  passed: 16 suites, 100 tests.
-
-Documentation update:
-
-- BUG-01 / BUG-02 now include malformed-URL preflight coverage in the
-  repository-side validation story.
-
-Remaining review:
-
-- `/loops/new` tenant context still needed direct hook-level coverage for the
-  browser events that update visible tenant state.
+**Docs:** BUG-01 / BUG-02 include malformed-URL preflight coverage.
 
 ## Cycle 37 - Current Loop Tenant Hook Event Regression
 
-Implementation:
+**Implementation:** Added focused `useCurrentLoopTenant` coverage: returns
+`undefined` without context, refreshes on same-tab `currentTenantUpdated`, and
+refreshes on cross-tab `storage` events.
 
-- Added focused hook coverage for `useCurrentLoopTenant`.
-- The tests verify the hook returns `undefined` without tenant context, refreshes
-  on same-tab `currentTenantUpdated`, and refreshes on cross-tab `storage`
-  events.
+**Validation:** `pnpm --filter @repo/web test -- app/loops/new/use-current-loop-tenant.test.ts --runInBand` passed (15 suites, 93 tests).
 
-Validation:
-
-- `pnpm --filter @repo/web test -- app/loops/new/use-current-loop-tenant.test.ts --runInBand`
-  passed: 15 suites, 93 tests.
-
-Documentation update:
-
-- BUG-03 and UX-01 now record hook-level event coverage in addition to storage
-  helper coverage.
-
-Remaining review:
-
-- Docker fallback pull already handled business failures, but post-pull image
-  inspection exceptions could still surface as lower-level errors.
+**Docs:** BUG-03 / UX-01 record hook-level event coverage.
 
 ## Cycle 38 - Docker Pull Post-Inspect Failure Handling
 
-Implementation:
+**Implementation:** Updated `pullImage` to return a structured `failed` response
+(`Docker image pull finished, but readiness inspection failed.`) when Docker
+pull succeeds but the post-pull local image inspection throws.
 
-- Added an API regression for `pullImage` when Docker pull succeeds but the
-  post-pull local image inspection throws.
-- Updated `LoopsWorkspaceProfileService.pullImage` to return a structured
-  `failed` response with the message
-  `Docker image pull finished, but readiness inspection failed.`
+**Validation:** API `loops-workspace-profile.service.spec.ts --testNamePattern='pullImage'` passed (5 matching tests).
 
-Validation:
-
-- `pnpm --filter @repo/api exec jest libs/domain/services/loops-runtime/loops-workspace-profile.service.spec.ts --runInBand --testNamePattern='pullImage'`
-  passed: 1 suite, 5 matching tests.
-
-Documentation update:
-
-- OPZ-01 now includes post-pull readiness inspection exception handling.
-
-Remaining review:
-
-- Browser QA worker output parsing still needed a clearer failure mode when the
-  worker wrote malformed JSON shape.
+**Docs:** OPZ-01 includes post-pull readiness inspection exception handling.
 
 ## Cycle 39 - Browser QA Malformed Worker Output Guard
 
-Implementation:
+**Implementation:** Added lightweight worker-output validation so malformed
+output (missing required array fields) becomes a `blocked` report with a
+readable `Browser QA worker output is malformed: ... must be an array.` reason
+instead of a generic TypeError.
 
-- Added an API regression where the Browser QA worker writes JSON missing
-  required array fields.
-- Added lightweight worker-output validation so malformed output becomes a
-  `blocked` report with a readable `Browser QA worker output is malformed...`
-  reason instead of a generic TypeError.
+**Validation:** API `loops-browser-qa-worker.service.spec.ts --testNamePattern='malformed|...'` passed (4 matching tests).
 
-Validation:
-
-- `pnpm --filter @repo/api exec jest libs/domain/services/loops-quality/loops-browser-qa-worker.service.spec.ts --runInBand --testNamePattern='malformed|navigation aborts|classifies|real request failures'`
-  passed: 1 suite, 4 matching tests.
-
-Documentation update:
-
-- UX-04 now records malformed Browser QA worker output handling as a repository
-  UX/diagnostic improvement.
-
-Remaining review:
-
-- Final cycle should consolidate Cycle 36 through Cycle 39 and rerun the focused
-  validation matrix.
+**Docs:** UX-04 records malformed worker-output handling.
 
 ## Cycle 40 - Eighth-Pass Documentation Optimization and Final Validation
 
-Implementation:
+**Implementation:** Re-reviewed Cycles 36–39; consolidated repo-owned status.
 
-- Re-reviewed Cycle 36 through Cycle 39 and consolidated the current
-  repository-owned status:
-  - SSO E2E env preflight now covers aligned origins, mismatched tiers,
-    expected callback derivation, usable route status, and malformed URL values.
-  - `/loops/new` tenant state now has storage-helper and hook-level event
-    coverage.
-  - Docker fallback pull now returns structured outcomes for already-present,
-    pulled, post-pull-not-ready, docker-client failure, and post-inspect
-    exception paths.
-  - Browser QA now has ignored navigation cancellation coverage, shared matcher
-    source coverage, and malformed worker-output diagnostics.
-- Preserved external/upstream blockers separately from repository-owned
-  implementation state.
+**Validation:** Eighth-pass validation matrix — all green.
 
-Validation:
+### Eighth-Pass Final Review and Test Pass
 
-- See the eighth-pass final validation matrix below.
+- Web: 16 suites, 100 tests. API: 6 suites, 27 matching tests. Contracts: 1
+  suite, 18 tests. JSON + Web/API type-check all passed.
+- Residuals unchanged.
 
-Documentation update:
+## Pass 9 (Cycle 41–45)
 
-- This section is the current close-out state for the eighth-pass
-  implementation loop. Older `Remaining review` entries are historical notes
-  superseded by the latest cycle that follows them.
+## Cycle 41 - Tenant Clear Event and Next Env Drift Regression
 
-Remaining review:
+**Implementation:** Updated `clearCurrentTenantId` to emit `currentTenantUpdated`
+after removing both legacy + snapshot state; added storage + hook regressions
+proving the visible tenant clears in the same tab after reset/logout. Re-applied
+the committed `apps/web/next-env.d.ts` double-quote format after the BUG-05
+regression caught local drift.
 
-- No new repository-owned implementation item was identified after this pass.
+**Validation:** `pnpm --filter @repo/web test -- lib/storage/index.test.ts app/loops/new/use-current-loop-tenant.test.ts __tests__/next-env-format.test.ts --runInBand` passed (16 suites, 102 tests).
 
-## Eighth-Pass Final Review and Test Pass
+**Docs:** BUG-03 / UX-01 record tenant-clear event coverage; BUG-05 records the drift catch.
+
+## Cycle 42 - SSO Required Origin Invalid URL Regression
+
+**Implementation:** Added executable coverage for invalid `E2E_API_ORIGIN`,
+`E2E_WEB_BASE_URL`, and `E2E_SSO_ORIGIN` values; confirmed
+`validateSsoE2eEnv` reports all required-origin URL issues before login.
+
+**Validation:** `pnpm --filter @repo/web test -- __tests__/sso-e2e-env.test.ts --runInBand` passed (16 suites, 103 tests).
+
+**Docs:** BUG-01 / BUG-02 preflight coverage now includes optional + required origin URLs.
+
+## Cycle 43 - Browser QA Invalid JSON Output Guard
+
+**Implementation:** Wrapped JSON parse failures as `Browser QA worker output is
+malformed: output must be valid JSON.`; added a regression for non-JSON worker
+output.
+
+**Validation:** API `loops-browser-qa-worker.service.spec.ts --testNamePattern='not valid JSON|malformed'` passed (2 matching tests).
+
+**Docs:** UX-04 records invalid JSON output as the same readable blocked-report family.
+
+## Cycle 44 - Docker Pull Initial Inspect Failure Handling
+
+**Implementation:** Updated `pullImage` to return a structured `failed` response
+(`Docker image readiness inspection failed.`) when the initial pre-pull image
+inspection throws; added API regression.
+
+**Validation:** API `loops-workspace-profile.service.spec.ts --testNamePattern='pullImage'` passed (6 matching tests).
+
+**Docs:** OPZ-01 includes initial-inspect-error coverage.
+
+## Cycle 45 - Ninth-Pass Documentation Optimization and Final Validation
+
+**Implementation:** Re-reviewed Cycles 41–44; consolidated repo-owned status.
+
+**Validation:** Ninth-pass validation matrix — all green.
+
+### Ninth-Pass Final Review and Test Pass
+
+- Web: 16 suites, 103 tests. API: 6 suites, 29 matching tests. Contracts: 1
+  suite, 18 tests. JSON + Web/API type-check all passed.
+- Residuals unchanged.
+
+## Pass 10 (Cycle 46–51)
+
+> Pass 10 targeted real coverage gaps discovered by re-auditing the
+> implementations themselves (not the status text): a `pull` call that could
+> reject, an untested preflight env-builder entry point, a required login-origin
+> field that was never validated, a worker-crash path with no direct regression,
+> and a legacy tenant-id fallback inconsistent with the snapshot path.
+
+## Cycle 46 - Docker Pull Reject Boundary and Workspace-Not-Found Contract
+
+**Implementation:** Wrapped the `this.docker.pull(image)` call in `pullImage`
+with a try/catch so a rejecting Docker pull client returns a structured `failed`
+response (`Docker image pull failed before completion.`) instead of propagating
+an unhandled exception — matching the existing `imagePresent` failure boundary.
+Added a regression proving `pullImage` rejects with `Workspace not found` before
+any Docker interaction when the workspace id is unknown.
+
+**Validation:** `pnpm --filter @repo/api exec jest libs/domain/services/loops-runtime/loops-workspace-profile.service.spec.ts --runInBand` passed (1 suite, 11 tests).
+
+**Docs:** OPZ-01 records the pull-reject boundary + workspace-not-found contract.
+
+## Cycle 47 - SSO E2E Env Builder Unit Coverage
+
+**Implementation:** Added direct unit coverage for `buildSsoE2eEnvFromProcess`
+(the `process.env` → `SsoE2eEnv` entry point): disabled-by-default state with
+local fallbacks, the `SSO_E2E_ENABLED === '1'` enable gate, `E2E_API_ORIGIN`
+precedence over `NEXT_PUBLIC_SERVER_BASE_URL`, and the full SSO env-key mapping.
+A mistyped env key can no longer silently default the preflight inputs.
+
+**Validation:** `pnpm --filter @repo/web test -- __tests__/sso-e2e-env.test.ts --runInBand` passed (16 suites, 107 tests).
+
+**Docs:** BUG-01 / BUG-02 / OPZ-02 record env-builder coverage.
+
+## Cycle 48 - SSO Login Origin Preflight Validation
+
+**Implementation:** Extended `validateSsoE2eEnv` so the required `ssoLoginOrigin`
+(read from `E2E_SSO_LOGIN_ORIGIN`) must be a valid URL. The login portal is
+intentionally not forced to match the SSO API tier (it may live on a different
+origin), but an invalid login origin now fails the preflight instead of only
+failing when the browser opens the page. Added a regression proving an invalid
+login origin is reported while a valid one on a different origin is accepted.
+
+**Validation:** `pnpm --filter @repo/web test -- __tests__/sso-e2e-env.test.ts --runInBand` passed (16 suites, 108 tests).
+
+**Docs:** BUG-02 / OPZ-02 record SSO login portal origin coverage.
+
+## Cycle 49 - Browser QA Worker Crash Blocked Regression
+
+**Implementation:** Added a regression proving a Browser QA worker process that
+crashes during the run (`execFile` rejects with a stderr-bearing error)
+degrades to a `blocked` report whose `blockedReason` surfaces the worker stderr
+instead of propagating an unhandled exception. Locks the outer try/catch
+`blocked` path for the crash/timeout family.
+
+**Validation:** `pnpm --filter @repo/api exec jest libs/domain/services/loops-quality/loops-browser-qa-worker.service.spec.ts --runInBand` passed (1 suite, 7 tests).
+
+**Docs:** UX-04 records worker-crash → `blocked` coverage.
+
+## Cycle 50 - Legacy Tenant Id Normalization
+
+**Implementation:** Normalized the legacy `currentTenant` fallback in
+`getCurrentTenantSnapshot` so it trims and rejects a whitespace-only id,
+matching the readable snapshot path; a padded legacy id is also trimmed before
+return. Closes the inconsistency where `"   "` was accepted as a tenant context
+while the snapshot path rejected it. Added regressions for whitespace-only
+(returns null) and padded (trimmed) legacy ids.
+
+**Validation:** `pnpm --filter @repo/web test -- lib/storage/index.test.ts --runInBand` passed (16 suites, 110 tests).
+
+**Docs:** BUG-03 / UX-01 record legacy tenant-id normalization.
+
+## Cycle 51 - Tenth-Pass Documentation Optimization and Final Validation
+
+**Implementation:**
+
+- Re-audited the Cycle 41–45 implementations themselves (not the status prose)
+  and identified five real repo-owned coverage gaps, implemented as Cycle 46–50:
+  Docker `pull`-reject boundary, preflight env-builder coverage, SSO login-origin
+  validation, Browser QA worker-crash `blocked` regression, and legacy tenant-id
+  normalization.
+- Caught and fixed a type regression introduced by the Cycle 47 env-builder
+  coverage: `buildSsoE2eEnvFromProcess` was typed `NodeJS.ProcessEnv`, whose
+  `NODE_ENV` is required in this repo's `@types/node`, so the test object
+  literals failed Web type-check. Narrowed the parameter to
+  `Readonly<Record<string, string | undefined>>` (the function only reads known
+  keys); `process.env` remains a valid caller.
+- Reorganized this file into strict Cycle 1 → Cycle 51 order, removed the
+  duplicated `Latest Entry Point` / `Current Final Close-Out` / `Latest Status
+Index` sections, and condensed each cycle to its core facts.
+
+**Validation:** See the Tenth-Pass Final Review matrix below.
+
+**Documentation update:** This file is now the consolidated, in-order status
+record; per-finding status lives in the three source review docs
+(`buglist/`, `opzs/`, `uiux-opz/`).
+
+### Tenth-Pass Final Review and Test Pass
 
 Code review result:
 
-- Completed another requested five-cycle implementation loop: Cycle 36 through
-  Cycle 40, building on Cycle 1 through Cycle 35.
+- Completed the requested five-cycle implementation loop: Cycle 46 through
+  Cycle 50, building on Cycle 1 through Cycle 45; Cycle 51 is the documentation
+  optimization + final validation pass.
 - No blocking repository-owned issue remains in the implemented slices.
-- Scope stayed inside Loops SSO preflight, tenant browser-state safety, Docker
-  fallback readiness, Browser QA diagnostics, and `docs/0629` status tracking.
+- Scope stayed inside Loops runtime fallback readiness, SSO E2E preflight, tenant
+  browser-state safety, Browser QA diagnostics, and `docs/0629` status tracking.
 
 Automated validation:
 
 - `pnpm --filter @repo/web test -- app/loops/page.test.tsx __tests__/sso-e2e-env.test.ts lib/storage/index.test.ts app/loops/new/use-current-loop-tenant.test.ts 'app/loops/[issueId]/page.test.tsx' app/loops/new/new-loop-issue-form.test.tsx app/loops/new/simple-loop-issue-form.test.tsx __tests__/next-env-format.test.ts --runInBand`
-  passed: 16 suites, 100 tests.
-- `pnpm --filter @repo/api exec jest libs/domain/services/loops-quality/loops-browser-qa-worker.service.spec.ts libs/domain/services/loops-runtime/loops-workspace-profile.service.spec.ts libs/domain/services/loops-runtime/agent-runtime-detection.service.spec.ts src/modules/oidc-client-api/url-resolver.spec.ts libs/domain/services/loops-issues/loops-issues.service.spec.ts src/modules/loops/loops.service.spec.ts --runInBand --testNamePattern='classifyBrowserQaRequestFailure|malformed|navigation aborts|pullImage|Docker|runtime|OIDC|tenant|runtime status and diagnostics'`
-  passed: 6 suites, 27 matching tests.
-- `pnpm --filter @repo/contracts test -- schemas.test.ts --runInBand` passed:
-  1 suite, 18 tests.
-- `node -e "JSON.parse(require('fs').readFileSync('turbo.json','utf8')); for (const f of ['apps/web/locales/en/loops.json','apps/web/locales/zh-CN/loops.json']) JSON.parse(require('fs').readFileSync(f,'utf8')); console.log('json ok')"`
-  passed.
-- `pnpm --filter @repo/web type-check` passed.
+  → 16 suites, 110 tests passed.
+- `pnpm --filter @repo/api exec jest libs/domain/services/loops-quality/loops-browser-qa-worker.service.spec.ts libs/domain/services/loops-runtime/loops-workspace-profile.service.spec.ts libs/domain/services/loops-runtime/agent-runtime-detection.service.spec.ts src/modules/oidc-client-api/url-resolver.spec.ts libs/domain/services/loops-issues/loops-issues.service.spec.ts src/modules/loops/loops.service.spec.ts --runInBand --testNamePattern='classifyBrowserQaRequestFailure|malformed|not valid JSON|navigation aborts|pullImage|Docker|runtime|OIDC|tenant|runtime status and diagnostics'`
+  → 6 suites, 31 matching tests passed.
+- `pnpm --filter @repo/contracts test -- schemas.test.ts --runInBand` → 1 suite,
+  18 tests passed.
+- `turbo.json` + locale JSON parse check passed.
+- `pnpm --filter @repo/web type-check` passed (after the Cycle 51 signature fix).
 - `pnpm --filter @repo/api type-check` passed.
 
 Residual external or upstream items:
-
-- Real SSO account login for `13800138000` / tenant `优惠豚` still requires the
-  external SSO OAuth client to allow the selected callback URL.
-- `vibecoding.test.dofe.ai` still needs an external deployment/release check to
-  serve `/loops/new`; repository SSO E2E now fails early on unusable route
-  status.
-- Real Docker fallback readiness still needs a local Docker daemon/registry run.
-- RabbitMQ credential-bearing startup logs and benign shutdown severity still
-  originate from upstream `@dofe/infra-rabbitmq`.
-
-## Cycle 31 - Docker Pull Retry Error-Clearing Regression
-
-Implementation:
-
-- Added a dashboard regression for the operator retry path after a Docker pull
-  request error.
-- The test proves a subsequent successful pull clears the previous inline error
-  and triggers runtime redetection.
-- No product code change was required; the existing success branch already
-  removed per-runtime pull errors.
-
-Validation:
-
-- `pnpm --filter @repo/web test -- app/loops/page.test.tsx --runInBand`
-  passed: 14 suites, 89 tests.
-
-Documentation update:
-
-- OPZ-01 now records retry error-clearing coverage for the Docker fallback UI.
-
-Remaining review:
-
-- SSO E2E route status helper can still document redirect acceptance explicitly
-  in the bug list so test-domain deployers know 3xx is acceptable.
-
-## Cycle 32 - SSO Route Redirect Acceptance Clarification
-
-Implementation:
-
-- Added an SSO E2E helper regression proving 302 route responses are accepted
-  alongside 200 and 308.
-- Clarified BUG-04 so test-domain deployers know `/loops/new` may return a
-  usable 2xx page or expected 3xx auth redirect, while 4xx/5xx still fail before
-  credential entry.
-
-Validation:
-
-- `pnpm --filter @repo/web test -- e2e/sso-e2e-env.test.ts --runInBand`
-  passed: 14 suites, 89 tests.
-
-Documentation update:
-
-- BUG-04 next execution plan now distinguishes acceptable auth redirects from
-  unusable route failures.
-
-Remaining review:
-
-- Tenant storage cleanup is covered, but `setCurrentTenantSnapshot` does not yet
-  have a regression for dispatching the tenant update event consumed by
-  `/loops/new`.
-
-## Cycle 33 - Tenant Snapshot Update Event Regression
-
-Implementation:
-
-- Added Web storage regression coverage for the `currentTenantUpdated` event
-  emitted by `setCurrentTenantSnapshot`.
-- This protects the `/loops/new` live tenant confirmation path that listens for
-  tenant changes in browser storage.
-
-Validation:
-
-- `pnpm --filter @repo/web test -- lib/storage/index.test.ts --runInBand`
-  passed: 14 suites, 90 tests.
-
-Documentation update:
-
-- BUG-03 and UX-01 now record tenant snapshot event coverage in addition to
-  parser and cleanup coverage.
-
-Remaining review:
-
-- Browser QA cancellation helper coverage exists, but the worker script path
-  should explicitly use the helper source rather than duplicating a regex
-  literal in the embedded script.
-
-## Cycle 34 - Browser QA Cancellation Pattern Source Reuse
-
-Implementation:
-
-- Split the Browser QA navigation-cancel matcher into exported `source` and
-  `flags` constants.
-- The exported helper and embedded Playwright worker script now derive their
-  regular expression from the same source metadata.
-- This keeps Browser QA ignored-noise behavior aligned across unit helper tests
-  and runtime script generation.
-
-Validation:
-
-- `pnpm --filter @repo/api exec jest libs/domain/services/loops-quality/loops-browser-qa-worker.service.spec.ts --runInBand`
-  passed: 1 suite, 4 tests.
-
-Documentation update:
-
-- UX-04 now records that the worker script shares the helper pattern source.
-
-Remaining review:
-
-- Final cycle should consolidate Cycle 31 through Cycle 34 and rerun the focused
-  validation matrix.
-
-## Cycle 35 - Seventh-Pass Documentation Optimization and Final Validation
-
-Implementation:
-
-- Re-reviewed Cycle 31 through Cycle 34 and consolidated the current
-  repository-owned status:
-  - OPZ-01 now covers failed Docker pull display, request exception display, and
-    successful retry error clearing.
-  - BUG-04 route preflight now explicitly accepts 2xx and expected 3xx auth
-    redirects while failing 4xx/5xx before login.
-  - BUG-03 / UX-01 now cover tenant snapshot parsing, cleanup, and browser
-    update event dispatch.
-  - UX-04 now covers Browser QA cancellation helper behavior and embedded worker
-    pattern-source reuse.
-- Preserved external/upstream blockers separately.
-
-Validation:
-
-- See the seventh-pass final validation matrix below.
-
-Documentation update:
-
-- This section is the current close-out state for the seventh-pass
-  implementation loop.
-
-Remaining review:
-
-- No new repository-owned implementation item was identified after this pass.
-
-## Seventh-Pass Final Review and Test Pass
-
-Code review result:
-
-- Completed another requested five-cycle implementation loop: Cycle 31 through
-  Cycle 35, building on Cycle 1 through Cycle 30.
-- No blocking repository-owned issue remains in the implemented slices.
-- Scope stayed inside Loops runtime fallback UX, SSO E2E route preflight,
-  tenant browser-state safety, Browser QA noise classification, and `docs/0629`
-  status tracking.
-
-Automated validation:
-
-- `pnpm --filter @repo/web test -- app/loops/page.test.tsx e2e/sso-e2e-env.test.ts lib/storage/index.test.ts 'app/loops/[issueId]/page.test.tsx' app/loops/new/new-loop-issue-form.test.tsx app/loops/new/simple-loop-issue-form.test.tsx __tests__/next-env-format.test.ts --runInBand`
-  passed: 14 suites, 90 tests.
-- `pnpm --filter @repo/api exec jest libs/domain/services/loops-quality/loops-browser-qa-worker.service.spec.ts libs/domain/services/loops-runtime/loops-workspace-profile.service.spec.ts libs/domain/services/loops-runtime/agent-runtime-detection.service.spec.ts src/modules/oidc-client-api/url-resolver.spec.ts libs/domain/services/loops-issues/loops-issues.service.spec.ts src/modules/loops/loops.service.spec.ts --runInBand --testNamePattern='classifyBrowserQaRequestFailure|pullImage|Docker|runtime|OIDC|tenant|runtime status and diagnostics'`
-  passed: 6 suites, 24 matching tests.
-- `pnpm --filter @repo/contracts test -- schemas.test.ts --runInBand` passed:
-  1 suite, 18 tests.
-- `node -e "JSON.parse(require('fs').readFileSync('turbo.json','utf8')); for (const f of ['apps/web/locales/en/loops.json','apps/web/locales/zh-CN/loops.json']) JSON.parse(require('fs').readFileSync(f,'utf8')); console.log('json ok')"`
-  passed.
-- `pnpm --filter @repo/web type-check` passed.
-- `pnpm --filter @repo/api type-check` passed.
-
-Residual external or upstream items:
-
-- Real SSO account login for `13800138000` / tenant `优惠豚` still requires the
-  external SSO OAuth client to allow the selected callback URL.
-- `vibecoding.test.dofe.ai` still needs an external deployment/release check to
-  serve `/loops/new`; repository SSO E2E now fails early on unusable route
-  status.
-- Real Docker fallback readiness still needs a local Docker daemon/registry run.
-- RabbitMQ credential-bearing startup logs and benign shutdown severity still
-  originate from upstream `@dofe/infra-rabbitmq`.
-
-## Current Final Close-Out
-
-Latest completed loop:
-
-- Cycle 36 through Cycle 40.
-- Latest validation section: `Eighth-Pass Final Review and Test Pass`.
-
-Repository-owned status:
-
-- SSO preflight malformed URL handling is implemented and covered by executable
-  Vitest tests under `apps/web/__tests__/sso-e2e-env.test.ts`.
-- `/loops/new` tenant refresh is covered at storage-helper and hook-event
-  levels.
-- Docker fallback pull readiness now returns structured failures for post-pull
-  inspect errors.
-- Browser QA malformed worker output now becomes a readable blocked report.
-- No repository-owned blocker remains from this pass.
-
-Latest validation:
-
-- Web focused matrix passed: 16 suites, 100 tests.
-- API focused matrix passed: 6 suites, 27 matching tests.
-- Contracts schema tests passed: 1 suite, 18 tests.
-- JSON config/locale parse check passed.
-- Web and API type-check passed.
-
-Remaining external or upstream work:
 
 - Real SSO account login for `13800138000` / tenant `优惠豚` still requires the
   external SSO OAuth client to allow the selected callback URL.
@@ -1362,3 +718,89 @@ Remaining external or upstream work:
 - Real Docker fallback readiness still needs a local Docker daemon/registry run.
 - RabbitMQ credential-bearing startup logs and benign shutdown severity still
   originate from upstream `@dofe/infra-rabbitmq`.
+
+## Pass 11 (Cycle 52+)
+
+> Pass 11 advances the residual external/upstream items from "documented only"
+> toward "executable or defended from this repository", without pretending to
+> close work that genuinely needs an external system.
+
+## Cycle 52 - OPZ-03 Winston Credential Redaction Defense Layer
+
+**Implementation:** Added `apps/api/src/bootstrap/log-redaction.util.ts` with
+`redactSecretUrlsInText`, `redactSecretUrlsDeep`, and a `redactSecretUrls`
+winston format that masks `scheme://user:pass@` authorities (amqp/redis/postgres/
+http) in the log message and nested meta before any transport runs. Extracted
+`createAppWinstonConfig` from the inline `WinstonModule.forRootAsync` factory and
+prepended the redaction format to the upstream `getWinstonConfig` output. Because
+`@dofe/infra-rabbitmq` injects the shared `WINSTON_MODULE_PROVIDER` logger, its
+connection/shutdown logs now have credentials masked at the application layer
+even before the upstream package masks them.
+
+**Validation:** `pnpm --filter @repo/api exec jest src/bootstrap/log-redaction.util.spec.ts src/bootstrap/app-module-imports.bootstrap.spec.ts --runInBand` passed (2 suites, 9 tests). `pnpm --filter @repo/api type-check` passed.
+
+**Docs:** OPZ-03 status updated from "Not implemented in this repository" to a
+repo-owned defense layer; the upstream root-cause fix and OPZ-04 severity
+normalization remain external (the package's `console.*` paths bypass winston).
+
+## Cycle 53 - BUG-04 Deployment Route Probe
+
+**Implementation:** Added `probeLoopsRoute(url, fetchImpl?)` to
+`apps/web/e2e/sso-e2e-env.ts` (reuses `isUsableLoopsRouteStatus`, injectable
+fetch for testability) plus a standalone `apps/web/scripts/verify-loops-route.mjs`
+that runs with plain Node (no TS loader). Release validation can now confirm
+`/loops/new` on a deployed domain (default `https://vibecoding.test.dofe.ai/loops/new`,
+overridable via `VERIFY_LOOPS_ROUTE_URL`) without starting the local Web/API/SSO
+stack; the probe exits non-zero on 4xx/5xx or network failure so CI/release
+scripts can gate on it.
+
+**Validation:** `pnpm --filter @repo/web test -- __tests__/sso-e2e-env.test.ts --runInBand` passed (16 suites, 114 tests, +4 probe). `VERIFY_LOOPS_ROUTE_URL=http://127.0.0.1:1/loops/new node apps/web/scripts/verify-loops-route.mjs` reported `network error` / `usable: false` / exit 1. `pnpm --filter @repo/web type-check` passed.
+
+**Docs:** BUG-04 now records the executable standalone deployment probe in
+addition to the SSO E2E route preflight.
+
+## Cycle 54 - External/Upstream Items Documentation Consolidation
+
+**Implementation:** Consolidated the four residual external/upstream items into
+an explicit "executable entry points" matrix (below) so each item now has a
+concrete repository-side command where one exists, alongside the external step
+it still needs. No code change; this closes Pass 11 by making the boundary
+between "defended/executable from this repo" and "genuinely external"
+unambiguous.
+
+**Validation:** Structural review of `docs/0629` confirms each external/upstream
+item now points to an executable entry point or is explicitly marked as
+external-only (see matrix below).
+
+**Docs:** Current Status, Residual, and BUG-04 / OPZ-03 sections updated to
+reflect Cycle 52–53.
+
+### Pass 11 Final Review
+
+Code review result:
+
+- Completed Pass 11 (Cycle 52–54): advanced the four residual external/upstream
+  items from "documented only" toward "defended or executable from this
+  repository".
+- OPZ-03 now has a repository-owned winston credential-redaction defense layer;
+  BUG-04 now has a standalone deployment route probe. The genuinely external
+  steps (SSO OAuth client registration, real deployment, real Docker daemon,
+  upstream `@dofe/infra-rabbitmq` root-cause fix) are unchanged and clearly
+  bounded.
+
+Automated validation:
+
+- `pnpm --filter @repo/api exec jest src/bootstrap/log-redaction.util.spec.ts src/bootstrap/app-module-imports.bootstrap.spec.ts --runInBand` → 2 suites, 9 tests.
+- `pnpm --filter @repo/web test -- __tests__/sso-e2e-env.test.ts --runInBand` → 16 suites, 114 tests.
+- `node apps/web/scripts/verify-loops-route.mjs` (smoke, unreachable port) → exit 1 with a readable error.
+- `pnpm --filter @repo/api type-check` + `pnpm --filter @repo/web type-check` passed.
+
+### External/Upstream Items — Executable Entry Points
+
+| Item                                | Repo-owned state                       | Executable entry point (this repo)                                                                              | Still external                                                                              |
+| ----------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Real SSO login — BUG-01/02          | Preflight + override docs              | `pnpm --filter @repo/web test:e2e:sso` (runs the SSO E2E env preflight before browser login)                    | SSO OAuth client must allow the chosen callback URL                                         |
+| Deployed route — BUG-04             | Standalone probe (Cycle 53)            | `VERIFY_LOOPS_ROUTE_URL=https://vibecoding.test.dofe.ai/loops/new node apps/web/scripts/verify-loops-route.mjs` | Deployment/release of the Loops UI to that domain                                           |
+| Docker fallback — OPZ-01            | Service + dashboard hardening          | `GET /loops/agent-runtime`; `POST /loops/workspaces/:id/pull-image`                                             | Running Docker daemon + registry credentials                                                |
+| RabbitMQ log secrets — OPZ-03       | App-layer winston redaction (Cycle 52) | Active by default via `createAppWinstonConfig`                                                                  | Upstream `@dofe/infra-rabbitmq` root-cause masking (covers the package's `console.*` paths) |
+| RabbitMQ shutdown severity — OPZ-04 | None (needs package-internal context)  | —                                                                                                               | Upstream `@dofe/infra-rabbitmq` severity normalization                                      |

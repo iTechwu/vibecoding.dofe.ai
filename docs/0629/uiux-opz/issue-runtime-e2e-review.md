@@ -53,8 +53,10 @@ instead of showing or submitting invalid tenant context. Cycle 28 verifies that
 tenant cleanup clears both legacy id and readable snapshot state. Cycle 33
 verifies tenant snapshot updates dispatch the browser event used by `/loops/new`
 to refresh visible tenant context. Cycle 37 adds direct `useCurrentLoopTenant`
-coverage for same-tab and cross-tab tenant refresh behavior. Real browser
-validation still depends on SSO callback/env alignment.
+coverage for same-tab and cross-tab tenant refresh behavior. Cycle 41 adds
+same-tab tenant clear coverage so logout/tenant reset removes stale visible
+tenant context without a page reload. Cycle 50 normalizes the legacy `currentTenant` fallback in `getCurrentTenantSnapshot` so a whitespace-only or padded legacy tenant id is trimmed/rejected consistently with the readable snapshot path. Real browser validation still depends on
+SSO callback/env alignment.
 
 Observed:
 
@@ -76,8 +78,9 @@ Next execution plan:
 - 范围: After SSO callback/env alignment, log in as `13800138000`, select
   `优惠豚`, and confirm `/loops/new` shows the readable tenant name plus
   tenant/team audit identifiers before submission; confirm issue detail shows
-  the same persisted tenant context; keep malformed local tenant snapshot
-  regression coverage in the Web suite.
+  the same persisted tenant context; keep malformed local tenant snapshot,
+  same-tab tenant update, cross-tab tenant update, and tenant-clear regression
+  coverage in the Web suite.
 - 不做: Do not build tenant switching or membership editing in this pass.
 - 受益: Operators can verify they are working inside `优惠豚` before spending
   runtime or approving delivery evidence.
@@ -178,6 +181,11 @@ Current implementation:
 - Cycle 39 validates required worker-output arrays before report mapping, so a
   malformed Browser QA worker result becomes a readable blocked report instead
   of a generic TypeError.
+- Cycle 43 wraps malformed JSON output in the same readable blocked report
+  family, avoiding raw parser syntax errors in operator-facing diagnostics.
+- Cycle 49 adds direct regression coverage for the worker crash → `blocked`
+  path, so a worker process that exits non-zero or times out surfaces a readable
+  reason instead of propagating an unhandled exception.
 
 Impact:
 

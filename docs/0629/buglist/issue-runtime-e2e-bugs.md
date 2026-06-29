@@ -40,7 +40,9 @@ the callback/frontend override pair. Cycle 13 adds a Playwright E2E preflight
 that fails early with the exact callback URL SSO must allow when env origins are
 misaligned. Cycle 36 locks malformed URL input handling so bad env values are
 reported as preflight issues instead of derailing browser login with low-level
-errors.
+errors. Cycle 47 adds direct unit coverage for `buildSsoE2eEnvFromProcess`, the
+`process.env` → preflight-env entry point, so a mistyped env key can no longer
+silently default the origins and callback URL the preflight checks.
 
 Observed:
 
@@ -82,7 +84,10 @@ now calls out that `NEXT_PUBLIC_SSO_BASE_URL` must match the API
 `SSO_ISSUER` / `SSO_API_URL` tier for real E2E. Cycle 13 adds a reusable E2E
 env validator that checks those origins before the SSO page is opened. Cycle 16
 extends the preflight to include `SSO_INTERNAL_API_URL`. Cycle 36 adds
-malformed URL regression coverage for the same preflight surface.
+malformed URL regression coverage for the same preflight surface. Cycle 48
+extends the preflight to also require the SSO login portal origin
+(`E2E_SSO_LOGIN_ORIGIN`) to be a valid URL before browser login, since the login
+page may live on a different origin than the SSO API.
 
 Observed:
 
@@ -126,7 +131,8 @@ when a readable tenant snapshot is set, protecting `/loops/new` live tenant
 refresh. Cycle 37 adds hook-level coverage proving `/loops/new` refreshes from
 both same-tab tenant updates and cross-tab storage events. Remaining validation
 depends on real SSO providing tenant scope after BUG-01/BUG-02 are fully
-cleared.
+cleared. Cycle 41 verifies tenant clearing dispatches the same browser update
+event so `/loops/new` clears stale visible tenant context in the current tab. Cycle 50 normalizes the legacy `currentTenant` fallback in `getCurrentTenantSnapshot` so a whitespace-only or padded legacy tenant id is trimmed/rejected consistently with the readable snapshot path.
 
 Observed:
 
@@ -151,8 +157,8 @@ Next execution plan:
 - 范围: Re-run full SSO E2E after callback/env alignment and confirm created
   issues contain request-derived tenant id/name/team scope, with `/loops/new`
   showing the readable tenant name before submission; keep the tenant storage
-  parser and `useCurrentLoopTenant` event regressions in the Web validation
-  matrix.
+  parser, `useCurrentLoopTenant` event regressions, and tenant-clear event
+  regression in the Web validation matrix.
 - 不做: Do not redesign tenant switching or tenant membership management.
 - 受益: Tenant-scoped runtime governance and audit trails are verifiable through
   both records and UI.
@@ -168,7 +174,7 @@ preflight. Cycle 22 adds a route preflight to the SSO E2E path so a missing
 route availability still remains an external deployment/release validation
 item. Cycle 27 tightens that route preflight so any non-2xx/non-3xx response
 fails before login. Cycle 32 documents and tests that redirects such as 302/308
-are acceptable because an unauthenticated Loops route may redirect toward login.
+are acceptable because an unauthenticated Loops route may redirect toward login. Cycle 53 adds a standalone deployment route probe (`probeLoopsRoute` in `apps/web/e2e/sso-e2e-env.ts` plus the plain-Node `apps/web/scripts/verify-loops-route.mjs`) so release validation can confirm `/loops/new` on a deployed domain like `vibecoding.test.dofe.ai` without starting the local Web/API/SSO stack; the probe exits non-zero on 4xx/5xx or network failure.
 
 Observed:
 
@@ -201,7 +207,9 @@ Severity: P3
 
 Status: Implemented in Cycle 5. The committed/generated file format now matches
 the Next dev output observed during QA. Cycle 18 adds an executable Web unit
-test that fails if the generated file drifts back to a noisy format.
+test that fails if the generated file drifts back to a noisy format. Cycle 41
+re-applied the committed double-quote format after the focused Web regression
+run caught a single-quote drift.
 
 Observed:
 

@@ -169,7 +169,12 @@ export class LoopsBrowserQaWorkerService {
   }
 
   private parseWorkerResult(content: string): BrowserQaWorkerResult {
-    const parsed = JSON.parse(content) as Partial<BrowserQaWorkerResult>;
+    let parsed: Partial<BrowserQaWorkerResult>;
+    try {
+      parsed = JSON.parse(content) as Partial<BrowserQaWorkerResult>;
+    } catch {
+      throw new Error('Browser QA worker output is malformed: output must be valid JSON.');
+    }
     const consoleErrors = this.requiredWorkerArray(parsed, 'consoleErrors');
     const networkFailures = this.requiredWorkerArray(parsed, 'networkFailures');
     const screenshots = this.requiredWorkerArray(parsed, 'screenshots');
