@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import type { LoopAgentRuntimeResponse, LoopCostResponse, LoopListResponse } from '@repo/contracts';
+import type {
+  LoopAgentRuntimeResponse,
+  LoopCostResponse,
+  LoopListResponse,
+  LoopMetricsActionItem,
+} from '@repo/contracts';
 import {
   AGING_QUEUE_SLA_POLICY,
   aggregateLoops,
@@ -11,6 +16,7 @@ import {
   buildEvalPlan,
   buildLoopBoard,
   buildLoopBench,
+  buildOperatorFocus,
   buildPermissionProfile,
   buildPerformanceSnapshot,
   buildProviderProfile,
@@ -398,6 +404,88 @@ describe('loops-dashboard-model', () => {
       'Security finding',
       'Release approval',
     ]);
+  });
+
+  it('selects one operator focus from review, exception, action, then create fallback', () => {
+    const reviewInbox = buildReviewInbox([
+      {
+        issueId: 'issue-1',
+        title: 'Spec needs approval',
+        action: 'review-spec',
+        nextActionCategory: 'decision',
+        label: 'Review spec',
+        priority: 'P0',
+        phase: 'PHASE_2_REVIEW',
+        href: '/loops/issue-1',
+      },
+    ]);
+    const exceptionCenter = buildExceptionCenter(list.list, {
+      cost,
+      evalPlan: buildEvalPlan(list.list, cost),
+    });
+    const actionQueue: LoopMetricsActionItem[] = [
+      {
+        issueId: 'issue-2',
+        title: 'Continue docs',
+        action: 'run-step',
+        nextActionCategory: 'continue' as const,
+        label: 'Continue loop',
+        priority: 'P2',
+        phase: 'PHASE_4_IMPLEMENT',
+        href: '/loops/issue-2',
+      },
+    ];
+
+    expect(
+      buildOperatorFocus({
+        reviewInbox,
+        exceptionItems: exceptionCenter.items,
+        actionQueue,
+      }),
+    ).toMatchObject({
+      kind: 'review',
+      title: 'Spec needs approval',
+      label: 'Review spec',
+      level: 'warning',
+    });
+
+    expect(
+      buildOperatorFocus({
+        reviewInbox: [],
+        exceptionItems: exceptionCenter.items,
+        actionQueue: [],
+      }),
+    ).toMatchObject({
+      kind: 'exception',
+      label: 'Adjust budget or reduce scope',
+      level: 'critical',
+    });
+
+    expect(
+      buildOperatorFocus({
+        reviewInbox: [],
+        exceptionItems: [],
+        actionQueue,
+      }),
+    ).toMatchObject({
+      kind: 'continue',
+      title: 'Continue docs',
+      label: 'Continue loop',
+    });
+
+    expect(
+      buildOperatorFocus({
+        reviewInbox: [],
+        exceptionItems: [],
+        actionQueue: [],
+      }),
+    ).toMatchObject({
+      kind: 'create',
+      href: '/loops/new',
+      title: '',
+      label: '',
+      meta: '',
+    });
   });
 
   it('uses next action category before internal action codes for human decisions', () => {

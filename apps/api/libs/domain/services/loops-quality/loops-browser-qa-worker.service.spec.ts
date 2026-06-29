@@ -433,4 +433,36 @@ describe('LoopsBrowserQaWorkerService', () => {
     expect(report.status).toBe('blocked');
     expect(report.blockedReason).toContain('worker stack trace');
   });
+
+  it('blocks with a readable reason when the target repo is outside allowed roots, before spawning the worker', async () => {
+    const service = new LoopsBrowserQaWorkerService();
+    const artifact = (name: string) => path.join(dir, name);
+
+    const report = await service.run({
+      issueId: 'issue-1',
+      reportId: 'browser-qa-1',
+      targetRepo: '/definitely-outside-allowed-roots',
+      request: {
+        targetUrl: 'https://example.com',
+        checkedFlows: ['page-load'],
+        viewports: [{ name: 'desktop', width: 1440, height: 900 }],
+      },
+      screenshotPath: artifact('screenshot.png'),
+      screenshotRef: '.loops/runs/issue-1/browser-qa/browser-qa-1/screenshot.png',
+      tracePath: artifact('trace.zip'),
+      traceRef: '.loops/runs/issue-1/browser-qa/browser-qa-1/trace.zip',
+      baselinePath: artifact('baseline.png'),
+      baselineRef: '.loops/runs/issue-1/browser-qa/baseline.png',
+      diffPath: artifact('visual-diff.png'),
+      diffRef: '.loops/runs/issue-1/browser-qa/browser-qa-1/visual-diff.png',
+      handoffPath: artifact('handoff.json'),
+      handoffRef: '.loops/runs/issue-1/browser-qa/browser-qa-1/handoff.json',
+      createdAt: '2026-06-24T00:00:00.000Z',
+    });
+
+    expect(report.status).toBe('blocked');
+    expect(report.blockedReason).toMatch(/Loop targetRepo|outside allowed roots|not a directory/i);
+    // resolveAllowedTargetRepo throws before execFile is ever invoked.
+    expect(mockedExecFile).not.toHaveBeenCalled();
+  });
 });

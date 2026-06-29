@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { LoopDetail } from '@repo/contracts';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -608,9 +608,9 @@ describe('LoopIssueDetailPage', () => {
     expect(screen.getByText('Spec revision')).toBeInTheDocument();
     expect(screen.getByText('intake to v1 · round 1')).toBeInTheDocument();
     expect(screen.getByText('Rule Snapshot')).toBeInTheDocument();
-    expect(screen.getByText('Tenant')).toBeInTheDocument();
-    expect(screen.getByText('优惠豚')).toBeInTheDocument();
-    expect(screen.getByText(/tenant-youhuitun/)).toBeInTheDocument();
+    const tenantAudit = screen.getByRole('group', { name: 'Tenant' });
+    expect(within(tenantAudit).getByText('优惠豚')).toBeInTheDocument();
+    expect(within(tenantAudit).getByText(/tenant-youhuitun/)).toBeInTheDocument();
     expect(screen.getByText('1/4 rules · Agent readable')).toBeInTheDocument();
     expect(screen.getByText('AGENTS.md · present')).toBeInTheDocument();
     expect(
@@ -865,6 +865,111 @@ describe('LoopIssueDetailPage', () => {
     expect(screen.getByText('Runtime: Claude Code is Running')).toBeInTheDocument();
   });
 
+  it('summarizes missing evidence types in the coverage card', () => {
+    renderWithIntl(<LoopIssueDetailPage />);
+
+    const evidenceCoverage = screen.getByRole('region', { name: 'Evidence Coverage' });
+    expect(within(evidenceCoverage).getByText('Missing evidence')).toBeInTheDocument();
+    expect(within(evidenceCoverage).getByText('Implemented 0/1')).toBeInTheDocument();
+    expect(within(evidenceCoverage).getByText('Tested 0/1')).toBeInTheDocument();
+    expect(within(evidenceCoverage).getByText('Annotated 0/1')).toBeInTheDocument();
+    expect(
+      within(evidenceCoverage).getByLabelText('Implemented evidence 0 of 1 recorded'),
+    ).toBeInTheDocument();
+    expect(
+      within(evidenceCoverage).queryByText('All required evidence is present.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the complete evidence state when all coverage counts are satisfied', () => {
+    const originalImplementationRecords = detail.implementationRecords;
+    const originalReviewRecords = detail.reviewRecords;
+    const originalTestRecords = detail.testRecords;
+    const originalAnnotations = detail.annotations;
+
+    detail.implementationRecords = [
+      {
+        id: 'impl-complete',
+        issueId: 'issue-1',
+        shardId: 'shard-1',
+        round: 1,
+        implementer: 'claude-code',
+        status: 'IMPLEMENTED',
+        summary: 'Implemented trace timeline.',
+        changedFiles: ['apps/web/app/loops/[issueId]/page.tsx'],
+        created: '2026-06-20T00:20:00.000Z',
+      },
+    ];
+    detail.reviewRecords = [
+      {
+        id: 'review-complete',
+        issueId: 'issue-1',
+        shardId: 'shard-1',
+        round: 1,
+        reviewer: 'codex',
+        verdict: 'PASS',
+        issues: [],
+        fixInstructions: [],
+        summary: 'Review passed.',
+        created: '2026-06-20T00:30:00.000Z',
+      },
+    ];
+    detail.testRecords = [
+      {
+        id: 'test-complete',
+        issueId: 'issue-1',
+        shardId: 'shard-1',
+        round: 1,
+        runner: 'system',
+        reviewer: 'system',
+        status: 'TEST-PASS',
+        commands: [
+          {
+            command: 'pnpm test',
+            exitCode: 0,
+            durationMs: 1200,
+            stdout: 'pass',
+            stderr: '',
+          },
+        ],
+        failedTests: [],
+        fixInstructions: [],
+        created: '2026-06-20T00:25:00.000Z',
+      },
+    ];
+    detail.annotations = [
+      {
+        target: 'REQ-1',
+        annotator: 'codex',
+        round: 1,
+        implStatus: 'done',
+        testStatus: 'pass',
+        verdict: 'pass',
+        coverage: 'full',
+        location: ['apps/web/app/loops/[issueId]/page.tsx'],
+        risk: 'low',
+        notes: 'Requirement covered.',
+      },
+    ];
+
+    try {
+      renderWithIntl(<LoopIssueDetailPage />);
+
+      const evidenceCoverage = screen.getByRole('region', { name: 'Evidence Coverage' });
+      expect(within(evidenceCoverage).getByText('Evidence complete')).toBeInTheDocument();
+      expect(
+        within(evidenceCoverage).getByText('All required evidence is present.'),
+      ).toBeInTheDocument();
+      expect(within(evidenceCoverage).queryByText('Missing evidence')).not.toBeInTheDocument();
+      expect(within(evidenceCoverage).queryByText('Implemented 0/1')).not.toBeInTheDocument();
+    } finally {
+      detail.implementationRecords = originalImplementationRecords;
+      detail.reviewRecords = originalReviewRecords;
+      detail.testRecords = originalTestRecords;
+      detail.annotations = originalAnnotations;
+    }
+  });
+
   it('defaults evidence records to the current round and summarizes hidden history', () => {
     const originalRound = detail.state.round;
     const originalImplementationRecords = detail.implementationRecords;
@@ -995,6 +1100,8 @@ describe('LoopIssueDetailPage', () => {
 
   it('shows approve + request-revision controls for a DRAFT spec', () => {
     const originalSpec = detail.spec;
+    const originalPaused = detail.state.paused;
+    detail.state.paused = false;
     detail.spec = {
       id: 'spec-1',
       issueId: 'issue-1',
@@ -1006,11 +1113,67 @@ describe('LoopIssueDetailPage', () => {
     };
     try {
       renderWithIntl(<LoopIssueDetailPage />);
+      const nextAction = screen.getByRole('region', { name: 'Next Action' });
+      expect(within(nextAction).getByText('Review spec')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Continue Loop' })).toHaveAttribute(
+        'aria-describedby',
+        'next-action-diagnostic',
+      );
       expect(screen.getByRole('button', { name: 'Approve' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Request Revision' })).toBeInTheDocument();
+      expect(screen.getByText('Human gate checklist')).toBeInTheDocument();
+      expect(
+        screen.getByText('Read the generated spec and acceptance criteria.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Approve or request changes before agents continue.'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Continue Loop resumes automation after approval.'),
+      ).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Regenerate Spec' })).not.toBeInTheDocument();
     } finally {
       detail.spec = originalSpec;
+      detail.state.paused = originalPaused;
+    }
+  });
+
+  it('points Continue Loop at the closed-state diagnostic when the issue is closed', () => {
+    const originalIssueStatus = detail.issue.status;
+    const originalPhase = detail.state.phase;
+    const originalPaused = detail.state.paused;
+    const originalSpec = detail.spec;
+    const originalShards = detail.shards;
+
+    detail.issue.status = 'CLOSED';
+    detail.state.phase = 'CLOSED';
+    detail.state.paused = false;
+    detail.spec = {
+      id: 'spec-closed',
+      issueId: 'issue-1',
+      version: 'v1',
+      status: 'APPROVED',
+      created: '2026-06-20T00:00:00.000Z',
+      contextBudget: 24000,
+      body: 'Closed spec body',
+      approvedBy: 'tester',
+    };
+    detail.shards = [];
+
+    try {
+      renderWithIntl(<LoopIssueDetailPage />);
+
+      expect(screen.getByRole('button', { name: 'Continue Loop' })).toHaveAttribute(
+        'aria-describedby',
+        'next-action-diagnostic',
+      );
+      expect(screen.getByText('This issue is already closed.')).toBeInTheDocument();
+    } finally {
+      detail.issue.status = originalIssueStatus;
+      detail.state.phase = originalPhase;
+      detail.state.paused = originalPaused;
+      detail.spec = originalSpec;
+      detail.shards = originalShards;
     }
   });
 

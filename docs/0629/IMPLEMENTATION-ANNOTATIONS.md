@@ -17,7 +17,7 @@ validation, documentation update, and remaining review.
 
 ## Current Status (Authoritative)
 
-Latest completed loop: **Pass 11 — Cycle 52 through Cycle 54.**
+Latest completed loop: **Pass 12 — Cycle 55 through Cycle 60.**
 
 Repository-owned status (all findings have executable coverage and passed the
 final validation matrix below):
@@ -30,7 +30,8 @@ final validation matrix below):
   normalization.
 - **BUG-04** — SSO E2E `/loops/new` route preflight (fails on 4xx/5xx before
   login; accepts 2xx + expected 3xx), plus a standalone deployment route probe
-  (`apps/web/scripts/verify-loops-route.mjs`, Cycle 53).
+  (`apps/web/scripts/verify-loops-route.mjs`, Cycle 53) with a configurable
+  timeout (Cycle 55).
 - **BUG-05** — `apps/web/next-env.d.ts` generated-format regression.
 - **OPZ-01** — Docker fallback readiness: already-present, initial-inspect-error,
   pulled, post-pull-not-ready, post-pull-inspect-error, pull-reject, and
@@ -804,3 +805,113 @@ Automated validation:
 | Docker fallback — OPZ-01            | Service + dashboard hardening          | `GET /loops/agent-runtime`; `POST /loops/workspaces/:id/pull-image`                                             | Running Docker daemon + registry credentials                                                |
 | RabbitMQ log secrets — OPZ-03       | App-layer winston redaction (Cycle 52) | Active by default via `createAppWinstonConfig`                                                                  | Upstream `@dofe/infra-rabbitmq` root-cause masking (covers the package's `console.*` paths) |
 | RabbitMQ shutdown severity — OPZ-04 | None (needs package-internal context)  | —                                                                                                               | Upstream `@dofe/infra-rabbitmq` severity normalization                                      |
+
+## Pass 12 (Cycle 55+)
+
+> Pass 12 continues the deep audit, closing edge-case gaps in code added by
+> earlier passes (probe timeout, redaction robustness, tenant setter parity)
+> and previously untested branches (disallowed target repo, route scheme).
+
+## Cycle 55 - Deployment Route Probe Timeout
+
+**Implementation:** Added a timeout to `probeLoopsRoute` (default 10s,
+configurable via `options.timeoutMs`) using `AbortSignal.timeout`, and surfaced a
+`timedOut` flag on `LoopsRouteProbe`. Mirrored the same guard in
+`apps/web/scripts/verify-loops-route.mjs` (`VERIFY_LOOPS_ROUTE_TIMEOUT_MS`). A
+hung endpoint can no longer stall the probe — or the CI/release scripts that
+gate on its exit code — indefinitely.
+
+**Validation:** `pnpm --filter @repo/web test -- __tests__/sso-e2e-env.test.ts --runInBand` passed (123 tests, +1 timeout case asserting the `timedOut` flag and that an abort signal is forwarded to fetch). `.mjs` smoke run reported a readable error and exit 1. `pnpm --filter @repo/web type-check` passed.
+
+**Docs:** BUG-04 deployment probe now records the timeout guard.
+
+## Cycle 56 - Browser QA Disallowed Target Repo Blocked Regression
+
+**Implementation:** Added a regression proving a Browser QA run whose
+`targetRepo` is outside the allowed roots blocks _before_ the worker process is
+spawned. `resolveAllowedTargetRepo` throws inside the `run()` try block, the
+outer catch returns a `blocked` report with a readable `Loop targetRepo ...`
+reason, and `execFile` is never called. This covers a distinct blocked path from
+the Cycle 49 worker-crash case (which fires after the worker spawns).
+
+**Validation:** `pnpm --filter @repo/api exec jest libs/domain/services/loops-quality/loops-browser-qa-worker.service.spec.ts --runInBand` passed (1 suite, 8 tests).
+
+**Docs:** UX-04 records the disallowed-target-repo blocked branch.
+
+## Cycle 57 - Log Redaction Circular Reference Hardening
+
+**Implementation:** Added regressions locking the depth-cap and non-crash
+contract of `redactSecretUrlsDeep`: a circular reference (an object that
+references itself) does not blow the stack, and input nested deeper than the
+recursion cap returns without throwing. This protects the redaction format from
+pathological winston meta shapes — if the depth guard were ever removed, these
+tests fail instead of a production stack overflow.
+
+**Validation:** `pnpm --filter @repo/api exec jest src/bootstrap/log-redaction.util.spec.ts --runInBand` passed (1 suite, 10 tests).
+
+**Docs:** OPZ-03 records the circular-reference / depth-cap hardening coverage.
+
+## Cycle 58 - Legacy Tenant Setter Empty-Id Guard
+
+**Implementation:** `setCurrentTenantId` now trims its argument and rejects an
+empty/whitespace id (no write, no `currentTenantUpdated` dispatch), matching the
+readable snapshot path and the Cycle 50 legacy read-path normalization. A padded
+id is trimmed before persisting, so the legacy write/read pair is consistent and
+no caller can persist a tenant id that `getCurrentTenantSnapshot` would silently
+drop. Also re-applied the committed `apps/web/next-env.d.ts` double-quote import
+format after the BUG-05 regression caught local drift again.
+
+**Validation:** `pnpm --filter @repo/web test -- lib/storage/index.test.ts __tests__/next-env-format.test.ts --runInBand` passed (16 suites, 125 tests).
+
+**Docs:** BUG-03 / UX-01 record the legacy tenant setter guard; BUG-05 records another drift catch.
+
+## Cycle 59 - SSO Preflight HTTP Scheme Validation
+
+**Implementation:** `validateSsoE2eEnv` now requires the four required origins
+(`E2E_API_ORIGIN`, `E2E_WEB_BASE_URL`, `E2E_SSO_ORIGIN`, `E2E_SSO_LOGIN_ORIGIN`)
+to use the `http` or `https` scheme. A syntactically valid but non-web origin
+such as `ftp://...` or `file://...` now fails the preflight instead of passing
+and only breaking when the browser opens the page. Extracted `assertHttpOrigin`
+to keep the validity + scheme check together.
+
+**Validation:** `pnpm --filter @repo/web test -- __tests__/sso-e2e-env.test.ts --runInBand` passed (16 suites, 126 tests, +1 ftp-scheme case). `pnpm --filter @repo/web type-check` passed.
+
+**Docs:** BUG-01 / BUG-02 / OPZ-02 preflight now covers origin scheme, not just validity/alignment.
+
+## Cycle 60 - Canary Smoke Test Timeout and Pass 12 Final Review
+
+**Implementation:** The Pass 12 full API matrix — run _without_ a `--testNamePattern`
+filter, unlike every earlier pass — surfaced a long-running
+`loops.service.spec.ts` smoke test ("persists release canary Browser QA evidence")
+that exceeded the default 5s jest timeout. It had been silently skipped by prior
+passes' name filters, so the release-canary Browser QA evidence path was never
+actually exercised in the validation matrix. Gave that test an explicit 30000ms
+timeout so it now runs and passes.
+
+**Validation:** `pnpm --filter @repo/api exec jest src/modules/loops/loops.service.spec.ts -t "persists release canary Browser QA evidence" --runInBand --forceExit` passed.
+
+**Docs:** Records that the canary smoke test is now in the matrix with an explicit
+timeout, and that Pass 12 validated the full API suite without a name filter.
+
+### Pass 12 Final Review
+
+Code review result:
+
+- Completed Pass 12 (Cycle 55–60): five edge-case gaps found by re-auditing code
+  written in earlier passes (probe timeout, redaction circular-reference
+  hardening, tenant setter parity, preflight scheme validation, disallowed-repo
+  blocked branch), plus a canary smoke test the old filtered matrix had hidden.
+- No blocking repository-owned issue remains in the implemented slices.
+
+Automated validation:
+
+- `pnpm --filter @repo/web test -- <focused matrix> --runInBand` → 16 suites, 126 tests.
+- `pnpm --filter @repo/api exec jest <focused matrix> --runInBand --forceExit` → 8 suites, 112 tests (full matrix, no name filter).
+- `pnpm --filter @repo/contracts test -- schemas.test.ts --runInBand` → 1 suite, 18 tests.
+- `turbo.json` + locale JSON parse check passed.
+- `pnpm --filter @repo/web type-check` + `pnpm --filter @repo/api type-check` passed.
+- `.mjs` probe smoke run (unreachable port) → exit 1 with a readable error.
+
+Residual external or upstream items: unchanged from Pass 11 (SSO OAuth client
+registration, `vibecoding.test.dofe.ai` deployment, real Docker daemon, upstream
+`@dofe/infra-rabbitmq` root-cause log masking + shutdown severity).

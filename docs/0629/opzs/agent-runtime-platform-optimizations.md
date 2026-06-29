@@ -126,7 +126,10 @@ transport sees them, masking credentials in connection URLs and nested error
 meta even before the upstream package masks them itself. The upstream
 root-cause fix is still the preferred long-term resolution because it also
 covers the package's `console.*` paths (e.g. `rabbitmq-events.module.js`) that
-bypass winston; the dependency bump remains external.
+bypass winston; the dependency bump remains external. Cycle 57 locks the
+redaction depth-cap / non-crash contract with regressions for circular
+references and deeply nested meta, so the defense layer cannot regress into a
+stack overflow.
 
 Observed:
 

@@ -55,7 +55,7 @@ verifies tenant snapshot updates dispatch the browser event used by `/loops/new`
 to refresh visible tenant context. Cycle 37 adds direct `useCurrentLoopTenant`
 coverage for same-tab and cross-tab tenant refresh behavior. Cycle 41 adds
 same-tab tenant clear coverage so logout/tenant reset removes stale visible
-tenant context without a page reload. Cycle 50 normalizes the legacy `currentTenant` fallback in `getCurrentTenantSnapshot` so a whitespace-only or padded legacy tenant id is trimmed/rejected consistently with the readable snapshot path. Real browser validation still depends on
+tenant context without a page reload. Cycle 50 normalizes the legacy `currentTenant` fallback in `getCurrentTenantSnapshot` so a whitespace-only or padded legacy tenant id is trimmed/rejected consistently with the readable snapshot path. Cycle 58 extends that parity to the `setCurrentTenantId` setter, which now trims and rejects empty/whitespace ids before persisting. Real browser validation still depends on
 SSO callback/env alignment.
 
 Observed:
@@ -186,6 +186,8 @@ Current implementation:
 - Cycle 49 adds direct regression coverage for the worker crash → `blocked`
   path, so a worker process that exits non-zero or times out surfaces a readable
   reason instead of propagating an unhandled exception.
+- Cycle 56 adds coverage for the disallowed-target-repo → `blocked` path, which
+  fires before the worker spawns when `resolveAllowedTargetRepo` rejects.
 
 Impact:
 

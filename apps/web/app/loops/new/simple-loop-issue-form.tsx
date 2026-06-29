@@ -64,7 +64,6 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
   const [priorityOverride, setPriorityOverride] = useState<LoopPriority | ''>('');
   const [criteriaOverride, setCriteriaOverride] = useState('');
   const [targetRepoOverride, setTargetRepoOverride] = useState('');
-  const [requestError, setRequestError] = useState<string | null>(null);
 
   const effectiveWorkspaceId = workspaceId || currentWorkspace;
 
@@ -110,7 +109,6 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
       .filter((learning) => !learning.repo || learning.repo === preview.targetRepo)
       .slice(0, 3);
   }, [preview, recentLearnings]);
-
   if (!isAuthenticated) {
     return <p className="text-sm text-muted-foreground">{t('simple.redirecting')}</p>;
   }
@@ -123,14 +121,54 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
     : requestRemaining > 0
       ? t('simple.submitRequestBlocked', { count: requestRemaining })
       : t('simple.submitReady');
+  const submitDescriptionIds = [
+    'simple-loop-submit-status',
+    createIssue.isError ? 'simple-loop-create-error' : undefined,
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const readinessItems = [
+    {
+      key: 'request',
+      ready: requestRemaining === 0,
+      tone: requestRemaining === 0 ? 'ready' : 'pending',
+      label: t(
+        requestRemaining === 0
+          ? 'simple.readiness.requestReady'
+          : 'simple.readiness.requestPending',
+      ),
+    },
+    {
+      key: 'workspace',
+      ready: Boolean(selectedWorkspace),
+      tone: selectedWorkspace ? 'ready' : 'pending',
+      label: selectedWorkspace
+        ? t('simple.readiness.workspaceReady', { workspace: selectedWorkspace.workspaceId })
+        : t('simple.readiness.workspacePending'),
+    },
+    {
+      key: 'tenant',
+      ready: Boolean(tenantContext),
+      tone: tenantContext ? 'ready' : 'warning',
+      label: tenantContext
+        ? t('simple.readiness.tenantReady', {
+            tenant: tenantContext.tenantName ?? tenantContext.tenantId,
+          })
+        : t('simple.readiness.tenantPending'),
+    },
+    {
+      key: 'preview',
+      ready: Boolean(preview),
+      tone: preview ? 'ready' : 'pending',
+      label: preview ? t('simple.readiness.previewReady') : t('simple.readiness.previewPending'),
+    },
+  ];
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (request.trim().length < 10) {
-      setRequestError(t('simple.requestError'));
       return;
     }
-    setRequestError(null);
     const criteriaLines = criteriaOverride
       .split('\n')
       .map((line) => line.trim())
@@ -182,26 +220,32 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
       ) : null}
 
       {/* Primary input: the request. */}
-      <label className="flex flex-col gap-2 text-sm font-medium">
-        <span className="flex items-center gap-2">
+      <div className="flex flex-col gap-2 text-sm font-medium">
+        <label className="flex items-center gap-2" htmlFor="simple-loop-request">
           <Sparkles className="size-4 text-muted-foreground" />
-          {t('simple.requestLabel')}
-        </span>
+          <span id="simple-loop-request-label">{t('simple.requestLabel')}</span>
+        </label>
         <textarea
+          aria-describedby="simple-loop-request-hint"
+          aria-invalid={requestRemaining > 0}
+          aria-labelledby="simple-loop-request-label"
           className="min-h-36 rounded-md border bg-background px-3 py-3 text-sm leading-6 outline-none transition focus:border-foreground/50 focus:ring-2 focus:ring-foreground/10"
+          id="simple-loop-request"
           onChange={(e) => setRequest(e.target.value)}
           placeholder={t('simple.requestPlaceholder')}
           value={request}
         />
-        <span className="text-xs text-muted-foreground">{t('simple.requestHint')}</span>
-        {requestError ? <span className="text-xs text-destructive">{requestError}</span> : null}
-      </label>
+        <span className="text-xs text-muted-foreground" id="simple-loop-request-hint">
+          {t('simple.requestHint')}
+        </span>
+      </div>
 
       {/* Workspace + template, compact row. */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-2 text-sm font-medium">
           <span>{t('simple.workspaceLabel')}</span>
           <select
+            aria-describedby={workspaceBlocked ? 'simple-loop-workspace-error' : undefined}
             className="h-10 rounded-md border bg-background px-3 text-sm outline-none transition focus:border-foreground/50 focus:ring-2 focus:ring-foreground/10 disabled:opacity-60"
             disabled={workspacesQuery.isLoading || workspaceBlocked}
             onChange={(e) => setWorkspaceId(e.target.value)}
@@ -241,10 +285,12 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
 
       {/* Live preview of the normalised issue (read-only). */}
       <section
-        aria-label={t('simple.previewTitle')}
+        aria-labelledby="simple-loop-preview-title"
         className="rounded-md border bg-background/70 p-4"
       >
-        <h2 className="text-xs font-semibold text-muted-foreground">{t('simple.previewTitle')}</h2>
+        <h2 className="text-xs font-semibold text-muted-foreground" id="simple-loop-preview-title">
+          {t('simple.previewTitle')}
+        </h2>
         {preview ? (
           <dl className="mt-3 flex flex-col gap-3 text-sm">
             <div className="flex flex-col gap-1">
@@ -445,14 +491,55 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
       </details>
 
       {workspaceBlocked ? (
-        <p className="text-sm text-destructive">{t('simple.workspaceRequired')}</p>
+        <p className="text-sm text-destructive" id="simple-loop-workspace-error" role="alert">
+          {t('simple.workspaceRequired')}
+        </p>
       ) : null}
-      {createIssue.isError ? <p className="text-sm text-destructive">{t('error')}</p> : null}
+      {createIssue.isError ? (
+        <p className="text-sm text-destructive" id="simple-loop-create-error" role="alert">
+          {t('error')}
+        </p>
+      ) : null}
+
+      <section
+        aria-labelledby="simple-loop-readiness-title"
+        className="rounded-md border bg-muted/20 p-3"
+      >
+        <h2
+          className="text-xs font-semibold text-muted-foreground"
+          id="simple-loop-readiness-title"
+        >
+          {t('simple.readiness.title')}
+        </h2>
+        <ul className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {readinessItems.map((item) => (
+            <li
+              className={`rounded-md border px-3 py-2 text-xs ${
+                item.tone === 'ready'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100'
+                  : item.tone === 'warning'
+                    ? 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100'
+                    : 'border-border bg-background text-muted-foreground'
+              }`}
+              key={item.key}
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span>{item.label}</span>
+                <span className="shrink-0 rounded-md border bg-background/70 px-1.5 py-0.5 text-[10px] font-medium uppercase">
+                  {t(`simple.readiness.status.${item.tone}`)}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p
           aria-live="polite"
           className={`text-sm ${workspaceBlocked || requestRemaining > 0 ? 'text-muted-foreground' : 'text-emerald-700 dark:text-emerald-300'}`}
+          id="simple-loop-submit-status"
+          role="status"
         >
           {submitBlockedReason}
         </p>
@@ -464,6 +551,7 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
             {t('cancel')}
           </Link>
           <button
+            aria-describedby={submitDescriptionIds}
             className="inline-flex h-10 items-center justify-center rounded-md bg-foreground px-4 text-sm font-medium text-background disabled:opacity-60"
             disabled={createIssue.isPending || workspaceBlocked || request.trim().length < 10}
             type="submit"

@@ -42,7 +42,9 @@ misaligned. Cycle 36 locks malformed URL input handling so bad env values are
 reported as preflight issues instead of derailing browser login with low-level
 errors. Cycle 47 adds direct unit coverage for `buildSsoE2eEnvFromProcess`, the
 `process.env` → preflight-env entry point, so a mistyped env key can no longer
-silently default the origins and callback URL the preflight checks.
+silently default the origins and callback URL the preflight checks. Cycle 59
+requires the four required preflight origins to use the http/https scheme, so a
+valid-but-non-web origin like `ftp://` fails the preflight before browser login.
 
 Observed:
 
@@ -132,7 +134,7 @@ refresh. Cycle 37 adds hook-level coverage proving `/loops/new` refreshes from
 both same-tab tenant updates and cross-tab storage events. Remaining validation
 depends on real SSO providing tenant scope after BUG-01/BUG-02 are fully
 cleared. Cycle 41 verifies tenant clearing dispatches the same browser update
-event so `/loops/new` clears stale visible tenant context in the current tab. Cycle 50 normalizes the legacy `currentTenant` fallback in `getCurrentTenantSnapshot` so a whitespace-only or padded legacy tenant id is trimmed/rejected consistently with the readable snapshot path.
+event so `/loops/new` clears stale visible tenant context in the current tab. Cycle 50 normalizes the legacy `currentTenant` fallback in `getCurrentTenantSnapshot` so a whitespace-only or padded legacy tenant id is trimmed/rejected consistently with the readable snapshot path. Cycle 58 extends that parity to the `setCurrentTenantId` setter, which now trims and rejects empty/whitespace ids before persisting.
 
 Observed:
 
@@ -174,7 +176,7 @@ preflight. Cycle 22 adds a route preflight to the SSO E2E path so a missing
 route availability still remains an external deployment/release validation
 item. Cycle 27 tightens that route preflight so any non-2xx/non-3xx response
 fails before login. Cycle 32 documents and tests that redirects such as 302/308
-are acceptable because an unauthenticated Loops route may redirect toward login. Cycle 53 adds a standalone deployment route probe (`probeLoopsRoute` in `apps/web/e2e/sso-e2e-env.ts` plus the plain-Node `apps/web/scripts/verify-loops-route.mjs`) so release validation can confirm `/loops/new` on a deployed domain like `vibecoding.test.dofe.ai` without starting the local Web/API/SSO stack; the probe exits non-zero on 4xx/5xx or network failure.
+are acceptable because an unauthenticated Loops route may redirect toward login. Cycle 53 adds a standalone deployment route probe (`probeLoopsRoute` in `apps/web/e2e/sso-e2e-env.ts` plus the plain-Node `apps/web/scripts/verify-loops-route.mjs`) so release validation can confirm `/loops/new` on a deployed domain like `vibecoding.test.dofe.ai` without starting the local Web/API/SSO stack; the probe times out after 10s (configurable via `VERIFY_LOOPS_ROUTE_TIMEOUT_MS`) and exits non-zero on 4xx/5xx, network failure, or timeout (Cycle 55).
 
 Observed:
 

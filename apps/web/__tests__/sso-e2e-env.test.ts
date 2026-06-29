@@ -100,6 +100,18 @@ describe('validateSsoE2eEnv', () => {
       }),
     ).toEqual(['E2E_SSO_LOGIN_ORIGIN (not a login url) must be a valid URL.']);
   });
+
+  it('rejects non-http(s) origins such as ftp before browser login', () => {
+    expect(
+      validateSsoE2eEnv({
+        enabled: true,
+        webBaseUrl: 'ftp://files.example',
+        apiOrigin: 'http://127.0.0.1:13100',
+        ssoOrigin: 'http://127.0.0.1:3100',
+        ssoLoginOrigin: 'http://127.0.0.1:3000',
+      }),
+    ).toEqual(['E2E_WEB_BASE_URL (ftp://files.example) must use the http or https scheme.']);
+  });
 });
 
 describe('expectedOidcCallback', () => {

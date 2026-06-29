@@ -51,6 +51,22 @@ describe('redactSecretUrlsDeep', () => {
     expect(redactSecretUrlsDeep(42)).toBe(42);
     expect(redactSecretUrlsDeep(null)).toBeNull();
   });
+
+  it('does not blow the stack on circular references', () => {
+    const obj: { url: string; self?: unknown } = { url: 'amqp://u:p@host' };
+    obj.self = obj;
+
+    const result = redactSecretUrlsDeep(obj) as { url: string };
+
+    expect(result.url).toBe('amqp://***@host');
+  });
+
+  it('does not recurse past the depth cap on deeply nested input', () => {
+    let nested: Record<string, unknown> = { url: 'amqp://deep:pw@host' };
+    for (let i = 0; i < 12; i += 1) nested = { nested };
+
+    expect(() => redactSecretUrlsDeep(nested)).not.toThrow();
+  });
 });
 
 describe('redactSecretUrls winston format', () => {

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -30,6 +30,7 @@ vi.mock('@/providers', () => ({
 }));
 
 const mutateAsync = vi.fn();
+let createIssueIsError = false;
 
 // Driven by a module-level binding so individual tests can flip the workspace
 // availability (the other documented submit gate) without re-mocking.
@@ -59,7 +60,7 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
   useCreateSimpleLoopIssue: () => ({
     mutateAsync,
     isPending: false,
-    isError: false,
+    isError: createIssueIsError,
   }),
   useLoopsWorkspaces: () => workspacesQuery,
 }));
@@ -76,6 +77,7 @@ describe('SimpleLoopIssueForm (0622 · B5 simple-mode intake)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mutateAsync.mockReset();
+    createIssueIsError = false;
     window.localStorage.clear();
     workspacesQuery = {
       data: {
@@ -106,7 +108,11 @@ describe('SimpleLoopIssueForm (0622 · B5 simple-mode intake)', () => {
     renderWithIntl(<SimpleLoopIssueForm defaultTargetRepo="/repo/vibecoding" />);
 
     // The one prominent field the user must fill.
-    expect(screen.getByPlaceholderText(/Add a Docker fallback/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole('textbox', { name: 'What do you want the agents to do?' }),
+    ).toHaveAccessibleDescription(
+      'At least 10 characters. Keep it to one sentence; expand details in the issue after creation.',
+    );
     // Workspace + template selects are part of the compact simple-mode row.
     expect(screen.getByText('Workspace')).toBeInTheDocument();
     expect(screen.getByText('Template')).toBeInTheDocument();
@@ -159,10 +165,12 @@ describe('SimpleLoopIssueForm (0622 · B5 simple-mode intake)', () => {
     const user = userEvent.setup();
     renderWithIntl(<SimpleLoopIssueForm defaultTargetRepo="/repo/vibecoding" />);
 
-    const request = screen.getByPlaceholderText(/Add a Docker fallback/i);
+    const request = screen.getByRole('textbox', { name: 'What do you want the agents to do?' });
     const submit = screen.getByRole('button', { name: 'Create Issue' });
+    const submitStatus = screen.getByRole('status');
 
-    expect(screen.getByText('Add 10 more characters to create an issue.')).toBeInTheDocument();
+    expect(submitStatus).toHaveTextContent('Add 10 more characters to create an issue.');
+    expect(submit).toHaveAccessibleDescription('Add 10 more characters to create an issue.');
 
     await user.type(request, 'short');
     expect(submit).toBeDisabled();
@@ -171,15 +179,57 @@ describe('SimpleLoopIssueForm (0622 · B5 simple-mode intake)', () => {
         'At least 10 characters. Keep it to one sentence; expand details in the issue after creation.',
       ),
     ).toBeInTheDocument();
-    expect(screen.getByText('Add 5 more characters to create an issue.')).toBeInTheDocument();
+    expect(submitStatus).toHaveTextContent('Add 5 more characters to create an issue.');
+    expect(submit).toHaveAccessibleDescription('Add 5 more characters to create an issue.');
 
     await user.type(request, ' a slightly longer one');
     expect(submit).toBeEnabled();
+    expect(submitStatus).toHaveTextContent(
+      'Ready to create. The generated issue can be reviewed before the loop continues.',
+    );
+    expect(submit).toHaveAccessibleDescription(
+      'Ready to create. The generated issue can be reviewed before the loop continues.',
+    );
+  });
+
+  it('marks the primary textarea invalid until the request reaches the minimum length', async () => {
+    const user = userEvent.setup();
+    renderWithIntl(<SimpleLoopIssueForm defaultTargetRepo="/repo/vibecoding" />);
+
+    const request = screen.getByRole('textbox', { name: 'What do you want the agents to do?' });
+    expect(request).toHaveAttribute('aria-invalid', 'true');
+
+    await user.type(request, 'short');
+    expect(request).toHaveAttribute('aria-invalid', 'true');
+
+    await user.type(request, ' a slightly longer one');
+    expect(request).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it('shows a pre-submit readiness checklist for operator confidence', async () => {
+    vi.mocked(window.localStorage.getItem).mockImplementation(() => null);
+    const user = userEvent.setup();
+    renderWithIntl(<SimpleLoopIssueForm defaultTargetRepo="/repo/vibecoding" />);
+
+    const readiness = screen.getByRole('region', { name: 'Create readiness' });
+    expect(within(readiness).getByText('Create readiness')).toBeInTheDocument();
+    expect(within(readiness).getByText('Request: needs detail')).toBeInTheDocument();
+    expect(within(readiness).getByText('Workspace: vibecoding')).toBeInTheDocument();
     expect(
-      screen.getByText(
-        'Ready to create. The generated issue can be reviewed before the loop continues.',
-      ),
+      within(readiness).getByText('Tenant: not provided — issue will use workspace scope'),
     ).toBeInTheDocument();
+    expect(within(readiness).getByText('Preview: waiting for request')).toBeInTheDocument();
+    expect(within(readiness).getByText('Check')).toBeInTheDocument();
+    expect(within(readiness).getAllByText('Pending').length).toBeGreaterThan(0);
+
+    await user.type(
+      screen.getByPlaceholderText(/Add a Docker fallback/i),
+      'Add a summary card to the loops dashboard',
+    );
+
+    expect(within(readiness).getByText('Request: ready')).toBeInTheDocument();
+    expect(within(readiness).getByText('Preview: generated')).toBeInTheDocument();
+    expect(within(readiness).getAllByText('Ready').length).toBeGreaterThan(0);
   });
 
   it('blocks submit and surfaces guidance when no workspace is available', () => {
@@ -193,18 +243,44 @@ describe('SimpleLoopIssueForm (0622 · B5 simple-mode intake)', () => {
     expect(
       screen.getByText('Select or configure a workspace before submitting.'),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText('A workspace is required before this issue can be created.'),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Create Issue' })).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Select or configure a workspace before submitting.',
+    );
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'A workspace is required before this issue can be created.',
+    );
+    expect(screen.getByRole('combobox', { name: 'Workspace' })).toHaveAccessibleDescription(
+      'Select or configure a workspace before submitting.',
+    );
+    const submit = screen.getByRole('button', { name: 'Create Issue' });
+    expect(submit).toBeDisabled();
+    expect(submit).toHaveAccessibleDescription(
+      'A workspace is required before this issue can be created.',
+    );
+  });
+
+  it('surfaces create failures as an alert for operators', () => {
+    createIssueIsError = true;
+    renderWithIntl(<SimpleLoopIssueForm defaultTargetRepo="/repo/vibecoding" />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Failed to create issue. Please try again.',
+    );
+    expect(screen.getByRole('button', { name: 'Create Issue' })).toHaveAccessibleDescription(
+      'Add 10 more characters to create an issue. Failed to create issue. Please try again.',
+    );
   });
 
   it('renders a live preview that shares the backend deterministic normalisation', async () => {
     const user = userEvent.setup();
     renderWithIntl(<SimpleLoopIssueForm defaultTargetRepo="/repo/vibecoding" />);
 
+    const previewRegion = screen.getByRole('region', { name: 'Preview' });
+
     // Before enough input, the preview is empty.
-    expect(screen.getByText('Start typing to preview the generated issue.')).toBeInTheDocument();
+    expect(
+      within(previewRegion).getByText('Start typing to preview the generated issue.'),
+    ).toBeInTheDocument();
 
     await user.type(
       screen.getByPlaceholderText(/Add a Docker fallback/i),
@@ -213,21 +289,25 @@ describe('SimpleLoopIssueForm (0622 · B5 simple-mode intake)', () => {
 
     // No bug/docker/fix keywords → feature template → "Add ..." title, P1, and the
     // shared feature acceptance criteria (same strings the backend persists).
-    expect(screen.getAllByText('Add a summary card to the loops dashboard').length).toBeGreaterThan(
-      0,
-    );
+    expect(
+      within(previewRegion).getAllByText('Add a summary card to the loops dashboard').length,
+    ).toBeGreaterThan(0);
     // P1 appears in the preview chip and in the collapsed advanced priority
     // options; both derive from the same shared normalisation.
     expect(screen.getAllByText('P1').length).toBeGreaterThan(0);
-    expect(screen.getByText('Primary happy path is implemented end to end')).toBeInTheDocument();
-    expect(screen.getByText('Recommended agent path')).toBeInTheDocument();
-    expect(screen.getByText('Planner → Implementer → Reviewer')).toBeInTheDocument();
-    expect(screen.getByText('Suggested test policy')).toBeInTheDocument();
-    expect(screen.getByText('unit + type-check + focused UI regression')).toBeInTheDocument();
-    expect(screen.getByText('Relevant learnings')).toBeInTheDocument();
-    expect(screen.getByText('Test Policy')).toBeInTheDocument();
     expect(
-      screen.getByText(/Use unit \+ type-check before dashboard UI changes/),
+      within(previewRegion).getByText('Primary happy path is implemented end to end'),
+    ).toBeInTheDocument();
+    expect(within(previewRegion).getByText('Recommended agent path')).toBeInTheDocument();
+    expect(within(previewRegion).getByText('Planner → Implementer → Reviewer')).toBeInTheDocument();
+    expect(within(previewRegion).getByText('Suggested test policy')).toBeInTheDocument();
+    expect(
+      within(previewRegion).getByText('unit + type-check + focused UI regression'),
+    ).toBeInTheDocument();
+    expect(within(previewRegion).getByText('Relevant learnings')).toBeInTheDocument();
+    expect(within(previewRegion).getByText('Test Policy')).toBeInTheDocument();
+    expect(
+      within(previewRegion).getByText(/Use unit \+ type-check before dashboard UI changes/),
     ).toBeInTheDocument();
   });
 

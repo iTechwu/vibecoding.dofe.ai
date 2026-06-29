@@ -3,6 +3,7 @@ import {
   clearAll,
   clearCurrentTenantId,
   getCurrentTenantSnapshot,
+  setCurrentTenantId,
   setCurrentTenantSnapshot,
 } from './index';
 
@@ -132,5 +133,17 @@ describe('tenant storage', () => {
 
     expect(window.localStorage.removeItem).toHaveBeenCalledWith('currentTenant');
     expect(window.localStorage.removeItem).toHaveBeenCalledWith('currentTenantSnapshot');
+  });
+
+  it('ignores an empty legacy tenant id setter call and keeps the snapshot null', () => {
+    setCurrentTenantId('   ');
+
+    expect(getCurrentTenantSnapshot()).toBeNull();
+  });
+
+  it('trims and persists a padded legacy tenant id', () => {
+    setCurrentTenantId('  tenant-legacy  ');
+
+    expect(getCurrentTenantSnapshot()).toEqual({ tenantId: 'tenant-legacy' });
   });
 });

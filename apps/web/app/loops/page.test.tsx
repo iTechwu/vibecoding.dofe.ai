@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { renderToString } from 'react-dom/server';
 import { hydrateRoot } from 'react-dom/client';
 import { NextIntlClientProvider } from 'next-intl';
@@ -11,12 +11,13 @@ vi.mock('@/i18n/navigation', () => ({
     children,
     href,
     className,
+    ...props
   }: {
     children: React.ReactNode;
     href: string;
     className?: string;
-  }) => (
-    <a className={className} href={href}>
+  } & React.AnchorHTMLAttributes<HTMLAnchorElement>) => (
+    <a className={className} href={href} {...props}>
       {children}
     </a>
   ),
@@ -827,6 +828,15 @@ function renderWithIntl(ui: React.ReactElement) {
 }
 
 describe('LoopsPage', () => {
+  it('keeps operator focus create fallback copy localized', () => {
+    expect(loopsMessages.dashboard.operatorFocus.title.create).toBe('Create a new Loop');
+    expect(loopsMessages.dashboard.operatorFocus.meta.create).toBe(
+      'No active operator actions are waiting.',
+    );
+    expect(loopsMessages.dashboard.operatorFocus.action.create).toBe('Create Loop');
+    expect(loopsMessages.dashboard.operatorFocus.ctaLabel).toBe('{action}: {title}');
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
@@ -879,11 +889,14 @@ describe('LoopsPage', () => {
     expect(retryAgentRuntime).toHaveBeenCalledTimes(1);
     expect(screen.getByText('Runtime Diagnostics')).toBeInTheDocument();
     expect(screen.getAllByText('Spec draft is waiting for human review').length).toBeGreaterThan(0);
-    expect(screen.getByText('Loop Board')).toBeInTheDocument();
+    const loopBoardRegion = screen.getByRole('region', { name: 'Loop Board' });
+    expect(loopBoardRegion).toBeInTheDocument();
     expect(
-      screen.getByText('2 issues grouped by delivery stage, human gate, branch, and evidence'),
+      within(loopBoardRegion).getByText(
+        '2 issues grouped by delivery stage, human gate, branch, and evidence',
+      ),
     ).toBeInTheDocument();
-    expect(screen.getByText('Backlog')).toBeInTheDocument();
+    expect(within(loopBoardRegion).getByText('Backlog')).toBeInTheDocument();
     expect(screen.getAllByText('Spec Review').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Running').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Blocked').length).toBeGreaterThan(0);
@@ -983,6 +996,17 @@ describe('LoopsPage', () => {
     });
     expect(screen.getByText('1 specs need decision')).toBeInTheDocument();
     expect(screen.getByText('1 blocked by exception')).toBeInTheDocument();
+    const operatorFocus = screen.getByRole('region', { name: 'Review needed' });
+    expect(within(operatorFocus).getByText('Operator focus')).toBeInTheDocument();
+    expect(within(operatorFocus).getByText('Review needed')).toBeInTheDocument();
+    expect(
+      within(operatorFocus).getByRole('link', { name: 'Needs human input: Review needed' }),
+    ).toHaveAttribute('href', '/loops/issue-2');
+    const exceptionCenter = screen.getByRole('region', { name: 'Exception Center' });
+    expect(
+      within(exceptionCenter).getByText('1 running · 0 queued · 2 failed · capacity 4'),
+    ).toBeInTheDocument();
+    expect(within(exceptionCenter).getAllByText('Eval hard gate').length).toBeGreaterThan(0);
     expect(screen.getByText('Security review planned')).toBeInTheDocument();
     expect(screen.getByText('CI Evidence Publications')).toBeInTheDocument();
     expect(screen.getByText('1 publications · latest status: published')).toBeInTheDocument();
@@ -992,9 +1016,13 @@ describe('LoopsPage', () => {
     expect(screen.getByText('Checkout fix')).toBeInTheDocument();
     expect(screen.getByText('abc123456789')).toBeInTheDocument();
     expect(screen.getByText('1 files · apps/web/app/checkout/page.tsx')).toBeInTheDocument();
-    expect(screen.getByText('Release Readiness')).toBeInTheDocument();
-    expect(screen.getByText('0 ready · 0 need attention · 0 blocked')).toBeInTheDocument();
-    expect(screen.getByText('No loops are near release yet.')).toBeInTheDocument();
+    const releaseReadiness = screen.getByRole('region', { name: 'Release Readiness' });
+    expect(
+      within(releaseReadiness).getByText('0 ready · 0 need attention · 0 blocked'),
+    ).toBeInTheDocument();
+    expect(
+      within(releaseReadiness).getByText('No loops are near release yet.'),
+    ).toBeInTheDocument();
     expect(screen.getByText('Trigger Portfolio')).toBeInTheDocument();
     expect(screen.getByText('2 issues from 1 sources across 2 repositories')).toBeInTheDocument();
     expect(screen.getByText('Sources')).toBeInTheDocument();
@@ -1072,16 +1100,20 @@ describe('LoopsPage', () => {
     expect(screen.getByText('Redo rate')).toBeInTheDocument();
     expect(screen.getByText('Avg calls')).toBeInTheDocument();
     expect(screen.getByText('Trace events')).toBeInTheDocument();
-    expect(screen.getByText('Eval Plan')).toBeInTheDocument();
-    expect(screen.getByText('0/5 passed · 3 attention · 2 blocked')).toBeInTheDocument();
-    expect(screen.getAllByText('Architecture').length).toBeGreaterThan(0);
-    expect(screen.getByText('Runtime safety')).toBeInTheDocument();
-    expect(screen.getAllByText('1 runtime security exceptions recorded').length).toBeGreaterThan(1);
-    expect(screen.getAllByText('Hard gate').length).toBeGreaterThan(0);
-    expect(screen.getByText('Runtime Backends')).toBeInTheDocument();
-    expect(screen.getByText('1/2 ready · 1 degraded · 0 unavailable')).toBeInTheDocument();
-    expect(screen.getAllByText('Codex CLI').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Claude Code CLI').length).toBeGreaterThan(0);
+    const evalPlan = screen.getByRole('region', { name: 'Eval Plan' });
+    expect(within(evalPlan).getByText('0/5 passed · 3 attention · 2 blocked')).toBeInTheDocument();
+    expect(within(evalPlan).getAllByText('Architecture').length).toBeGreaterThan(0);
+    expect(within(evalPlan).getByText('Runtime safety')).toBeInTheDocument();
+    expect(
+      within(evalPlan).getByText('1 runtime security exceptions recorded'),
+    ).toBeInTheDocument();
+    expect(within(evalPlan).getAllByText('Hard gate').length).toBeGreaterThan(0);
+    const runtimeBackends = screen.getByRole('region', { name: 'Runtime Backends' });
+    expect(
+      within(runtimeBackends).getByText('1/2 ready · 1 degraded · 0 unavailable'),
+    ).toBeInTheDocument();
+    expect(within(runtimeBackends).getAllByText('Codex CLI').length).toBeGreaterThan(0);
+    expect(within(runtimeBackends).getAllByText('Claude Code CLI').length).toBeGreaterThan(0);
     expect(screen.getByText('read/write/test within approved work package')).toBeInTheDocument();
     expect(screen.getByText('Fallback to deterministic review gate')).toBeInTheDocument();
     expect(screen.getByText('Feishu Integration')).toBeInTheDocument();
@@ -1091,8 +1123,9 @@ describe('LoopsPage', () => {
     expect(screen.getAllByText('Fix checkout flow').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Cost guard tripped').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Continue loop').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Review needed').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Needs human input').length).toBeGreaterThan(0);
+    const reviewInbox = screen.getByRole('region', { name: 'Review Inbox' });
+    expect(within(reviewInbox).getAllByText('Review needed').length).toBeGreaterThan(0);
+    expect(within(reviewInbox).getAllByText('Needs human input').length).toBeGreaterThan(0);
   });
 
   it('surfaces Docker image pull business failures without retrying detection', async () => {

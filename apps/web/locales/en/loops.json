@@ -199,6 +199,28 @@
         }
       }
     },
+    "operatorFocus": {
+      "eyebrow": "Operator focus",
+      "ctaLabel": "{action}: {title}",
+      "title": {
+        "review": "Review the next decision",
+        "exception": "Resolve the next exception",
+        "continue": "Continue the next loop",
+        "create": "Create a new Loop"
+      },
+      "meta": {
+        "review": "A human decision is waiting.",
+        "exception": "An exception needs owner action.",
+        "continue": "Automation can advance.",
+        "create": "No active operator actions are waiting."
+      },
+      "action": {
+        "review": "Review",
+        "exception": "Resolve",
+        "continue": "Continue Loop",
+        "create": "Create Loop"
+      }
+    },
     "riskQueue": {
       "title": "Risk Queue",
       "loading": "Loading risk queue.",
@@ -747,6 +769,22 @@
       "submitRequestBlocked": "Add {count} more characters to create an issue.",
       "submitWorkspaceBlocked": "A workspace is required before this issue can be created.",
       "submitReady": "Ready to create. The generated issue can be reviewed before the loop continues.",
+      "readiness": {
+        "title": "Create readiness",
+        "requestReady": "Request: ready",
+        "requestPending": "Request: needs detail",
+        "workspaceReady": "Workspace: {workspace}",
+        "workspacePending": "Workspace: missing",
+        "tenantReady": "Tenant: {tenant}",
+        "tenantPending": "Tenant: not provided — issue will use workspace scope",
+        "previewReady": "Preview: generated",
+        "previewPending": "Preview: waiting for request",
+        "status": {
+          "ready": "Ready",
+          "warning": "Check",
+          "pending": "Pending"
+        }
+      },
       "templateLabel": "Template",
       "templateAuto": "Auto (infer from request)",
       "previewTitle": "Preview",
@@ -1148,9 +1186,21 @@
       "dependencies": "The next TODO shard is waiting for its dependency to finish.",
       "none": "There is no work the engine can advance right now — a dependency is likely still in progress."
     },
+    "humanGateChecklist": {
+      "title": "Human gate checklist",
+      "items": {
+        "readSpec": "Read the generated spec and acceptance criteria.",
+        "decide": "Approve or request changes before agents continue.",
+        "resume": "Continue Loop resumes automation after approval."
+      }
+    },
     "evidence": {
       "title": "Evidence Coverage",
       "summary": "{shards} shards · {annotations} annotations",
+      "missingTitle": "Missing evidence",
+      "completeTitle": "Evidence complete",
+      "complete": "All required evidence is present.",
+      "missingItem": "{label} evidence {done} of {total} recorded",
       "implemented": "Implemented",
       "tested": "Tested",
       "reviewed": "Reviewed",

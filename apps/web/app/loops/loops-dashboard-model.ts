@@ -426,6 +426,17 @@ export interface ExceptionCenter {
   items: ExceptionCenterItem[];
 }
 
+export type OperatorFocusKind = 'review' | 'exception' | 'continue' | 'create';
+
+export interface OperatorFocusItem {
+  kind: OperatorFocusKind;
+  title: string;
+  href: string;
+  label: string;
+  meta: string;
+  level: RiskLevel;
+}
+
 export type DashboardGuideStepId = 'create' | 'review' | 'exceptions' | 'evidence';
 export type DashboardGuideStepState = 'done' | 'active' | 'pending';
 
@@ -919,6 +930,57 @@ export function buildReviewInboxGroups(items: ReviewInboxItem[]): ReviewInboxGro
         priorityRank[a.priority] - priorityRank[b.priority] ||
         gateRank[a.gateKind] - gateRank[b.gateKind],
     );
+}
+
+export function buildOperatorFocus(input: {
+  reviewInbox: ReviewInboxItem[];
+  exceptionItems: ExceptionCenterItem[];
+  actionQueue: LoopMetricsActionItem[];
+}): OperatorFocusItem {
+  const topReview = input.reviewInbox[0];
+  if (topReview) {
+    return {
+      kind: 'review',
+      title: topReview.title,
+      href: topReview.href,
+      label: topReview.label,
+      meta: topReview.meta,
+      level: topReview.priority,
+    };
+  }
+
+  const topException = input.exceptionItems[0];
+  if (topException) {
+    return {
+      kind: 'exception',
+      title: topException.title,
+      href: topException.href,
+      label: topException.action,
+      meta: `${topException.owner} · ${topException.reason}`,
+      level: topException.level,
+    };
+  }
+
+  const topAction = input.actionQueue[0];
+  if (topAction) {
+    return {
+      kind: 'continue',
+      title: topAction.title,
+      href: topAction.href,
+      label: topAction.label,
+      meta: `${formatPhase(topAction.phase ?? 'PHASE_0_INTAKE')} · ${topAction.priority}`,
+      level: 'info',
+    };
+  }
+
+  return {
+    kind: 'create',
+    title: '',
+    href: '/loops/new',
+    label: '',
+    meta: '',
+    level: 'info',
+  };
 }
 
 /**

@@ -199,6 +199,28 @@
         }
       }
     },
+    "operatorFocus": {
+      "eyebrow": "操作者焦点",
+      "ctaLabel": "{action}：{title}",
+      "title": {
+        "review": "审阅下一个决策",
+        "exception": "处理下一个异常",
+        "continue": "继续下一个 Loop",
+        "create": "创建新 Loop"
+      },
+      "meta": {
+        "review": "有人工决策正在等待。",
+        "exception": "有异常需要负责人处理。",
+        "continue": "自动化可以继续推进。",
+        "create": "当前没有等待处理的操作项。"
+      },
+      "action": {
+        "review": "审阅",
+        "exception": "处理",
+        "continue": "继续 Loop",
+        "create": "创建 Loop"
+      }
+    },
     "riskQueue": {
       "title": "风险队列",
       "loading": "正在加载风险队列。",
@@ -747,6 +769,22 @@
       "submitRequestBlocked": "还需要输入 {count} 个字才能创建 issue。",
       "submitWorkspaceBlocked": "需要先选择 workspace，才能创建此 issue。",
       "submitReady": "已可创建。生成的 issue 会先进入可审阅状态，再继续推进 Loop。",
+      "readiness": {
+        "title": "创建就绪度",
+        "requestReady": "需求：已就绪",
+        "requestPending": "需求：还需补充",
+        "workspaceReady": "Workspace：{workspace}",
+        "workspacePending": "Workspace：缺失",
+        "tenantReady": "租户：{tenant}",
+        "tenantPending": "租户：未提供 — 将使用 workspace 范围",
+        "previewReady": "预览：已生成",
+        "previewPending": "预览：等待需求",
+        "status": {
+          "ready": "已就绪",
+          "warning": "需确认",
+          "pending": "待完成"
+        }
+      },
       "templateLabel": "模板",
       "templateAuto": "自动（按需求推断）",
       "previewTitle": "预览",
@@ -1148,9 +1186,21 @@
       "dependencies": "下一个 TODO shard 正在等待依赖完成。",
       "none": "当前没有可自动推进的工作，通常是依赖尚未完成。"
     },
+    "humanGateChecklist": {
+      "title": "人工关卡检查清单",
+      "items": {
+        "readSpec": "阅读生成的规格和验收标准。",
+        "decide": "批准或请求修改后，agent 才会继续。",
+        "resume": "批准后，继续推进 Loop 会恢复自动化。"
+      }
+    },
     "evidence": {
       "title": "证据覆盖",
       "summary": "{shards} 个 shards · {annotations} 条标注",
+      "missingTitle": "缺失证据",
+      "completeTitle": "证据完整",
+      "complete": "所有必需证据均已记录。",
+      "missingItem": "{label} 证据已记录 {done}/{total}",
       "implemented": "已实现",
       "tested": "已测试",
       "reviewed": "已审阅",

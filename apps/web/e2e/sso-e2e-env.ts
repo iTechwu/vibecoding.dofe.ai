@@ -29,6 +29,16 @@ function requiredOriginOf(name: string, value: string, issues: string[]): string
   return origin;
 }
 
+function assertHttpOrigin(name: string, value: string, issues: string[]): string | undefined {
+  const origin = requiredOriginOf(name, value, issues);
+  // Local E2E uses http://127.0.0.1 and production uses https; any other scheme
+  // (ftp/file/ssh/...) is never a reachable web origin for the preflight.
+  if (origin && !/^https?:\/\//.test(origin)) {
+    issues.push(`${name} (${value}) must use the http or https scheme.`);
+  }
+  return origin;
+}
+
 function compareOptionalOrigin(input: {
   name: string;
   value?: string;
@@ -66,13 +76,16 @@ export function validateSsoE2eEnv(env: SsoE2eEnv): string[] {
   if (!env.enabled) return [];
 
   const issues: string[] = [];
-  const apiOrigin = requiredOriginOf('E2E_API_ORIGIN', env.apiOrigin, issues);
-  const webOrigin = requiredOriginOf('E2E_WEB_BASE_URL', env.webBaseUrl, issues);
-  const ssoOrigin = requiredOriginOf('E2E_SSO_ORIGIN', env.ssoOrigin, issues);
+  const apiOrigin = assertHttpOrigin('E2E_API_ORIGIN', env.apiOrigin, issues);
+  const webOrigin = assertHttpOrigin('E2E_WEB_BASE_URL', env.webBaseUrl, issues);
+  const ssoOrigin = assertHttpOrigin('E2E_SSO_ORIGIN', env.ssoOrigin, issues);
   // The SSO login portal may live on a different origin than the SSO API, so it
-  // is not compared against `ssoOrigin`; it only needs to be a reachable URL.
-  if (!originOf(env.ssoLoginOrigin)) {
+  // is not compared against `ssoOrigin`; it only needs to be a reachable http(s) URL.
+  const loginOrigin = originOf(env.ssoLoginOrigin);
+  if (!loginOrigin) {
     issues.push(`E2E_SSO_LOGIN_ORIGIN (${env.ssoLoginOrigin}) must be a valid URL.`);
+  } else if (!/^https?:\/\//.test(loginOrigin)) {
+    issues.push(`E2E_SSO_LOGIN_ORIGIN (${env.ssoLoginOrigin}) must use the http or https scheme.`);
   }
 
   compareOptionalOrigin({

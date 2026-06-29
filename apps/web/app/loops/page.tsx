@@ -73,6 +73,7 @@ import {
   buildExceptionCenter,
   buildLoopBench,
   buildLoopBoard,
+  buildOperatorFocus,
   buildPermissionProfile,
   buildPerformanceSnapshot,
   buildProviderProfile,
@@ -433,6 +434,11 @@ export default function LoopsPage() {
     exceptionItems: exceptionCenter.items.length,
     deliveredItems: loopBoard.find((column) => column.id === 'delivered')?.items.length ?? 0,
   });
+  const operatorFocus = buildOperatorFocus({
+    reviewInbox,
+    exceptionItems: exceptionCenter.items,
+    actionQueue,
+  });
   const boardItems = loopBoard.flatMap((column) =>
     column.items.map((item) => ({ ...item, columnId: column.id })),
   );
@@ -750,6 +756,33 @@ export default function LoopsPage() {
                 </p>
               </Link>
             ))}
+          </div>
+        </section>
+
+        <section
+          aria-labelledby="operator-focus-title"
+          className={`rounded-lg border p-4 ${riskClass(operatorFocus.level)}`}
+        >
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase">{t('operatorFocus.eyebrow')}</p>
+              <h2 className="mt-1 truncate text-base font-semibold" id="operator-focus-title">
+                {operatorFocus.title || t(`operatorFocus.title.${operatorFocus.kind}`)}
+              </h2>
+              <p className="mt-1 truncate text-sm opacity-80">
+                {operatorFocus.meta || t(`operatorFocus.meta.${operatorFocus.kind}`)}
+              </p>
+            </div>
+            <Link
+              aria-label={t('operatorFocus.ctaLabel', {
+                action: operatorFocus.label || t(`operatorFocus.action.${operatorFocus.kind}`),
+                title: operatorFocus.title || t(`operatorFocus.title.${operatorFocus.kind}`),
+              })}
+              className="inline-flex h-9 shrink-0 items-center justify-center rounded-md border bg-background/70 px-3 text-sm font-medium hover:bg-background"
+              href={operatorFocus.href}
+            >
+              {operatorFocus.label || t(`operatorFocus.action.${operatorFocus.kind}`)}
+            </Link>
           </div>
         </section>
 
@@ -1341,10 +1374,12 @@ export default function LoopsPage() {
           )}
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="eval-plan-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('evalPlan.title')}</h2>
+              <h2 className="text-sm font-semibold" id="eval-plan-title">
+                {t('evalPlan.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('evalPlan.summary', evalPlan.summary)}
               </p>
@@ -1606,10 +1641,16 @@ export default function LoopsPage() {
           )}
         </section>
 
-        <section className="rounded-lg border p-4" id="loop-board">
+        <section
+          aria-labelledby="loop-board-title"
+          className="rounded-lg border p-4"
+          id="loop-board"
+        >
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('loopBoard.title')}</h2>
+              <h2 className="text-sm font-semibold" id="loop-board-title">
+                {t('loopBoard.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('loopBoard.summary', { count: fallbackSummary.items.length })}
               </p>
@@ -2057,10 +2098,12 @@ export default function LoopsPage() {
           )}
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="release-readiness-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('releaseReadiness.title')}</h2>
+              <h2 className="text-sm font-semibold" id="release-readiness-title">
+                {t('releaseReadiness.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('releaseReadiness.summary', releaseReadiness.summary)}
               </p>
@@ -2110,10 +2153,16 @@ export default function LoopsPage() {
           )}
         </section>
 
-        <section className="rounded-lg border p-4" id="exception-center">
+        <section
+          aria-labelledby="exception-center-title"
+          className="rounded-lg border p-4"
+          id="exception-center"
+        >
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('exceptionCenter.title')}</h2>
+              <h2 className="text-sm font-semibold" id="exception-center-title">
+                {t('exceptionCenter.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('exceptionCenter.summary', {
                   running: exceptionCenter.capacity.running,
@@ -2174,10 +2223,16 @@ export default function LoopsPage() {
           )}
         </section>
 
-        <section className="rounded-lg border p-4" id="runtime-panel">
+        <section
+          aria-labelledby="runtime-panel-title"
+          className="rounded-lg border p-4"
+          id="runtime-panel"
+        >
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('runtimeBackends.title')}</h2>
+              <h2 className="text-sm font-semibold" id="runtime-panel-title">
+                {t('runtimeBackends.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('runtimeBackends.summary', runtimeBackends.summary)}
               </p>
@@ -2831,10 +2886,16 @@ export default function LoopsPage() {
             </div>
           </div>
 
-          <div className="rounded-lg border p-4" id="review-inbox">
+          <section
+            aria-labelledby="review-inbox-title"
+            className="rounded-lg border p-4"
+            id="review-inbox"
+          >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-sm font-semibold">{t('reviewInbox.title')}</h2>
+                <h2 className="text-sm font-semibold" id="review-inbox-title">
+                  {t('reviewInbox.title')}
+                </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {reviewInbox.length
                     ? t('reviewInbox.summary', { count: reviewInbox.length })
@@ -2900,7 +2961,7 @@ export default function LoopsPage() {
                 ))
               )}
             </div>
-          </div>
+          </section>
 
           <div className="rounded-lg border p-4">
             <div className="flex items-start justify-between gap-4">

@@ -1,6 +1,6 @@
 'use client';
 
-import type { ComponentType, ReactNode } from 'react';
+import { useId, type ComponentType, type ReactNode } from 'react';
 import { useParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import {
@@ -465,6 +465,7 @@ function SectionCard({
   meta?: ReactNode;
   icon?: IconComponent;
 }) {
+  const titleId = useId();
   const header = (
     <>
       <div className="flex min-w-0 items-center gap-3">
@@ -473,7 +474,9 @@ function SectionCard({
             <Icon className="size-4" />
           </span>
         ) : null}
-        <h2 className="text-balance text-base font-semibold">{title}</h2>
+        <h2 className="text-balance text-base font-semibold" id={titleId}>
+          {title}
+        </h2>
       </div>
       {meta ? <div className="shrink-0 text-xs text-muted-foreground">{meta}</div> : null}
     </>
@@ -481,7 +484,10 @@ function SectionCard({
 
   if (defaultCollapsed) {
     return (
-      <details className={cn('rounded-lg border bg-background', className)}>
+      <details
+        aria-labelledby={titleId}
+        className={cn('rounded-lg border bg-background', className)}
+      >
         <summary className="flex cursor-pointer list-none items-start justify-between gap-4 border-b px-4 py-3 sm:px-5 [&::-webkit-details-marker]:hidden">
           {header}
         </summary>
@@ -491,7 +497,7 @@ function SectionCard({
   }
 
   return (
-    <section className={cn('rounded-lg border bg-background', className)}>
+    <section aria-labelledby={titleId} className={cn('rounded-lg border bg-background', className)}>
       <div className="flex items-start justify-between gap-4 border-b px-4 py-3 sm:px-5">
         {header}
       </div>
@@ -532,12 +538,14 @@ function MetricTile({
 }
 
 function ActionButton({
+  ariaDescribedBy,
   children,
   disabled,
   icon: Icon,
   onClick,
   primary = false,
 }: {
+  ariaDescribedBy?: string;
   children: ReactNode;
   disabled?: boolean;
   icon: IconComponent;
@@ -546,6 +554,7 @@ function ActionButton({
 }) {
   return (
     <button
+      aria-describedby={ariaDescribedBy}
       className={cn(
         'inline-flex h-10 min-w-0 items-center justify-center gap-2 rounded-md border px-3 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
         primary
@@ -781,6 +790,7 @@ export default function LoopIssueDetailPage() {
 
   const nextAction = getNextAction(detail);
   const evidence = summarizeEvidence(detail);
+  const missingEvidence = evidence.filter(([, done, total]) => total > 0 && done < total);
   const requirementsCoverage = detail.requirementsCoverage ?? {
     summary: {
       total: detail.issue.acceptanceCriteria.length,
@@ -889,6 +899,14 @@ export default function LoopIssueDetailPage() {
   const runStepBlocker = getRunStepBlocker(detail);
   const runnableShard = getRunnableShard(detail);
   const recoverableShard = getRecoverableShard(detail);
+  const hasNextActionDiagnostic = Boolean(
+    ops.operations.errorMessage ||
+    detail.spec?.status === 'DRAFT' ||
+    (detail.state.globalVerdict && detail.state.globalVerdict !== 'PASS') ||
+    runStepBlocker ||
+    runnableShard ||
+    recoverableShard,
+  );
   const latestBrowserQa = detail.browserQaReports?.[0];
   const activePhaseIndex = Math.max(
     0,
@@ -1855,8 +1873,14 @@ export default function LoopIssueDetailPage() {
                   <dd className="mt-1 font-medium">{detail.intake.sourceChannel}</dd>
                 </div>
                 {tenantContext ? (
-                  <div className="rounded-md border bg-muted/20 p-3 md:col-span-2">
-                    <dt className="text-xs text-muted-foreground">{t('intake.tenant')}</dt>
+                  <div
+                    aria-labelledby="loop-intake-tenant-title"
+                    className="rounded-md border bg-muted/20 p-3 md:col-span-2"
+                    role="group"
+                  >
+                    <dt className="text-xs text-muted-foreground" id="loop-intake-tenant-title">
+                      {t('intake.tenant')}
+                    </dt>
                     <dd className="mt-1 font-medium">{tenantContext.name}</dd>
                     {tenantContext.audit ? (
                       <dd className="mt-1 break-all text-xs text-muted-foreground">
@@ -2412,13 +2436,18 @@ export default function LoopIssueDetailPage() {
               </SectionCard>
             ) : null}
 
-            <div className={cn('rounded-lg border p-5', actionToneClass(nextAction.tone))}>
+            <section
+              aria-labelledby="loop-next-action-title"
+              className={cn('rounded-lg border p-5', actionToneClass(nextAction.tone))}
+            >
               <div className="flex items-start gap-3">
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background/60">
                   <Info className="size-4" />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium">{t('nextAction.title')}</p>
+                  <p className="text-sm font-medium" id="loop-next-action-title">
+                    {t('nextAction.title')}
+                  </p>
                   <h2 className="mt-1 text-balance text-xl font-semibold">
                     {t(`nextAction.${nextAction.key}.label`)}
                   </h2>
@@ -2429,6 +2458,7 @@ export default function LoopIssueDetailPage() {
               </div>
               <div className="mt-4 flex flex-col gap-2">
                 <ActionButton
+                  ariaDescribedBy={hasNextActionDiagnostic ? 'next-action-diagnostic' : undefined}
                   disabled={!canAdvanceLoop(detail) || ops.operations.isPending}
                   icon={Play}
                   onClick={ops.advanceLoop}
@@ -2450,20 +2480,44 @@ export default function LoopIssueDetailPage() {
                 </div>
               </div>
               {ops.operations.errorMessage ? (
-                <div className="mt-4 flex gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-950 dark:border-red-900/70 dark:bg-red-950/20 dark:text-red-100">
+                <div
+                  className="mt-4 flex gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-950 dark:border-red-900/70 dark:bg-red-950/20 dark:text-red-100"
+                  id="next-action-diagnostic"
+                >
                   <TriangleAlert className="mt-0.5 size-4 shrink-0" />
                   <p className="text-pretty">{ops.operations.errorMessage}</p>
                 </div>
               ) : detail.spec?.status === 'DRAFT' ? (
-                <div className="mt-4 rounded-md border bg-background/60 p-3 text-sm">
-                  {t('runDiagnostics.reviewSpec')}
+                <div
+                  className="mt-4 rounded-md border bg-background/60 p-3 text-sm"
+                  id="next-action-diagnostic"
+                >
+                  <p>{t('runDiagnostics.reviewSpec')}</p>
+                  <div className="mt-3 rounded-md border bg-muted/30 p-3">
+                    <p className="text-xs font-semibold text-muted-foreground">
+                      {t('humanGateChecklist.title')}
+                    </p>
+                    <ul className="mt-2 flex flex-col gap-1.5 text-xs">
+                      {['readSpec', 'decide', 'resume'].map((item) => (
+                        <li className="rounded-md bg-background/70 px-2 py-1.5" key={item}>
+                          {t(`humanGateChecklist.items.${item}`)}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
               ) : detail.state.globalVerdict && detail.state.globalVerdict !== 'PASS' ? (
-                <div className="mt-4 rounded-md border bg-background/60 p-3 text-sm">
+                <div
+                  className="mt-4 rounded-md border bg-background/60 p-3 text-sm"
+                  id="next-action-diagnostic"
+                >
                   {t('runDiagnostics.reloop')}
                 </div>
               ) : runStepBlocker ? (
-                <div className="mt-4 flex gap-2 rounded-md border bg-background/60 p-3 text-sm">
+                <div
+                  className="mt-4 flex gap-2 rounded-md border bg-background/60 p-3 text-sm"
+                  id="next-action-diagnostic"
+                >
                   <TriangleAlert className="mt-0.5 size-4 shrink-0" />
                   <p className="text-pretty">
                     {t(`runDiagnostics.${runStepBlocker}`, {
@@ -2472,15 +2526,21 @@ export default function LoopIssueDetailPage() {
                   </p>
                 </div>
               ) : runnableShard ? (
-                <div className="mt-4 rounded-md border bg-background/60 p-3 text-sm">
+                <div
+                  className="mt-4 rounded-md border bg-background/60 p-3 text-sm"
+                  id="next-action-diagnostic"
+                >
                   {t('runDiagnostics.ready', { shard: runnableShard.title })}
                 </div>
               ) : recoverableShard ? (
-                <div className="mt-4 rounded-md border bg-background/60 p-3 text-sm">
+                <div
+                  className="mt-4 rounded-md border bg-background/60 p-3 text-sm"
+                  id="next-action-diagnostic"
+                >
                   {t('runDiagnostics.recovering', { shard: recoverableShard.title })}
                 </div>
               ) : null}
-            </div>
+            </section>
 
             <SectionCard
               icon={ShieldCheck}
@@ -2498,6 +2558,32 @@ export default function LoopIssueDetailPage() {
                     value={`${done}/${total}`}
                   />
                 ))}
+              </div>
+              <div className="mt-4 rounded-md border bg-muted/20 p-3 text-sm">
+                <p className="text-xs font-semibold text-muted-foreground">
+                  {t(
+                    missingEvidence.length > 0 ? 'evidence.missingTitle' : 'evidence.completeTitle',
+                  )}
+                </p>
+                {missingEvidence.length > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {missingEvidence.map(([label, done, total]) => (
+                      <span
+                        aria-label={t('evidence.missingItem', {
+                          label: t(`evidence.${label}`),
+                          done,
+                          total,
+                        })}
+                        className="rounded-md border bg-background px-2 py-1 text-xs"
+                        key={label}
+                      >
+                        {t(`evidence.${label}`)} {done}/{total}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs text-muted-foreground">{t('evidence.complete')}</p>
+                )}
               </div>
             </SectionCard>
 

@@ -227,7 +227,12 @@ export function clearAll(): void {
 
 export function setCurrentTenantId(tenantId: string): void {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEYS.CURRENT_TENANT, tenantId);
+  // Match the readable snapshot + legacy read path: an empty/whitespace tenant
+  // id is not a valid selection, so reject it instead of persisting state that
+  // getCurrentTenantSnapshot would then have to silently drop on read.
+  const trimmed = tenantId.trim();
+  if (trimmed.length === 0) return;
+  localStorage.setItem(STORAGE_KEYS.CURRENT_TENANT, trimmed);
   window.dispatchEvent(new Event('currentTenantUpdated'));
 }
 

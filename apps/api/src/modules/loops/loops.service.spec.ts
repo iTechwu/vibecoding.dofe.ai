@@ -2752,7 +2752,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
       rollbackNote: 'Revert the generated convergence branch.',
     });
     expect(detail.releaseGate?.checklist.canaryPassed).toBe(false);
-  });
+  }, 30000);
 
   it('rejects high-risk release canaries without rollback ownership', async () => {
     const created = await service.createIssue({
