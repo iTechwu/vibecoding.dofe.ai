@@ -17,7 +17,7 @@
     "./hooks/*": "./src/hooks/*.ts"
   },
   "dependencies": {
-    "@dofe/infra-web-runtime": "0.1.78",
+    "@dofe/infra-web-runtime": "0.1.80",
     "@hookform/resolvers": "^5.4.0",
     "@radix-ui/react-accordion": "^1.2.14",
     "@radix-ui/react-alert-dialog": "^1.1.17",

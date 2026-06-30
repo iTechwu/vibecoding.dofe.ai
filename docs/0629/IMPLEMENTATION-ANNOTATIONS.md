@@ -17,7 +17,7 @@ validation, documentation update, and remaining review.
 
 ## Current Status (Authoritative)
 
-Latest completed loop: **Pass 13 — Cycle 61 through Cycle 65.**
+Latest completed loop: **Pass 18 — Cycle 91.**
 
 Repository-owned status (all findings have executable coverage and passed the
 final validation matrix below):
@@ -31,15 +31,19 @@ final validation matrix below):
 - **BUG-04** — SSO E2E `/loops/new` route preflight (fails on 4xx/5xx before
   login; accepts 2xx + expected 3xx), plus a standalone deployment route probe
   (`apps/web/scripts/verify-loops-route.mjs`, Cycle 53) with a configurable
-  timeout (Cycle 55).
+  timeout (Cycle 55) and local 200/302/404/network-error smoke coverage
+  (Cycle 76/82), plus automated malformed URL / invalid timeout coverage
+  (Cycle 86).
 - **BUG-05** — `apps/web/next-env.d.ts` generated-format regression.
 - **OPZ-01** — Docker fallback readiness: already-present, initial-inspect-error,
   pulled, post-pull-not-ready, post-pull-inspect-error, pull-reject, and
   dashboard business/request/retry feedback paths.
 - **OPZ-03** — Application-layer winston credential redaction (`redactSecretUrls`)
   masks `scheme://user:pass@` authorities in all `WINSTON_MODULE_PROVIDER` logs
-  (Cycle 52). Upstream root-cause fix landed in `infra.dofe.ai/packages/rabbitmq`
-  (Cycle 63) — pending the next infra release + version bump.
+  (Cycle 52), including URL-encoded credentials (Cycle 68). Upstream root-cause
+  fix landed in `infra.dofe.ai/packages/rabbitmq` (Cycle 63) and this repo now
+  pins `@dofe/infra-rabbitmq@0.1.80` in `apps/api/package.json` and
+  `pnpm-lock.yaml` with a quality-gate version check (Cycle 70/71).
 - **UX-02** — Human-gate runtime copy (English + Chinese).
 - **UX-03** — Progressive disclosure (fresh vs evidence-bearing detail).
 - **UX-04** — Favicon 404 removal + Browser QA navigation-cancel classification,
@@ -49,9 +53,10 @@ Previously external / upstream items — current status after Pass 13:
 
 - SSO real-account login (BUG-01) — closed end-to-end. The `vibecoding-dofe-ai`
   client in `sso.dofe.ai` already allow-lists the local callback URLs and is now
-  regression-protected (Cycle 61); vibecoding's url-resolver override + SSO
-  preflight cover this side. An operator only needs to run vibecoding with
-  `VIBECODING_APP_BASE_URL=http://127.0.0.1:13100`.
+  regression-protected (Cycle 61); vibecoding's url-resolver override, SSO
+  preflight, and no-browser env CLI (Cycle 75) cover this side. An operator only
+  needs to run vibecoding with `VIBECODING_APP_BASE_URL=http://127.0.0.1:13100`
+  and then execute the real browser login.
 - `vibecoding.test.dofe.ai` (BUG-04) — still needs an external deployment/release
   to serve `/loops/new`; the standalone probe (`verify-loops-route.mjs`,
   Cycle 53 + timeout Cycle 55) gates that check once deployed.
@@ -59,10 +64,15 @@ Previously external / upstream items — current status after Pass 13:
   the pinned UCloud Hub images are publicly pullable, and both inspect as
   present after `docker pull`, so `pullImage` resolves to `already-present`.
 - RabbitMQ log secrets (OPZ-03) + shutdown severity (OPZ-04) — root-cause fixes
-  landed in `infra.dofe.ai/packages/rabbitmq` (Cycle 63/64). Pending the next
-  infra monorepo release + a `@dofe/infra-rabbitmq` version bump in this repo;
-  until then the app-layer winston redaction (Cycle 52) still covers the
-  winston path.
+  landed in `infra.dofe.ai/packages/rabbitmq` (Cycle 63/64) and this repo is
+  bumped to `@dofe/infra-rabbitmq@0.1.80` with `pnpm-lock.yaml` aligned
+  (Cycle 70). The app-layer winston redaction remains as defense-in-depth.
+- Real browser SSO validation (Cycle 91) — account credential submission reached
+  the remote test SSO portal successfully, but the authenticated callback was
+  redirected to `https://api.sso.test.dofe.ai/auth/oidc/callback`, which returns 404. BUG-06 now tracks the remote test SSO callback rewrite/misconfiguration.
+  OPZ-06 records the required test harness settings:
+  `E2E_SSO_LOGIN_ORIGIN=https://sso.test.dofe.ai` and
+  `E2E_IGNORE_HTTPS_ERRORS=1` for that mkcert-backed test tier.
 
 ---
 
@@ -425,6 +435,8 @@ consolidated repo-owned status.
 
 **Validation:** Sixth-pass validation matrix — all green.
 
+**Docs:** Sixth-pass status and residual review consolidated below.
+
 ### Sixth-Pass Final Review and Test Pass
 
 - Web: 14 suites, 88 tests. API: 6 suites, 24 matching tests. Contracts: 1
@@ -478,6 +490,8 @@ both derive their regex from the same source metadata (reduces drift).
 **Implementation:** Re-reviewed Cycles 31–34; consolidated repo-owned status.
 
 **Validation:** Seventh-pass validation matrix — all green.
+
+**Docs:** Seventh-pass status and residual review consolidated below.
 
 ### Seventh-Pass Final Review and Test Pass
 
@@ -535,6 +549,8 @@ instead of a generic TypeError.
 
 **Validation:** Eighth-pass validation matrix — all green.
 
+**Docs:** Eighth-pass status and residual review consolidated below.
+
 ### Eighth-Pass Final Review and Test Pass
 
 - Web: 16 suites, 100 tests. API: 6 suites, 27 matching tests. Contracts: 1
@@ -590,6 +606,8 @@ inspection throws; added API regression.
 **Implementation:** Re-reviewed Cycles 41–44; consolidated repo-owned status.
 
 **Validation:** Ninth-pass validation matrix — all green.
+
+**Docs:** Ninth-pass status and residual review consolidated below.
 
 ### Ninth-Pass Final Review and Test Pass
 
@@ -689,7 +707,7 @@ Index` sections, and condensed each cycle to its core facts.
 
 **Validation:** See the Tenth-Pass Final Review matrix below.
 
-**Documentation update:** This file is now the consolidated, in-order status
+**Docs:** This file is now the consolidated, in-order status
 record; per-finding status lives in the three source review docs
 (`buglist/`, `opzs/`, `uiux-opz/`).
 
@@ -1041,3 +1059,460 @@ Residual steps (no longer "external code" — just execution):
 - Run real SSO E2E with `VIBECODING_APP_BASE_URL=http://127.0.0.1:13100`.
 - Deploy Loops UI to `vibecoding.test.dofe.ai` (probe gates it).
 - Release the infra monorepo (next 0.1.x) and bump `@dofe/infra-rabbitmq` here.
+
+---
+
+## Pass 14 (Cycle 66–73)
+
+## Cycle 66 - Optional SSO Origin Scheme Guard
+
+**Implementation:** Added SSO preflight coverage for non-http(s) optional origin
+values (`VIBECODING_APP_BASE_URL`, `SSO_ISSUER`) and updated
+`compareOptionalOrigin` to reject unsupported schemes before origin comparison.
+
+**Validation:** `pnpm --filter @repo/web test -- __tests__/sso-e2e-env.test.ts --runInBand` passed (16 suites, 127 tests).
+
+**Docs:** BUG-01 / BUG-02 / OPZ-02 now cover scheme validation for both required
+and optional SSO preflight origins.
+
+## Cycle 67 - Deployment Probe Timeout Config Guard
+
+**Implementation:** Added explicit validation for
+`VERIFY_LOOPS_ROUTE_TIMEOUT_MS` in `apps/web/scripts/verify-loops-route.mjs`.
+Invalid values now print a readable error and exit 1 instead of surfacing a Node
+`ERR_OUT_OF_RANGE` stack.
+
+**Validation:** `VERIFY_LOOPS_ROUTE_TIMEOUT_MS=abc node apps/web/scripts/verify-loops-route.mjs` exits 1 with `Invalid VERIFY_LOOPS_ROUTE_TIMEOUT_MS...`.
+
+**Docs:** BUG-04 route-probe execution is now safer for CI/release scripts.
+
+## Cycle 68 - URL-Encoded Credential Redaction Regression
+
+**Implementation:** Added app-layer log-redaction regression coverage for
+URL-encoded credentials such as `amqps://user:p%40ss%2Fword@host`.
+
+**Validation:** `./node_modules/.bin/jest src/bootstrap/log-redaction.util.spec.ts --runInBand` in `apps/api` passed (1 suite, 11 tests). `pnpm exec` was avoided because pnpm's dependency status check hit `Invalid time value` during registry metadata validation.
+
+**Docs:** OPZ-03 now records URL-encoded credential coverage as part of the
+defense-in-depth layer.
+
+## Cycle 69 - Deployment Probe URL Config Guard
+
+**Implementation:** Added explicit validation for `VERIFY_LOOPS_ROUTE_URL`.
+The standalone route probe now rejects malformed or non-http(s) URLs before
+calling `fetch`.
+
+**Validation:** `VERIFY_LOOPS_ROUTE_URL='not a url' node apps/web/scripts/verify-loops-route.mjs` and `VERIFY_LOOPS_ROUTE_URL='ftp://example.com/loops/new' ...` both exit 1 with a readable `Invalid VERIFY_LOOPS_ROUTE_URL...` message.
+
+**Docs:** BUG-04 route-probe execution now fails fast on route URL
+misconfiguration.
+
+## Cycle 70 - infra-rabbitmq Version Alignment Gate
+
+**Implementation:** Added `scripts/check-infra-rabbitmq-version.js`, which checks
+that `apps/api/package.json`, `pnpm-lock.yaml` overrides, and the apps/api
+importer all agree on `@dofe/infra-rabbitmq`. The check revealed package and
+lockfile drift; `pnpm install --lockfile-only --filter @repo/api` advanced the
+infra lockfile entries to `0.1.80` before pnpm hit an unrelated registry
+metadata `Invalid time value` error. The resulting lockfile now pins
+`@dofe/infra-rabbitmq@0.1.80`.
+
+**Validation:** `node scripts/check-infra-rabbitmq-version.js` passed.
+
+**Docs:** OPZ-03 / OPZ-04 are now marked as consumed in this repo via
+`@dofe/infra-rabbitmq@0.1.80`.
+
+## Cycle 71 - infra-rabbitmq Version Check Quality Gate
+
+**Implementation:** Added `scripts/check-infra-rabbitmq-version.test.js` with
+passing and stale-lockfile fixtures. Added `check:infra-rabbitmq-version` to the
+root `package.json` and wired it into `quality:gate`.
+
+**Validation:** `node --test scripts/check-infra-rabbitmq-version.test.js` passed
+(2 tests). `pnpm check:infra-rabbitmq-version` passed; it also triggered the
+workspace postinstall (`prisma generate` / `link-prisma`) as pnpm verified the
+lockfile.
+
+**Docs:** OPZ-03 / OPZ-04 now include a concrete repository gate preventing
+package/lockfile drift after the bump.
+
+## Cycle 72 - Pass 14 Documentation Close-Out
+
+**Implementation:** Updated Current Status and OPZ docs to reflect that the
+RabbitMQ upstream fixes are now consumed by this repo through
+`@dofe/infra-rabbitmq@0.1.80`, with app-layer redaction retained as
+defense-in-depth. Updated the issue/runtime buglist for the Cycle 66 optional
+SSO scheme guard and the Cycle 67 / Cycle 69 deployment-probe config guards.
+Recorded the remaining execution-only steps: real operator SSO run and deployed
+route probe.
+
+**Validation:** See the Pass 14 Final Review matrix below.
+
+**Docs:** Pass 14 current status, buglist, and OPZ docs were refreshed for the
+infra-rabbitmq bump and deployment/SSO execution boundary.
+
+## Cycle 73 - Architecture Gate Baseline Alignment
+
+**Implementation:** Ran the full `quality:gate` after Cycle 72 and found three
+gate drifts: the architecture script still expected infra `0.1.78`, its SSO SDK
+baseline still expected older versions than the lockfile, and
+`apps/api/src/modules/loops/loops.controller.ts` still imported
+`CURRENT_TENANT_HEADER` from `@repo/constants`. Updated the architecture gate to
+the consumed infra `0.1.80` / SSO `0.1.73`+ baselines and moved the Loops
+controller tenant header import to `@dofe/infra-contracts`.
+
+**Validation:** `pnpm quality:gate` passed after the fix.
+
+**Docs:** Pass 14 now records the full quality-gate close-out, not only the
+focused test matrix.
+
+### Pass 14 Final Review
+
+Code review result:
+
+- Completed Pass 14 (Cycle 66–73): added final SSO preflight scheme guardrails,
+  hardened deployment probe configuration errors, locked URL-encoded credential
+  redaction, consumed the infra-rabbitmq 0.1.80 bump in lockfile, and added a
+  quality-gate version check. The final gate run also aligned architecture
+  baselines to the consumed infra/SSO package set and removed the remaining
+  app-code `@repo/constants` tenant-header import.
+- The infra release was consumed as a unified 0.1.80 package set in the app and
+  package manifests, with `pnpm-lock.yaml` and `pnpm-workspace.yaml` aligned.
+- Remaining work is execution-only: run the real SSO E2E with the documented
+  local env and deploy/probe `vibecoding.test.dofe.ai/loops/new`.
+
+Automated validation:
+
+- Web SSO helper: `pnpm --filter @repo/web test -- __tests__/sso-e2e-env.test.ts --runInBand` → 16 suites, 127 tests.
+- Route probe config: invalid timeout and invalid URL smoke commands exit 1 with readable errors.
+- API log redaction: `./node_modules/.bin/jest src/bootstrap/log-redaction.util.spec.ts --runInBand` in `apps/api` → 1 suite, 11 tests.
+- infra version gate: `node --test scripts/check-infra-rabbitmq-version.test.js` → 2 tests; `pnpm check:infra-rabbitmq-version` passed.
+- Contracts: `pnpm --filter @repo/contracts test -- schemas.test.ts --runInBand` → 1 suite, 18 tests.
+- Type-check: `pnpm --filter @repo/web type-check` and `pnpm --filter @repo/api type-check` passed.
+- Static config parse: `turbo.json`, `apps/web/locales/en/loops.json`, and `apps/web/locales/zh-CN/loops.json` parsed successfully.
+- Full gate: `pnpm quality:gate` passed (architecture, list-contract schemas,
+  sensitive-log scan, infra-rabbitmq version drift check, utils hygiene, SSO
+  source boundaries, and Turbo type-check).
+
+---
+
+## Pass 15 (Cycle 74–79)
+
+## Cycle 74 - docs/0629 Next-Plan Structure Gate
+
+**Implementation:** Added `scripts/check-docs0629-next-plans.js` and a
+`node:test` regression to scan every Markdown file under `docs/0629` for
+`Next execution plan:` blocks and require each block to include `目标`, `范围`,
+`不做`, and `受益`. Wired the check into `quality:gate` via
+`check:docs0629-next-plans`.
+
+**Validation:** `node --test scripts/check-docs0629-next-plans.test.js` passed
+(2 tests), and `node scripts/check-docs0629-next-plans.js` passed against the
+current docs.
+
+**Docs:** The user's required next-plan structure is now executable, not just a
+manual convention.
+
+## Cycle 75 - Plain-Node SSO E2E Env Preflight
+
+**Implementation:** Added `apps/web/scripts/verify-sso-e2e-env.mjs`, a
+browser-free env preflight for BUG-01/BUG-02 that validates API/frontend/SSO
+origin alignment and prints the callback URL SSO must allow. Added
+`apps/web/scripts/verify-sso-e2e-env.test.mjs` for aligned and misconfigured
+env cases, and added `check:sso-e2e-env` to root scripts.
+
+**Validation:** `node --test apps/web/scripts/verify-sso-e2e-env.test.mjs`
+passed (2 tests). `node apps/web/scripts/verify-sso-e2e-env.mjs` passed with the
+local defaults and printed `http://127.0.0.1:13100/auth/oidc/callback`.
+
+**Docs:** BUG-01 / BUG-02 / OPZ-02 / UX-01 now point to the no-browser preflight
+as the first executable step before real browser SSO.
+
+## Cycle 76 - Deployment Route Probe Positive Smoke
+
+**Implementation:** Added `apps/web/scripts/verify-loops-route.test.mjs` with a
+local HTTP server to prove the standalone route probe exits `0` for a usable 302
+redirect and exits `1` for a 404. The first draft used `spawnSync`, which
+blocked the same process from serving the HTTP response; the test now uses
+async `spawn` so the server can answer the child process.
+
+**Validation:** `node --test apps/web/scripts/verify-loops-route.test.mjs`
+passed (2 tests). The existing invalid timeout and invalid URL smoke commands
+also still exit `1` with readable errors.
+
+**Docs:** BUG-04 now records positive redirect and 404 standalone-probe coverage.
+
+## Cycle 77 - Residual Status Documentation Refresh
+
+**Implementation:** Updated buglist, OPZ, and UI/UX docs so stale residuals no
+longer say RabbitMQ remains upstream work or that SSO env validation only exists
+inside browser E2E. Docker fallback and local auth-bypass next plans now say to
+rerun only when the relevant runtime/env inputs change, because the repository
+already has Cycle 62 real-daemon evidence and protected-route `200` validation.
+
+**Validation:** Documentation-only; Cycle 74's docs structure gate is rerun in
+the final matrix.
+
+**Docs:** `docs/0629/buglist`, `docs/0629/opzs`, and `docs/0629/uiux-opz` now
+reflect the latest executable entry points.
+
+## Cycle 78 - Pass 15 Documentation Close-Out
+
+**Implementation:** Updated this authoritative implementation log to record
+Cycles 74-78, the no-browser SSO preflight, the deployment route probe smoke,
+and the docs next-plan structure gate.
+
+**Validation:** See the Pass 15 Final Review matrix below.
+
+**Docs:** Pass 15 current status and final matrix were refreshed for the docs
+plan gate, no-browser SSO preflight, and route-probe smoke.
+
+## Cycle 79 - Pass 15 Final Validation
+
+**Implementation:** Re-ran the new docs/SSO/route-probe checks and the full
+repository quality gate after the Pass 15 documentation refresh.
+
+**Validation:** `node --test scripts/check-docs0629-next-plans.test.js`,
+`node scripts/check-docs0629-next-plans.js`,
+`node --test apps/web/scripts/verify-sso-e2e-env.test.mjs`,
+`node apps/web/scripts/verify-sso-e2e-env.mjs`,
+`node --test apps/web/scripts/verify-loops-route.test.mjs`, and
+`pnpm quality:gate` all passed.
+
+**Docs:** The Pass 15 final matrix below reflects the completed validation run.
+
+### Pass 15 Final Review
+
+Code review result:
+
+- Completed Pass 15 (Cycle 74–79): turned the required `docs/0629` next-plan
+  format into a gate, added a no-browser SSO preflight CLI, added standalone
+  route-probe positive/404 smoke coverage, and refreshed stale residual docs.
+- Remaining work is still execution-only: run the real browser SSO E2E with the
+  requested account/tenant, and probe the deployed test domain after a release
+  serves `/loops/new`.
+
+Automated validation:
+
+- docs plan gate: `node --test scripts/check-docs0629-next-plans.test.js` → 2
+  tests; `node scripts/check-docs0629-next-plans.js` passed.
+- SSO env CLI: `node --test apps/web/scripts/verify-sso-e2e-env.test.mjs` → 2
+  tests; `node apps/web/scripts/verify-sso-e2e-env.mjs` passed.
+- route probe CLI: `node --test apps/web/scripts/verify-loops-route.test.mjs` →
+  2 tests; invalid timeout and invalid URL smoke commands exit `1` with readable
+  errors.
+- full quality gate: `pnpm quality:gate` passed, including architecture,
+  list-contract schema scan, sensitive-log scan, infra-rabbitmq version check,
+  docs/0629 next-plan gate, utils hygiene, SSO source boundaries, and Turbo
+  type-check.
+
+---
+
+## Pass 16 (Cycle 80–85)
+
+## Cycle 80 - docs0629 Tool Tests in Quality Gate
+
+**Implementation:** Added `check:docs0629-tools`, which runs the docs next-plan
+unit tests, SSO env CLI tests, route-probe CLI tests, and the default SSO env
+preflight. Wired it into `quality:gate` after the docs next-plan scan.
+
+**Validation:** `pnpm check:docs0629-tools` passed (6 tests plus default SSO
+preflight).
+
+**Docs:** Pass 16 records that the new docs/SSO/route tooling is now part of the
+repository gate, not only ad hoc verification.
+
+## Cycle 81 - SSO CLI Required-Origin Scheme Regression
+
+**Implementation:** Added a `verify-sso-e2e-env.mjs` regression proving non-web
+schemes in required origins (`E2E_WEB_BASE_URL`, `E2E_API_ORIGIN`,
+`E2E_SSO_ORIGIN`, `E2E_SSO_LOGIN_ORIGIN`) fail before browser login with
+readable http/https errors.
+
+**Validation:** `node --test apps/web/scripts/verify-sso-e2e-env.test.mjs`
+passed (3 tests).
+
+**Docs:** OPZ-02 records the CLI plus required-origin non-http(s) coverage.
+
+## Cycle 82 - Route Probe 200 and Network-Error Regression
+
+**Implementation:** Extended `apps/web/scripts/verify-loops-route.test.mjs` to
+cover a usable `200` page and a network-error failure in addition to the existing
+302 redirect and 404 cases.
+
+**Validation:** `node --test apps/web/scripts/verify-loops-route.test.mjs`
+passed (4 tests).
+
+**Docs:** BUG-04 now describes standalone route-probe coverage for 200, 302,
+404, and network-error states.
+
+## Cycle 83 - Multi-Block docs/0629 Plan Gate Regression
+
+**Implementation:** Added a regression proving `check-docs0629-next-plans` scans
+every `Next execution plan:` block in a long document, not just the first block.
+
+**Validation:** `node --test scripts/check-docs0629-next-plans.test.js` passed
+(3 tests), and `node scripts/check-docs0629-next-plans.js` passed against the
+current docs.
+
+**Docs:** The docs next-plan gate is now protected for long files such as
+`docs/0629/pm-opz/README.md`.
+
+## Cycle 84 - Pass 16 Documentation Close-Out
+
+**Implementation:** Updated Current Status and per-finding docs for Pass 16,
+including the expanded route-probe matrix and SSO CLI required-origin coverage.
+
+**Validation:** See the Pass 16 Final Review matrix below.
+
+**Docs:** Pass 16 current status and final matrix were refreshed for expanded
+SSO/route-probe coverage and docs gate integration.
+
+## Cycle 85 - Pass 16 Final Validation
+
+**Implementation:** Re-ran the docs0629 tool gate, full quality gate, and docs
+next-plan scan after the Pass 16 documentation updates.
+
+**Validation:** `pnpm check:docs0629-tools`, `pnpm quality:gate`, and
+`node scripts/check-docs0629-next-plans.js` all passed.
+
+**Docs:** Pass 16 final matrix now includes the completed gate run.
+
+### Pass 16 Final Review
+
+Code review result:
+
+- Completed Pass 16 (Cycle 80–85): moved docs0629 tool tests into
+  `quality:gate`, extended SSO CLI required-origin coverage, extended route
+  probe 200/network-error coverage, and hardened the docs plan gate for multiple
+  plan blocks.
+- Remaining work is still execution-only: run real browser SSO with the
+  requested account/tenant and probe `vibecoding.test.dofe.ai/loops/new` after a
+  deployment serves the Loops UI.
+
+Automated validation:
+
+- `pnpm check:docs0629-tools` passed.
+- `node --test apps/web/scripts/verify-sso-e2e-env.test.mjs` → 3 tests.
+- `node --test apps/web/scripts/verify-loops-route.test.mjs` → 4 tests.
+- `node --test scripts/check-docs0629-next-plans.test.js` → 3 tests.
+- `node scripts/check-docs0629-next-plans.js` passed.
+- `pnpm quality:gate` passed with the docs0629 tool suite included.
+
+---
+
+## Pass 17 (Cycle 86–90)
+
+## Cycle 86 - Route Probe Config Regression Automation
+
+**Implementation:** Extended `apps/web/scripts/verify-loops-route.test.mjs` so
+the malformed `VERIFY_LOOPS_ROUTE_URL` and invalid
+`VERIFY_LOOPS_ROUTE_TIMEOUT_MS` branches are covered by automated tests instead
+of remaining only as manual smoke commands.
+
+**Validation:** `node --test apps/web/scripts/verify-loops-route.test.mjs`
+passed (6 tests).
+
+**Docs:** BUG-04 now records automated config-error coverage for the standalone
+route probe.
+
+## Cycle 87 - SSO CLI Malformed URL Regression
+
+**Implementation:** Added a `verify-sso-e2e-env.mjs` regression for malformed
+required and optional origin values, confirming the CLI reports readable
+preflight issues without throwing.
+
+**Validation:** `node --test apps/web/scripts/verify-sso-e2e-env.test.mjs`
+passed (4 tests).
+
+**Docs:** OPZ-02 records malformed required/optional URL coverage for the
+plain-Node SSO preflight.
+
+## Cycle 88 - Implementation Cycle Structure Gate
+
+**Implementation:** Added `scripts/check-docs0629-implementation-cycles.js` and
+unit coverage to require every `## Cycle N` block in
+`docs/0629/IMPLEMENTATION-ANNOTATIONS.md` to include `**Implementation:**`,
+`**Validation:**`, and `**Docs:**`. Wired it into `quality:gate` and
+`check:docs0629-tools`. The first real scan found older close-out cycles that
+used no explicit docs marker (or `**Documentation update:**`); those entries
+were standardized without changing their historical facts.
+
+**Validation:** `node --test scripts/check-docs0629-implementation-cycles.test.js`
+passed (3 tests), and `node scripts/check-docs0629-implementation-cycles.js`
+passed against the full implementation log.
+
+**Docs:** Older close-out cycles now expose the same implementation/validation/docs
+shape as the new cycles.
+
+## Cycle 89 - Pass 17 Documentation Close-Out
+
+**Implementation:** Updated Current Status and per-finding docs for Pass 17,
+including route-probe config-error automation, SSO CLI malformed URL coverage,
+and the implementation-cycle structure gate.
+
+**Validation:** See the Pass 17 Final Review matrix below.
+
+**Docs:** Pass 17 current status and final matrix were refreshed for route-probe
+config automation, SSO malformed URL coverage, and implementation-cycle
+structure checks.
+
+## Cycle 90 - Pass 17 Final Validation
+
+**Implementation:** Re-ran the docs0629 tool suite, docs next-plan gate,
+implementation-cycle gate, and full repository quality gate after fixing the
+Cycle 89 missing `**Docs:**` marker caught by the new gate.
+
+**Validation:** `pnpm check:docs0629-tools`, `pnpm quality:gate`, and
+`node scripts/check-docs0629-next-plans.js && node scripts/check-docs0629-implementation-cycles.js`
+all passed.
+
+**Docs:** Pass 17 final matrix now includes the completed full-gate run.
+
+### Pass 17 Final Review
+
+Code review result:
+
+- Completed Pass 17 (Cycle 86–90): automated route-probe config-error coverage,
+  added malformed SSO env URL coverage, and made the implementation log's cycle
+  structure executable.
+- Remaining work is still execution-only: run real browser SSO with the
+  requested account/tenant and probe `vibecoding.test.dofe.ai/loops/new` after
+  deployment.
+
+Automated validation:
+
+- `node --test apps/web/scripts/verify-loops-route.test.mjs` → 6 tests.
+- `node --test apps/web/scripts/verify-sso-e2e-env.test.mjs` → 4 tests.
+- `node --test scripts/check-docs0629-implementation-cycles.test.js` → 3 tests.
+- `node scripts/check-docs0629-implementation-cycles.js` passed.
+- `pnpm check:docs0629-tools` passed with 16 tests.
+- `pnpm quality:gate` passed with next-plan and implementation-cycle gates
+  included.
+
+---
+
+## Pass 18 (Cycle 91)
+
+## Cycle 91 - Real Browser SSO Execution
+
+**Implementation:** Ran the requested real browser SSO path with account
+`13800138000` against local vibecoding Web/API and the remote test SSO tier.
+Added a test-only Playwright setting,
+`ignoreHTTPSErrors: process.env.E2E_IGNORE_HTTPS_ERRORS === '1'`, so mkcert
+test SSO can be exercised explicitly without weakening the default browser
+security posture. Confirmed the login portal origin is
+`https://sso.test.dofe.ai`, distinct from the SSO API origin
+`https://api.sso.test.dofe.ai`. Removed local Playwright trace/video/screenshot
+artifacts after inspection because they can contain credential/session data.
+
+**Validation:** The aligned no-browser SSO preflight passed and printed
+`http://127.0.0.1:13100/auth/oidc/callback`. The local Loops route probe passed
+with `http://127.0.0.1:3003/loops/new` returning `307`. Real Playwright SSO
+with `E2E_IGNORE_HTTPS_ERRORS=1` reached the SSO login page and submitted the
+mobile credentials, but failed after SSO redirected the authenticated callback
+to `https://api.sso.test.dofe.ai/auth/oidc/callback`, which returned 404.
+
+**Docs:** Added BUG-06 for the remote test SSO callback rewrite/404, UX-05 for
+the raw callback JSON error page, OPZ-06 for the explicit test TLS/login-origin
+harness requirements, and refreshed the authoritative current status.

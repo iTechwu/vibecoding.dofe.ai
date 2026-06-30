@@ -34,6 +34,15 @@ describe('redactSecretUrlsInText', () => {
     expect(redacted).toBe('connecting amqp://***@broker:5672 then redis://***@cache:6379');
     expect(redacted).not.toContain('password');
   });
+
+  it('masks URL-encoded credentials without leaking the encoded password', () => {
+    const redacted = redactSecretUrlsInText(
+      'RabbitMQ connection failed amqps://user:p%40ss%2Fword@broker.example:5671/vhost',
+    );
+
+    expect(redacted).toBe('RabbitMQ connection failed amqps://***@broker.example:5671/vhost');
+    expect(redacted).not.toContain('p%40ss%2Fword');
+  });
 });
 
 describe('redactSecretUrlsDeep', () => {

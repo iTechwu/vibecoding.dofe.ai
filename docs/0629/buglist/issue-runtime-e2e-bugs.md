@@ -24,8 +24,17 @@ Final follow-up validation:
   now reaches protected Loops routes through Turbo; `GET /loops/workspaces`
   returned `200`.
 - Focused API, contract, web, and type-check suites passed after the fixes.
-- Real SSO account login remains blocked by external SSO callback/env
-  alignment, so the requested credentials were not re-entered in the browser.
+- Real SSO account login is no longer blocked by repository or SSO-client
+  callback configuration; Cycle 75 adds a plain-Node preflight
+  (`node apps/web/scripts/verify-sso-e2e-env.mjs`) that prints the callback URL
+  before browser login. The requested credentials still have not been re-entered
+  in a live browser in this repository pass.
+- Cycle 91 ran the requested real browser SSO path with account `13800138000`
+  against remote test SSO. Credential submission succeeded, but the SSO
+  authorize response redirected to `https://api.sso.test.dofe.ai/auth/oidc/callback`
+  instead of the vibecoding callback, and that SSO API callback returned 404.
+  The `优惠豚` tenant and issue/runtime flows therefore remain unverified through
+  real SSO.
 
 ## Bugs
 
@@ -50,7 +59,16 @@ in `sso.dofe.ai` already allow-lists `http://127.0.0.1:13100/auth/oidc/callback`
 and the frontend callback, now protected by a regression in
 `sso.dofe.ai/apps/api/scripts/oauth-clients.config.spec.ts`. BUG-01 is closed
 end-to-end; an operator only needs to run vibecoding with
-`VIBECODING_APP_BASE_URL=http://127.0.0.1:13100`.
+`VIBECODING_APP_BASE_URL=http://127.0.0.1:13100`. Cycle 66 adds the final
+optional-origin scheme guard so `VIBECODING_APP_BASE_URL` and related optional
+SSO preflight URLs fail with readable http/https errors before browser login if
+they are accidentally set to non-web schemes.
+
+Cycle 91 reopens the real-browser validation outcome: the local vibecoding
+authorize hop generated the expected local callback, but the remote SSO test
+authorize endpoint ultimately redirected the authenticated browser to the SSO
+API's own `/auth/oidc/callback`, which returned 404. This is a test SSO client
+runtime/configuration mismatch, not a credential-entry failure.
 
 Observed:
 
@@ -78,10 +96,58 @@ Next execution plan:
 - 范围: Run API with `VIBECODING_APP_BASE_URL=http://127.0.0.1:13100` and
   `VIBECODING_APP_FRONTEND_URL=http://127.0.0.1:3003`, then confirm
   `http://127.0.0.1:13100/auth/oidc/callback` is registered in the SSO test
-  OAuth client. Run `pnpm --filter @repo/web test:e2e:sso`; the preflight now
-  reports API/frontend/SSO origin mismatches before attempting browser login.
+  OAuth client. First run `node apps/web/scripts/verify-sso-e2e-env.mjs` for a
+  no-browser env check, then run `pnpm --filter @repo/web test:e2e:sso`; the
+  preflight now reports API/frontend/SSO origin mismatches before attempting
+  browser login.
 - 不做: Do not weaken redirect URI validation or accept wildcard callbacks.
 - 受益: The team can run real-account tenant E2E without auth bypass.
+
+### BUG-06: Remote Test SSO Redirects Authenticated Callback to SSO API 404
+
+Severity: P0
+
+Status: Open after Cycle 91 real browser validation.
+
+Observed:
+
+- `node apps/web/scripts/verify-sso-e2e-env.mjs` passed with local Web/API and
+  remote test SSO alignment.
+- `VERIFY_LOOPS_ROUTE_URL=http://127.0.0.1:3003/loops/new node apps/web/scripts/verify-loops-route.mjs`
+  returned status `307`, usable.
+- Playwright reached `https://sso.test.dofe.ai/en/login`, filled the requested
+  mobile account, submitted credentials, and `POST /auth/login/mobile` returned
+  `200`.
+- The next `GET /oauth/authorize` response redirected to
+  `https://api.sso.test.dofe.ai/auth/oidc/callback?...`, which returned
+  `404 Cannot GET /auth/oidc/callback`.
+
+Expected:
+
+- After successful SSO credential submission, the browser should return to
+  `http://127.0.0.1:13100/auth/oidc/callback?...`, then vibecoding should
+  redirect to the Web success page and store tokens.
+
+Impact:
+
+- Real-account SSO E2E cannot proceed to tenant selection, issue submission,
+  upload token/CDN checks, refresh, logout, or `优惠豚` runtime validation.
+
+Next execution plan:
+
+- 目标: Make the remote test SSO callback honor the vibecoding OAuth request.
+- 范围: Inspect the `vibecoding-dofe-ai` client and SSO authorize handler in
+  the remote test environment; confirm why the authenticated authorize response
+  rewrites or falls back to `https://api.sso.test.dofe.ai/auth/oidc/callback`
+  despite receiving `redirect_uri=http://127.0.0.1:13100/auth/oidc/callback`;
+  then rerun the same real browser SSO command with
+  `E2E_SSO_LOGIN_ORIGIN=https://sso.test.dofe.ai` and
+  `E2E_IGNORE_HTTPS_ERRORS=1`.
+- 不做: Do not weaken OAuth redirect URI allow-listing, do not add wildcard
+  callbacks, and do not persist the test password in docs or traces.
+- 受益: The real browser path can validate `优惠豚` tenant context, issue
+  creation, agent runtime, token refresh, upload metadata, and logout without
+  auth bypass.
 
 ### BUG-02: Frontend SSO Session Probe Uses a Different SSO Host Than API OIDC
 
@@ -95,7 +161,10 @@ extends the preflight to include `SSO_INTERNAL_API_URL`. Cycle 36 adds
 malformed URL regression coverage for the same preflight surface. Cycle 48
 extends the preflight to also require the SSO login portal origin
 (`E2E_SSO_LOGIN_ORIGIN`) to be a valid URL before browser login, since the login
-page may live on a different origin than the SSO API.
+page may live on a different origin than the SSO API. Cycle 66 closes the
+optional-origin scheme gap for SSO/API/frontend override URLs, so valid URLs
+with unsupported schemes are reported as preflight issues instead of becoming
+confusing browser-login failures.
 
 Observed:
 
@@ -118,8 +187,8 @@ Next execution plan:
 - 目标: Verify one coherent SSO environment per run.
 - 范围: Start Web/API with env files where
   `NEXT_PUBLIC_SSO_BASE_URL`, `SSO_ISSUER`, `SSO_API_URL`, and
-  `SSO_INTERNAL_API_URL` all point to the same local/test SSO tier, then run the
-  SSO E2E preflight.
+  `SSO_INTERNAL_API_URL` all point to the same local/test SSO tier, then run
+  `node apps/web/scripts/verify-sso-e2e-env.mjs` before the browser SSO E2E.
 - 不做: Do not couple production frontend builds to local-only SSO settings.
 - 受益: Session restore, tenant discovery, and OAuth redirect behavior become
   predictable.
@@ -183,6 +252,14 @@ route availability still remains an external deployment/release validation
 item. Cycle 27 tightens that route preflight so any non-2xx/non-3xx response
 fails before login. Cycle 32 documents and tests that redirects such as 302/308
 are acceptable because an unauthenticated Loops route may redirect toward login. Cycle 53 adds a standalone deployment route probe (`probeLoopsRoute` in `apps/web/e2e/sso-e2e-env.ts` plus the plain-Node `apps/web/scripts/verify-loops-route.mjs`) so release validation can confirm `/loops/new` on a deployed domain like `vibecoding.test.dofe.ai` without starting the local Web/API/SSO stack; the probe times out after 10s (configurable via `VERIFY_LOOPS_ROUTE_TIMEOUT_MS`) and exits non-zero on 4xx/5xx, network failure, or timeout (Cycle 55).
+Cycle 67 validates the timeout value before the probe starts, and Cycle 69
+validates `VERIFY_LOOPS_ROUTE_URL` as an absolute http(s) URL, so CI/release
+misconfiguration now fails with readable errors instead of low-level Node/fetch
+exceptions. Cycle 76 adds a local HTTP-server smoke test for the standalone
+probe's positive redirect path and 404 failure path. Cycle 82 extends this to a
+usable 200 page and network-error failure, matching the expected release-domain
+states more completely. Cycle 86 moves malformed route URL and invalid timeout
+config into the same automated probe test file.
 
 Observed:
 
@@ -205,7 +282,10 @@ Next execution plan:
   `/loops/new` returns a usable 2xx response or an expected 3xx auth redirect;
   for repository-local QA, use the documented `127.0.0.1:3003` Web and
   `127.0.0.1:13100` API path plus the SSO E2E preflight, which fails on 4xx/5xx
-  before login.
+  before login. For deployed-domain release checks, run
+  `VERIFY_LOOPS_ROUTE_URL=https://vibecoding.test.dofe.ai/loops/new node apps/web/scripts/verify-loops-route.mjs`;
+  the script now also rejects malformed route URLs and invalid timeout settings
+  before network access.
 - 不做: Do not block local development on test deployment availability.
 - 受益: QA can run the same URL strategy documented for SSO cookie sharing.
 

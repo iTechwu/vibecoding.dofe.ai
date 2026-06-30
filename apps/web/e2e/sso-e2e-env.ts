@@ -53,6 +53,10 @@ function compareOptionalOrigin(input: {
     input.issues.push(`${input.name} (${input.value}) must be a valid URL.`);
     return;
   }
+  if (!/^https?:\/\//.test(origin)) {
+    input.issues.push(`${input.name} (${input.value}) must use the http or https scheme.`);
+    return;
+  }
   if (input.expectedOrigin && origin !== input.expectedOrigin) {
     input.issues.push(
       `${input.name} (${input.value}) must match ${input.expectedName} (${input.expectedValue}).`,

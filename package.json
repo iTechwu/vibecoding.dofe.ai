@@ -37,9 +37,14 @@
     "check:architecture": "bash scripts/check-architecture.sh",
     "check:list-contracts": "node scripts/check-list-response-schemas.js",
     "check:sensitive-logs": "node scripts/check-sensitive-logs.js",
+    "check:infra-rabbitmq-version": "node scripts/check-infra-rabbitmq-version.js",
+    "check:docs0629-next-plans": "node scripts/check-docs0629-next-plans.js",
+    "check:docs0629-implementation-cycles": "node scripts/check-docs0629-implementation-cycles.js",
+    "check:sso-e2e-env": "node apps/web/scripts/verify-sso-e2e-env.mjs",
+    "check:docs0629-tools": "node --test scripts/check-docs0629-next-plans.test.js scripts/check-docs0629-implementation-cycles.test.js apps/web/scripts/verify-sso-e2e-env.test.mjs apps/web/scripts/verify-loops-route.test.mjs && node apps/web/scripts/verify-sso-e2e-env.mjs",
     "check:utils-hygiene": "node scripts/check-utils-hygiene.js",
     "check:sso-boundaries": "node scripts/check-sso-source-boundaries.js",
-    "quality:gate": "pnpm check:architecture && pnpm check:list-contracts && pnpm check:sensitive-logs && pnpm check:utils-hygiene && pnpm check:sso-boundaries && pnpm type-check",
+    "quality:gate": "pnpm check:architecture && pnpm check:list-contracts && pnpm check:sensitive-logs && pnpm check:infra-rabbitmq-version && pnpm check:docs0629-next-plans && pnpm check:docs0629-implementation-cycles && pnpm check:docs0629-tools && pnpm check:utils-hygiene && pnpm check:sso-boundaries && pnpm type-check",
     "regression:docs0620": "bash scripts/docs0620-regression.sh",
     "loops:status": "pnpm --filter @repo/api exec ts-node -r tsconfig-paths/register --project tsconfig.json ../../scripts/loops-cli.ts status",
     "loops:doctor": "pnpm --filter @repo/api exec ts-node -r tsconfig-paths/register --project tsconfig.json ../../scripts/loops-cli.ts doctor",
@@ -76,7 +81,7 @@
     "turbo": "^2.10.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.62.0",
-    "@dofe/infra-config": "0.1.78"
+    "@dofe/infra-config": "0.1.80"
   },
   "engines": {
     "node": ">=18.0.0",

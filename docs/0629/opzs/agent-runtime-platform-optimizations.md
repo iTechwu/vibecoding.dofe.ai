@@ -22,8 +22,13 @@ Final follow-up validation:
 - Turbo local env pass-through was verified with `MODE_USER_ID=... pnpm
 dev:api`; protected Loops routes returned `200`.
 - RabbitMQ credential-bearing startup logs and shutdown severity were reproduced
-  during the final API smoke run and remain upstream `@dofe/infra-rabbitmq`
-  work.
+  during the original API smoke run, then closed through the upstream
+  `@dofe/infra-rabbitmq` fix and consumed in this repo via `0.1.80`.
+- Cycle 91 real browser SSO validation found two remaining execution-harness
+  concerns: Playwright needs an explicit test-only HTTPS trust switch for the
+  remote test SSO mkcert chain, and the login portal origin is
+  `https://sso.test.dofe.ai` while the SSO API origin is
+  `https://api.sso.test.dofe.ai`.
 
 ## Optimization Items
 
@@ -74,17 +79,15 @@ found` before any Docker interaction when the workspace id is unknown.
 
 Next execution plan:
 
-- 目标: Verify Docker fallback preparation against a real Docker daemon and
-  registry.
-- 范围: Run the dashboard action or `POST /loops/workspaces/:workspaceId/pull-image`
-  for Codex and Claude Code, then confirm `/loops/agent-runtime` reports the
-  selected Docker candidate as ready; repository tests now cover the local
-  already-present, initial-inspect-error, pulled, post-pull-not-ready,
-  post-pull-inspect-error, dashboard business-failure, and dashboard
-  request-error branches.
+- 目标: Keep Docker fallback preparation covered during future runtime changes.
+- 范围: Retain the service/UI regression matrix and the Cycle 62 real-daemon
+  evidence; if pinned runtime image digests change, rerun the dashboard action
+  or `POST /loops/workspaces/:workspaceId/pull-image` for Codex and Claude Code,
+  then confirm `/loops/agent-runtime` reports the selected Docker candidate as
+  ready.
 - 不做: Do not change pinned image digests or registry credential storage in this
   pass.
-- 受益: Runtime fallback is usable when local CLI is unavailable, improving
+- 受益: Runtime fallback stays usable when local CLI is unavailable, improving
   reliability for operators and CI-like environments.
 
 ### OPZ-02: Align Local/Test OAuth Host Configuration
@@ -109,12 +112,16 @@ Status:
   alignment and the expected OIDC callback URL.
 - Cycle 16 extends the preflight to validate `SSO_INTERNAL_API_URL` against the
   same local/test SSO tier.
+- Cycle 75 adds a plain-Node `verify-sso-e2e-env.mjs` entry point, Cycle 81
+  adds required-origin non-http(s) regression coverage for that CLI, and Cycle
+  87 adds malformed required/optional URL coverage.
 
 Next execution plan:
 
 - 目标: Verify local/test SSO configuration against the SSO client registration.
 - 范围: Run with the documented env overrides and confirm the SSO OAuth client
   allows `http://127.0.0.1:13100/auth/oidc/callback`; use
+  `node apps/web/scripts/verify-sso-e2e-env.mjs` before
   `pnpm --filter @repo/web test:e2e:sso` to fail fast on local env mismatches.
 - 不做: Do not change production `vibecoding.dofe.ai` callback behavior.
 - 受益: Real-account E2E can run without patching config or bypassing auth.
@@ -131,15 +138,22 @@ transport sees them, masking credentials in connection URLs and nested error
 meta even before the upstream package masks them itself. The upstream
 root-cause fix is still the preferred long-term resolution because it also
 covers the package's `console.*` paths (e.g. `rabbitmq-events.module.js`) that
-bypass winston; the dependency bump remains external. Cycle 57 locks the
+bypass winston. Cycle 57 locks the
 redaction depth-cap / non-crash contract with regressions for circular
 references and deeply nested meta, so the defense layer cannot regress into a
 stack overflow. Cycle 63 lands the upstream root-cause fix in
 `infra.dofe.ai/packages/rabbitmq`: `redactUrlCredentials` / `redactErrorMessage`
 are applied at the events-module connect log, the events-module connection-error
 log, and the service init/connection error logs, with a `node --test` smoke
-test. After a version bump this supersedes the app-layer redaction for the
-RabbitMQ winston path.
+test. Cycle 68 locks app-layer redaction for URL-encoded credentials. Cycle 70
+aligns `apps/api/package.json` and `pnpm-lock.yaml` to
+`@dofe/infra-rabbitmq@0.1.80`, and Cycle 71 adds
+`check:infra-rabbitmq-version` to prevent package/lockfile drift.
+Cycle 91 observed API startup output that still included a RabbitMQ connection
+URL with credentials in the console stream while running `pnpm dev:api`. Keep
+this item open until the exact dev log path is confirmed to flow through the
+updated redaction layer or is fixed upstream; do not paste credential-bearing
+log lines into QA artifacts.
 
 Observed:
 
@@ -149,22 +163,28 @@ Observed:
 
 Next execution plan:
 
-- 目标: Prevent accidental credential exposure in local and CI logs.
-- 范围: Update `@dofe/infra-rabbitmq` to mask credentials in connection URLs
-  before logging, then bump the dependency in this repo.
+- 目标: Keep RabbitMQ credential redaction active after the infra package bump.
+- 范围: Maintain `@dofe/infra-rabbitmq@0.1.80` in `apps/api/package.json` and
+  `pnpm-lock.yaml`; run `pnpm check:infra-rabbitmq-version` in quality gates and
+  keep the app-layer winston redaction as defense-in-depth.
 - 不做: Do not remove useful host/service diagnostics.
 - 受益: Logs remain useful while reducing leakage risk during QA, screenshots,
   or issue reports.
 
 ### OPZ-04: Normalize Optional RabbitMQ Shutdown Logging
 
-Status: Root-cause fix landed upstream in Cycle 64 (`infra.dofe.ai/packages/rabbitmq`).
+Status: Root-cause fix landed upstream in Cycle 64 (`infra.dofe.ai/packages/rabbitmq`)
+and is now consumed by this repo through `@dofe/infra-rabbitmq@0.1.80` (Cycle 70).
 The service close handler now downgrades the "RabbitMQ connection closed" log to
 `debug` when `isShuttingDown` is true (set by `onModuleDestroy`), so a benign
 shutdown race no longer surfaces as `warn` alongside the graceful-close log. The
 decision is extracted as `connectionClosedSeverity(isShuttingDown)` with a
-`node --test` smoke test. After a version bump of `@dofe/infra-rabbitmq` this
-supersedes the need for any app-level severity workaround.
+`node --test` smoke test. `check:infra-rabbitmq-version` now prevents the
+package.json / lockfile pair from drifting back to an older package.
+Cycle 91 shutdown still reproduced `Error closing RabbitMQ connection` with
+`Connection closing` at `error` level before the graceful-close log, so the
+runtime behavior in this repo is not yet fully aligned with the expected
+upstream shutdown-severity fix.
 
 Observed:
 
@@ -174,10 +194,11 @@ Observed:
 
 Next execution plan:
 
-- 目标: Make optional RabbitMQ shutdown logs reflect actual severity.
-- 范围: In `@dofe/infra-rabbitmq`, treat "Connection closing" during shutdown as
-  debug/info when optional mode is enabled and final close succeeds, then bump
-  the dependency here.
+- 目标: Keep optional RabbitMQ shutdown logs at the corrected severity.
+- 范围: Keep `@dofe/infra-rabbitmq@0.1.80` pinned and lockfile-aligned; run the
+  version drift check in CI/quality gates; additionally trace why this repo's
+  dev shutdown path still emits `Connection closing` at error level despite the
+  package bump, and verify the exact package/runtime path used by `pnpm dev:api`.
 - 不做: Do not suppress real connection failures during startup or message
   processing.
 - 受益: Operators can distinguish harmless shutdown races from real queue
@@ -197,7 +218,40 @@ Next execution plan:
 
 - 目标: Verify local bypass through the normal dev script.
 - 范围: Run `MODE_USER_ID=... pnpm dev:api` and confirm protected Loops routes
-  no longer return false 401 responses.
+  no longer return false 401 responses; the previous follow-up validation
+  already observed protected Loops routes returning `200`, so rerun only when
+  auth bypass or Turbo env pass-through changes.
 - 不做: Do not enable bypass in production or preview deployments.
 - 受益: Local smoke tests can exercise protected flows without confusing false
   auth failures.
+
+### OPZ-06: Make Real SSO E2E Harness Explicit About Test TLS and Login Origin
+
+Status: Partially implemented in Cycle 91. `apps/web/playwright.config.ts` now
+honors `E2E_IGNORE_HTTPS_ERRORS=1`, defaulting to strict certificate validation.
+The real browser run also established that `E2E_SSO_LOGIN_ORIGIN` must be
+`https://sso.test.dofe.ai` when `E2E_SSO_ORIGIN` is
+`https://api.sso.test.dofe.ai`.
+
+Observed:
+
+- Without a Playwright HTTPS override, browser requests to the remote test SSO
+  failed with `ERR_CERT_AUTHORITY_INVALID`.
+- With the override enabled, the browser reached the SSO login portal and
+  submitted credentials successfully.
+- The initial assumption that login and API origins both used
+  `https://api.sso.test.dofe.ai` caused a pre-login origin assertion failure.
+
+Next execution plan:
+
+- 目标: Keep real SSO E2E setup repeatable and safe.
+- 范围: Document the remote-test command with
+  `E2E_SSO_ORIGIN=https://api.sso.test.dofe.ai`,
+  `E2E_SSO_LOGIN_ORIGIN=https://sso.test.dofe.ai`, and
+  `E2E_IGNORE_HTTPS_ERRORS=1`; consider adding the ignore-HTTPS flag to the
+  plain-Node preflight output as a warning when the SSO issuer uses the test
+  mkcert chain.
+- 不做: Do not make HTTPS ignoring the default, and do not apply it to
+  production or release-domain validation.
+- 受益: Operators can reproduce real browser SSO tests without weakening normal
+  browser security.

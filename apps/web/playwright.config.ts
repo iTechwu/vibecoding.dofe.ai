@@ -8,6 +8,7 @@ export default defineConfig({
   },
   use: {
     baseURL: process.env.E2E_WEB_BASE_URL ?? 'http://127.0.0.1:3003',
+    ignoreHTTPSErrors: process.env.E2E_IGNORE_HTTPS_ERRORS === '1',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

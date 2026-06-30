@@ -38,8 +38,12 @@ Final follow-up validation:
   and human-gated runtime copy.
 - `GET /favicon.ico` on the local Next dev server now returns `308` to
   `/logo.svg`, removing the observed 404 resource noise.
-- Remaining console-noise classification depends on a real browser SSO run after
-  external callback/env alignment.
+- Remaining console-noise classification depends on a real browser SSO run; the
+  repository now has a no-browser SSO env preflight
+  (`node apps/web/scripts/verify-sso-e2e-env.mjs`) that should be run first.
+- Cycle 91 completed real browser credential entry for account `13800138000`,
+  but the browser landed on an SSO API 404 callback page before returning to
+  vibecoding. No password or trace artifact is retained in this repository.
 
 ## UX Findings
 
@@ -55,8 +59,8 @@ verifies tenant snapshot updates dispatch the browser event used by `/loops/new`
 to refresh visible tenant context. Cycle 37 adds direct `useCurrentLoopTenant`
 coverage for same-tab and cross-tab tenant refresh behavior. Cycle 41 adds
 same-tab tenant clear coverage so logout/tenant reset removes stale visible
-tenant context without a page reload. Cycle 50 normalizes the legacy `currentTenant` fallback in `getCurrentTenantSnapshot` so a whitespace-only or padded legacy tenant id is trimmed/rejected consistently with the readable snapshot path. Cycle 58 extends that parity to the `setCurrentTenantId` setter, which now trims and rejects empty/whitespace ids before persisting. Real browser validation still depends on
-SSO callback/env alignment.
+tenant context without a page reload. Cycle 50 normalizes the legacy `currentTenant` fallback in `getCurrentTenantSnapshot` so a whitespace-only or padded legacy tenant id is trimmed/rejected consistently with the readable snapshot path. Cycle 58 extends that parity to the `setCurrentTenantId` setter, which now trims and rejects empty/whitespace ids before persisting. Real browser validation should now start with
+the plain-Node SSO env preflight before credential entry.
 
 Observed:
 
@@ -75,8 +79,8 @@ Impact:
 Next execution plan:
 
 - 目标: Validate tenant confirmation with real SSO.
-- 范围: After SSO callback/env alignment, log in as `13800138000`, select
-  `优惠豚`, and confirm `/loops/new` shows the readable tenant name plus
+- 范围: Run `node apps/web/scripts/verify-sso-e2e-env.mjs`, then log in as
+  `13800138000`, select `优惠豚`, and confirm `/loops/new` shows the readable tenant name plus
   tenant/team audit identifiers before submission; confirm issue detail shows
   the same persisted tenant context; keep malformed local tenant snapshot,
   same-tab tenant update, cross-tab tenant update, and tenant-clear regression
@@ -204,3 +208,33 @@ Next execution plan:
   regressions.
 - 受益: QA reports remain strict for product failures while avoiding false
   negatives from normal route transitions.
+
+### UX-05: Failed SSO Callback Exposes a Raw JSON Error Page
+
+Observed:
+
+- After successful mobile credential submission in the real browser SSO test,
+  the final browser page showed raw JSON:
+  `{"code":404,"msg":"Cannot GET /auth/oidc/callback?..."}`
+- The page was hosted by the SSO API origin, not by vibecoding's localized
+  `/auth/oidc/success` error UI.
+
+Impact:
+
+- Users and QA operators see a technical 404 payload instead of a recoverable
+  sign-in error.
+- It is hard to tell whether the account, tenant, callback registration, or
+  browser trust setup failed.
+
+Next execution plan:
+
+- 目标: Make callback failures actionable to operators.
+- 范围: After BUG-06 is fixed, rerun the real browser SSO flow and confirm
+  callback errors either return to vibecoding's localized success/error page or
+  SSO renders a user-facing OAuth error with client id, requested callback, and
+  trace id; add the observed trace id to server logs, not browser-visible
+  secrets.
+- 不做: Do not expose authorization codes, tokens, cookies, or submitted
+  credentials in UI errors.
+- 受益: QA can distinguish callback registration/configuration failures from
+  account or tenant failures without inspecting raw traces.

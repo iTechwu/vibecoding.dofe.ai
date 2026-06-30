@@ -27,7 +27,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@dofe/infra-contracts": "0.1.78",
+    "@dofe/infra-contracts": "0.1.80",
     "@repo/types": "workspace:*",
     "clsx": "^2.1.1",
     "crypto-js": "^4.2.0",

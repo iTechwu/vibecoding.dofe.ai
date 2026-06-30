@@ -19,7 +19,27 @@
 const DEFAULT_URL = 'https://vibecoding.test.dofe.ai/loops/new';
 const DEFAULT_TIMEOUT_MS = 10_000;
 const targetUrl = process.env.VERIFY_LOOPS_ROUTE_URL ?? DEFAULT_URL;
-const timeoutMs = Number(process.env.VERIFY_LOOPS_ROUTE_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
+const timeoutRaw = process.env.VERIFY_LOOPS_ROUTE_TIMEOUT_MS;
+const timeoutMs = Number(timeoutRaw ?? DEFAULT_TIMEOUT_MS);
+
+try {
+  const parsed = new URL(targetUrl);
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('unsupported protocol');
+  }
+} catch {
+  console.error(
+    `Invalid VERIFY_LOOPS_ROUTE_URL: ${targetUrl}. Use an absolute http(s) URL for /loops/new.`,
+  );
+  process.exit(1);
+}
+
+if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) {
+  console.error(
+    `Invalid VERIFY_LOOPS_ROUTE_TIMEOUT_MS: ${timeoutRaw ?? String(DEFAULT_TIMEOUT_MS)}. Use a positive integer in milliseconds.`,
+  );
+  process.exit(1);
+}
 
 const isUsableRouteStatus = (status) =>
   typeof status === 'number' && status >= 200 && status < 400;

@@ -112,6 +112,23 @@ describe('validateSsoE2eEnv', () => {
       }),
     ).toEqual(['E2E_WEB_BASE_URL (ftp://files.example) must use the http or https scheme.']);
   });
+
+  it('rejects non-http(s) optional origin values before browser login', () => {
+    expect(
+      validateSsoE2eEnv({
+        enabled: true,
+        webBaseUrl: 'http://127.0.0.1:3003',
+        apiOrigin: 'http://127.0.0.1:13100',
+        ssoOrigin: 'http://127.0.0.1:3100',
+        ssoLoginOrigin: 'http://127.0.0.1:3000',
+        appBaseUrl: 'ftp://api.example',
+        ssoIssuer: 'file:///tmp/sso',
+      }),
+    ).toEqual([
+      'VIBECODING_APP_BASE_URL (ftp://api.example) must use the http or https scheme.',
+      'SSO_ISSUER (file:///tmp/sso) must use the http or https scheme.',
+    ]);
+  });
 });
 
 describe('expectedOidcCallback', () => {

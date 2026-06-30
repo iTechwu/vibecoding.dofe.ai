@@ -53,7 +53,7 @@ section "Infra exact version boundary"
 if node <<'NODE'
 const fs = require('fs');
 const path = require('path');
-const expected = '0.1.78';
+const expected = '0.1.80';
 const ignored = new Set(['node_modules', '.git', 'dist', '.next', 'coverage', '.turbo']);
 const bad = [];
 
@@ -136,12 +136,12 @@ if node <<'NODE'
 const fs = require('fs');
 const path = require('path');
 const expected = {
-  '@dofe/sso-contracts': '0.1.71',
-  '@dofe/sso-node': '0.1.58',
-  '@dofe/sso-nestjs': '0.1.57',
+  '@dofe/sso-contracts': '0.1.73',
+  '@dofe/sso-node': '0.1.60',
+  '@dofe/sso-nestjs': '0.1.59',
   '@dofe/sso-browser': '0.1.78',
-  '@dofe/sso-hooks': '0.1.59',
-  '@dofe/sso-ui': '0.1.58',
+  '@dofe/sso-hooks': '0.1.61',
+  '@dofe/sso-ui': '0.1.60',
 };
 const ignored = new Set(['node_modules', '.git', 'dist', '.next', 'coverage', '.turbo']);
 const failures = [];
