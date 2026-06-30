@@ -727,9 +727,15 @@ export default function LoopsPage() {
           </div>
         ) : null}
 
-        <section className="rounded-lg border p-4" id="eval-plan">
+        <section
+          aria-labelledby="delivery-guide-title"
+          className="rounded-lg border p-4"
+          id="eval-plan"
+        >
           <div className="flex flex-col gap-1">
-            <h2 className="text-sm font-semibold">{t('guide.title')}</h2>
+            <h2 className="text-sm font-semibold" id="delivery-guide-title">
+              {t('guide.title')}
+            </h2>
             <p className="text-sm text-muted-foreground">{t('guide.summary')}</p>
           </div>
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -826,10 +832,12 @@ export default function LoopsPage() {
           />
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="ci-evidence-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('ciEvidence.title')}</h2>
+              <h2 className="text-sm font-semibold" id="ci-evidence-title">
+                {t('ciEvidence.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('ciEvidence.summary', {
                   total: ciPublicationHistory?.entries.length ?? 0,
@@ -943,10 +951,12 @@ export default function LoopsPage() {
           )}
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="delivery-flow-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('deliveryFlow.title')}</h2>
+              <h2 className="text-sm font-semibold" id="delivery-flow-title">
+                {t('deliveryFlow.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">{deliveryFlow.pipelineLabel}</p>
             </div>
             <Workflow className="size-4 text-muted-foreground" />
@@ -989,10 +999,12 @@ export default function LoopsPage() {
           </div>
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="fleet-health-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('fleetHealth.title')}</h2>
+              <h2 className="text-sm font-semibold" id="fleet-health-title">
+                {t('fleetHealth.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">{t('fleetHealth.summary')}</p>
             </div>
             <Activity className="size-4 text-muted-foreground" />
@@ -1034,10 +1046,12 @@ export default function LoopsPage() {
           </div>
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="workspace-rules-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('rulesCenter.title')}</h2>
+              <h2 className="text-sm font-semibold" id="workspace-rules-title">
+                {t('rulesCenter.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('rulesCenter.summary', rulesCenter.summary)}
               </p>
@@ -1075,9 +1089,11 @@ export default function LoopsPage() {
           </div>
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="performance-snapshot-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-1">
-            <h2 className="text-sm font-semibold">{t('performance.title')}</h2>
+            <h2 className="text-sm font-semibold" id="performance-snapshot-title">
+              {t('performance.title')}
+            </h2>
             <p className="text-sm text-muted-foreground">{t('performance.summary')}</p>
           </div>
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -1116,10 +1132,12 @@ export default function LoopsPage() {
           </div>
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="loop-bench-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('loopBench.title')}</h2>
+              <h2 className="text-sm font-semibold" id="loop-bench-title">
+                {t('loopBench.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">{t('loopBench.summary')}</p>
             </div>
             <div className="flex items-center gap-2">
@@ -1319,10 +1337,12 @@ export default function LoopsPage() {
           )}
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="workforce-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('workforce.title')}</h2>
+              <h2 className="text-sm font-semibold" id="workforce-title">
+                {t('workforce.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('workforce.summary', workforceOverview.summary)}
               </p>
@@ -1412,10 +1432,12 @@ export default function LoopsPage() {
         </section>
 
         <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_380px]">
-          <div className="rounded-lg border p-4">
+          <section aria-labelledby="runtime-health-title" className="rounded-lg border p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-sm font-semibold">{t('health.title')}</h2>
+                <h2 className="text-sm font-semibold" id="runtime-health-title">
+                  {t('health.title')}
+                </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {health
                     ? health.ok
@@ -1457,10 +1479,12 @@ export default function LoopsPage() {
                 ))}
               </ul>
             ) : null}
-          </div>
+          </section>
 
-          <div className="rounded-lg border p-4">
-            <h2 className="text-sm font-semibold">{t('riskQueue.title')}</h2>
+          <section aria-labelledby="risk-queue-title" className="rounded-lg border p-4">
+            <h2 className="text-sm font-semibold" id="risk-queue-title">
+              {t('riskQueue.title')}
+            </h2>
             <div className="mt-3 flex flex-col gap-2">
               {!data ? (
                 <EmptyLine>{t('riskQueue.loading')}</EmptyLine>
@@ -1482,7 +1506,7 @@ export default function LoopsPage() {
                 ))
               )}
             </div>
-          </div>
+          </section>
         </section>
 
         <section aria-labelledby="trigger-portfolio-title" className="rounded-lg border p-4">
@@ -1715,10 +1739,12 @@ export default function LoopsPage() {
           )}
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="workflow-recipe-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('workflowRecipe.title')}</h2>
+              <h2 className="text-sm font-semibold" id="workflow-recipe-title">
+                {t('workflowRecipe.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('workflowRecipe.summary', {
                   total: workflowRecipe.summary.total,
@@ -1762,10 +1788,12 @@ export default function LoopsPage() {
           )}
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="recipe-admin-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('recipeAdmin.title')}</h2>
+              <h2 className="text-sm font-semibold" id="recipe-admin-title">
+                {t('recipeAdmin.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('recipeAdmin.summary', {
                   kinds: recipeAdmin.summary.totalKinds,
@@ -1951,10 +1979,12 @@ export default function LoopsPage() {
           </div>
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="blueprint-marketplace-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('blueprintMarketplace.title')}</h2>
+              <h2 className="text-sm font-semibold" id="blueprint-marketplace-title">
+                {t('blueprintMarketplace.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('blueprintMarketplace.summary', blueprintMarketplace.summary)}
               </p>
@@ -1987,10 +2017,12 @@ export default function LoopsPage() {
           </div>
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="review-gates-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('reviewGates.title')}</h2>
+              <h2 className="text-sm font-semibold" id="review-gates-title">
+                {t('reviewGates.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('reviewGates.summary', reviewGatePortfolio.summary)}
               </p>
@@ -2025,10 +2057,12 @@ export default function LoopsPage() {
           )}
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="release-gate-dashboard-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('releaseGatePanel.title')}</h2>
+              <h2 className="text-sm font-semibold" id="release-gate-dashboard-title">
+                {t('releaseGatePanel.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('releaseGatePanel.summary', releaseGatePanel.summary)}
               </p>
@@ -2301,10 +2335,12 @@ export default function LoopsPage() {
           )}
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="agent-runtime-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('agentRuntime.title')}</h2>
+              <h2 className="text-sm font-semibold" id="agent-runtime-title">
+                {t('agentRuntime.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('agentRuntime.summary', {
                   running: agentRuntime?.summary.running ?? 0,
@@ -2518,10 +2554,12 @@ export default function LoopsPage() {
           </div>
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="runtime-security-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('runtimeSecurityPanel.title')}</h2>
+              <h2 className="text-sm font-semibold" id="runtime-security-title">
+                {t('runtimeSecurityPanel.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('runtimeSecurityPanel.summary', runtimeSecurityPanel.summary)}
               </p>
@@ -2588,10 +2626,12 @@ export default function LoopsPage() {
         </section>
 
         <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1fr]">
-          <div className="rounded-lg border p-4">
+          <section aria-labelledby="learning-memory-title" className="rounded-lg border p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-sm font-semibold">{t('learningMemory.title')}</h2>
+                <h2 className="text-sm font-semibold" id="learning-memory-title">
+                  {t('learningMemory.title')}
+                </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {recentLearnings.length
                     ? t('learningMemory.summary', { count: recentLearnings.length })
@@ -2850,12 +2890,14 @@ export default function LoopsPage() {
                 ) : null}
               </div>
             )}
-          </div>
+          </section>
 
-          <div className="rounded-lg border p-4">
+          <section aria-labelledby="action-queue-title" className="rounded-lg border p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-sm font-semibold">{t('actionQueue.title')}</h2>
+                <h2 className="text-sm font-semibold" id="action-queue-title">
+                  {t('actionQueue.title')}
+                </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {actionQueue.length
                     ? t('actionQueue.summary', { count: actionQueue.length })
@@ -2888,7 +2930,7 @@ export default function LoopsPage() {
                 ))
               )}
             </div>
-          </div>
+          </section>
 
           <section
             aria-labelledby="review-inbox-title"
@@ -2967,10 +3009,12 @@ export default function LoopsPage() {
             </div>
           </section>
 
-          <div className="rounded-lg border p-4">
+          <section aria-labelledby="trace-summary-title" className="rounded-lg border p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-sm font-semibold">{t('traceSummary.title')}</h2>
+                <h2 className="text-sm font-semibold" id="trace-summary-title">
+                  {t('traceSummary.title')}
+                </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {traceSummary
                     ? t('traceSummary.summary', {
@@ -2998,12 +3042,14 @@ export default function LoopsPage() {
                 {t('traceSummary.lastEvent', { time: traceSummary.lastEventAt })}
               </p>
             ) : null}
-          </div>
+          </section>
 
-          <div className="rounded-lg border p-4">
+          <section aria-labelledby="resume-summary-title" className="rounded-lg border p-4">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-sm font-semibold">{t('resumeSummary.title')}</h2>
+                <h2 className="text-sm font-semibold" id="resume-summary-title">
+                  {t('resumeSummary.title')}
+                </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {resumeSummary
                     ? t('resumeSummary.summary', {
@@ -3027,13 +3073,15 @@ export default function LoopsPage() {
                 <p className="mt-2 text-lg font-semibold">{resumeSummary?.affectedIssues ?? 0}</p>
               </div>
             </div>
-          </div>
+          </section>
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="capability-registry-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('capabilities.title')}</h2>
+              <h2 className="text-sm font-semibold" id="capability-registry-title">
+                {t('capabilities.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {capabilities
                   ? t('capabilities.summary', {
@@ -3235,10 +3283,12 @@ export default function LoopsPage() {
           ) : null}
         </section>
 
-        <section className="rounded-lg border p-4">
+        <section aria-labelledby="tool-registry-title" className="rounded-lg border p-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-sm font-semibold">{t('toolRegistry.title')}</h2>
+              <h2 className="text-sm font-semibold" id="tool-registry-title">
+                {t('toolRegistry.title')}
+              </h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t('toolRegistry.summary', toolRegistryLifecycle.summary)}
               </p>
@@ -3286,10 +3336,12 @@ export default function LoopsPage() {
         </section>
 
         <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1fr]">
-          <div className="rounded-lg border p-4">
+          <section aria-labelledby="aging-queue-title" className="rounded-lg border p-4">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h2 className="text-sm font-semibold">{t('agingQueue.title')}</h2>
+                <h2 className="text-sm font-semibold" id="aging-queue-title">
+                  {t('agingQueue.title')}
+                </h2>
                 <p className="mt-1 text-xs text-muted-foreground">{AGING_QUEUE_SLA_POLICY.label}</p>
               </div>
               <AlertTriangle className="size-4 text-muted-foreground" />
@@ -3320,11 +3372,13 @@ export default function LoopsPage() {
                 ))
               )}
             </div>
-          </div>
+          </section>
 
-          <div className="rounded-lg border p-4">
+          <section aria-labelledby="phase-distribution-title" className="rounded-lg border p-4">
             <div className="flex items-center justify-between gap-4">
-              <h2 className="text-sm font-semibold">{t('phaseDistribution.title')}</h2>
+              <h2 className="text-sm font-semibold" id="phase-distribution-title">
+                {t('phaseDistribution.title')}
+              </h2>
               <GitBranch className="size-4 text-muted-foreground" />
             </div>
             <div className="mt-4 flex flex-col gap-3">
@@ -3350,11 +3404,13 @@ export default function LoopsPage() {
                 ))
               )}
             </div>
-          </div>
+          </section>
 
-          <div className="rounded-lg border p-4">
+          <section aria-labelledby="recent-notifications-title" className="rounded-lg border p-4">
             <div className="flex items-center justify-between gap-4">
-              <h2 className="text-sm font-semibold">{t('notifications.title')}</h2>
+              <h2 className="text-sm font-semibold" id="recent-notifications-title">
+                {t('notifications.title')}
+              </h2>
               <Bell className="size-4 text-muted-foreground" />
             </div>
             <div className="mt-3 flex flex-col divide-y">
@@ -3379,13 +3435,15 @@ export default function LoopsPage() {
                 ))
               )}
             </div>
-          </div>
+          </section>
         </section>
 
         <section className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_1.2fr]">
-          <div className="rounded-lg border p-4">
+          <section aria-labelledby="recent-events-title" className="rounded-lg border p-4">
             <div className="flex items-center justify-between gap-4">
-              <h2 className="text-sm font-semibold">{t('events.title')}</h2>
+              <h2 className="text-sm font-semibold" id="recent-events-title">
+                {t('events.title')}
+              </h2>
               <span className="text-xs text-muted-foreground">
                 {t('events.entries', { count: logs?.entries.length ?? 0 })}
               </span>
@@ -3413,7 +3471,7 @@ export default function LoopsPage() {
                 ))
               )}
             </div>
-          </div>
+          </section>
 
           <div className="overflow-hidden rounded-lg border">
             <div className="grid grid-cols-[minmax(0,1.5fr)_96px_120px_72px] gap-3 border-b bg-muted/40 px-4 py-3 text-sm font-medium text-muted-foreground">

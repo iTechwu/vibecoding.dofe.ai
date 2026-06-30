@@ -1359,6 +1359,712 @@ Only environment-dependent validation remains active:
 - 受益: Catches visual density and wrapping problems that unit tests cannot
   observe.
 
+## Fifteenth Follow-up Execution Cycles
+
+### Cycle 71: Dashboard Learning Memory Region
+
+- 状态: Implemented.
+- 目标: Make Learning Memory discoverable as a named dashboard region.
+- 范围: Added an `aria-labelledby` boundary to the Learning Memory panel and
+  upgraded the dashboard regression to assert reusable learning summary, top
+  learnings, stale learnings, and pending approvals within that region.
+- 不做: Do not change learning indexing, auto-merge behavior, governance
+  actions, or learning freshness rules.
+- 受益: Operators can jump directly to reusable knowledge and stale-learning
+  queues without scanning the surrounding action panels.
+
+### Cycle 72: Dashboard Performance Snapshot Region
+
+- 状态: Implemented.
+- 目标: Make Performance Snapshot discoverable as a named dashboard region.
+- 范围: Added an `aria-labelledby` boundary to the Performance Snapshot panel
+  and upgraded the dashboard regression to assert pass rate, redo rate, average
+  calls, and trace events within that region.
+- 不做: Do not change metric calculations, trace aggregation, or benchmark
+  thresholds.
+- 受益: Operators can locate delivery quality metrics as a stable landmark
+  before comparing them with Eval Plan or Release Readiness.
+
+### Cycle 73: Dashboard Rules Center Region
+
+- 状态: Implemented.
+- 目标: Make Rules Center discoverable as a named dashboard region without
+  confusing it with the separate Workspace Rules summary.
+- 范围: Added an `aria-labelledby` boundary to the Rules Center panel and
+  upgraded the dashboard regression to assert rule summary and enforced-rule
+  entries within that region while keeping Workspace Rules assertions scoped to
+  the workspace summary card.
+- 不做: Do not change rule inventory, rule enforcement, violation counting, or
+  workspace file detection.
+- 受益: Operators can inspect governance and architecture constraints as a
+  stable landmark while preserving the quicker workspace-readiness summary.
+
+### Cycle 74: Dashboard Delivery Flow Region
+
+- 状态: Implemented.
+- 目标: Make Delivery Flow Pipeline discoverable as a named dashboard region.
+- 范围: Added an `aria-labelledby` boundary to the Delivery Flow Pipeline panel
+  and upgraded the dashboard regression to assert the full intake-to-close
+  pipeline and visible step labels within that region.
+- 不做: Do not change delivery-stage mapping, stage ownership, loop counts, or
+  blocked-loop computation.
+- 受益: Operators can understand where loops move through the product workflow
+  without relying on adjacent summary panels or global text search.
+
+### Cycle 75: Dashboard Fleet Health Region
+
+- 状态: Implemented.
+- 目标: Make Fleet Health discoverable as a named dashboard region.
+- 范围: Added an `aria-labelledby` boundary to the Fleet Health panel and
+  upgraded the dashboard regression to assert active loops, runtime readiness,
+  and repository count labels within that region.
+- 不做: Do not change fleet health aggregation, runtime readiness math, cost
+  guard logic, or repository grouping.
+- 受益: Operators can jump directly to cross-loop health indicators before
+  deciding whether to continue loops, resolve blockers, or inspect runtime
+  backends.
+
+### Cycle 76: Pending Item Review After Control Plane Landmarks
+
+- 状态: Completed.
+- 目标: Re-check the PM/UX queue after Learning Memory, Performance Snapshot,
+  Rules Center, Delivery Flow Pipeline, and Fleet Health became named regions.
+- 范围: Reviewed the dashboard landmark coverage against the current local code
+  and regression assertions; confirmed the remaining active work is now limited
+  to environment-dependent SSO validation, browser visual QA, and optional
+  documentation hygiene for older duplicated cycle sections.
+- 不做: Do not mark real browser screenshots, SSO tenant validation, or
+  historical doc cleanup complete from component tests.
+- 受益: The implementation log now separates completed local accessibility and
+  navigation improvements from validation that requires a running app or
+  identity environment.
+
+## Current Deferred Boundary After Cycle 76
+
+Use this section as the active follow-up boundary after the dashboard control
+plane landmark pass.
+
+### PM-DEFER-01: Real SSO Tenant Validation
+
+- 目标: Validate readiness and persisted tenant context with the real account
+  and tenant path.
+- 范围: After SSO callback/env alignment, run `/loops/new` for `13800138000`
+  under tenant `优惠豚`, create an issue, and confirm readiness, detail tenant
+  context, and audit records agree.
+- 不做: Do not weaken OAuth redirect validation or add local-only tenant
+  switching.
+- 受益: Confirms product UX under real identity state, not only component tests
+  and local storage mocks.
+
+### PM-DEFER-02: Browser Visual Pass For Dense Loop Surfaces
+
+- 目标: Verify the operator focus card, dashboard Trigger Portfolio region,
+  Repo Context Map region, Loop Board region, Runtime Backends region, Eval
+  Plan region, Release Readiness region, Review Inbox region, Exception Center
+  region, Learning Memory region, Performance Snapshot region, Rules Center
+  region, Delivery Flow Pipeline region, Fleet Health region, request field,
+  workspace selector, create-failure alert, readiness checklist, preview
+  region, submit status, issue-detail Next Action region, detail tenant audit
+  group, evidence coverage region, and evidence chips remain readable at
+  desktop and mobile widths.
+- 范围: Start the Web app and capture `/loops`, `/loops/new`, one create-failure
+  state on `/loops/new`, and one `/loops/:issueId` screenshot for at least
+  desktop and mobile viewports, checking text wrapping, first-screen hierarchy,
+  focus landmarks, dashboard anchor flow into Trigger Portfolio / Repo Context
+  Map / Loop Board / Runtime Backends / Eval Plan / Release Readiness / Review
+  Inbox / Exception Center / Learning Memory / Performance Snapshot / Rules
+  Center / Delivery Flow Pipeline / Fleet Health, request label/hint placement,
+  invalid-state readability, workspace-missing alert and disabled selector
+  readability, create-failure alert placement, detail Next Action placement,
+  tenant audit wrapping, status announcement placement, and anchor flow.
+- 不做: Do not redesign layout during this validation pass.
+- 受益: Catches visual density and wrapping problems that unit tests cannot
+  observe.
+
+### PM-DEFER-03: Historical PM-OPZ Doc Hygiene
+
+- 目标: Normalize older duplicated cycle/deferred sections so readers can find
+  the latest implementation state quickly.
+- 范围: In a documentation-only pass, preserve historical content but move or
+  collapse duplicated older sections after Cycle 70 into a clearly labeled
+  archive note.
+- 不做: Do not rewrite implementation history, remove acceptance details, or
+  change product priorities while cleaning structure.
+- 受益: Reduces review friction for future agents and PM readers without
+  changing the code surface.
+
+### Cycle 77: Fifteenth Loop Audit and Validation
+
+- 状态: Completed.
+- 目标: Validate the fifteenth local implementation loop and record the current
+  external validation boundary.
+- 范围: Ran focused Web tests
+  `pnpm --filter @repo/web exec vitest run app/loops/page.test.tsx app/loops/new/simple-loop-issue-form.test.tsx 'app/loops/[issueId]/page.test.tsx'`
+  with 3 files and 38 tests passing; ran
+  `pnpm --filter @repo/web type-check` successfully.
+- 不做: Do not run real SSO tenant validation, browser screenshot QA, or
+  documentation archive cleanup in this code-validation pass.
+- 受益: Cycles 71-76 are verified and type-safe, while remaining work stays
+  accurately constrained to environment-dependent validation plus optional doc
+  hygiene.
+
+## Still Deferred After Cycle 77
+
+Active follow-up items after this pass:
+
+### PM-DEFER-01: Real SSO Tenant Validation
+
+- 目标: Validate readiness and persisted tenant context with the real account
+  and tenant path.
+- 范围: After SSO callback/env alignment, run `/loops/new` for `13800138000`
+  under tenant `优惠豚`, create an issue, and confirm readiness, detail tenant
+  context, and audit records agree.
+- 不做: Do not weaken OAuth redirect validation or add local-only tenant
+  switching.
+- 受益: Confirms product UX under real identity state, not only component tests
+  and local storage mocks.
+
+### PM-DEFER-02: Browser Visual Pass For Dense Loop Surfaces
+
+- 目标: Verify the operator focus card, dashboard Trigger Portfolio region,
+  Repo Context Map region, Loop Board region, Runtime Backends region, Eval
+  Plan region, Release Readiness region, Review Inbox region, Exception Center
+  region, Learning Memory region, Performance Snapshot region, Rules Center
+  region, Delivery Flow Pipeline region, Fleet Health region, request field,
+  workspace selector, create-failure alert, readiness checklist, preview
+  region, submit status, issue-detail Next Action region, detail tenant audit
+  group, evidence coverage region, and evidence chips remain readable at
+  desktop and mobile widths.
+- 范围: Start the Web app and capture `/loops`, `/loops/new`, one create-failure
+  state on `/loops/new`, and one `/loops/:issueId` screenshot for at least
+  desktop and mobile viewports, checking text wrapping, first-screen hierarchy,
+  focus landmarks, dashboard anchor flow into Trigger Portfolio / Repo Context
+  Map / Loop Board / Runtime Backends / Eval Plan / Release Readiness / Review
+  Inbox / Exception Center / Learning Memory / Performance Snapshot / Rules
+  Center / Delivery Flow Pipeline / Fleet Health, request label/hint placement,
+  invalid-state readability, workspace-missing alert and disabled selector
+  readability, create-failure alert placement, detail Next Action placement,
+  tenant audit wrapping, status announcement placement, and anchor flow.
+- 不做: Do not redesign layout during this validation pass.
+- 受益: Catches visual density and wrapping problems that unit tests cannot
+  observe.
+
+### PM-DEFER-03: Historical PM-OPZ Doc Hygiene
+
+- 目标: Normalize older duplicated cycle/deferred sections so readers can find
+  the latest implementation state quickly.
+- 范围: In a documentation-only pass, preserve historical content but move or
+  collapse duplicated older sections after Cycle 70 into a clearly labeled
+  archive note.
+- 不做: Do not rewrite implementation history, remove acceptance details, or
+  change product priorities while cleaning structure.
+- 受益: Reduces review friction for future agents and PM readers without
+  changing the code surface.
+
+## Sixteenth Follow-up Execution Cycles
+
+### Cycle 78: Dashboard CI Evidence Region
+
+- 状态: Implemented.
+- 目标: Make CI Evidence Publications discoverable as a named dashboard region.
+- 范围: Added an `aria-labelledby` boundary to the CI Evidence Publications
+  panel and upgraded the dashboard regression to assert publication summary,
+  check run, artifact status, work package, commit, and file evidence within
+  that region.
+- 不做: Do not change GitHub check publication behavior, evidence artifact
+  shape, or work-package commit mapping.
+- 受益: Operators can audit delivery evidence publication without scanning
+  adjacent dashboard panels or relying on global text search.
+
+### Cycle 79: Dashboard Loop Bench Region
+
+- 状态: Implemented.
+- 目标: Make Loop Bench discoverable as a named dashboard region.
+- 范围: Added an `aria-labelledby` boundary to the Loop Bench panel and upgraded
+  the dashboard regression to assert trend snapshot history, summary, and
+  artifact reference within that region.
+- 不做: Do not change benchmark metric calculations, trend worker behavior,
+  drilldown filters, or quality thresholds.
+- 受益: Operators can jump directly to quality trend signals before deciding
+  whether a loop is ready for release or needs more review.
+
+### Cycle 80: Dashboard Workflow Recipe Region
+
+- 状态: Implemented.
+- 目标: Make Workflow Recipe discoverable as a named dashboard region.
+- 范围: Added an `aria-labelledby` boundary to the Workflow Recipe panel and
+  upgraded the dashboard regression to assert workflow summary and Browser QA
+  stage within that region.
+- 不做: Do not change workflow step ordering, gate mapping, recipe state
+  derivation, or release-readiness calculations.
+- 受益: Operators can inspect the product workflow model as a stable landmark
+  instead of inferring it from scattered stage labels.
+
+### Cycle 81: Dashboard Recipe Admin Region
+
+- 状态: Implemented.
+- 目标: Make Recipe Admin discoverable as a named dashboard region.
+- 范围: Added an `aria-labelledby` boundary to the Recipe Admin panel and
+  upgraded the dashboard regression to assert tenant scope and admin actions
+  within that region.
+- 不做: Do not change tenant permission checks, recipe action payloads,
+  blueprint ids, or admin mutation behavior.
+- 受益: Operators can review recipe governance and available admin actions
+  without confusing them with general workflow recipe status.
+
+### Cycle 82: Dashboard Runtime Security Region
+
+- 状态: Implemented.
+- 目标: Make Runtime Security discoverable as a named dashboard region.
+- 范围: Added an `aria-labelledby` boundary to the Runtime Security panel and
+  upgraded the dashboard regression to assert runtime violation summary, top
+  violations, and blocked command evidence within that region.
+- 不做: Do not change security policy evaluation, violation severity, runtime
+  exception handling, or command allowlist behavior.
+- 受益: Operators can locate runtime policy risks directly when deciding
+  whether to continue, pause, or inspect a loop.
+
+### Cycle 83: Dashboard Action Queue Region
+
+- 状态: Implemented.
+- 目标: Make Action Queue discoverable as a named dashboard region.
+- 范围: Added an `aria-labelledby` boundary to the Action Queue panel and
+  upgraded the dashboard regression to assert queue summary, issue title, and
+  Continue Loop action within that region.
+- 不做: Do not change action prioritization, queue filtering, action labels, or
+  loop continuation semantics.
+- 受益: Operators can identify immediately actionable loops as a stable
+  landmark separate from the Review Inbox.
+
+### Cycle 84: Pending Item Review After Evidence And Control Regions
+
+- 状态: Completed.
+- 目标: Re-check the PM/UX queue after CI Evidence, Loop Bench, Workflow
+  Recipe, Recipe Admin, Runtime Security, and Action Queue became named
+  regions.
+- 范围: Reviewed dashboard landmark coverage and current regressions; confirmed
+  the newly implemented regions should be included in browser visual QA, and
+  that remaining local work is now lower-priority dashboard landmark coverage
+  plus documentation hygiene rather than a blocking product flow gap.
+- 不做: Do not mark browser screenshot QA or real SSO tenant validation
+  complete from component tests.
+- 受益: The active implementation state now separates completed local semantic
+  navigation from validation that must happen in a running browser and identity
+  environment.
+
+## Current Deferred Boundary After Cycle 84
+
+Use this section as the active follow-up boundary after the evidence/control
+region pass.
+
+### PM-DEFER-01: Real SSO Tenant Validation
+
+- 目标: Validate readiness and persisted tenant context with the real account
+  and tenant path.
+- 范围: After SSO callback/env alignment, run `/loops/new` for `13800138000`
+  under tenant `优惠豚`, create an issue, and confirm readiness, detail tenant
+  context, and audit records agree.
+- 不做: Do not weaken OAuth redirect validation or add local-only tenant
+  switching.
+- 受益: Confirms product UX under real identity state, not only component tests
+  and local storage mocks.
+
+### PM-DEFER-02: Browser Visual Pass For Dense Loop Surfaces
+
+- 目标: Verify the operator focus card, dashboard Trigger Portfolio region,
+  Repo Context Map region, Loop Board region, Runtime Backends region, Eval
+  Plan region, Release Readiness region, Review Inbox region, Exception Center
+  region, Learning Memory region, Performance Snapshot region, Rules Center
+  region, Delivery Flow Pipeline region, Fleet Health region, CI Evidence
+  Publications region, Loop Bench region, Workflow Recipe region, Recipe Admin
+  region, Runtime Security region, Action Queue region, request field,
+  workspace selector, create-failure alert, readiness checklist, preview
+  region, submit status, issue-detail Next Action region, detail tenant audit
+  group, evidence coverage region, and evidence chips remain readable at
+  desktop and mobile widths.
+- 范围: Start the Web app and capture `/loops`, `/loops/new`, one create-failure
+  state on `/loops/new`, and one `/loops/:issueId` screenshot for at least
+  desktop and mobile viewports, checking text wrapping, first-screen hierarchy,
+  focus landmarks, dashboard anchor flow into Trigger Portfolio / Repo Context
+  Map / Loop Board / Runtime Backends / Eval Plan / Release Readiness / Review
+  Inbox / Exception Center / Learning Memory / Performance Snapshot / Rules
+  Center / Delivery Flow Pipeline / Fleet Health / CI Evidence Publications /
+  Loop Bench / Workflow Recipe / Recipe Admin / Runtime Security / Action
+  Queue, request label/hint placement, invalid-state readability,
+  workspace-missing alert and disabled selector readability, create-failure
+  alert placement, detail Next Action placement, tenant audit wrapping, status
+  announcement placement, and anchor flow.
+- 不做: Do not redesign layout during this validation pass.
+- 受益: Catches visual density and wrapping problems that unit tests cannot
+  observe.
+
+### PM-DEFER-03: Historical PM-OPZ Doc Hygiene
+
+- 目标: Normalize older duplicated cycle/deferred sections so readers can find
+  the latest implementation state quickly.
+- 范围: In a documentation-only pass, preserve historical content but move or
+  collapse duplicated older sections after Cycle 70 into a clearly labeled
+  archive note.
+- 不做: Do not rewrite implementation history, remove acceptance details, or
+  change product priorities while cleaning structure.
+- 受益: Reduces review friction for future agents and PM readers without
+  changing the code surface.
+
+### Cycle 85: Sixteenth Loop Audit and Validation
+
+- 状态: Completed.
+- 目标: Validate the sixteenth local implementation loop and record the current
+  external validation boundary.
+- 范围: Ran focused Web tests
+  `pnpm --filter @repo/web exec vitest run app/loops/page.test.tsx app/loops/new/simple-loop-issue-form.test.tsx 'app/loops/[issueId]/page.test.tsx'`
+  with 3 files and 38 tests passing; ran
+  `pnpm --filter @repo/web type-check` successfully.
+- 不做: Do not run real SSO tenant validation, browser screenshot QA, or
+  historical document archive cleanup in this local validation pass.
+- 受益: Cycles 78-84 are verified and type-safe, while remaining work stays
+  accurately constrained to environment-dependent validation and doc hygiene.
+
+### Cycle 86: Trace Summary Region Implementation
+
+- 状态: Completed.
+- 目标: Make the dashboard Trace Summary card addressable as a named product
+  region for operators and assistive technology.
+- 范围: Added a `Trace Summary` region boundary in
+  `apps/web/app/loops/page.tsx` with `aria-labelledby`, and kept the existing
+  activity count, event chips, and last-event content unchanged.
+- 不做: Do not change trace aggregation, event indexing, event labels, or the
+  surrounding dashboard layout in this cycle.
+- 受益: Operators can jump directly to trace health from accessibility tooling
+  and future browser QA can assert this diagnostic surface by role instead of
+  brittle text-only checks.
+
+### Cycle 87: Resume Summary Region Implementation
+
+- 状态: Completed.
+- 目标: Make the dashboard Resume Summary card a named recovery-status region.
+- 范围: Added a `Resume Summary` region boundary in
+  `apps/web/app/loops/page.tsx` with a stable heading id while preserving the
+  resumable-shard and affected-issue metrics.
+- 不做: Do not alter resume eligibility rules, shard recovery counts, or
+  interrupted-loop actions.
+- 受益: Recovery status becomes easier to scan, test, and validate for users
+  returning to interrupted work.
+
+### Cycle 88: Capability Registry Region Implementation
+
+- 状态: Completed.
+- 目标: Promote the Capability Registry surface into a named dashboard region
+  covering roadmap capability cards and the nested agent/tool diagnostics.
+- 范围: Added a `Capability Registry` region boundary in
+  `apps/web/app/loops/page.tsx`, then tightened
+  `apps/web/app/loops/page.test.tsx` to assert capability summary, Agent
+  Registry, Tool Registry, Compatibility Checks, Permission Profile, SSO Asset
+  Permissions, and Provider Profile content inside that region.
+- 不做: Do not introduce new capability records, change capability statuses, or
+  move the nested registry content into separate routes.
+- 受益: PM and operator review can distinguish product capability readiness
+  from unrelated dashboard cards, reducing scan cost on the dense control
+  plane.
+
+### Cycle 89: Tool Registry Region Follow-up
+
+- 状态: Completed.
+- 目标: Review the newly covered diagnostics and close the adjacent A2A / Tool
+  Registry accessibility gap before the next validation pass.
+- 范围: Added a named `A2A / Tool Registry` region in
+  `apps/web/app/loops/page.tsx` with `aria-labelledby`, matching the same
+  region pattern used by Trace Summary, Resume Summary, and Capability
+  Registry.
+- 不做: Do not expand third-party tool compatibility data, provider routing, or
+  deterministic-boundary semantics in this follow-up.
+- 受益: The operator dashboard now exposes both capability planning and tool
+  lifecycle inventory as first-class landmarks, improving keyboard and screen
+  reader navigation.
+
+### Cycle 90: Pending Boundary Review and Local Validation
+
+- 状态: Completed.
+- 目标: Re-check the remaining implementation queue after Cycles 86-89 and
+  validate the dashboard landmark changes locally.
+- 范围: Reproduced the initial failing dashboard test, corrected expectations
+  to match current fixture data (`2 indexed entries`, `0 in progress`), ran
+  `pnpm --filter @repo/web exec vitest run app/loops/page.test.tsx app/loops/new/simple-loop-issue-form.test.tsx 'app/loops/[issueId]/page.test.tsx'`
+  with 3 files and 38 tests passing, and ran
+  `pnpm --filter @repo/web type-check` successfully.
+- 不做: Do not claim real SSO tenant validation or browser screenshot QA in
+  this cycle.
+- 受益: The new region contract is proven by focused component tests while
+  external and broader validation remains explicitly tracked.
+
+### Cycle 91: Aging Queue Region Implementation
+
+- 状态: Completed.
+- 目标: Make the Aging Queue a named operator region for stale-loop triage.
+- 范围: Added an `Aging Queue` region boundary in
+  `apps/web/app/loops/page.tsx` with `aria-labelledby`, and tightened
+  `apps/web/app/loops/page.test.tsx` to assert the SLA policy, stale age, and
+  affected issue inside that region.
+- 不做: Do not change stale-age calculation, warning/critical thresholds, risk
+  coloring, or loop continuation actions.
+- 受益: Operators can jump directly to time-sensitive stale work and validate
+  the SLA queue without scanning the full dashboard.
+
+### Cycle 92: Phase Distribution Region Implementation
+
+- 状态: Completed.
+- 目标: Make phase distribution readable and testable as a named dashboard
+  region.
+- 范围: Added a `Phase Distribution` region boundary in
+  `apps/web/app/loops/page.tsx` and asserted the Implement/Review phase data
+  inside the region in `apps/web/app/loops/page.test.tsx`.
+- 不做: Do not alter phase mapping, counts, progress-bar styling, or delivery
+  phase naming.
+- 受益: PMs and operators can inspect work-in-progress shape as a stable
+  landmark when judging backlog balance and bottlenecks.
+
+### Cycle 93: Recent Notifications Region Implementation
+
+- 状态: Completed.
+- 目标: Make the notification stream a named region for human-intervention
+  review.
+- 范围: Added a `Recent Notifications` region boundary in
+  `apps/web/app/loops/page.tsx` and asserted the review notification plus
+  saved status inside that region.
+- 不做: Do not change notification persistence, channel routing, status
+  translation, or review-inbox synthesis.
+- 受益: Human decision signals become easier to locate and verify separately
+  from the Review Inbox and Action Queue.
+
+### Cycle 94: Recent Events Region Implementation
+
+- 状态: Completed.
+- 目标: Make the raw event stream a named diagnostic region.
+- 范围: Added a `Recent Events` region boundary in
+  `apps/web/app/loops/page.tsx` and asserted the event count plus issue-linked
+  event content in `apps/web/app/loops/page.test.tsx`.
+- 不做: Do not change log ingestion, event formatting, trace summary
+  aggregation, or event retention.
+- 受益: Operators can distinguish raw operational events from summarized trace
+  health when auditing what happened in a loop.
+
+### Cycle 95: Pending Boundary Review and Local Validation
+
+- 状态: Completed.
+- 目标: Re-check the remaining PM/UX implementation queue after Cycles 91-94
+  and validate the new bottom-dashboard region contracts locally.
+- 范围: Reproduced the failing dashboard region test, corrected the
+  notification status expectation to the existing `Saved` product copy, ran
+  `pnpm --filter @repo/web exec vitest run app/loops/page.test.tsx app/loops/new/simple-loop-issue-form.test.tsx 'app/loops/[issueId]/page.test.tsx'`
+  with 3 files and 38 tests passing, and ran
+  `pnpm --filter @repo/web type-check` successfully.
+- 不做: Do not claim real SSO tenant validation or browser screenshot QA in
+  this cycle.
+- 受益: Bottom-dashboard operational surfaces are now covered by accessible
+  region tests, while environment-dependent validation remains explicit.
+
+### Cycle 96: Delivery Guide Region Implementation
+
+- 状态: Completed.
+- 目标: Make the dashboard Delivery Guide discoverable as a named orientation
+  region for first-time and returning operators.
+- 范围: Added a `Delivery Guide` region boundary in
+  `apps/web/app/loops/page.tsx` with `aria-labelledby`, and tightened
+  `apps/web/app/loops/page.test.tsx` to assert Create Loop, Review decisions,
+  Resolve exceptions, and Audit evidence inside that region.
+- 不做: Do not change guide step ordering, href targets, or guide state
+  derivation.
+- 受益: Operators can jump directly to the dashboard reading guide before
+  scanning dense execution surfaces.
+
+### Cycle 97: Workforce Region Implementation
+
+- 状态: Completed.
+- 目标: Make the Software Delivery Workforce panel a named region for persona
+  ownership and handoff review.
+- 范围: Added a `Software Delivery Workforce` region boundary in
+  `apps/web/app/loops/page.tsx`, and asserted the current workforce summary
+  plus Human Gatekeeper entry inside that region.
+- 不做: Do not change persona mapping, backend assignment, human-gate
+  derivation, or active issue links.
+- 受益: PM and operator reviews can inspect who owns the current delivery work
+  without confusing workforce state with runtime backend state.
+
+### Cycle 98: Runtime Health and Risk Queue Regions
+
+- 状态: Completed.
+- 目标: Promote health and risk triage cards into named regions.
+- 范围: Added `Runtime Health` and `Risk Queue` region boundaries in
+  `apps/web/app/loops/page.tsx`, and asserted doctor consistency plus cost
+  guard risk content inside their respective regions.
+- 不做: Do not alter doctor health checks, risk priority calculation,
+  cost-guard semantics, or risk link destinations.
+- 受益: Operators can separate global file/index consistency from issue-level
+  risks when deciding whether to continue a loop or investigate state.
+
+### Cycle 99: Blueprint Marketplace Region Implementation
+
+- 状态: Completed.
+- 目标: Make the Blueprint Marketplace a named creation-planning region.
+- 范围: Added a `Blueprint Marketplace` region boundary in
+  `apps/web/app/loops/page.tsx`, and asserted the current 8-blueprint summary
+  plus Feature Loop template inside that region.
+- 不做: Do not change template generation, default priorities, marketplace
+  ordering, or `/loops/new?template=...` links.
+- 受益: Users can find the correct loop template surface quickly, especially
+  when moving from dashboard diagnosis into new loop creation.
+
+### Cycle 100: Pending Boundary Review and Local Validation
+
+- 状态: Completed.
+- 目标: Re-check remaining PM/UX implementation work after Cycles 96-99 and
+  validate the new orientation, workforce, health, risk, and blueprint region
+  contracts locally.
+- 范围: Reproduced the failing dashboard region test, corrected expectations
+  to current fixture data (`1 active · 7 idle · 1 blocked · 0 human gates`,
+  `8 delivery blueprints · 2 in active use`), ran
+  `pnpm --filter @repo/web exec vitest run app/loops/page.test.tsx app/loops/new/simple-loop-issue-form.test.tsx 'app/loops/[issueId]/page.test.tsx'`
+  with 3 files and 38 tests passing, and ran
+  `pnpm --filter @repo/web type-check` successfully.
+- 不做: Do not claim real SSO tenant validation or browser screenshot QA in
+  this cycle.
+- 受益: More dashboard PM/UX surfaces are now covered by role-based tests,
+  while external validation remains accurately deferred.
+
+### Cycle 101: Review Gates Region Implementation
+
+- 状态: Completed.
+- 目标: Make Review Gates a named governance region for product,
+  architecture, code, and security review signals.
+- 范围: Added a `Review Gates` region boundary in
+  `apps/web/app/loops/page.tsx` with `aria-labelledby`, and tightened
+  `apps/web/app/loops/page.test.tsx` to assert gate summary plus Product,
+  Architecture, and Security entries inside that region.
+- 不做: Do not change gate derivation, review statuses, reviewer ownership, or
+  evidence text.
+- 受益: Operators can inspect governance readiness without scanning unrelated
+  template or release surfaces.
+
+### Cycle 102: Release Gate Dashboard Region Implementation
+
+- 状态: Completed.
+- 目标: Make Release Gate Dashboard a named region for release-gate readiness
+  and blocker review.
+- 范围: Added a `Release Gate Dashboard` region boundary in
+  `apps/web/app/loops/page.tsx`, and asserted the current empty release-gate
+  state inside that region.
+- 不做: Do not alter release-gate checklist calculation, blocker ranking, or
+  release readiness semantics.
+- 受益: The dashboard now distinguishes release-gate status from later Release
+  Readiness rollup and makes empty-state review explicit.
+
+### Cycle 103: Agent Runtime Region Implementation
+
+- 状态: Completed.
+- 目标: Make Agent Runtime a named operational region for runtime inventory,
+  diagnostics, and detection actions.
+- 范围: Added an `Agent Runtime` region boundary in
+  `apps/web/app/loops/page.tsx`, and asserted runtime summary,
+  Implementation Agent, Runtime Diagnostics, and missing Docker image evidence
+  inside that region.
+- 不做: Do not change runtime detection, Docker image pull behavior, workspace
+  agent configuration, or external setup links.
+- 受益: Operators can locate runtime readiness and remediation actions as a
+  single accessible surface before continuing loops.
+
+### Cycle 104: Pending Boundary Review After Governance Regions
+
+- 状态: Completed.
+- 目标: Re-check the remaining PM/UX implementation queue after Review Gates,
+  Release Gate Dashboard, and Agent Runtime became named regions.
+- 范围: Reviewed remaining local dashboard landmark coverage and updated the
+  active browser visual QA boundary to include the newly named governance and
+  runtime regions.
+- 不做: Do not mark browser visual QA, real SSO tenant validation, or historical
+  PM-OPZ doc cleanup as complete from component tests.
+- 受益: The implementation state now separates completed local semantic
+  navigation from validation that still requires a browser or identity
+  environment.
+
+### Cycle 105: Local Validation After Governance Regions
+
+- 状态: Completed.
+- 目标: Validate the Cycle 101-104 local implementation pass.
+- 范围: Reproduced the failing dashboard region test, ran
+  `pnpm --filter @repo/web exec vitest run app/loops/page.test.tsx app/loops/new/simple-loop-issue-form.test.tsx 'app/loops/[issueId]/page.test.tsx'`
+  with 3 files and 38 tests passing, and ran
+  `pnpm --filter @repo/web type-check` successfully.
+- 不做: Do not claim real SSO tenant validation or browser screenshot QA in
+  this cycle.
+- 受益: The new governance/runtime region contracts are covered by the focused
+  cross-page suite and remain type-safe before environment-dependent
+  validation.
+
+## Still Deferred After Cycle 105
+
+Active follow-up items after this pass:
+
+### PM-DEFER-01: Real SSO Tenant Validation
+
+- 目标: Validate readiness and persisted tenant context with the real account
+  and tenant path.
+- 范围: After SSO callback/env alignment, run `/loops/new` for `13800138000`
+  under tenant `优惠豚`, create an issue, and confirm readiness, detail tenant
+  context, and audit records agree.
+- 不做: Do not weaken OAuth redirect validation or add local-only tenant
+  switching.
+- 受益: Confirms product UX under real identity state, not only component tests
+  and local storage mocks.
+
+### PM-DEFER-02: Browser Visual Pass For Dense Loop Surfaces
+
+- 目标: Verify the operator focus card, dashboard Trigger Portfolio region,
+  Repo Context Map region, Loop Board region, Runtime Backends region, Eval
+  Plan region, Release Readiness region, Review Inbox region, Exception Center
+  region, Learning Memory region, Performance Snapshot region, Rules Center
+  region, Delivery Flow Pipeline region, Fleet Health region, CI Evidence
+  Publications region, Loop Bench region, Workflow Recipe region, Recipe Admin
+  region, Runtime Security region, Action Queue region, Trace Summary region,
+  Resume Summary region, Capability Registry region, A2A / Tool Registry
+  region, Aging Queue region, Phase Distribution region, Recent Notifications
+  region, Recent Events region, Delivery Guide region, Software Delivery
+  Workforce region, Runtime Health region, Risk Queue region, Blueprint
+  Marketplace region, Review Gates region, Release Gate Dashboard region,
+  Agent Runtime region, request field, workspace selector, create-failure
+  alert, readiness checklist, preview region, submit status, issue-detail Next
+  Action region, detail tenant audit group, evidence coverage region, and
+  evidence chips remain readable at desktop and mobile widths.
+- 范围: Start the Web app and capture `/loops`, `/loops/new`, one create-failure
+  state on `/loops/new`, and one `/loops/:issueId` screenshot for at least
+  desktop and mobile viewports, checking text wrapping, first-screen hierarchy,
+  focus landmarks, dashboard anchor flow into Trigger Portfolio / Repo Context
+  Map / Loop Board / Runtime Backends / Eval Plan / Release Readiness / Review
+  Inbox / Exception Center / Learning Memory / Performance Snapshot / Rules
+  Center / Delivery Flow Pipeline / Fleet Health / CI Evidence Publications /
+  Loop Bench / Workflow Recipe / Recipe Admin / Runtime Security / Action
+  Queue / Trace Summary / Resume Summary / Capability Registry / A2A Tool
+  Registry / Aging Queue / Phase Distribution / Recent Notifications / Recent
+  Events / Delivery Guide / Software Delivery Workforce / Runtime Health / Risk
+  Queue / Blueprint Marketplace / Review Gates / Release Gate Dashboard / Agent
+  Runtime, request label/hint placement, invalid-state readability,
+  workspace-missing alert and disabled selector readability, create-failure
+  alert placement, detail Next Action placement, tenant audit wrapping, status
+  announcement placement, and anchor flow.
+- 不做: Do not redesign layout during this validation pass.
+- 受益: Catches visual density and wrapping problems that unit tests cannot
+  observe.
+
+### PM-DEFER-03: Historical PM-OPZ Doc Hygiene
+
+- 目标: Normalize older duplicated cycle/deferred sections so readers can find
+  the latest implementation state quickly.
+- 范围: In a documentation-only pass, preserve historical content but move or
+  collapse duplicated older sections after Cycle 70 into a clearly labeled
+  archive note.
+- 不做: Do not rewrite implementation history, remove acceptance details, or
+  change product priorities while cleaning structure.
+- 受益: Reduces review friction for future agents and PM readers without
+  changing the code surface.
+
 ### Cycle 59: Deferred Boundary Refresh After Board And Runtime Landmarks
 
 - 状态: Completed.

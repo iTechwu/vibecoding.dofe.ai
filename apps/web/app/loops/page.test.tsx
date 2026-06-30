@@ -855,6 +855,13 @@ describe('LoopsPage', () => {
 
     expect(screen.getByText('Agent Delivery Console')).toBeInTheDocument();
     expect(screen.getByText('Needs Attention')).toBeInTheDocument();
+    const workspaceRules = screen.getByRole('region', { name: 'Rules Center' });
+    expect(
+      within(workspaceRules).getByText('12 rules · 11 enforced · 1 violations'),
+    ).toBeInTheDocument();
+    expect(within(workspaceRules).getByText('DB access only via DB Service')).toBeInTheDocument();
+    expect(within(workspaceRules).getByText('Zod-first API contracts')).toBeInTheDocument();
+    expect(within(workspaceRules).getByText('External APIs via Client layer')).toBeInTheDocument();
     expect(screen.getByText('Workspace Rules')).toBeInTheDocument();
     expect(screen.getByText('2/4 present')).toBeInTheDocument();
     expect(screen.getByText('AGENTS.md · present')).toBeInTheDocument();
@@ -864,13 +871,24 @@ describe('LoopsPage', () => {
       screen.getByText('Multiple agent-readable rule sources are present; verify precedence.'),
     ).toBeInTheDocument();
     expect(screen.getByText('AGENTS.md, CLAUDE.md')).toBeInTheDocument();
-    expect(screen.getByText('Delivery Guide')).toBeInTheDocument();
-    expect(screen.getByText('Create Loop')).toBeInTheDocument();
-    expect(screen.getByText('Review decisions')).toBeInTheDocument();
-    expect(screen.getByText('Resolve exceptions')).toBeInTheDocument();
-    expect(screen.getByText('Audit evidence')).toBeInTheDocument();
+    const deliveryGuideRegion = screen.getByRole('region', { name: 'Delivery Guide' });
+    expect(within(deliveryGuideRegion).getByText('Create Loop')).toBeInTheDocument();
+    expect(within(deliveryGuideRegion).getByText('Review decisions')).toBeInTheDocument();
+    expect(within(deliveryGuideRegion).getByText('Resolve exceptions')).toBeInTheDocument();
+    expect(within(deliveryGuideRegion).getByText('Audit evidence')).toBeInTheDocument();
     expect(screen.getByText('Phase Distribution')).toBeInTheDocument();
-    expect(screen.getByText('Risk Queue')).toBeInTheDocument();
+    const workforceRegion = screen.getByRole('region', { name: 'Software Delivery Workforce' });
+    expect(
+      within(workforceRegion).getByText('1 active · 7 idle · 1 blocked · 0 human gates'),
+    ).toBeInTheDocument();
+    expect(within(workforceRegion).getByText('Human Gatekeeper')).toBeInTheDocument();
+    const runtimeHealthRegion = screen.getByRole('region', { name: 'Runtime Health' });
+    expect(
+      within(runtimeHealthRegion).getByText('File state and DB index are currently consistent.'),
+    ).toBeInTheDocument();
+    const riskQueueRegion = screen.getByRole('region', { name: 'Risk Queue' });
+    expect(within(riskQueueRegion).getByText('Update docs')).toBeInTheDocument();
+    expect(within(riskQueueRegion).getByText('Cost guard tripped')).toBeInTheDocument();
     expect(screen.getByText('Agent Runtime')).toBeInTheDocument();
     expect(screen.getByText('1 running · 1 need attention · 4 registered')).toBeInTheDocument();
     expect(screen.getByText('Implementation Agent')).toBeInTheDocument();
@@ -906,36 +924,77 @@ describe('LoopsPage', () => {
     expect(screen.getAllByText('loops/issue-1').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Pending PR').length).toBeGreaterThan(0);
     expect(screen.getByText('1/3 shards')).toBeInTheDocument();
-    expect(screen.getByText('Workflow Recipe')).toBeInTheDocument();
-    expect(screen.getByText('Trend snapshot')).toBeInTheDocument();
-    expect(screen.getByText('2 snapshots')).toBeInTheDocument();
+    const workflowRecipeRegion = screen.getByRole('region', { name: 'Workflow Recipe' });
     expect(
-      screen.getByText('2 loops · first-pass 50% · canary 50% · first-pass delta 10 pts'),
+      within(workflowRecipeRegion).getByText(
+        '2 loops mapped to Plan → Build → Review → QA → Ship · 1 blocked · 0 release-ready',
+      ),
+    ).toBeInTheDocument();
+    expect(within(workflowRecipeRegion).getByText('Browser QA')).toBeInTheDocument();
+    const loopBenchRegion = screen.getByRole('region', { name: 'Loop Bench' });
+    expect(within(loopBenchRegion).getByText('Trend snapshot')).toBeInTheDocument();
+    expect(within(loopBenchRegion).getByText('2 snapshots')).toBeInTheDocument();
+    expect(
+      within(loopBenchRegion).getByText(
+        '2 loops · first-pass 50% · canary 50% · first-pass delta 10 pts',
+      ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText('.loops/bench-trends/2026-06-23T01-00-00-000Z.json'),
+      within(loopBenchRegion).getByText('.loops/bench-trends/2026-06-23T01-00-00-000Z.json'),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Run trend worker' }));
     expect(loopBenchTrendWorkerMutate).toHaveBeenCalledWith({ body: {} });
+    const deliveryFlowRegion = screen.getByRole('region', { name: 'Delivery Flow Pipeline' });
+    expect(
+      within(deliveryFlowRegion).getByText(
+        'Intake → Spec → Spec Review → Plan → Build → Test → Converge → Global Review → Annotate → Close',
+      ),
+    ).toBeInTheDocument();
+    expect(within(deliveryFlowRegion).getByText('Plan')).toBeInTheDocument();
+    expect(within(deliveryFlowRegion).getByText('Close')).toBeInTheDocument();
     expect(
       screen.getByText(
         '2 loops mapped to Plan → Build → Review → QA → Ship · 1 blocked · 0 release-ready',
       ),
     ).toBeInTheDocument();
+    const fleetHealthRegion = screen.getByRole('region', { name: 'Fleet Health' });
+    expect(within(fleetHealthRegion).getByText('Active')).toBeInTheDocument();
+    expect(within(fleetHealthRegion).getByText('Runtime ready')).toBeInTheDocument();
+    expect(within(fleetHealthRegion).getByText('Repos')).toBeInTheDocument();
     expect(screen.getByText('Browser QA')).toBeInTheDocument();
     expect(screen.getByText('Browser QA gate planned')).toBeInTheDocument();
     expect(screen.getByText('Release gate')).toBeInTheDocument();
     expect(screen.getByText('Release gate planned')).toBeInTheDocument();
-    expect(screen.getByText('Review Gates')).toBeInTheDocument();
-    expect(screen.getByText('1/4 passed · 2 pending · 1 blocked')).toBeInTheDocument();
-    expect(screen.getByText('Product')).toBeInTheDocument();
-    expect(screen.getAllByText('Architecture').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Security').length).toBeGreaterThan(0);
-    expect(screen.getByText('Learning Memory')).toBeInTheDocument();
-    expect(screen.getByText('2 reusable learnings in this workspace')).toBeInTheDocument();
-    expect(screen.getByText('Top learnings')).toBeInTheDocument();
-    expect(screen.getByText('Stale learnings')).toBeInTheDocument();
-    expect(screen.getByText('Pending approvals')).toBeInTheDocument();
+    const blueprintMarketplaceRegion = screen.getByRole('region', {
+      name: 'Blueprint Marketplace',
+    });
+    expect(
+      within(blueprintMarketplaceRegion).getByText('8 delivery blueprints · 2 in active use'),
+    ).toBeInTheDocument();
+    expect(within(blueprintMarketplaceRegion).getByText('Feature Loop')).toBeInTheDocument();
+    const reviewGatesRegion = screen.getByRole('region', { name: 'Review Gates' });
+    expect(
+      within(reviewGatesRegion).getByText('1/4 passed · 2 pending · 1 blocked'),
+    ).toBeInTheDocument();
+    expect(within(reviewGatesRegion).getByText('Product')).toBeInTheDocument();
+    expect(within(reviewGatesRegion).getByText('Architecture')).toBeInTheDocument();
+    expect(within(reviewGatesRegion).getByText('Security')).toBeInTheDocument();
+    const releaseGateDashboardRegion = screen.getByRole('region', {
+      name: 'Release Gate Dashboard',
+    });
+    expect(
+      within(releaseGateDashboardRegion).getByText('0 ready · 0 blocked out of 0 loops with gates'),
+    ).toBeInTheDocument();
+    expect(
+      within(releaseGateDashboardRegion).getByText('No loops with release gate data yet.'),
+    ).toBeInTheDocument();
+    const learningMemory = screen.getByRole('region', { name: 'Learning Memory' });
+    expect(
+      within(learningMemory).getByText('2 reusable learnings in this workspace'),
+    ).toBeInTheDocument();
+    expect(within(learningMemory).getByText('Top learnings')).toBeInTheDocument();
+    expect(within(learningMemory).getByText('Stale learnings')).toBeInTheDocument();
+    expect(within(learningMemory).getByText('Pending approvals')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Run merge worker' }));
     expect(autoMergeWorkerMutate).toHaveBeenCalledWith({ body: {} });
     expect(screen.getByText('Cross-workspace index')).toBeInTheDocument();
@@ -1008,14 +1067,18 @@ describe('LoopsPage', () => {
     ).toBeInTheDocument();
     expect(within(exceptionCenter).getAllByText('Eval hard gate').length).toBeGreaterThan(0);
     expect(screen.getByText('Security review planned')).toBeInTheDocument();
-    expect(screen.getByText('CI Evidence Publications')).toBeInTheDocument();
-    expect(screen.getByText('1 publications · latest status: published')).toBeInTheDocument();
-    expect(screen.getByText('Published')).toBeInTheDocument();
-    expect(screen.getByText('check-run-11')).toBeInTheDocument();
+    const ciEvidenceRegion = screen.getByRole('region', { name: 'CI Evidence Publications' });
+    expect(
+      within(ciEvidenceRegion).getByText('1 publications · latest status: published'),
+    ).toBeInTheDocument();
+    expect(within(ciEvidenceRegion).getByText('Published')).toBeInTheDocument();
+    expect(within(ciEvidenceRegion).getByText('check-run-11')).toBeInTheDocument();
     expect(screen.getAllByText('issue-1').length).toBeGreaterThan(0);
-    expect(screen.getByText('Checkout fix')).toBeInTheDocument();
-    expect(screen.getByText('abc123456789')).toBeInTheDocument();
-    expect(screen.getByText('1 files · apps/web/app/checkout/page.tsx')).toBeInTheDocument();
+    expect(within(ciEvidenceRegion).getByText('Checkout fix')).toBeInTheDocument();
+    expect(within(ciEvidenceRegion).getByText('abc123456789')).toBeInTheDocument();
+    expect(
+      within(ciEvidenceRegion).getByText('1 files · apps/web/app/checkout/page.tsx'),
+    ).toBeInTheDocument();
     const releaseReadiness = screen.getByRole('region', { name: 'Release Readiness' });
     expect(
       within(releaseReadiness).getByText('0 ready · 0 need attention · 0 blocked'),
@@ -1053,37 +1116,56 @@ describe('LoopsPage', () => {
     expect(
       screen.getByText('Raise cap or split scope, then continue the loop'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Action Queue')).toBeInTheDocument();
+    const actionQueueRegion = screen.getByRole('region', { name: 'Action Queue' });
+    expect(
+      within(actionQueueRegion).getByText('1 loops can be advanced or need a decision'),
+    ).toBeInTheDocument();
+    expect(within(actionQueueRegion).getByText('Update docs')).toBeInTheDocument();
+    expect(within(actionQueueRegion).getByText('Continue loop')).toBeInTheDocument();
     expect(screen.getByText('Review Inbox')).toBeInTheDocument();
     expect(screen.getByText('1 human decision items')).toBeInTheDocument();
-    expect(screen.getByText('Trace Summary')).toBeInTheDocument();
-    expect(screen.getByText('Resume Summary')).toBeInTheDocument();
-    expect(screen.getByText('Capability Registry')).toBeInTheDocument();
+    const traceSummaryRegion = screen.getByRole('region', { name: 'Trace Summary' });
+    expect(
+      within(traceSummaryRegion).getByText('2 recent events from 2 indexed entries'),
+    ).toBeInTheDocument();
+    const resumeSummaryRegion = screen.getByRole('region', { name: 'Resume Summary' });
+    expect(
+      within(resumeSummaryRegion).getByText('1 shards can be recovered across 1 issues'),
+    ).toBeInTheDocument();
+    expect(within(resumeSummaryRegion).getByText('Resumable Shards')).toBeInTheDocument();
+    const capabilityRegistry = screen.getByRole('region', { name: 'Capability Registry' });
+    expect(
+      within(capabilityRegistry).getByText('2 planned · 1 done · 0 in progress'),
+    ).toBeInTheDocument();
     expect(screen.getByText('A2A / Tool Registry')).toBeInTheDocument();
-    expect(screen.getByText('Agent Registry')).toBeInTheDocument();
-    expect(screen.getByText('Codex Planner / Reviewer')).toBeInTheDocument();
-    expect(screen.getByText('Tool Registry')).toBeInTheDocument();
+    expect(within(capabilityRegistry).getByText('Agent Registry')).toBeInTheDocument();
+    expect(within(capabilityRegistry).getByText('Codex Planner / Reviewer')).toBeInTheDocument();
+    expect(within(capabilityRegistry).getByText('Tool Registry')).toBeInTheDocument();
     expect(screen.getAllByText('Repository Code Editor').length).toBeGreaterThan(0);
-    expect(screen.getByText('Compatibility Checks')).toBeInTheDocument();
-    expect(screen.getByText('phase-tool-ownership')).toBeInTheDocument();
-    expect(screen.getByText('Permission Profile')).toBeInTheDocument();
-    expect(screen.getByText('2 agents · 2 tools · 2 active tools')).toBeInTheDocument();
-    expect(screen.getByText('Read')).toBeInTheDocument();
-    expect(screen.getByText('Write')).toBeInTheDocument();
-    expect(screen.getByText('Shell/Test')).toBeInTheDocument();
-    expect(screen.getByText('Network')).toBeInTheDocument();
-    expect(screen.getByText('Approval')).toBeInTheDocument();
+    expect(within(capabilityRegistry).getByText('Compatibility Checks')).toBeInTheDocument();
+    expect(within(capabilityRegistry).getByText('phase-tool-ownership')).toBeInTheDocument();
+    expect(within(capabilityRegistry).getByText('Permission Profile')).toBeInTheDocument();
+    expect(
+      within(capabilityRegistry).getByText('2 agents · 2 tools · 2 active tools'),
+    ).toBeInTheDocument();
+    expect(within(capabilityRegistry).getByText('Read')).toBeInTheDocument();
+    expect(within(capabilityRegistry).getByText('Write')).toBeInTheDocument();
+    expect(within(capabilityRegistry).getByText('Shell/Test')).toBeInTheDocument();
+    expect(within(capabilityRegistry).getByText('Network')).toBeInTheDocument();
+    expect(within(capabilityRegistry).getByText('Approval')).toBeInTheDocument();
     expect(screen.getByText('2 third-party tool compatibilities planned')).toBeInTheDocument();
-    expect(screen.getByText('SSO Asset Permissions')).toBeInTheDocument();
-    expect(screen.getByText('1 granted · 2 blocked · source: SSO')).toBeInTheDocument();
+    expect(within(capabilityRegistry).getByText('SSO Asset Permissions')).toBeInTheDocument();
+    expect(
+      within(capabilityRegistry).getByText('1 granted · 2 blocked · source: SSO'),
+    ).toBeInTheDocument();
     expect(screen.getByText('Delivery blueprints')).toBeInTheDocument();
-    expect(screen.getByText('Recipe Admin')).toBeInTheDocument();
-    expect(screen.getByText('Tenant scope')).toBeInTheDocument();
+    const recipeAdminRegion = screen.getByRole('region', { name: 'Recipe Admin' });
+    expect(within(recipeAdminRegion).getByText('Tenant scope')).toBeInTheDocument();
     expect(screen.getAllByText('Granted').length).toBeGreaterThan(0);
     expect(screen.getAllByText('vibecoding:loops:create').length).toBeGreaterThan(0);
-    expect(screen.getByText('Create version')).toBeInTheDocument();
-    expect(screen.getByText('Review approval')).toBeInTheDocument();
-    expect(screen.getByText('Rollback version')).toBeInTheDocument();
+    expect(within(recipeAdminRegion).getByText('Create version')).toBeInTheDocument();
+    expect(within(recipeAdminRegion).getByText('Review approval')).toBeInTheDocument();
+    expect(within(recipeAdminRegion).getByText('Rollback version')).toBeInTheDocument();
     expect(screen.getAllByText('Ready').length).toBeGreaterThan(0);
     fireEvent.click(screen.getAllByRole('button', { name: /Request/i })[0]!);
     expect(requestRecipeAdminActionMutate).toHaveBeenCalledWith({
@@ -1094,18 +1176,41 @@ describe('LoopsPage', () => {
         evidenceRefs: [],
       },
     });
+    const agentRuntimeRegion = screen.getByRole('region', { name: 'Agent Runtime' });
+    expect(
+      within(agentRuntimeRegion).getByText('1 running · 1 need attention · 4 registered'),
+    ).toBeInTheDocument();
+    expect(within(agentRuntimeRegion).getByText('Implementation Agent')).toBeInTheDocument();
+    expect(within(agentRuntimeRegion).getByText('Runtime Diagnostics')).toBeInTheDocument();
+    expect(
+      within(agentRuntimeRegion).getByText('Docker image dofe-ai/sandbox:latest is missing.'),
+    ).toBeInTheDocument();
     expect(screen.getByText('Codex / Claude Code runtime backends')).toBeInTheDocument();
     expect(screen.getByText('MCP server registry')).toBeInTheDocument();
-    expect(screen.getByText('Provider Profile')).toBeInTheDocument();
+    expect(within(capabilityRegistry).getByText('Provider Profile')).toBeInTheDocument();
     expect(
-      screen.getByText('2 providers · 2 active agents · 2 planned tool routes'),
+      within(capabilityRegistry).getByText('2 providers · 2 active agents · 2 planned tool routes'),
     ).toBeInTheDocument();
     expect(screen.getAllByText('1/1 active agents · 1 planned tools').length).toBeGreaterThan(0);
-    expect(screen.getByText('Performance Snapshot')).toBeInTheDocument();
-    expect(screen.getByText('Pass rate')).toBeInTheDocument();
-    expect(screen.getByText('Redo rate')).toBeInTheDocument();
-    expect(screen.getByText('Avg calls')).toBeInTheDocument();
-    expect(screen.getByText('Trace events')).toBeInTheDocument();
+    const runtimeSecurityRegion = screen.getByRole('region', { name: 'Runtime Security' });
+    expect(
+      within(runtimeSecurityRegion).getByText(
+        '2 active · 1 with violations · 0 critical · 0 overrides',
+      ),
+    ).toBeInTheDocument();
+    expect(within(runtimeSecurityRegion).getByText('Top violations')).toBeInTheDocument();
+    expect(
+      within(runtimeSecurityRegion).getByText(
+        'Command "pnpm test && rm -rf /tmp/out" was blocked by runtime policy.',
+      ),
+    ).toBeInTheDocument();
+    const performanceSnapshotRegion = screen.getByRole('region', {
+      name: 'Performance Snapshot',
+    });
+    expect(within(performanceSnapshotRegion).getByText('Pass rate')).toBeInTheDocument();
+    expect(within(performanceSnapshotRegion).getByText('Redo rate')).toBeInTheDocument();
+    expect(within(performanceSnapshotRegion).getByText('Avg calls')).toBeInTheDocument();
+    expect(within(performanceSnapshotRegion).getByText('Trace events')).toBeInTheDocument();
     const evalPlan = screen.getByRole('region', { name: 'Eval Plan' });
     expect(within(evalPlan).getByText('0/5 passed · 3 attention · 2 blocked')).toBeInTheDocument();
     expect(within(evalPlan).getAllByText('Architecture').length).toBeGreaterThan(0);
@@ -1123,10 +1228,21 @@ describe('LoopsPage', () => {
     expect(screen.getByText('read/write/test within approved work package')).toBeInTheDocument();
     expect(screen.getByText('Fallback to deterministic review gate')).toBeInTheDocument();
     expect(screen.getByText('Feishu Integration')).toBeInTheDocument();
-    expect(screen.getByText('Aging Queue')).toBeInTheDocument();
-    expect(screen.getByText('Warning at 24h stale; critical at 72h stale.')).toBeInTheDocument();
-    expect(screen.getAllByText(/73h stale/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Fix checkout flow').length).toBeGreaterThan(0);
+    const agingQueueRegion = screen.getByRole('region', { name: 'Aging Queue' });
+    expect(
+      within(agingQueueRegion).getByText('Warning at 24h stale; critical at 72h stale.'),
+    ).toBeInTheDocument();
+    expect(within(agingQueueRegion).getAllByText(/73h stale/).length).toBeGreaterThan(0);
+    expect(within(agingQueueRegion).getAllByText('Fix checkout flow').length).toBeGreaterThan(0);
+    const phaseDistributionRegion = screen.getByRole('region', { name: 'Phase Distribution' });
+    expect(within(phaseDistributionRegion).getByText('Implement')).toBeInTheDocument();
+    expect(within(phaseDistributionRegion).getByText('Review')).toBeInTheDocument();
+    const notificationsRegion = screen.getByRole('region', { name: 'Recent Notifications' });
+    expect(within(notificationsRegion).getByText('Review needed')).toBeInTheDocument();
+    expect(within(notificationsRegion).getByText('Saved')).toBeInTheDocument();
+    const eventsRegion = screen.getByRole('region', { name: 'Recent Events' });
+    expect(within(eventsRegion).getByText('1 entries')).toBeInTheDocument();
+    expect(within(eventsRegion).getByText('issue-1')).toBeInTheDocument();
     expect(screen.getAllByText('Cost guard tripped').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Continue loop').length).toBeGreaterThan(0);
     const reviewInbox = screen.getByRole('region', { name: 'Review Inbox' });
