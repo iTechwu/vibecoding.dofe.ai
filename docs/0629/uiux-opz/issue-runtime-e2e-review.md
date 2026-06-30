@@ -44,6 +44,11 @@ Final follow-up validation:
 - Cycle 91 completed real browser credential entry for account `13800138000`,
   but the browser landed on an SSO API 404 callback page before returning to
   vibecoding. No password or trace artifact is retained in this repository.
+- 2026-06-30 rerun did not reach credential entry. The browser landed on a raw
+  SSO API JSON error page for `redirect_uri not allowed` before the login form.
+  Controlled API validation still proved that a `优惠豚` issue can be created,
+  tenant context is persisted, `Continue Loop` generates `spec v1`, and runtime
+  readiness is available.
 
 ## UX Findings
 
@@ -218,6 +223,12 @@ Observed:
   `{"code":404,"msg":"Cannot GET /auth/oidc/callback?..."}`
 - The page was hosted by the SSO API origin, not by vibecoding's localized
   `/auth/oidc/success` error UI.
+- On 2026-06-30 the browser failed even earlier on the SSO authorize endpoint
+  with raw JSON:
+  `{"error":"invalid_request","error_description":"redirect_uri not allowed"}`.
+- Playwright then reported `Unable to find visible mobile field on SSO login
+page`, which is technically true but hides the real user-facing state: there
+  was no login page, only a raw OAuth error payload.
 
 Impact:
 
@@ -229,12 +240,45 @@ Impact:
 Next execution plan:
 
 - 目标: Make callback failures actionable to operators.
-- 范围: After BUG-06 is fixed, rerun the real browser SSO flow and confirm
-  callback errors either return to vibecoding's localized success/error page or
-  SSO renders a user-facing OAuth error with client id, requested callback, and
-  trace id; add the observed trace id to server logs, not browser-visible
-  secrets.
+- 范围: After BUG-06/BUG-07 are fixed, rerun the real browser SSO flow and
+  confirm authorize/callback errors either return to vibecoding's localized
+  success/error page or SSO renders a user-facing OAuth error with client id,
+  requested callback, and trace id; add the observed trace id to server logs,
+  not browser-visible secrets. Update Playwright assertions so an OAuth JSON
+  error is reported as the primary failure before field selectors run.
 - 不做: Do not expose authorization codes, tokens, cookies, or submitted
   credentials in UI errors.
 - 受益: QA can distinguish callback registration/configuration failures from
   account or tenant failures without inspecting raw traces.
+
+### UX-06: Local Auth Bypass Does Not Give the Web App a Test Login State
+
+Observed:
+
+- Starting API with `MODE_USER_ID=11111111-1111-4111-8111-111111111111`
+  allowed protected Loops API calls.
+- Opening `/loops/new` in the browser still followed the frontend login gate,
+  so setting a local tenant snapshot for `优惠豚` was not enough to exercise the
+  form through UI.
+- The issue/runtime product path had to be verified through direct API calls
+  instead of a complete local UI smoke.
+
+Impact:
+
+- Local QA can verify service behavior but cannot easily verify issue intake UI
+  when remote SSO is unavailable.
+- Reproducing UX issues requires either a real SSO fix or ad hoc browser state
+  setup that is easy to drift.
+
+Next execution plan:
+
+- 目标: Provide a safe local-only browser login fixture for Loops UI QA.
+- 范围: Add a dev/test-only helper or Playwright fixture that creates the same
+  frontend session shape the app expects while API runs with `MODE_USER_ID`;
+  keep it disabled outside local/test and document that it is not a substitute
+  for real SSO validation.
+- 不做: Do not bypass production SSO, do not store real credentials, and do not
+  change the user-facing login flow.
+- 受益: QA can complete issue submission and agent runtime UI checks even when
+  external SSO is down or misconfigured, while still preserving separate real
+  SSO coverage.

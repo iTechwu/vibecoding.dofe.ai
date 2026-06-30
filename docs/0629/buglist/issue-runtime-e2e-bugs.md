@@ -35,6 +35,17 @@ Final follow-up validation:
   instead of the vibecoding callback, and that SSO API callback returned 404.
   The `优惠豚` tenant and issue/runtime flows therefore remain unverified through
   real SSO.
+- 2026-06-30 rerun: the no-browser SSO preflight passed and `/loops/new`
+  returned a usable `307`, but the real browser authorize request was rejected
+  before credential entry:
+  `redirect_uri=http://127.0.0.1:13100/auth/oidc/callback` returned
+  `400 invalid_request / redirect_uri not allowed` from
+  `https://api.sso.test.dofe.ai/oauth/authorize`.
+- 2026-06-30 controlled API validation with `MODE_USER_ID` created
+  `issue-20260630-0a0ed3cc` for tenant `优惠豚`, persisted tenant context on
+  both issue and intake, advanced `Continue Loop` to `PHASE_2_REVIEW`, and
+  generated `spec v1`. `GET /loops/agent-runtime` returned `200` with Codex and
+  Claude Code local CLI plus Docker fallback all ready.
 
 ## Bugs
 
@@ -70,6 +81,12 @@ authorize endpoint ultimately redirected the authenticated browser to the SSO
 API's own `/auth/oidc/callback`, which returned 404. This is a test SSO client
 runtime/configuration mismatch, not a credential-entry failure.
 
+2026-06-30 rerun moves the failure earlier again: the remote test SSO authorize
+endpoint directly rejects the documented local callback
+`http://127.0.0.1:13100/auth/oidc/callback` with `redirect_uri not allowed`,
+despite the repository preflight reporting that the local Web/API/SSO origins
+are aligned.
+
 Observed:
 
 - Opening local `/loops/new` redirected to SSO authorize.
@@ -102,6 +119,50 @@ Next execution plan:
   browser login.
 - 不做: Do not weaken redirect URI validation or accept wildcard callbacks.
 - 受益: The team can run real-account tenant E2E without auth bypass.
+
+### BUG-07: SSO E2E Preflight Can Pass While Remote SSO Rejects the Callback
+
+Severity: P0
+
+Status: Open from 2026-06-30 rerun.
+
+Observed:
+
+- `node apps/web/scripts/verify-sso-e2e-env.mjs` printed the expected callback
+  `http://127.0.0.1:13100/auth/oidc/callback` and reported the environment as
+  aligned.
+- `VERIFY_LOOPS_ROUTE_URL=http://127.0.0.1:3003/loops/new node apps/web/scripts/verify-loops-route.mjs`
+  returned status `307`, usable.
+- The browser then reached
+  `https://api.sso.test.dofe.ai/oauth/authorize?...&client_id=vibecoding-dofe-ai&redirect_uri=http%3A%2F%2F127.0.0.1%3A13100%2Fauth%2Foidc%2Fcallback`
+  and received `400 invalid_request` with `redirect_uri not allowed`.
+- Because this happens before the SSO login form, account `13800138000`,
+  password entry, tenant selection, issue submission, upload token checks,
+  refresh, and logout were not exercised through real SSO.
+
+Expected:
+
+- A preflight green state should correspond to an SSO client registration that
+  accepts the same callback in the remote test environment.
+
+Impact:
+
+- QA gets a false sense of readiness from local preflight checks.
+- The full `优惠豚` tenant E2E remains blocked before credential entry.
+
+Next execution plan:
+
+- 目标: Make the SSO preflight verify the same callback allow-list enforced by
+  remote test SSO.
+- 范围: Add or expose a non-secret SSO test-client registration probe for
+  `vibecoding-dofe-ai` that confirms
+  `http://127.0.0.1:13100/auth/oidc/callback` before Playwright opens the
+  browser; rerun the real browser command after the SSO client allow-list is
+  corrected.
+- 不做: Do not put OAuth client secrets, authorization codes, passwords, or
+  token material into the preflight output or traces.
+- 受益: Real-account E2E fails fast on environment drift and can proceed to
+  tenant `优惠豚` once the callback is truly accepted.
 
 ### BUG-06: Remote Test SSO Redirects Authenticated Callback to SSO API 404
 

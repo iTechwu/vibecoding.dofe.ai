@@ -29,6 +29,11 @@ dev:api`; protected Loops routes returned `200`.
   remote test SSO mkcert chain, and the login portal origin is
   `https://sso.test.dofe.ai` while the SSO API origin is
   `https://api.sso.test.dofe.ai`.
+- 2026-06-30 rerun confirmed runtime readiness is healthy in controlled API
+  validation: `GET /loops/agent-runtime` returned Codex local CLI
+  `codex-cli 0.141.0`, Claude Code `2.1.186`, and Docker fallback ready for
+  both. The same run reproduced RabbitMQ credential-bearing startup logs and
+  optional shutdown error noise.
 
 ## Optimization Items
 
@@ -155,6 +160,12 @@ this item open until the exact dev log path is confirmed to flow through the
 updated redaction layer or is fixed upstream; do not paste credential-bearing
 log lines into QA artifacts.
 
+2026-06-30 rerun still prints RabbitMQ connection URLs with credentials during
+`pnpm dev:api` startup in the `init`, `connect`, and `Attempting to connect`
+messages. The evidence was observed in terminal output; credential-bearing
+lines are intentionally not copied verbatim into this artifact beyond the
+pattern description.
+
 Observed:
 
 - Startup logs print full RabbitMQ connection URLs.
@@ -165,8 +176,10 @@ Next execution plan:
 
 - 目标: Keep RabbitMQ credential redaction active after the infra package bump.
 - 范围: Maintain `@dofe/infra-rabbitmq@0.1.80` in `apps/api/package.json` and
-  `pnpm-lock.yaml`; run `pnpm check:infra-rabbitmq-version` in quality gates and
-  keep the app-layer winston redaction as defense-in-depth.
+  `pnpm-lock.yaml`; run `pnpm check:infra-rabbitmq-version` in quality gates;
+  trace the exact `pnpm dev:api` logger path for RabbitMQ module lifecycle logs
+  and add a startup-log smoke that rejects `scheme://user:pass@` patterns in
+  terminal output.
 - 不做: Do not remove useful host/service diagnostics.
 - 受益: Logs remain useful while reducing leakage risk during QA, screenshots,
   or issue reports.
@@ -185,6 +198,11 @@ Cycle 91 shutdown still reproduced `Error closing RabbitMQ connection` with
 `Connection closing` at `error` level before the graceful-close log, so the
 runtime behavior in this repo is not yet fully aligned with the expected
 upstream shutdown-severity fix.
+
+2026-06-30 rerun reproduced the same shutdown behavior on SIGINT: repeated
+graceful shutdown notices, then `Error closing RabbitMQ connection` with
+`Connection closing` at `error` level, followed by
+`RabbitMQ connection closed gracefully`.
 
 Observed:
 
@@ -255,3 +273,51 @@ Next execution plan:
   production or release-domain validation.
 - 受益: Operators can reproduce real browser SSO tests without weakening normal
   browser security.
+
+### OPZ-07: Extend SSO Preflight Beyond Local Env Shape
+
+Status: Open from 2026-06-30 rerun.
+
+Observed:
+
+- The local SSO E2E preflight passed and printed the expected callback URL.
+- The remote SSO authorize endpoint then rejected that same callback with
+  `redirect_uri not allowed`.
+- The preflight currently proves local origin alignment, but not the remote SSO
+  client allow-list that ultimately gates browser login.
+
+Next execution plan:
+
+- 目标: Make SSO readiness checks cover the remote allow-list dependency.
+- 范围: Add a non-secret SSO client registration probe or signed admin-side
+  diagnostic for the test environment; report whether
+  `vibecoding-dofe-ai` accepts
+  `http://127.0.0.1:13100/auth/oidc/callback` before browser automation starts;
+  keep the existing local URL shape validation as the first stage.
+- 不做: Do not expose client secrets, tokens, authorization codes, or the test
+  password in CLI output, traces, or docs.
+- 受益: Operators can distinguish local misconfiguration from remote SSO drift
+  before spending time on browser runs.
+
+### OPZ-08: Provide a Local UI E2E Session Fixture for MODE_USER_ID
+
+Status: Open from 2026-06-30 rerun.
+
+Observed:
+
+- `MODE_USER_ID` lets the API accept protected Loops requests through Turbo.
+- The Web app still has no matching local session fixture, so `/loops/new`
+  redirects to login when real SSO is blocked.
+- Controlled issue/runtime validation had to use direct API calls.
+
+Next execution plan:
+
+- 目标: Allow local browser UI QA to exercise Loops screens without external
+  SSO when the API is deliberately running in dev bypass mode.
+- 范围: Add a Playwright-only or dev-only session fixture that mirrors the
+  frontend token/session shape and can set `currentTenantSnapshot` for
+  `优惠豚`; document the command and ensure it is disabled outside local/test.
+- 不做: Do not change production auth, do not make bypass available in deployed
+  builds, and do not treat this as replacing real SSO E2E.
+- 受益: UI regressions in issue intake and agent runtime can be tested even when
+  SSO integration is unavailable, while real SSO remains a separate gate.
