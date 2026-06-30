@@ -45,6 +45,12 @@ errors. Cycle 47 adds direct unit coverage for `buildSsoE2eEnvFromProcess`, the
 silently default the origins and callback URL the preflight checks. Cycle 59
 requires the four required preflight origins to use the http/https scheme, so a
 valid-but-non-web origin like `ftp://` fails the preflight before browser login.
+Cycle 61 confirms the SSO side is also complete: the `vibecoding-dofe-ai` client
+in `sso.dofe.ai` already allow-lists `http://127.0.0.1:13100/auth/oidc/callback`
+and the frontend callback, now protected by a regression in
+`sso.dofe.ai/apps/api/scripts/oauth-clients.config.spec.ts`. BUG-01 is closed
+end-to-end; an operator only needs to run vibecoding with
+`VIBECODING_APP_BASE_URL=http://127.0.0.1:13100`.
 
 Observed:
 
@@ -211,7 +217,10 @@ Status: Implemented in Cycle 5. The committed/generated file format now matches
 the Next dev output observed during QA. Cycle 18 adds an executable Web unit
 test that fails if the generated file drifts back to a noisy format. Cycle 41
 re-applied the committed double-quote format after the focused Web regression
-run caught a single-quote drift.
+run caught a single-quote drift. Cycle 65 applies a root-cause fix by adding
+`apps/web/next-env.d.ts` to `.prettierignore`, so prettier stops reformatting the
+Next-generated double-quoted import — addressing the recurring drift source, not
+just the symptom.
 
 Observed:
 

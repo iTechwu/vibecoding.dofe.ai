@@ -66,6 +66,11 @@ Status:
   to construct) returns `failed` instead of propagating an unhandled exception.
   It also adds a regression proving `pullImage` rejects with `Workspace not
 found` before any Docker interaction when the workspace id is unknown.
+- Cycle 62 runs the fallback path against a real Docker daemon (v29.5.3): the
+  UCloud Hub pinned images are publicly pullable with no registry credentials,
+  and after `docker pull` both pinned digests inspect as present, so `pullImage`
+  resolves to `already-present`. The not-present → pull → present and
+  already-present branches are now verified on a real daemon, not only in mocks.
 
 Next execution plan:
 
@@ -129,7 +134,12 @@ covers the package's `console.*` paths (e.g. `rabbitmq-events.module.js`) that
 bypass winston; the dependency bump remains external. Cycle 57 locks the
 redaction depth-cap / non-crash contract with regressions for circular
 references and deeply nested meta, so the defense layer cannot regress into a
-stack overflow.
+stack overflow. Cycle 63 lands the upstream root-cause fix in
+`infra.dofe.ai/packages/rabbitmq`: `redactUrlCredentials` / `redactErrorMessage`
+are applied at the events-module connect log, the events-module connection-error
+log, and the service init/connection error logs, with a `node --test` smoke
+test. After a version bump this supersedes the app-layer redaction for the
+RabbitMQ winston path.
 
 Observed:
 
@@ -148,8 +158,13 @@ Next execution plan:
 
 ### OPZ-04: Normalize Optional RabbitMQ Shutdown Logging
 
-Status: Not implemented in this repository. Shutdown severity is emitted by the
-upstream RabbitMQ package and needs the same upstream follow-up as OPZ-03.
+Status: Root-cause fix landed upstream in Cycle 64 (`infra.dofe.ai/packages/rabbitmq`).
+The service close handler now downgrades the "RabbitMQ connection closed" log to
+`debug` when `isShuttingDown` is true (set by `onModuleDestroy`), so a benign
+shutdown race no longer surfaces as `warn` alongside the graceful-close log. The
+decision is extracted as `connectionClosedSeverity(isShuttingDown)` with a
+`node --test` smoke test. After a version bump of `@dofe/infra-rabbitmq` this
+supersedes the need for any app-level severity workaround.
 
 Observed:
 

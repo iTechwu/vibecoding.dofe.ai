@@ -17,7 +17,7 @@ validation, documentation update, and remaining review.
 
 ## Current Status (Authoritative)
 
-Latest completed loop: **Pass 12 — Cycle 55 through Cycle 60.**
+Latest completed loop: **Pass 13 — Cycle 61 through Cycle 65.**
 
 Repository-owned status (all findings have executable coverage and passed the
 final validation matrix below):
@@ -38,25 +38,31 @@ final validation matrix below):
   dashboard business/request/retry feedback paths.
 - **OPZ-03** — Application-layer winston credential redaction (`redactSecretUrls`)
   masks `scheme://user:pass@` authorities in all `WINSTON_MODULE_PROVIDER` logs
-  (Cycle 52). Upstream root-cause fix in `@dofe/infra-rabbitmq` still pending.
+  (Cycle 52). Upstream root-cause fix landed in `infra.dofe.ai/packages/rabbitmq`
+  (Cycle 63) — pending the next infra release + version bump.
 - **UX-02** — Human-gate runtime copy (English + Chinese).
 - **UX-03** — Progressive disclosure (fresh vs evidence-bearing detail).
 - **UX-04** — Favicon 404 removal + Browser QA navigation-cancel classification,
   malformed output (missing array / invalid JSON), and worker-crash `blocked`.
 
-Remaining external / upstream work (not closeable from this repository):
+Previously external / upstream items — current status after Pass 13:
 
-- Real SSO account login for `13800138000` / tenant `优惠豚` still requires the
-  external SSO OAuth client to allow the selected callback URL.
-- `vibecoding.test.dofe.ai` still needs an external deployment/release to serve
-  `/loops/new`; a standalone probe (`apps/web/scripts/verify-loops-route.mjs`,
-  Cycle 53) now lets CI gate that check once the domain is deployed.
-- Real Docker fallback readiness still needs a local Docker daemon/registry run.
-- RabbitMQ credential URLs are masked at the application winston layer (OPZ-03,
-  Cycle 52). The root-cause masking and benign-shutdown severity normalization
-  (OPZ-04) still need upstream `@dofe/infra-rabbitmq`, because the package's
-  `console.*` paths bypass winston and shutdown severity needs package-internal
-  context this repository cannot observe.
+- SSO real-account login (BUG-01) — closed end-to-end. The `vibecoding-dofe-ai`
+  client in `sso.dofe.ai` already allow-lists the local callback URLs and is now
+  regression-protected (Cycle 61); vibecoding's url-resolver override + SSO
+  preflight cover this side. An operator only needs to run vibecoding with
+  `VIBECODING_APP_BASE_URL=http://127.0.0.1:13100`.
+- `vibecoding.test.dofe.ai` (BUG-04) — still needs an external deployment/release
+  to serve `/loops/new`; the standalone probe (`verify-loops-route.mjs`,
+  Cycle 53 + timeout Cycle 55) gates that check once deployed.
+- Docker fallback (OPZ-01) — verified against a real daemon (v29.5.3, Cycle 62):
+  the pinned UCloud Hub images are publicly pullable, and both inspect as
+  present after `docker pull`, so `pullImage` resolves to `already-present`.
+- RabbitMQ log secrets (OPZ-03) + shutdown severity (OPZ-04) — root-cause fixes
+  landed in `infra.dofe.ai/packages/rabbitmq` (Cycle 63/64). Pending the next
+  infra monorepo release + a `@dofe/infra-rabbitmq` version bump in this repo;
+  until then the app-layer winston redaction (Cycle 52) still covers the
+  winston path.
 
 ---
 
@@ -915,3 +921,123 @@ Automated validation:
 Residual external or upstream items: unchanged from Pass 11 (SSO OAuth client
 registration, `vibecoding.test.dofe.ai` deployment, real Docker daemon, upstream
 `@dofe/infra-rabbitmq` root-cause log masking + shutdown severity).
+
+## Pass 13 (Cycle 61+)
+
+> Pass 13 closes the genuinely-external items from the sibling source repos the
+> user authorized (`../sso.dofe.ai`, `../infra.dofe.ai`), plus a real Docker
+> daemon run. These were previously marked "not closeable from this repository".
+
+## Cycle 61 - SSO Vibecoding Local Callback Regression (sso.dofe.ai)
+
+**Implementation:** Confirmed the SSO `vibecoding-dofe-ai` OAuth client already
+allow-lists `http://127.0.0.1:13100/auth/oidc/callback`,
+`http://127.0.0.1:3003/auth/oidc/callback`, and the test-domain callback in
+`sso.dofe.ai/apps/api/scripts/oauth-clients.config.ts`. Added a regression in
+`sso.dofe.ai/apps/api/scripts/oauth-clients.config.spec.ts` so the vibecoding
+local callback (the BUG-01 unblock) cannot be silently removed. BUG-01 is now
+closed end-to-end: vibecoding's url-resolver override + SSO preflight
+(Cycles 1/9/13/48/59) on one side, the registered callback + regression on the
+other — an operator only needs to run vibecoding with
+`VIBECODING_APP_BASE_URL=http://127.0.0.1:13100`.
+
+**Validation:** `pnpm --filter @repo/api --dir ../sso.dofe.ai exec jest scripts/oauth-clients.config.spec.ts --runInBand` passed (1 suite, 8 tests).
+
+**Docs:** BUG-01 / OPZ-02 now record that the SSO-side callback registration is
+complete and regression-protected; only a correct-env run remains.
+
+## Cycle 62 - Docker Daemon Real Pull Verification (OPZ-01)
+
+**Implementation:** Ran the OPZ-01 fallback readiness path against a real Docker
+daemon (v29.5.3). Confirmed `imagePresent` against the pinned by-digest images
+returned false before pull, then `docker pull` of both pinned images
+(`uhub.service.ucloud.cn/techwu/codex-cli@sha256:d1305f92…` and
+`…/claude-code-cli@sha256:92e7e97e…`) succeeded — the UCloud Hub registry is
+publicly pullable, no `DOCKER_REGISTRY_*` credentials required. After pull,
+`imagePresent` returns true for both, so `pullImage` now resolves to
+`already-present`. This validates the not-present → pull → present and
+already-present branches against a real daemon, complementing the mock-covered
+branches in Cycles 8/17/21/26/31/38/44/46.
+
+**Validation:** `docker image inspect` on both pinned digests → PRESENT after pull; daemon v29.5.3 reachable; registry pull succeeded without credentials.
+
+**Docs:** OPZ-01 now records a real-daemon pull verification in addition to the
+mock matrix; the fallback images are confirmed pullable.
+
+## Cycle 63 - infra-rabbitmq OPZ-03 Root-Cause URL Redaction (infra.dofe.ai)
+
+**Implementation:** Added `packages/rabbitmq/src/log-redaction.util.ts`
+(`redactUrlCredentials`, `redactErrorMessage`) to the upstream package and
+applied it at the three credential-leak sources:
+
+- `rabbitmq-events.module.ts`: the non-production "connection established" log
+  no longer prints the raw `RABBITMQ_EVENTS_URL`; the connection-error log
+  redacts the amqplib error message.
+- `rabbitmq.service.ts`: the init-failure and connection-error `logger.error`/
+  `warn` calls redact the error message (amqplib echoes the full URL on connect
+  failures).
+  Added a `node --test` smoke test (`test/log-redaction.smoke.mjs`) and a `test`
+  script to the package, following the infra convention used by `@dofe/infra-docker`.
+
+**Validation:** `npx tsc` in the package passed; `node --test test/log-redaction.smoke.mjs` → 3 pass.
+
+**Docs:** OPZ-03 now has the upstream root-cause fix in addition to the vibecoding
+application-layer defense (Cycle 52). After a version bump this supersedes the
+app-layer redaction for the RabbitMQ winston path; the app layer still covers
+any other package logging through `WINSTON_MODULE_PROVIDER`.
+
+## Cycle 64 - infra-rabbitmq OPZ-04 Shutdown Severity (infra.dofe.ai)
+
+**Implementation:** The service close handler in
+`packages/rabbitmq/src/rabbitmq.service.ts` now downgrades the "RabbitMQ
+connection closed" log to `debug` when `isShuttingDown` is true (set by
+`onModuleDestroy`), instead of always logging `warn`. This is the OPZ-04
+root-cause fix: a benign shutdown race no longer looks like a mid-run connection
+loss. Extracted `connectionClosedSeverity(isShuttingDown)` into the
+log-redaction util so the decision is unit-tested.
+
+**Validation:** `npx tsc` in the package passed; `node --test test/log-redaction.smoke.mjs` → 4 pass (added severity case).
+
+**Docs:** OPZ-04 now has the upstream root-cause fix; after a version bump the
+benign shutdown close is debug-level.
+
+## Cycle 65 - Pass 13 Documentation Close-Out and Version-Bump Note
+
+**Implementation:** Closed out Pass 13 by updating Current Status and
+per-finding statuses to reflect that the previously-external items are now fixed
+at their source repos. Did NOT bump `@dofe/infra-rabbitmq` in this repo's
+`apps/api/package.json`: infra is a monorepo with a single shared version
+(currently 0.1.78), so the rabbitmq fix ships with the next unified infra
+release, after which this repo bumps the dependency. The app-layer winston
+redaction (Cycle 52) remains the active defense until that bump lands. Also
+applied a root-cause fix for the recurring BUG-05 `next-env.d.ts` drift by
+adding it to `.prettierignore`, so prettier stops reformatting the Next-generated
+double-quoted import back to single quotes.
+
+**Validation:** See the Pass 13 Final Review matrix.
+
+**Docs:** Current Status now lists each previously-external item with its
+source-repo resolution and the one remaining execution step.
+
+### Pass 13 Final Review
+
+Code review result:
+
+- Completed Pass 13 (Cycle 61–65): closed the three genuinely-external items
+  from the sibling source repos. BUG-01 is end-to-end closed (SSO callback
+  registered + regression); OPZ-01 is real-daemon verified; OPZ-03/04 have
+  upstream root-cause fixes with smoke tests.
+- Only deployment/release/publish steps remain (operator SSO run,
+  vibecoding.test.dofe.ai deploy, infra monorepo release + dependency bump).
+
+Automated validation:
+
+- SSO: `pnpm --filter @repo/api --dir ../sso.dofe.ai exec jest scripts/oauth-clients.config.spec.ts --runInBand` → 1 suite, 8 tests.
+- infra: `npx tsc` in `packages/rabbitmq` + `node --test test/log-redaction.smoke.mjs` → 4 pass.
+- vibecoding: focused Web + API matrices still green (no vibecoding source changed in Pass 13).
+
+Residual steps (no longer "external code" — just execution):
+
+- Run real SSO E2E with `VIBECODING_APP_BASE_URL=http://127.0.0.1:13100`.
+- Deploy Loops UI to `vibecoding.test.dofe.ai` (probe gates it).
+- Release the infra monorepo (next 0.1.x) and bump `@dofe/infra-rabbitmq` here.

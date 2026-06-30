@@ -15,6 +15,9 @@ coverage/
 # Generated files
 *.generated.*
 prisma/client/
+# Next.js generated TypeScript file — Next dev emits double-quoted imports; do
+# not let prettier reformat it back to single quotes (BUG-05 regression source).
+apps/web/next-env.d.ts
 
 # Lock files
 pnpm-lock.yaml
