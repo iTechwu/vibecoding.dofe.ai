@@ -15,6 +15,7 @@ import {
   type StorageAdapter,
   type RefreshClient,
 } from '@dofe/sso-browser/token-manager';
+import type { SsoUserInfo } from '@dofe/sso-browser/sso-session';
 import { z } from 'zod';
 import { UserInfoSchema, type UserInfo, type LoginSuccess } from '@repo/contracts';
 import { oidcAuthClient, userClient } from './api/contracts/client';
@@ -102,6 +103,28 @@ const SESSION_EXPIRED_MESSAGES = [
   'Session expired',
 ] as const;
 
+function toSsoUserInfo(user: UserInfo): SsoUserInfo {
+  const { email, nickname, ...rest } = user;
+  return {
+    ...rest,
+    nickname: nickname ?? undefined,
+    email: email ?? undefined,
+  };
+}
+
+function toVibecodingUserInfo(user: SsoUserInfo): UserInfo {
+  return {
+    id: user.id,
+    code: user.code ?? null,
+    nickname: user.nickname ?? null,
+    headerImg: user.headerImg ?? null,
+    sex: user.sex ?? null,
+    isAnonymity: user.isAnonymity,
+    isAdmin: user.isAdmin,
+    email: user.email ?? null,
+  };
+}
+
 // ============================================================================
 // Types (re-export for backward compatibility)
 // ============================================================================
@@ -142,12 +165,13 @@ const vibecodingStorageAdapter: StorageAdapter = {
     });
   },
 
-  setUser(user: UserInfo) {
-    storageSetUser(user);
+  setUser(user: SsoUserInfo) {
+    storageSetUser(toVibecodingUserInfo(user));
   },
 
-  getUser(): UserInfo | null {
-    return storageGetUser();
+  getUser(): SsoUserInfo | null {
+    const user = storageGetUser();
+    return user ? toSsoUserInfo(user) : null;
   },
 
   clearAll() {
@@ -231,23 +255,24 @@ const vibecodingRefreshClient: RefreshClient = {
     return {
       access_token: data.access_token,
       expires_in: data.expires_in ?? 3600,
-      user: data.user,
+      user: data.user ? toSsoUserInfo(data.user) : undefined,
     };
   },
 
-  async fetchUser(): Promise<UserInfo | null> {
+  async fetchUser(): Promise<SsoUserInfo | null> {
     try {
       const response = await userClient.check();
       if (response.status === 200 && response.body) {
         const parsed = UserCheckResponseSchema.safeParse(response.body);
         if (parsed.success && parsed.data.data) {
-          return parsed.data.data;
+          return toSsoUserInfo(parsed.data.data);
         }
       }
     } catch {
       // Return existing user if fetch fails
     }
-    return storageGetUser();
+    const user = storageGetUser();
+    return user ? toSsoUserInfo(user) : null;
   },
 };
 

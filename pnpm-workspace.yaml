@@ -2,17 +2,17 @@ packages:
   - 'apps/*'
   - 'packages/*'
 overrides:
-  '@dofe/infra-clients': 0.1.80
-  '@dofe/infra-common': 0.1.80
-  '@dofe/infra-contracts': 0.1.80
-  '@dofe/infra-i18n': 0.1.80
-  '@dofe/infra-jwt': 0.1.80
-  '@dofe/infra-prisma': 0.1.80
-  '@dofe/infra-rabbitmq': 0.1.80
-  '@dofe/infra-redis': 0.1.80
-  '@dofe/infra-shared-db': 0.1.80
-  '@dofe/infra-shared-services': 0.1.80
-  '@dofe/infra-utils': 0.1.80
+  '@dofe/infra-clients': 0.1.81
+  '@dofe/infra-common': 0.1.81
+  '@dofe/infra-contracts': 0.1.81
+  '@dofe/infra-i18n': 0.1.81
+  '@dofe/infra-jwt': 0.1.81
+  '@dofe/infra-prisma': 0.1.81
+  '@dofe/infra-rabbitmq': 0.1.81
+  '@dofe/infra-redis': 0.1.81
+  '@dofe/infra-shared-db': 0.1.81
+  '@dofe/infra-shared-services': 0.1.81
+  '@dofe/infra-utils': 0.1.81
   glob: ^13.0.1
   openai: ^6.17.0
   punycode: ^2.3.1
@@ -66,6 +66,7 @@ allowBuilds:
   unrs-resolver: true
 minimumReleaseAge: 24h
 minimumReleaseAgeExclude:
+  - '@dofe/*'
   - '@dofe/infra-clients@0.1.80'
   - '@dofe/infra-common@0.1.80'
   - '@dofe/infra-config@0.1.80'
