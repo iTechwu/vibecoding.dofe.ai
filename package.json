@@ -70,7 +70,7 @@
     "openssl:random": "openssl rand -hex 32"
   },
   "devDependencies": {
-    "@dofe/infra-config": "0.1.85",
+    "@dofe/infra-config": "0.1.86",
     "@eslint/js": "^10.0.1",
     "eslint": "^10.5.0",
     "eslint-config-prettier": "^10.1.8",

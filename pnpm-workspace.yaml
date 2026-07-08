@@ -2,30 +2,30 @@ packages:
   - 'apps/*'
   - 'packages/*'
 overrides:
-  '@dofe/infra-clients': 0.1.85
-  '@dofe/infra-common': 0.1.85
-  '@dofe/infra-config': 0.1.85
-  '@dofe/infra-contracts': 0.1.85
-  '@dofe/infra-contracts-base': 0.1.85
-  '@dofe/infra-docker': 0.1.85
-  '@dofe/infra-i18n': 0.1.85
-  '@dofe/infra-jwt': 0.1.85
-  '@dofe/infra-module-registry': 0.1.85
-  '@dofe/infra-prisma': 0.1.85
-  '@dofe/infra-prisma-crud-generator': 0.1.85
-  '@dofe/infra-rabbitmq': 0.1.85
-  '@dofe/infra-redis': 0.1.85
-  '@dofe/infra-runtime': 0.1.85
-  '@dofe/infra-shared-db': 0.1.85
-  '@dofe/infra-shared-services': 0.1.85
-  '@dofe/infra-utils': 0.1.85
-  '@dofe/infra-vector': 0.1.85
-  '@dofe/infra-web-runtime': 0.1.85
-  '@dofe/infra-workspace': 0.1.85
-  '@dofe/sso-node': 0.1.63
-  '@dofe/sso-nestjs': 0.1.62
-  '@dofe/file-sdk': 0.1.16
-  '@dofe/file-sdk-web': 0.1.16
+  '@dofe/infra-clients': 0.1.86
+  '@dofe/infra-common': 0.1.86
+  '@dofe/infra-config': 0.1.86
+  '@dofe/infra-contracts': 0.1.86
+  '@dofe/infra-contracts-base': 0.1.86
+  '@dofe/infra-docker': 0.1.86
+  '@dofe/infra-i18n': 0.1.86
+  '@dofe/infra-jwt': 0.1.86
+  '@dofe/infra-module-registry': 0.1.86
+  '@dofe/infra-prisma': 0.1.86
+  '@dofe/infra-prisma-crud-generator': 0.1.86
+  '@dofe/infra-rabbitmq': 0.1.86
+  '@dofe/infra-redis': 0.1.86
+  '@dofe/infra-runtime': 0.1.86
+  '@dofe/infra-shared-db': 0.1.86
+  '@dofe/infra-shared-services': 0.1.86
+  '@dofe/infra-utils': 0.1.86
+  '@dofe/infra-vector': 0.1.86
+  '@dofe/infra-web-runtime': 0.1.86
+  '@dofe/infra-workspace': 0.1.86
+  '@dofe/sso-node': 0.1.64
+  '@dofe/sso-nestjs': 0.1.63
+  '@dofe/file-sdk': 0.1.17
+  '@dofe/file-sdk-web': 0.1.17
   'glob': ^13.0.1
   'openai': ^6.17.0
   'punycode': ^2.3.1
