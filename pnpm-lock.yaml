@@ -5,28 +5,28 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  '@dofe/infra-clients': 0.1.88
-  '@dofe/infra-common': 0.1.88
-  '@dofe/infra-config': 0.1.88
-  '@dofe/infra-contracts': 0.1.88
-  '@dofe/infra-contracts-base': 0.1.88
-  '@dofe/infra-docker': 0.1.88
-  '@dofe/infra-i18n': 0.1.88
-  '@dofe/infra-jwt': 0.1.88
-  '@dofe/infra-module-registry': 0.1.88
-  '@dofe/infra-prisma': 0.1.88
-  '@dofe/infra-prisma-crud-generator': 0.1.88
-  '@dofe/infra-rabbitmq': 0.1.88
-  '@dofe/infra-redis': 0.1.88
-  '@dofe/infra-runtime': 0.1.88
-  '@dofe/infra-shared-db': 0.1.88
-  '@dofe/infra-shared-services': 0.1.88
-  '@dofe/infra-utils': 0.1.88
-  '@dofe/infra-vector': 0.1.88
-  '@dofe/infra-web-runtime': 0.1.88
-  '@dofe/infra-workspace': 0.1.88
-  '@dofe/sso-node': 0.1.66
-  '@dofe/sso-nestjs': 0.1.65
+  '@dofe/infra-clients': 0.1.89
+  '@dofe/infra-common': 0.1.89
+  '@dofe/infra-config': 0.1.89
+  '@dofe/infra-contracts': 0.1.89
+  '@dofe/infra-contracts-base': 0.1.89
+  '@dofe/infra-docker': 0.1.89
+  '@dofe/infra-i18n': 0.1.89
+  '@dofe/infra-jwt': 0.1.89
+  '@dofe/infra-module-registry': 0.1.89
+  '@dofe/infra-prisma': 0.1.89
+  '@dofe/infra-prisma-crud-generator': 0.1.89
+  '@dofe/infra-rabbitmq': 0.1.89
+  '@dofe/infra-redis': 0.1.89
+  '@dofe/infra-runtime': 0.1.89
+  '@dofe/infra-shared-db': 0.1.89
+  '@dofe/infra-shared-services': 0.1.89
+  '@dofe/infra-utils': 0.1.89
+  '@dofe/infra-vector': 0.1.89
+  '@dofe/infra-web-runtime': 0.1.89
+  '@dofe/infra-workspace': 0.1.89
+  '@dofe/sso-node': 0.1.67
+  '@dofe/sso-nestjs': 0.1.66
   '@dofe/file-sdk': 0.1.17
   '@dofe/file-sdk-web': 0.1.17
   glob: ^13.0.1
@@ -50,8 +50,8 @@ importers:
         version: 4.4.3
     devDependencies:
       '@dofe/infra-config':
-        specifier: 0.1.88
-        version: 0.1.88(@eslint/js@10.0.1(eslint@10.5.0(jiti@2.7.0)))(eslint-config-next@16.2.9(@typescript-eslint/parser@8.62.0(eslint@10.5.0(jiti@2.7.0))(typescript@6.0.3))(eslint@10.5.0(jiti@2.7.0))(typescript@6.0.3))(eslint-plugin-prettier@5.5.6(@types/eslint@9.6.1)(eslint-config-prettier@10.1.8(eslint@10.5.0(jiti@2.7.0)))(eslint@10.5.0(jiti@2.7.0))(prettier@3.8.4))(eslint-plugin-react@7.37.5(patch_hash=f1a20832c62f8c7b7a82b7920ce17fdac4c8bdb2828b24e36ba228c08e10e5ad)(eslint@10.5.0(jiti@2.7.0)))(eslint@10.5.0(jiti@2.7.0))(prettier@3.8.4)(typescript@6.0.3)
+        specifier: 0.1.89
+        version: 0.1.89(@eslint/js@10.0.1(eslint@10.5.0(jiti@2.7.0)))(eslint-config-next@16.2.9(@typescript-eslint/parser@8.62.0(eslint@10.5.0(jiti@2.7.0))(typescript@6.0.3))(eslint@10.5.0(jiti@2.7.0))(typescript@6.0.3))(eslint-plugin-prettier@5.5.6(@types/eslint@9.6.1)(eslint-config-prettier@10.1.8(eslint@10.5.0(jiti@2.7.0)))(eslint@10.5.0(jiti@2.7.0))(prettier@3.8.4))(eslint-plugin-react@7.37.5(patch_hash=f1a20832c62f8c7b7a82b7920ce17fdac4c8bdb2828b24e36ba228c08e10e5ad)(eslint@10.5.0(jiti@2.7.0)))(eslint@10.5.0(jiti@2.7.0))(prettier@3.8.4)(typescript@6.0.3)
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.5.0(jiti@2.7.0))
@@ -125,56 +125,56 @@ importers:
         specifier: 0.1.17
         version: 0.1.17
       '@dofe/infra-clients':
-        specifier: 0.1.88
-        version: 0.1.88(4257e80f463209e59f37bb6d7758e934)
+        specifier: 0.1.89
+        version: 0.1.89(74cdec958f41d0a5bedb062394d95963)
       '@dofe/infra-common':
-        specifier: 0.1.88
-        version: 0.1.88(62729eeba6c728cc50e250a5def10110)
+        specifier: 0.1.89
+        version: 0.1.89(3677de0b98cdcf18c2ea4e0743a77338)
       '@dofe/infra-contracts':
-        specifier: 0.1.88
-        version: 0.1.88
+        specifier: 0.1.89
+        version: 0.1.89
       '@dofe/infra-docker':
-        specifier: 0.1.88
-        version: 0.1.88(c2688033e40d483f8e659138a4c15578)
+        specifier: 0.1.89
+        version: 0.1.89(fb236f68df4ad94685ab3fbffb1e14b0)
       '@dofe/infra-i18n':
-        specifier: 0.1.88
-        version: 0.1.88
+        specifier: 0.1.89
+        version: 0.1.89
       '@dofe/infra-jwt':
-        specifier: 0.1.88
-        version: 0.1.88(@dofe/infra-common@0.1.88)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/jwt@11.0.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)))(reflect-metadata@0.2.2)(rxjs@7.8.2)
+        specifier: 0.1.89
+        version: 0.1.89(@dofe/infra-common@0.1.89)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/jwt@11.0.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)))(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@dofe/infra-prisma':
-        specifier: 0.1.88
-        version: 0.1.88(0036b576a5600bf1e6e7d6545a6ce82e)
+        specifier: 0.1.89
+        version: 0.1.89(4a860de06a6b001a80d7c1945cd9cc42)
       '@dofe/infra-rabbitmq':
-        specifier: 0.1.88
-        version: 0.1.88(4fd29334d14ca2875214563b88789caa)
+        specifier: 0.1.89
+        version: 0.1.89(149d61fc36c8d9cd023583eeb5dfcfde)
       '@dofe/infra-redis':
-        specifier: 0.1.88
-        version: 0.1.88(@dofe/infra-contracts@0.1.88)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/core@11.1.27)(ioredis@5.10.1)(nest-winston@1.10.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(winston@3.19.0))(reflect-metadata@0.2.2)(rxjs@7.8.2)(uuid@14.0.1)(winston@3.19.0)
+        specifier: 0.1.89
+        version: 0.1.89(@dofe/infra-contracts@0.1.89)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/core@11.1.27)(ioredis@5.10.1)(nest-winston@1.10.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(winston@3.19.0))(reflect-metadata@0.2.2)(rxjs@7.8.2)(uuid@14.0.1)(winston@3.19.0)
       '@dofe/infra-runtime':
-        specifier: 0.1.88
-        version: 0.1.88
+        specifier: 0.1.89
+        version: 0.1.89
       '@dofe/infra-shared-db':
-        specifier: 0.1.88
-        version: 0.1.88(0036b576a5600bf1e6e7d6545a6ce82e)
+        specifier: 0.1.89
+        version: 0.1.89(4a860de06a6b001a80d7c1945cd9cc42)
       '@dofe/infra-shared-services':
-        specifier: 0.1.88
-        version: 0.1.88(ed42d464289a4c5eb08ba48b389b8700)
+        specifier: 0.1.89
+        version: 0.1.89(d1ddef12360ba48ff486ae2289852fcc)
       '@dofe/infra-utils':
-        specifier: 0.1.88
-        version: 0.1.88(@dofe/infra-contracts@0.1.88)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)
+        specifier: 0.1.89
+        version: 0.1.89(@dofe/infra-contracts@0.1.89)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)
       '@dofe/infra-workspace':
-        specifier: 0.1.88
-        version: 0.1.88
+        specifier: 0.1.89
+        version: 0.1.89
       '@dofe/sso-contracts':
         specifier: 0.1.74
         version: 0.1.74(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
       '@dofe/sso-nestjs':
-        specifier: 0.1.65
-        version: 0.1.65(@nestjs/axios@4.0.1(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.18.1(debug@4.4.3))(rxjs@7.8.2))(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(rxjs@7.8.2)
-      '@dofe/sso-node':
         specifier: 0.1.66
-        version: 0.1.66
+        version: 0.1.66(@nestjs/axios@4.0.1(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.18.1(debug@4.4.3))(rxjs@7.8.2))(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(rxjs@7.8.2)
+      '@dofe/sso-node':
+        specifier: 0.1.67
+        version: 0.1.67
       '@fastify/compress':
         specifier: ^8.3.1
         version: 8.3.1
@@ -429,8 +429,8 @@ importers:
         version: 4.4.3
     devDependencies:
       '@dofe/infra-prisma-crud-generator':
-        specifier: 0.1.88
-        version: 0.1.88
+        specifier: 0.1.89
+        version: 0.1.89
       '@nestjs/cli':
         specifier: ^11.0.23
         version: 11.0.23(@swc/core@1.15.43)(@types/node@25.9.4)(prettier@3.8.4)(webpack-cli@7.0.3)
@@ -564,14 +564,14 @@ importers:
         specifier: 0.1.17
         version: 0.1.17
       '@dofe/infra-contracts':
-        specifier: 0.1.88
-        version: 0.1.88
+        specifier: 0.1.89
+        version: 0.1.89
       '@dofe/infra-web-runtime':
-        specifier: 0.1.88
-        version: 0.1.88(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(clsx@2.1.1)(tailwind-merge@3.6.0)(zod@4.4.3)
+        specifier: 0.1.89
+        version: 0.1.89(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(clsx@2.1.1)(tailwind-merge@3.6.0)(zod@4.4.3)
       '@dofe/sso-browser':
-        specifier: 0.1.88
-        version: 0.1.88(react@19.2.6)
+        specifier: 0.1.89
+        version: 0.1.89(react@19.2.6)
       '@dofe/sso-contracts':
         specifier: 0.1.74
         version: 0.1.74(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
@@ -721,11 +721,11 @@ importers:
   packages/contracts:
     dependencies:
       '@dofe/infra-contracts':
-        specifier: 0.1.88
-        version: 0.1.88
+        specifier: 0.1.89
+        version: 0.1.89
       '@dofe/infra-contracts-base':
-        specifier: 0.1.88
-        version: 0.1.88(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
+        specifier: 0.1.89
+        version: 0.1.89(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
       '@ts-rest/core':
         specifier: 3.53.0-rc.1
         version: 3.53.0-rc.1(@types/node@25.9.4)
@@ -755,8 +755,8 @@ importers:
   packages/ui:
     dependencies:
       '@dofe/infra-web-runtime':
-        specifier: 0.1.88
-        version: 0.1.88(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(clsx@2.1.1)(tailwind-merge@3.6.0)(zod@4.4.3)
+        specifier: 0.1.89
+        version: 0.1.89(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(clsx@2.1.1)(tailwind-merge@3.6.0)(zod@4.4.3)
       '@hookform/resolvers':
         specifier: ^5.4.0
         version: 5.4.0(react-hook-form@7.80.0(react@19.2.7))
@@ -894,8 +894,8 @@ importers:
   packages/utils:
     dependencies:
       '@dofe/infra-contracts':
-        specifier: 0.1.88
-        version: 0.1.88
+        specifier: 0.1.89
+        version: 0.1.89
       '@repo/types':
         specifier: workspace:*
         version: link:../types
@@ -1463,8 +1463,8 @@ packages:
   '@dofe/file-sdk@0.1.17':
     resolution: {integrity: sha512-x5xyftPE7PEhjn/NeW9tWwys/tSiShgglMF8F/vPUP/hYhNT+LWz+EVA/czu8LFOpedGeLpcpKoNXn9aj4vQGA==}
 
-  '@dofe/infra-clients@0.1.88':
-    resolution: {integrity: sha512-TRCpO254kmuVI9ajuPUXcpMM0exQ4TappH8j7vb1z0zOw/X0wck6ql9hdoF5sQn/Gs7pR/FlCpEh7oJFOBny9Q==}
+  '@dofe/infra-clients@0.1.89':
+    resolution: {integrity: sha512-NnCHhLUb+KP9GWBs+m6Ts3yjLulCEm90O084rAmE0SdVeSiNLluRN/jpDf1V9jqOnI9lI2558JkKL7KN+JOYiw==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
       '@alicloud/dysmsapi20170525': ^3.0.0 || ^4.0.0
@@ -1472,8 +1472,8 @@ packages:
       '@aws-sdk/client-s3': ^3.978.0
       '@aws-sdk/client-sts': ^3.1024.0
       '@aws-sdk/s3-request-presigner': ^3.978.0
-      '@dofe/infra-contracts': 0.1.88
-      '@dofe/infra-docker': 0.1.88
+      '@dofe/infra-contracts': 0.1.89
+      '@dofe/infra-docker': 0.1.89
       '@google-cloud/storage': ^7.12.0
       '@larksuiteoapi/node-sdk': ^1.30.0
       '@nestjs/axios': ^4.0.0
@@ -1500,13 +1500,13 @@ packages:
       ws: ^8.18.3
       zod: ^4.3.6
 
-  '@dofe/infra-common@0.1.88':
-    resolution: {integrity: sha512-dhQhR4yWlkKHwdxXjOyEQbT3zd0zVLdbMQiaoPM+ilKf8P2oafMb0N9lBWu0aFj5fFj3XeYGAQZi7KNWOMVXuw==}
+  '@dofe/infra-common@0.1.89':
+    resolution: {integrity: sha512-u07q9xk7kqq661toxzgqCFm97WKgkbpUue8q3iTqHWhRcIWtX0d6XhDi8GW+lbi3Vp71bwZF2UnRApk+eT9V+A==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
-      '@dofe/infra-contracts': 0.1.88
-      '@dofe/infra-jwt': 0.1.88
-      '@dofe/infra-redis': 0.1.88
+      '@dofe/infra-contracts': 0.1.89
+      '@dofe/infra-jwt': 0.1.89
+      '@dofe/infra-redis': 0.1.89
       '@nestjs/common': ^11.0.0
       '@nestjs/config': ^4.0.0
       '@nestjs/core': ^11.0.0
@@ -1529,8 +1529,8 @@ packages:
       winston: ^3.13.0
       zod: ^4.3.6
 
-  '@dofe/infra-config@0.1.88':
-    resolution: {integrity: sha512-BOnGwrftI2Gk9cuMDbshXbOUANqxzVJNHAegYLQu01oL/dmGBq0Km0RCr+3Ma1FdRwb7RFi8S7lDrceI6LOBXA==}
+  '@dofe/infra-config@0.1.89':
+    resolution: {integrity: sha512-xvZ+LQ+osYVvAuMQXeDwv/G6T3uHkSVjgUFAKthklbSeI+yE8M2kyeoE1jqIVYLOI8D2UFxFp30WYFOpewwxXg==}
     peerDependencies:
       '@eslint/js': '>=9'
       eslint: '>=9'
@@ -1545,20 +1545,20 @@ packages:
       eslint-plugin-react:
         optional: true
 
-  '@dofe/infra-contracts-base@0.1.88':
-    resolution: {integrity: sha512-9QMae0KNMxyRtM2jRjBBkrP7/I/Gl9Wha0rNxPjFvs9dimBWwk+z1lD406UquKKBL9a8uovSgw2Bp7qq+FXk2A==}
+  '@dofe/infra-contracts-base@0.1.89':
+    resolution: {integrity: sha512-GFOleM3exKARxMeDHYzJ0Ze+TO/DG/ZamCr6Poh32QD8VbmcHaTjLJpjbQHOsHnL1PJvUt2/13ddg0KGiOavig==}
     peerDependencies:
       '@ts-rest/core': 3.53.0-rc.1
       zod: ^4.0.0
 
-  '@dofe/infra-contracts@0.1.88':
-    resolution: {integrity: sha512-BjuuiXsHStckfSbO8r4KiEXv1drs5r9HQoxQDTj6gD2b+XDaUbdy8ZwIiRcvfPHuHtf05NnjM0tnE2z07Xa6GQ==}
+  '@dofe/infra-contracts@0.1.89':
+    resolution: {integrity: sha512-evE2wzAaJOkVJEwuzhg/OXinPRE7ueCNkCl6l6JUzJ2Yv3Yb1Aj1EcQRao9n2H+5wvTl0ZuoByXTf5KDo+1UiQ==}
 
-  '@dofe/infra-docker@0.1.88':
-    resolution: {integrity: sha512-tOkZVcGlQTXgHeW/M8jSUZc6ANGCN4mvCZsdEX+iymYWvw8PYm+Fk0Ar7iIlplkpGwXPLWAzjxQlLhoA41ymWA==}
+  '@dofe/infra-docker@0.1.89':
+    resolution: {integrity: sha512-RqC9ky5hYBqA1XPkWa7vNQ8J9ifh9mkrWriEfAyRNtYnAhrTdqVrRCVsZCFZMsfPlZV2cPRDUOd3qNdgxqmUdQ==}
     peerDependencies:
-      '@dofe/infra-common': 0.1.88
-      '@dofe/infra-utils': 0.1.88
+      '@dofe/infra-common': 0.1.89
+      '@dofe/infra-utils': 0.1.89
       '@nestjs/common': ^11.0.0
       '@nestjs/config': ^4.0.0
       '@nestjs/core': ^11.0.0
@@ -1568,25 +1568,25 @@ packages:
       rxjs: 7.8.2
       winston: ^3.13.0
 
-  '@dofe/infra-i18n@0.1.88':
-    resolution: {integrity: sha512-7jYZxLUvj/v9EN1C+BvtZcCTQomyxRRcirVzQ21Cmwyqx68lZmZY6cgL4Xx7VERChMBsvyI017/xx34OWkeL3w==}
+  '@dofe/infra-i18n@0.1.89':
+    resolution: {integrity: sha512-UA4TBivFU7MJa7UXN8P35uKzqu/RapqUUuo1j1wXb7ZcXthEG2GzybRt15ATj7KPhaRtOQZEE45FXAU+gm+SfA==}
 
-  '@dofe/infra-jwt@0.1.88':
-    resolution: {integrity: sha512-1EoTrUSWbHZPs/pbSfS5VtOT3rzUt65xilN/ptnleLRjbntH9NzTCts1N0yhvohOsI2eKUhYJO+1FLJQFqU7pw==}
+  '@dofe/infra-jwt@0.1.89':
+    resolution: {integrity: sha512-mfU236c4PI6iSiUyvEuOZwlKR1zzezxOlYd0K1Tf1Vme+xY9qGF8/Tl88m7dCsRhfJNn5xoes2xZk3jhoSDWeA==}
     peerDependencies:
-      '@dofe/infra-common': 0.1.88
+      '@dofe/infra-common': 0.1.89
       '@nestjs/common': ^11.0.0
       '@nestjs/config': ^4.0.0
       '@nestjs/jwt': ^11.0.0
       reflect-metadata: ^0.2.0
       rxjs: 7.8.2
 
-  '@dofe/infra-prisma-crud-generator@0.1.88':
-    resolution: {integrity: sha512-kF7QKVRMYwflHG4RASw4BMk5ypMXruVtr/hjQ1QnvUopbljgID3VR8gwAd4sAUx47YhwzUymk33qo7tJHCRz7Q==}
+  '@dofe/infra-prisma-crud-generator@0.1.89':
+    resolution: {integrity: sha512-EwpiuuYkpb1WcDOKfjzb8t3CM0Ba+4s8U+QU1VK1S+NzPb1SwDR5AvIgUMYungeM3n0hkzqMI1DHRDzv78CuKA==}
     hasBin: true
 
-  '@dofe/infra-prisma@0.1.88':
-    resolution: {integrity: sha512-/xkM6t5apMhtawamA95s79bl0oPPQ815CJQ2HN6A9kGuffZnCZI7/ZulfisSxp3vT0SsI3IqxXW7fOdyMN9TdQ==}
+  '@dofe/infra-prisma@0.1.89':
+    resolution: {integrity: sha512-t2B/2VlbNqhWZJbmOcgEZkPfgyDlpsO3oU62A9LpaWShj5VGuKMbXYic+bLRmjbpzgj1qHvJVZzzW7uuf/glYQ==}
     peerDependencies:
       '@nestjs/common': ^11.0.0
       '@nestjs/config': ^4.0.0
@@ -1603,10 +1603,10 @@ packages:
       rxjs: 7.8.2
       winston: ^3.13.0
 
-  '@dofe/infra-rabbitmq@0.1.88':
-    resolution: {integrity: sha512-hzbM9y0jXjze29HyCm5rhTSiQKRDSBMoTR0AY5NjVdp5A6F0d4px9a2gzO1cdZxzC6AJam7x1QwJlW7fi6uwwA==}
+  '@dofe/infra-rabbitmq@0.1.89':
+    resolution: {integrity: sha512-LorxYT+HWB8qCao5WJXd36k4jE5sKb3pPMD5IfDL4D498zQrXTaWTup4jIq33E8P/R2C6/4XXuMB90tVdlK+3w==}
     peerDependencies:
-      '@dofe/infra-utils': 0.1.88
+      '@dofe/infra-utils': 0.1.89
       '@nestjs/common': ^11.0.0
       '@nestjs/config': ^4.0.0
       '@nestjs/core': ^11.0.0
@@ -1618,10 +1618,10 @@ packages:
       rxjs: 7.8.2
       winston: ^3.13.0
 
-  '@dofe/infra-redis@0.1.88':
-    resolution: {integrity: sha512-F5dPMUN7u1PTKtqOtKZtHd0g4Q/TtsXt+aKGP2V53n3SLK8cPnq5HIlLF0EZQPDqihTOhhjhbvXnpMlyZH1DQg==}
+  '@dofe/infra-redis@0.1.89':
+    resolution: {integrity: sha512-145pOOysfAen4welxvlezkURIB24Aoui1Agn4kERo/dfCLAxod4SYYkm6uaIvOij+s8jZHl6lSNuvLrtYEVz1g==}
     peerDependencies:
-      '@dofe/infra-contracts': 0.1.88
+      '@dofe/infra-contracts': 0.1.89
       '@nestjs/common': ^11.0.0
       '@nestjs/config': ^4.0.0
       '@nestjs/core': ^11.0.0
@@ -1632,12 +1632,12 @@ packages:
       uuid: ^14.0.0
       winston: ^3.13.0
 
-  '@dofe/infra-runtime@0.1.88':
-    resolution: {integrity: sha512-gHJh7vXQWCcWd27AL/zIPOFzwobXfrU2lvJWQ81rY5wY+3yJKektK9dqdpU3ZCVXdqZHHAGAH0Ht8iFHVO9BZA==}
+  '@dofe/infra-runtime@0.1.89':
+    resolution: {integrity: sha512-p4ub0a5YfIVi0ik7z+38f82VWOxKd0xVWAWYJZFYI0SzJJ1SjgD042WUgnDf0qtZSHIKOD2KKAq1iZLRK/nAgg==}
     engines: {node: '>=20.19.0'}
 
-  '@dofe/infra-shared-db@0.1.88':
-    resolution: {integrity: sha512-XBy3C0z2EbWTvxP/C0DuNHa6DACro/d5MBS97ymJb85Vwn7Hrj/VZGhn9CoGqmUM9gn5+XyzSNDOGNLr4uyjAQ==}
+  '@dofe/infra-shared-db@0.1.89':
+    resolution: {integrity: sha512-cBAr4feqIsQNWNmyEhuGr2T6x8gjKnlkXBKposyEfeLa481EVNmxJ06ywxz1OzZ+ZMZtWWzFE3Q0nDhL3FIc/A==}
     peerDependencies:
       '@nestjs/common': ^11.0.0
       '@nestjs/core': ^11.0.0
@@ -1645,14 +1645,14 @@ packages:
       reflect-metadata: ^0.2.0
       rxjs: 7.8.2
 
-  '@dofe/infra-shared-services@0.1.88':
-    resolution: {integrity: sha512-b6uyXb6vjM9hHPzprkLAZh/DOg9rZlGIYKGVbkWHi/cMnLgmX+N1FlaXj4mC2y89xlda93QbpP65yNRgG5EgeQ==}
+  '@dofe/infra-shared-services@0.1.89':
+    resolution: {integrity: sha512-OJXrpM1TnShFTwEEz9l9uf0aqSsXDBrtjMMuUhM1pjIeqEee7U2/dMTjJ/MxYKJUOUTNQtDdBNN6O6ujzCEeOg==}
     peerDependencies:
       '@alicloud/imm20200930': ^4.6.2
       '@alicloud/openapi-core': ^1.0.7
       '@darabonba/typescript': ^1.0.4
-      '@dofe/infra-clients': 0.1.88
-      '@dofe/infra-contracts': 0.1.88
+      '@dofe/infra-clients': 0.1.89
+      '@dofe/infra-contracts': 0.1.89
       '@nestjs/axios': ^4.0.0
       '@nestjs/common': ^11.0.0
       '@nestjs/config': ^4.0.0
@@ -1677,11 +1677,11 @@ packages:
       ws: ^8.18.3
       zod: ^4.3.6
 
-  '@dofe/infra-utils@0.1.88':
-    resolution: {integrity: sha512-proe8ESSKgFzGVVD8hvTBRVY2UWiPZQMBq7OeNUWLMfipY3YTqaPtsMyQPkD59uJse2YH6xvImSJ0YBoy0u4uA==}
+  '@dofe/infra-utils@0.1.89':
+    resolution: {integrity: sha512-5OwIVdH9FEgWtGo+OfmKAhI+FXpfO4s855qwGr8BFfs/wI/tjBNzYAVe9ugIickqHDDTxf50sy2PS1gsXfJOZA==}
     engines: {node: '>=20.19.0'}
     peerDependencies:
-      '@dofe/infra-contracts': 0.1.88
+      '@dofe/infra-contracts': 0.1.89
       '@nestjs/swagger': ^11.0.0
       '@prisma/client': ^7.0.0
       bcrypt: ^5.1.0 || ^6.0.0
@@ -1695,8 +1695,8 @@ packages:
       winston: ^3.13.0
       winston-daily-rotate-file: ^5.0.0
 
-  '@dofe/infra-web-runtime@0.1.88':
-    resolution: {integrity: sha512-GjYbrenrviOsAi3qexMawKBE8IUybvPoyDOVqA/AJnT/xtvQmQm6wkOmzLmhPuP8Bx3DcZmWp2MFdFxjqCIUIw==}
+  '@dofe/infra-web-runtime@0.1.89':
+    resolution: {integrity: sha512-WgItjBzX7//cnr6tL9Sjo/EM3joUf14D1+O7p3KMoDqcLIa5CHloCHeSWjVf5Dpu31EaVoFkGLAmJHBzuHTfPQ==}
     peerDependencies:
       '@ts-rest/core': '>=3'
       clsx: '>=2'
@@ -1712,12 +1712,12 @@ packages:
       zod:
         optional: true
 
-  '@dofe/infra-workspace@0.1.88':
-    resolution: {integrity: sha512-XayEzWE59pcQprkKBnaGKVJb/rh+4ibSv1a06ccrDiS8e0JlsL72uxGjovBN++peZNZcVAVMpx6R3hfUTnxDTQ==}
+  '@dofe/infra-workspace@0.1.89':
+    resolution: {integrity: sha512-QJLKIIScCIP+/oc7BJ0f4IcR62bFA9VX9vU5FBCMo0B/IEQ5kaX68GHsOUjKRNeQ87lgkaNFf/EXXHchwIlYvA==}
     engines: {node: '>=20.19.0'}
 
-  '@dofe/sso-browser@0.1.88':
-    resolution: {integrity: sha512-PaMw9v6Tum9vbOQE61eWIMeLAGN7aUuZb9i941WZgp7Zc8ZKo5ONT/LobPUn5apr2pIKNu0onCciF+auq40MPA==}
+  '@dofe/sso-browser@0.1.89':
+    resolution: {integrity: sha512-uWcuPHiuxejQXAPxgCHhC7wEbe/oEO1lUWx5P292wd1ZznpOb1M2crKQLlX8tGHcKaQWtrqhSS9awXaWfMc35w==}
     peerDependencies:
       react: '>=18'
 
@@ -1727,8 +1727,8 @@ packages:
       '@ts-rest/core': '>=3.53.0-rc.1'
       zod: ^4.4.3
 
-  '@dofe/sso-nestjs@0.1.65':
-    resolution: {integrity: sha512-bGor43vuOpBtYZ+V9e0wuh9XhAQx/Z5jsIec5K6qOSbKNeG0bF3myEq2TYW4R0XPfir5ZF7sTB/aXVQyctfs8A==}
+  '@dofe/sso-nestjs@0.1.66':
+    resolution: {integrity: sha512-D4yKCOaxNyxo80oQpXk8yiA+wkmiabHcvSmF/EMwiN2sVrAj0X8lRUSmwoj2Wkdt0vYW/lcE2Ogi8yGW6UYIrA==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@nestjs/axios': ^4.0.0
@@ -1736,8 +1736,8 @@ packages:
       '@nestjs/core': ^11.0.0
       rxjs: 7.8.2
 
-  '@dofe/sso-node@0.1.66':
-    resolution: {integrity: sha512-vwns7nSnxflBld/hl94lUEexfshkQGC+A0+gskxi0KPvqnQduTpu6WD06fDBiBXWvR+fihy9pOHn9Hmg/uGaeg==}
+  '@dofe/sso-node@0.1.67':
+    resolution: {integrity: sha512-5zg9KEW8Ze8u6zBCE1+emLyir0KfqJnk55R29FLG0g0otWlJZo6SpYfl4EJaAH0ujATAA45TR4bNFKuWFWO5Kg==}
     engines: {node: '>=18.0.0'}
 
   '@electric-sql/pglite-socket@0.1.1':
@@ -10877,18 +10877,18 @@ snapshots:
 
   '@dofe/file-sdk@0.1.17': {}
 
-  '@dofe/infra-clients@0.1.88(4257e80f463209e59f37bb6d7758e934)':
+  '@dofe/infra-clients@0.1.89(74cdec958f41d0a5bedb062394d95963)':
     dependencies:
       '@alicloud/dysmsapi20170525': 4.5.1
       '@alicloud/openapi-client': 0.4.15
       '@aws-sdk/client-s3': 3.1075.0
       '@aws-sdk/client-sts': 3.1075.0
       '@aws-sdk/s3-request-presigner': 3.1075.0
-      '@dofe/infra-common': 0.1.88(62729eeba6c728cc50e250a5def10110)
-      '@dofe/infra-contracts': 0.1.88
-      '@dofe/infra-docker': 0.1.88(c2688033e40d483f8e659138a4c15578)
-      '@dofe/infra-redis': 0.1.88(@dofe/infra-contracts@0.1.88)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/core@11.1.27)(ioredis@5.10.1)(nest-winston@1.10.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(winston@3.19.0))(reflect-metadata@0.2.2)(rxjs@7.8.2)(uuid@14.0.1)(winston@3.19.0)
-      '@dofe/infra-utils': 0.1.88(@dofe/infra-contracts@0.1.88)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)
+      '@dofe/infra-common': 0.1.89(3677de0b98cdcf18c2ea4e0743a77338)
+      '@dofe/infra-contracts': 0.1.89
+      '@dofe/infra-docker': 0.1.89(fb236f68df4ad94685ab3fbffb1e14b0)
+      '@dofe/infra-redis': 0.1.89(@dofe/infra-contracts@0.1.89)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/core@11.1.27)(ioredis@5.10.1)(nest-winston@1.10.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(winston@3.19.0))(reflect-metadata@0.2.2)(rxjs@7.8.2)(uuid@14.0.1)(winston@3.19.0)
+      '@dofe/infra-utils': 0.1.89(@dofe/infra-contracts@0.1.89)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)
       '@google-cloud/storage': 7.21.0
       '@larksuiteoapi/node-sdk': 1.67.0
       '@nestjs/axios': 4.0.1(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.18.1(debug@4.4.3))(rxjs@7.8.2)
@@ -10933,13 +10933,13 @@ snapshots:
       - pinyin-pro
       - winston-daily-rotate-file
 
-  '@dofe/infra-common@0.1.88(62729eeba6c728cc50e250a5def10110)':
+  '@dofe/infra-common@0.1.89(3677de0b98cdcf18c2ea4e0743a77338)':
     dependencies:
-      '@dofe/infra-contracts': 0.1.88
-      '@dofe/infra-i18n': 0.1.88
-      '@dofe/infra-jwt': 0.1.88(@dofe/infra-common@0.1.88)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/jwt@11.0.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)))(reflect-metadata@0.2.2)(rxjs@7.8.2)
-      '@dofe/infra-redis': 0.1.88(@dofe/infra-contracts@0.1.88)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/core@11.1.27)(ioredis@5.10.1)(nest-winston@1.10.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(winston@3.19.0))(reflect-metadata@0.2.2)(rxjs@7.8.2)(uuid@14.0.1)(winston@3.19.0)
-      '@dofe/infra-utils': 0.1.88(@dofe/infra-contracts@0.1.88)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)
+      '@dofe/infra-contracts': 0.1.89
+      '@dofe/infra-i18n': 0.1.89
+      '@dofe/infra-jwt': 0.1.89(@dofe/infra-common@0.1.89)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/jwt@11.0.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)))(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@dofe/infra-redis': 0.1.89(@dofe/infra-contracts@0.1.89)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/core@11.1.27)(ioredis@5.10.1)(nest-winston@1.10.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(winston@3.19.0))(reflect-metadata@0.2.2)(rxjs@7.8.2)(uuid@14.0.1)(winston@3.19.0)
+      '@dofe/infra-utils': 0.1.89(@dofe/infra-contracts@0.1.89)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)
       '@nestjs/common': 11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/config': 4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2)
       '@nestjs/core': 11.1.27(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/microservices@11.1.27)(@nestjs/websockets@11.1.27)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -10970,7 +10970,7 @@ snapshots:
       - pinyin-pro
       - winston-daily-rotate-file
 
-  '@dofe/infra-config@0.1.88(@eslint/js@10.0.1(eslint@10.5.0(jiti@2.7.0)))(eslint-config-next@16.2.9(@typescript-eslint/parser@8.62.0(eslint@10.5.0(jiti@2.7.0))(typescript@6.0.3))(eslint@10.5.0(jiti@2.7.0))(typescript@6.0.3))(eslint-plugin-prettier@5.5.6(@types/eslint@9.6.1)(eslint-config-prettier@10.1.8(eslint@10.5.0(jiti@2.7.0)))(eslint@10.5.0(jiti@2.7.0))(prettier@3.8.4))(eslint-plugin-react@7.37.5(patch_hash=f1a20832c62f8c7b7a82b7920ce17fdac4c8bdb2828b24e36ba228c08e10e5ad)(eslint@10.5.0(jiti@2.7.0)))(eslint@10.5.0(jiti@2.7.0))(prettier@3.8.4)(typescript@6.0.3)':
+  '@dofe/infra-config@0.1.89(@eslint/js@10.0.1(eslint@10.5.0(jiti@2.7.0)))(eslint-config-next@16.2.9(@typescript-eslint/parser@8.62.0(eslint@10.5.0(jiti@2.7.0))(typescript@6.0.3))(eslint@10.5.0(jiti@2.7.0))(typescript@6.0.3))(eslint-plugin-prettier@5.5.6(@types/eslint@9.6.1)(eslint-config-prettier@10.1.8(eslint@10.5.0(jiti@2.7.0)))(eslint@10.5.0(jiti@2.7.0))(prettier@3.8.4))(eslint-plugin-react@7.37.5(patch_hash=f1a20832c62f8c7b7a82b7920ce17fdac4c8bdb2828b24e36ba228c08e10e5ad)(eslint@10.5.0(jiti@2.7.0)))(eslint@10.5.0(jiti@2.7.0))(prettier@3.8.4)(typescript@6.0.3)':
     dependencies:
       '@eslint/js': 10.0.1(eslint@10.5.0(jiti@2.7.0))
       eslint: 10.5.0(jiti@2.7.0)
@@ -10981,17 +10981,17 @@ snapshots:
       eslint-config-next: 16.2.9(@typescript-eslint/parser@8.62.0(eslint@10.5.0(jiti@2.7.0))(typescript@6.0.3))(eslint@10.5.0(jiti@2.7.0))(typescript@6.0.3)
       eslint-plugin-react: 7.37.5(patch_hash=f1a20832c62f8c7b7a82b7920ce17fdac4c8bdb2828b24e36ba228c08e10e5ad)(eslint@10.5.0(jiti@2.7.0))
 
-  '@dofe/infra-contracts-base@0.1.88(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)':
+  '@dofe/infra-contracts-base@0.1.89(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)':
     dependencies:
       '@ts-rest/core': 3.53.0-rc.1(@types/node@25.9.4)
       zod: 4.4.3
 
-  '@dofe/infra-contracts@0.1.88': {}
+  '@dofe/infra-contracts@0.1.89': {}
 
-  '@dofe/infra-docker@0.1.88(c2688033e40d483f8e659138a4c15578)':
+  '@dofe/infra-docker@0.1.89(fb236f68df4ad94685ab3fbffb1e14b0)':
     dependencies:
-      '@dofe/infra-common': 0.1.88(62729eeba6c728cc50e250a5def10110)
-      '@dofe/infra-utils': 0.1.88(@dofe/infra-contracts@0.1.88)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)
+      '@dofe/infra-common': 0.1.89(3677de0b98cdcf18c2ea4e0743a77338)
+      '@dofe/infra-utils': 0.1.89(@dofe/infra-contracts@0.1.89)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)
       '@nestjs/common': 11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/config': 4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2)
       '@nestjs/core': 11.1.27(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/microservices@11.1.27)(@nestjs/websockets@11.1.27)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -11001,24 +11001,24 @@ snapshots:
       rxjs: 7.8.2
       winston: 3.19.0
 
-  '@dofe/infra-i18n@0.1.88': {}
+  '@dofe/infra-i18n@0.1.89': {}
 
-  '@dofe/infra-jwt@0.1.88(@dofe/infra-common@0.1.88)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/jwt@11.0.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)))(reflect-metadata@0.2.2)(rxjs@7.8.2)':
+  '@dofe/infra-jwt@0.1.89(@dofe/infra-common@0.1.89)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/jwt@11.0.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)))(reflect-metadata@0.2.2)(rxjs@7.8.2)':
     dependencies:
-      '@dofe/infra-common': 0.1.88(62729eeba6c728cc50e250a5def10110)
+      '@dofe/infra-common': 0.1.89(3677de0b98cdcf18c2ea4e0743a77338)
       '@nestjs/common': 11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/config': 4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2)
       '@nestjs/jwt': 11.0.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))
       reflect-metadata: 0.2.2
       rxjs: 7.8.2
 
-  '@dofe/infra-prisma-crud-generator@0.1.88': {}
+  '@dofe/infra-prisma-crud-generator@0.1.89': {}
 
-  '@dofe/infra-prisma@0.1.88(0036b576a5600bf1e6e7d6545a6ce82e)':
+  '@dofe/infra-prisma@0.1.89(4a860de06a6b001a80d7c1945cd9cc42)':
     dependencies:
-      '@dofe/infra-common': 0.1.88(62729eeba6c728cc50e250a5def10110)
-      '@dofe/infra-redis': 0.1.88(@dofe/infra-contracts@0.1.88)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/core@11.1.27)(ioredis@5.10.1)(nest-winston@1.10.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(winston@3.19.0))(reflect-metadata@0.2.2)(rxjs@7.8.2)(uuid@14.0.1)(winston@3.19.0)
-      '@dofe/infra-utils': 0.1.88(@dofe/infra-contracts@0.1.88)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)
+      '@dofe/infra-common': 0.1.89(3677de0b98cdcf18c2ea4e0743a77338)
+      '@dofe/infra-redis': 0.1.89(@dofe/infra-contracts@0.1.89)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/core@11.1.27)(ioredis@5.10.1)(nest-winston@1.10.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(winston@3.19.0))(reflect-metadata@0.2.2)(rxjs@7.8.2)(uuid@14.0.1)(winston@3.19.0)
+      '@dofe/infra-utils': 0.1.89(@dofe/infra-contracts@0.1.89)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)
       '@nestjs/common': 11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/config': 4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2)
       '@nestjs/core': 11.1.27(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/microservices@11.1.27)(@nestjs/websockets@11.1.27)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -11055,9 +11055,9 @@ snapshots:
       - winston-daily-rotate-file
       - zod
 
-  '@dofe/infra-rabbitmq@0.1.88(4fd29334d14ca2875214563b88789caa)':
+  '@dofe/infra-rabbitmq@0.1.89(149d61fc36c8d9cd023583eeb5dfcfde)':
     dependencies:
-      '@dofe/infra-utils': 0.1.88(@dofe/infra-contracts@0.1.88)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)
+      '@dofe/infra-utils': 0.1.89(@dofe/infra-contracts@0.1.89)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)
       '@nestjs/common': 11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/config': 4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2)
       '@nestjs/core': 11.1.27(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/microservices@11.1.27)(@nestjs/websockets@11.1.27)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -11069,9 +11069,9 @@ snapshots:
       rxjs: 7.8.2
       winston: 3.19.0
 
-  '@dofe/infra-redis@0.1.88(@dofe/infra-contracts@0.1.88)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/core@11.1.27)(ioredis@5.10.1)(nest-winston@1.10.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(winston@3.19.0))(reflect-metadata@0.2.2)(rxjs@7.8.2)(uuid@14.0.1)(winston@3.19.0)':
+  '@dofe/infra-redis@0.1.89(@dofe/infra-contracts@0.1.89)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/core@11.1.27)(ioredis@5.10.1)(nest-winston@1.10.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(winston@3.19.0))(reflect-metadata@0.2.2)(rxjs@7.8.2)(uuid@14.0.1)(winston@3.19.0)':
     dependencies:
-      '@dofe/infra-contracts': 0.1.88
+      '@dofe/infra-contracts': 0.1.89
       '@nestjs/common': 11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/config': 4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2)
       '@nestjs/core': 11.1.27(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/microservices@11.1.27)(@nestjs/websockets@11.1.27)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -11082,13 +11082,13 @@ snapshots:
       uuid: 14.0.1
       winston: 3.19.0
 
-  '@dofe/infra-runtime@0.1.88': {}
+  '@dofe/infra-runtime@0.1.89': {}
 
-  '@dofe/infra-shared-db@0.1.88(0036b576a5600bf1e6e7d6545a6ce82e)':
+  '@dofe/infra-shared-db@0.1.89(4a860de06a6b001a80d7c1945cd9cc42)':
     dependencies:
-      '@dofe/infra-common': 0.1.88(62729eeba6c728cc50e250a5def10110)
-      '@dofe/infra-prisma': 0.1.88(0036b576a5600bf1e6e7d6545a6ce82e)
-      '@dofe/infra-redis': 0.1.88(@dofe/infra-contracts@0.1.88)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/core@11.1.27)(ioredis@5.10.1)(nest-winston@1.10.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(winston@3.19.0))(reflect-metadata@0.2.2)(rxjs@7.8.2)(uuid@14.0.1)(winston@3.19.0)
+      '@dofe/infra-common': 0.1.89(3677de0b98cdcf18c2ea4e0743a77338)
+      '@dofe/infra-prisma': 0.1.89(4a860de06a6b001a80d7c1945cd9cc42)
+      '@dofe/infra-redis': 0.1.89(@dofe/infra-contracts@0.1.89)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/core@11.1.27)(ioredis@5.10.1)(nest-winston@1.10.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(winston@3.19.0))(reflect-metadata@0.2.2)(rxjs@7.8.2)(uuid@14.0.1)(winston@3.19.0)
       '@nestjs/common': 11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/core': 11.1.27(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/microservices@11.1.27)(@nestjs/websockets@11.1.27)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@prisma/client': 7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3)
@@ -11125,20 +11125,20 @@ snapshots:
       - winston-daily-rotate-file
       - zod
 
-  '@dofe/infra-shared-services@0.1.88(ed42d464289a4c5eb08ba48b389b8700)':
+  '@dofe/infra-shared-services@0.1.89(d1ddef12360ba48ff486ae2289852fcc)':
     dependencies:
       '@alicloud/imm20200930': 4.6.4
       '@alicloud/openapi-core': 1.0.7
       '@darabonba/typescript': 1.0.4
-      '@dofe/infra-clients': 0.1.88(4257e80f463209e59f37bb6d7758e934)
-      '@dofe/infra-common': 0.1.88(62729eeba6c728cc50e250a5def10110)
-      '@dofe/infra-contracts': 0.1.88
-      '@dofe/infra-jwt': 0.1.88(@dofe/infra-common@0.1.88)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/jwt@11.0.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)))(reflect-metadata@0.2.2)(rxjs@7.8.2)
-      '@dofe/infra-prisma': 0.1.88(0036b576a5600bf1e6e7d6545a6ce82e)
-      '@dofe/infra-rabbitmq': 0.1.88(4fd29334d14ca2875214563b88789caa)
-      '@dofe/infra-redis': 0.1.88(@dofe/infra-contracts@0.1.88)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/core@11.1.27)(ioredis@5.10.1)(nest-winston@1.10.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(winston@3.19.0))(reflect-metadata@0.2.2)(rxjs@7.8.2)(uuid@14.0.1)(winston@3.19.0)
-      '@dofe/infra-shared-db': 0.1.88(0036b576a5600bf1e6e7d6545a6ce82e)
-      '@dofe/infra-utils': 0.1.88(@dofe/infra-contracts@0.1.88)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)
+      '@dofe/infra-clients': 0.1.89(74cdec958f41d0a5bedb062394d95963)
+      '@dofe/infra-common': 0.1.89(3677de0b98cdcf18c2ea4e0743a77338)
+      '@dofe/infra-contracts': 0.1.89
+      '@dofe/infra-jwt': 0.1.89(@dofe/infra-common@0.1.89)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/jwt@11.0.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)))(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@dofe/infra-prisma': 0.1.89(4a860de06a6b001a80d7c1945cd9cc42)
+      '@dofe/infra-rabbitmq': 0.1.89(149d61fc36c8d9cd023583eeb5dfcfde)
+      '@dofe/infra-redis': 0.1.89(@dofe/infra-contracts@0.1.89)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/config@4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2))(@nestjs/core@11.1.27)(ioredis@5.10.1)(nest-winston@1.10.2(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(winston@3.19.0))(reflect-metadata@0.2.2)(rxjs@7.8.2)(uuid@14.0.1)(winston@3.19.0)
+      '@dofe/infra-shared-db': 0.1.89(4a860de06a6b001a80d7c1945cd9cc42)
+      '@dofe/infra-utils': 0.1.89(@dofe/infra-contracts@0.1.89)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)
       '@nestjs/axios': 4.0.1(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.18.1(debug@4.4.3))(rxjs@7.8.2)
       '@nestjs/common': 11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/config': 4.0.4(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(rxjs@7.8.2)
@@ -11183,9 +11183,9 @@ snapshots:
       - prom-client
       - winston-daily-rotate-file
 
-  '@dofe/infra-utils@0.1.88(@dofe/infra-contracts@0.1.88)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)':
+  '@dofe/infra-utils@0.1.89(@dofe/infra-contracts@0.1.89)(@nestjs/swagger@11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2))(@prisma/client@7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3))(bcrypt@6.0.0)(crypto-js@4.2.0)(dotenv-expand@13.0.0)(dotenv@17.4.2)(fastify@5.8.5)(lodash@4.18.1)(moment-timezone@0.6.2)(pinyin-pro@3.28.1)(winston-daily-rotate-file@5.0.0(winston@3.19.0))(winston@3.19.0)':
     dependencies:
-      '@dofe/infra-contracts': 0.1.88
+      '@dofe/infra-contracts': 0.1.89
       '@nestjs/swagger': 11.4.4(@fastify/static@9.1.3)(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)
       '@prisma/client': 7.8.0(prisma@7.8.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(magicast@0.5.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(typescript@6.0.3))(typescript@6.0.3)
       bcrypt: 6.0.0
@@ -11199,37 +11199,37 @@ snapshots:
       winston: 3.19.0
       winston-daily-rotate-file: 5.0.0(winston@3.19.0)
 
-  '@dofe/infra-web-runtime@0.1.88(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(clsx@2.1.1)(tailwind-merge@3.6.0)(zod@4.4.3)':
+  '@dofe/infra-web-runtime@0.1.89(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(clsx@2.1.1)(tailwind-merge@3.6.0)(zod@4.4.3)':
     dependencies:
-      '@dofe/infra-contracts-base': 0.1.88(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
+      '@dofe/infra-contracts-base': 0.1.89(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
     optionalDependencies:
       '@ts-rest/core': 3.53.0-rc.1(@types/node@25.9.4)
       clsx: 2.1.1
       tailwind-merge: 3.6.0
       zod: 4.4.3
 
-  '@dofe/infra-workspace@0.1.88': {}
+  '@dofe/infra-workspace@0.1.89': {}
 
-  '@dofe/sso-browser@0.1.88(react@19.2.6)':
+  '@dofe/sso-browser@0.1.89(react@19.2.6)':
     dependencies:
       react: 19.2.6
 
   '@dofe/sso-contracts@0.1.74(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)':
     dependencies:
-      '@dofe/infra-contracts': 0.1.88
-      '@dofe/infra-contracts-base': 0.1.88(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
+      '@dofe/infra-contracts': 0.1.89
+      '@dofe/infra-contracts-base': 0.1.89(@ts-rest/core@3.53.0-rc.1(@types/node@25.9.4))(zod@4.4.3)
       '@ts-rest/core': 3.53.0-rc.1(@types/node@25.9.4)
       zod: 4.4.3
 
-  '@dofe/sso-nestjs@0.1.65(@nestjs/axios@4.0.1(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.18.1(debug@4.4.3))(rxjs@7.8.2))(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(rxjs@7.8.2)':
+  '@dofe/sso-nestjs@0.1.66(@nestjs/axios@4.0.1(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.18.1(debug@4.4.3))(rxjs@7.8.2))(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(rxjs@7.8.2)':
     dependencies:
-      '@dofe/sso-node': 0.1.66
+      '@dofe/sso-node': 0.1.67
       '@nestjs/axios': 4.0.1(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.18.1(debug@4.4.3))(rxjs@7.8.2)
       '@nestjs/common': 11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       '@nestjs/core': 11.1.27(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/microservices@11.1.27)(@nestjs/websockets@11.1.27)(reflect-metadata@0.2.2)(rxjs@7.8.2)
       rxjs: 7.8.2
 
-  '@dofe/sso-node@0.1.66': {}
+  '@dofe/sso-node@0.1.67': {}
 
   '@electric-sql/pglite-socket@0.1.1(@electric-sql/pglite@0.4.1)':
     dependencies:

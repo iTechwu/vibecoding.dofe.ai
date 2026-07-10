@@ -21,9 +21,9 @@
   },
   "dependencies": {
     "@dofe/file-sdk-web": "0.1.17",
-    "@dofe/infra-contracts": "0.1.88",
-    "@dofe/infra-web-runtime": "0.1.88",
-    "@dofe/sso-browser": "0.1.88",
+    "@dofe/infra-contracts": "0.1.89",
+    "@dofe/infra-web-runtime": "0.1.89",
+    "@dofe/sso-browser": "0.1.89",
     "@dofe/sso-contracts": "0.1.74",
     "@hookform/resolvers": "^5.4.0",
     "@radix-ui/react-dialog": "^1.1.17",
