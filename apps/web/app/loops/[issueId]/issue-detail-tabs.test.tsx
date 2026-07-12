@@ -74,7 +74,7 @@ function renderTabs() {
   return render(
     <IssueDetailTabs labels={labels}>
       <IssueDetailTabPanel primary value="overview">
-        <p>Overview content</p>
+        <p id="loop-intake-tenant-title">Overview content</p>
       </IssueDetailTabPanel>
       <IssueDetailTabPanel primary value="plan">
         <p>Plan content</p>
@@ -129,6 +129,37 @@ describe('IssueDetailTabs', () => {
     Element.prototype.scrollIntoView = scrollIntoView;
 
     renderTabs();
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: 'Evidence' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      expect(scrollIntoView).toHaveBeenCalled();
+    });
+  });
+
+  it('updates the active tab and scroll target after hash changes', async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+
+    renderTabs();
+    expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+
+    window.location.hash = '#loop-intake-tenant-title';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: 'Overview' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      expect(scrollIntoView).toHaveBeenCalled();
+    });
+
+    scrollIntoView.mockClear();
+    window.location.hash = '#delivery-controls';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
 
     await waitFor(() => {
       expect(screen.getByRole('tab', { name: 'Evidence' })).toHaveAttribute(

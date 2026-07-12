@@ -21,7 +21,7 @@ type IssueDetailTabPanelProps = {
 const anchorTabs: Record<string, IssueDetailTab> = {
   'next-action-diagnostic': 'overview',
   'loop-next-action-title': 'overview',
-  'loop-intake-tenant-title': 'plan',
+  'loop-intake-tenant-title': 'overview',
   'delivery-controls': 'evidence',
   'evidence-artifacts': 'evidence',
 };
