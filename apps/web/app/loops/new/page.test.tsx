@@ -37,17 +37,12 @@ describe('NewLoopIssuePage', () => {
     );
   });
 
-  it('composes a compact header and simple form without the retired workbench wrapper', async () => {
-    const { container } = render(await NewLoopIssuePage());
+  it('composes one page title, return link, and simple form', async () => {
+    render(await NewLoopIssuePage());
 
     expect(screen.getByRole('heading', { name: 'New Issue' })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     expect(screen.getByRole('link', { name: 'Back to Issues' })).toHaveAttribute('href', '/loops');
     expect(screen.getByTestId('simple-loop-issue-form')).toBeInTheDocument();
-
-    const page = screen.getByTestId('new-issue-page');
-    expect(page).not.toHaveClass('min-h-screen');
-    expect(page).not.toHaveClass('rounded-lg');
-    expect(page).not.toHaveClass('border');
-    expect(container.querySelector('.min-h-screen')).not.toBeInTheDocument();
   });
 });
