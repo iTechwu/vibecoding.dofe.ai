@@ -19,6 +19,22 @@
         "runtime": "Runtime"
       }
     },
+    "home": {
+      "eyebrow": "Delivery workspace",
+      "title": "Home",
+      "subtitle": "Pick up the next delivery task, review decisions, and keep recent work in view.",
+      "newIssue": "New Issue",
+      "continueTitle": "Continue",
+      "reviewTitle": "Review queue",
+      "recentTitle": "Recent issues",
+      "viewAll": "View all",
+      "reviewEmpty": "No review decisions are waiting.",
+      "openReview": "Open review: {title}",
+      "loadError": "Unable to load your workbench.",
+      "retry": "Retry",
+      "emptyTitle": "No issues yet.",
+      "emptyDescription": "Create an issue to start a delivery loop."
+    },
     "command": {
       "placeholder": "Search commands, loops, exceptions, or create a delivery request...",
       "items": {

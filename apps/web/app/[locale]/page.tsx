@@ -1,12 +1,12 @@
 'use client';
 
 import { AppShell } from '@/components/layout';
-import LoopsPage from '../loops/page';
+import HomePage from '../page';
 
 export default function LocalePage() {
   return (
     <AppShell>
-      <LoopsPage />
+      <HomePage />
     </AppShell>
   );
 }

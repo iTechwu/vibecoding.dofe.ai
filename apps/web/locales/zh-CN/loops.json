@@ -19,6 +19,22 @@
         "runtime": "运行时"
       }
     },
+    "home": {
+      "eyebrow": "交付工作区",
+      "title": "首页",
+      "subtitle": "继续下一个交付任务，审阅决策，并随时查看近期工作。",
+      "newIssue": "新建 Issue",
+      "continueTitle": "继续",
+      "reviewTitle": "审阅队列",
+      "recentTitle": "近期 Issue",
+      "viewAll": "查看全部",
+      "reviewEmpty": "当前没有待审阅的决策。",
+      "openReview": "打开审阅：{title}",
+      "loadError": "无法加载你的工作区。",
+      "retry": "重试",
+      "emptyTitle": "暂无 Issue。",
+      "emptyDescription": "创建一个 Issue 以启动交付 Loop。"
+    },
     "command": {
       "placeholder": "搜索命令、Loop、异常，或创建交付需求...",
       "items": {
