@@ -23,7 +23,7 @@ function IssueMeta({ phase, priority }: { phase?: string; priority?: string }) {
 
 function HomeWorkbenchSkeleton({ label }: { label: string }) {
   return (
-    <main aria-label={label} className="mx-auto w-full max-w-5xl p-4 sm:p-6">
+    <div aria-busy="true" aria-label={label} className="mx-auto w-full max-w-5xl p-4 sm:p-6">
       <div className="space-y-3">
         <Skeleton className="h-3 w-24" />
         <Skeleton className="h-8 w-44" />
@@ -33,7 +33,7 @@ function HomeWorkbenchSkeleton({ label }: { label: string }) {
         <Skeleton className="h-28 w-full" />
         <Skeleton className="h-36 w-full" />
       </div>
-    </main>
+    </div>
   );
 }
 
@@ -44,43 +44,45 @@ export function HomeWorkbench() {
   const metricsQuery = useLoopsMetrics();
   const notificationsQuery = useLoopsNotifications({ limit: 8 });
 
-  const isLoading = listQuery.isLoading || metricsQuery.isLoading || notificationsQuery.isLoading;
-  const hasError = listQuery.isError || metricsQuery.isError || notificationsQuery.isError;
-  const retry = () => {
-    void Promise.all([listQuery.refetch(), metricsQuery.refetch(), notificationsQuery.refetch()]);
+  const reviewIsLoading = metricsQuery.isLoading || notificationsQuery.isLoading;
+  const reviewUnavailable = metricsQuery.isError || notificationsQuery.isError;
+  const retryList = () => {
+    void listQuery.refetch();
   };
 
-  if (hasError) {
+  if (listQuery.isError) {
     return (
-      <main className="mx-auto w-full max-w-5xl p-4 sm:p-6">
+      <div className="mx-auto w-full max-w-5xl p-4 sm:p-6">
         <div
           role="alert"
           className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-foreground"
         >
           <p>{t('loadError')}</p>
-          <Button type="button" variant="outline" size="sm" onClick={retry}>
+          <Button type="button" variant="outline" size="sm" onClick={retryList}>
             <RefreshCw aria-hidden="true" />
             {t('retry')}
           </Button>
         </div>
-      </main>
+      </div>
     );
   }
 
-  if (isLoading) return <HomeWorkbenchSkeleton label={t('loadingLabel')} />;
+  if (listQuery.isLoading) return <HomeWorkbenchSkeleton label={t('loadingLabel')} />;
 
   const items = listQuery.data?.body.data.list ?? [];
   const continuation = selectContinuationIssue(items);
-  const reviewInbox = buildReviewInbox(
-    metricsQuery.data?.body.data.actionQueue ?? [],
-    notificationsQuery.data?.body.data.notifications,
-    locale,
-  ).slice(0, REVIEW_QUEUE_LIMIT);
+  const reviewInbox = reviewUnavailable
+    ? []
+    : buildReviewInbox(
+        metricsQuery.data?.body.data.actionQueue ?? [],
+        notificationsQuery.data?.body.data.notifications,
+        locale,
+      ).slice(0, REVIEW_QUEUE_LIMIT);
   const recentIssues = selectActionableIssues(items).slice(0, RECENT_ISSUE_LIMIT);
 
   if (items.length === 0) {
     return (
-      <main className="mx-auto w-full max-w-5xl p-4 sm:p-6">
+      <div className="mx-auto w-full max-w-5xl p-4 sm:p-6">
         <PageHeader title={t('title')} description={t('subtitle')} />
         <section className="mt-8 border-y border-border py-10 text-center">
           <ClipboardCheck aria-hidden="true" className="mx-auto size-5 text-muted-foreground" />
@@ -93,12 +95,12 @@ export function HomeWorkbench() {
             </Link>
           </Button>
         </section>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="mx-auto w-full max-w-5xl p-4 sm:p-6">
+    <div className="mx-auto w-full max-w-5xl p-4 sm:p-6">
       <PageHeader
         eyebrow={t('eyebrow')}
         title={t('title')}
@@ -121,29 +123,26 @@ export function HomeWorkbench() {
               {t('continueTitle')}
             </h2>
           </div>
-          <Link
-            href={`/loops/${continuation.issue.id}`}
-            className="group block border border-border bg-card px-4 py-3 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <div className="flex items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{continuation.issue.title}</p>
-                <IssueMeta
-                  phase={formatLoopLabel(
-                    continuation.state?.paused
-                      ? 'PAUSED'
-                      : (continuation.state?.phase ?? continuation.issue.status),
-                    locale,
-                  )}
-                  priority={continuation.issue.priority}
-                />
-              </div>
-              <ArrowRight
-                aria-hidden="true"
-                className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
+          <div className="flex flex-col gap-3 border border-border bg-card px-4 py-3 sm:flex-row sm:items-center">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{continuation.issue.title}</p>
+              <IssueMeta
+                phase={formatLoopLabel(
+                  continuation.state?.paused
+                    ? 'PAUSED'
+                    : (continuation.state?.phase ?? continuation.issue.status),
+                  locale,
+                )}
+                priority={continuation.issue.priority}
               />
             </div>
-          </Link>
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/loops/${continuation.issue.id}`}>
+                {t('continueAction')}
+                <ArrowRight aria-hidden="true" />
+              </Link>
+            </Button>
+          </div>
         </section>
       ) : null}
 
@@ -160,7 +159,15 @@ export function HomeWorkbench() {
               {t('viewAll')}
             </Link>
           </div>
-          {reviewInbox.length > 0 ? (
+          {reviewIsLoading ? (
+            <p className="border-y border-border px-3 py-4 text-sm text-muted-foreground">
+              {t('reviewLoading')}
+            </p>
+          ) : reviewUnavailable ? (
+            <p className="border-y border-border px-3 py-4 text-sm text-muted-foreground">
+              {t('reviewUnavailable')}
+            </p>
+          ) : reviewInbox.length > 0 ? (
             <ul className="divide-y divide-border border-y border-border">
               {reviewInbox.map((item) => (
                 <li key={item.id}>
@@ -209,6 +216,6 @@ export function HomeWorkbench() {
           </ul>
         </section>
       </div>
-    </main>
+    </div>
   );
 }

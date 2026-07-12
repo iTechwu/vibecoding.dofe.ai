@@ -154,6 +154,10 @@ describe('HomeWorkbench', () => {
     expect(
       within(screen.getByRole('region', { name: 'Continue' })).getByRole('link'),
     ).toHaveAttribute('href', '/loops/running');
+    expect(screen.getByRole('link', { name: 'Continue Loop' })).toHaveAttribute(
+      'href',
+      '/loops/running',
+    );
     expect(
       screen.getByRole('link', { name: 'Open review: Review onboarding copy' }),
     ).toHaveAttribute('href', '/loops/review');
@@ -164,17 +168,46 @@ describe('HomeWorkbench', () => {
 
     renderWorkbench();
 
-    expect(screen.getByLabelText(loopsMessages.dashboard.home.loadingLabel)).toBeInTheDocument();
+    expect(screen.getByLabelText(loopsMessages.dashboard.home.loadingLabel)).toHaveAttribute(
+      'aria-busy',
+      'true',
+    );
   });
 
-  it('offers retry when any required query fails', () => {
-    queryState.metrics.isError = true;
+  it('offers retry when the issue list fails', () => {
+    queryState.list.isError = true;
 
     renderWorkbench();
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
 
     expect(screen.getByRole('alert')).toHaveTextContent('Unable to load your workbench.');
-    expect(refetch).toHaveBeenCalledTimes(3);
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the issue list available when review metrics fail', () => {
+    queryState.metrics.isError = true;
+
+    renderWorkbench();
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Continue Loop' })).toHaveAttribute(
+      'href',
+      '/loops/running',
+    );
+    expect(screen.getByText(loopsMessages.dashboard.home.reviewUnavailable)).toBeInTheDocument();
+  });
+
+  it('keeps the issue list available when review notifications fail', () => {
+    queryState.notifications.isError = true;
+
+    renderWorkbench();
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Continue Loop' })).toHaveAttribute(
+      'href',
+      '/loops/running',
+    );
+    expect(screen.getByText(loopsMessages.dashboard.home.reviewUnavailable)).toBeInTheDocument();
   });
 
   it('offers a new issue action when no issues exist', () => {
