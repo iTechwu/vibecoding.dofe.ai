@@ -2,6 +2,9 @@
   "title": "设置",
   "general": "通用",
   "account": "账户",
+  "email": "邮箱",
+  "language": "语言",
+  "notAvailable": "暂无信息",
   "security": "安全",
   "notifications": "通知",
   "hub": {
