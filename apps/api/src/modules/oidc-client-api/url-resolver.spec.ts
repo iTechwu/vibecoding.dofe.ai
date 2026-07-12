@@ -1,4 +1,9 @@
-import { resolveOidcApiBaseUrl, resolveOidcFrontendBaseUrl } from './url-resolver';
+import {
+  resolveOidcApiBaseUrl,
+  resolveOidcFrontendBaseUrl,
+  resolveOidcRedirectUri,
+  resolveOidcScopes,
+} from './url-resolver';
 
 function createConfig(values: Record<string, unknown>) {
   return {
@@ -7,6 +12,38 @@ function createConfig(values: Record<string, unknown>) {
 }
 
 describe('OIDC URL resolver', () => {
+  it('uses the complete default scope set when SSO_SCOPES is absent', () => {
+    expect(resolveOidcScopes(createConfig({}))).toBe('openid profile email tenant offline_access');
+  });
+
+  it('uses an explicit scope set approved for the OAuth client', () => {
+    expect(
+      resolveOidcScopes(
+        createConfig({
+          SSO_SCOPES: 'openid profile email tenant',
+        }),
+      ),
+    ).toBe('openid profile email tenant');
+  });
+
+  it.each(['profile email tenant', 'openid profile email', 'openid profile invalid/scope'])(
+    'rejects an invalid SSO_SCOPES value: %s',
+    (scope) => {
+      expect(() => resolveOidcScopes(createConfig({ SSO_SCOPES: scope }))).toThrow(/SSO_SCOPES/);
+    },
+  );
+
+  it('uses the registered SSO redirect URI when configured', () => {
+    const config = createConfig({
+      SSO_REDIRECT_URI: 'https://vibecoding.local.dofe.ai/auth/callback',
+      'app.domain': 'dofe.ai',
+      'app.subDomain': 'vibecoding.local',
+      'app.apiSubDomain': 'api.vibecoding.local',
+    });
+
+    expect(resolveOidcRedirectUri(config)).toBe('https://vibecoding.local.dofe.ai/auth/callback');
+  });
+
   it('uses configured local domains before loopback fallbacks', () => {
     const config = createConfig({
       'app.domain': 'dofe.ai',

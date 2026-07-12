@@ -130,3 +130,13 @@
 {"ts":"2026-06-30T09:05:00.411Z","type":"NOTIFICATION_RECORDED","issue":"issue-20260630-0a0ed3cc","channel":"web","kind":"ISSUE_RECEIVED","recipient":"11111111-1111-4111-8111-111111111111","status":"RECORDED"}
 {"ts":"2026-06-30T09:05:15.299Z","type":"SPEC_STATE","issue":"issue-20260630-0a0ed3cc","spec":"spec-20260630-0a0ed3cc","to":"DRAFT"}
 {"ts":"2026-06-30T09:05:15.299Z","type":"NOTIFICATION_RECORDED","issue":"issue-20260630-0a0ed3cc","channel":"web","kind":"SPEC_REVIEW_REQUESTED","recipient":"11111111-1111-4111-8111-111111111111","status":"RECORDED"}
+{"ts":"2026-07-11T23:38:52.222Z","type":"INTAKE_RECEIVED","source":"web","intake":"intake-20260711-52c73208-a","submitter":"11111111-1111-4111-8111-111111111111"}
+{"ts":"2026-07-11T23:38:52.222Z","type":"ISSUE_NORMALIZED","issue":"issue-20260711-52c73208","intake":"intake-20260711-52c73208-a","target_repo":"/Users/techwu/Documents/codes/dofe.ai/vibecoding.dofe.ai"}
+{"ts":"2026-07-11T23:38:52.223Z","type":"NOTIFICATION_RECORDED","issue":"issue-20260711-52c73208","channel":"web","kind":"ISSUE_RECEIVED","recipient":"11111111-1111-4111-8111-111111111111","status":"RECORDED"}
+{"ts":"2026-07-11T23:38:52.967Z","type":"SPEC_STATE","issue":"issue-20260711-52c73208","spec":"spec-20260711-52c73208","to":"DRAFT"}
+{"ts":"2026-07-11T23:38:52.968Z","type":"NOTIFICATION_RECORDED","issue":"issue-20260711-52c73208","channel":"web","kind":"SPEC_REVIEW_REQUESTED","recipient":"11111111-1111-4111-8111-111111111111","status":"RECORDED"}
+{"ts":"2026-07-12T00:08:22.563Z","type":"INTAKE_RECEIVED","source":"web","intake":"intake-20260712-3dbfbb5f-a","submitter":"11111111-1111-4111-8111-111111111111"}
+{"ts":"2026-07-12T00:08:22.564Z","type":"ISSUE_NORMALIZED","issue":"issue-20260712-3dbfbb5f","intake":"intake-20260712-3dbfbb5f-a","target_repo":"/Users/techwu/Documents/codes/dofe.ai/vibecoding.dofe.ai"}
+{"ts":"2026-07-12T00:08:22.565Z","type":"NOTIFICATION_RECORDED","issue":"issue-20260712-3dbfbb5f","channel":"web","kind":"ISSUE_RECEIVED","recipient":"11111111-1111-4111-8111-111111111111","status":"RECORDED"}
+{"ts":"2026-07-12T00:08:23.264Z","type":"SPEC_STATE","issue":"issue-20260712-3dbfbb5f","spec":"spec-20260712-3dbfbb5f","to":"DRAFT"}
+{"ts":"2026-07-12T00:08:23.265Z","type":"NOTIFICATION_RECORDED","issue":"issue-20260712-3dbfbb5f","channel":"web","kind":"SPEC_REVIEW_REQUESTED","recipient":"11111111-1111-4111-8111-111111111111","status":"RECORDED"}

@@ -30,6 +30,19 @@ test('passes for aligned local SSO E2E origins', () => {
   assert.match(result.stdout, /http:\/\/127\.0\.0\.1:13100\/auth\/oidc\/callback/);
 });
 
+test('prints the configured browser callback instead of the API fallback', () => {
+  const result = run({
+    E2E_WEB_BASE_URL: 'https://vibecoding.local.dofe.ai',
+    E2E_API_ORIGIN: 'https://api.vibecoding.local.dofe.ai',
+    E2E_SSO_ORIGIN: 'https://sso.ixicai.cn/api',
+    E2E_SSO_LOGIN_ORIGIN: 'https://sso.ixicai.cn',
+    SSO_REDIRECT_URI: 'https://vibecoding.local.dofe.ai/auth/callback',
+  });
+
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /https:\/\/vibecoding\.local\.dofe\.ai\/auth\/callback/);
+});
+
 test('fails for mismatched or non-http optional origins', () => {
   const result = run({
     E2E_WEB_BASE_URL: 'http://127.0.0.1:3003',

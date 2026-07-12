@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import {
   buildSsoE2eEnvFromProcess,
+  classifySsoNavigation,
   expectedLoopsNewUrl,
   expectedOidcCallback,
   isUsableLoopsRouteStatus,
@@ -157,6 +158,30 @@ test('login -> callback -> refresh -> logout and upload token/CDN metadata throu
   page,
   baseURL,
 }) => {
+  const oidcExchangeStatuses: number[] = [];
+  const oidcAuthorizationErrors = new Set<string>();
+  page.on('response', (response) => {
+    const responseUrl = new URL(response.url());
+    if (
+      responseUrl.origin === new URL(apiOrigin).origin &&
+      responseUrl.pathname === '/auth/oidc/exchange'
+    ) {
+      oidcExchangeStatuses.push(response.status());
+    }
+  });
+  page.on('framenavigated', (frame) => {
+    if (frame !== page.mainFrame()) return;
+
+    const navigatedUrl = new URL(frame.url());
+    if (
+      navigatedUrl.origin === new URL(baseURL!).origin &&
+      /\/auth\/oidc\/success$/.test(navigatedUrl.pathname)
+    ) {
+      const error = navigatedUrl.searchParams.get('error');
+      if (error) oidcAuthorizationErrors.add(error);
+    }
+  });
+
   expect(baseURL, 'Playwright baseURL must be configured').toBeTruthy();
   const envIssues = validateSsoE2eEnv(buildSsoE2eEnvFromProcess(process.env, baseURL!));
   expect(
@@ -164,7 +189,10 @@ test('login -> callback -> refresh -> logout and upload token/CDN metadata throu
     [
       'SSO E2E environment is not aligned.',
       ...envIssues,
-      `SSO OAuth client must allow callback: ${expectedOidcCallback(apiOrigin)}`,
+      `SSO OAuth client must allow callback: ${expectedOidcCallback(
+        apiOrigin,
+        process.env.SSO_REDIRECT_URI,
+      )}`,
     ].join('\n'),
   ).toEqual([]);
 
@@ -209,15 +237,34 @@ test('login -> callback -> refresh -> logout and upload token/CDN metadata throu
     .poll(
       () => {
         const url = page.url();
-        if (new URL(url).origin !== new URL(baseURL!).origin) return 'not-app';
-        if (url.includes('/login')) return 'pending-login';
-        if (url.includes('/auth/oidc/')) return 'pending-callback';
+        const navigationState = classifySsoNavigation(url, baseURL!);
+        if (navigationState === 'outside-app') return 'not-app';
+        if (navigationState === 'pending-login') return 'pending-login';
+        if (navigationState === 'pending-callback') return 'pending-callback';
         return url;
       },
       { timeout: 45_000 },
     )
     .toContain(baseURL!);
   await page.waitForLoadState('networkidle');
+  await expect
+    .poll(() => oidcAuthorizationErrors.size > 0 || oidcExchangeStatuses.includes(200), {
+      timeout: 30_000,
+    })
+    .toBe(true);
+  expect(
+    [...oidcAuthorizationErrors],
+    'SSO authorization returned an OAuth error instead of completing login',
+  ).toEqual([]);
+  await expect.poll(() => oidcExchangeStatuses, { timeout: 5_000 }).toContain(200);
+  await expect
+    .poll(() => page.evaluate(() => Boolean(window.localStorage.getItem('tokens'))), {
+      timeout: 5_000,
+    })
+    .toBe(true);
+
+  const completedUrl = new URL(page.url());
+  expect(completedUrl.searchParams.get('error')).toBeNull();
 
   const tokens = await page.evaluate(() => {
     const raw = window.localStorage.getItem('tokens');

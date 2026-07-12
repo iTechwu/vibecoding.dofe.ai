@@ -1,6 +1,6 @@
 'use client';
 
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { setTokens, setIdToken, setUser } from '@/lib/storage';
@@ -25,19 +25,17 @@ import {
  */
 export default function OidcCallbackPage() {
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const t = useTranslations('auth.oidc.success');
   const processed = useRef(false);
-  // Only exchange failures need component state; URL errors are derived
-  // directly from searchParams (avoids synchronous setState in effect).
   const [exchangeFailed, setExchangeFailed] = useState(false);
-  const urlError = searchParams.get('error');
-  const urlErrorDesc = searchParams.get('error_description');
-  const error = exchangeFailed ? 'exchange_failed' : urlError;
-  const errorDescription = exchangeFailed ? t('errorDescription') : urlErrorDesc;
+  // Keep the initial OAuth error after replaceState removes sensitive query data.
+  const [callbackError] = useState(() => searchParams.get('error'));
+  const error = exchangeFailed ? 'exchange_failed' : callbackError;
+  const errorDescription = error ? t('errorDescription') : undefined;
 
-  // Extract current locale prefix from pathname (e.g. /zh-CN/... → /zh-CN)
-  const getLocalePrefix = () => {
-    const match = window.location.pathname.match(/^\/(zh-CN|en)/);
+  const getLocalePrefix = (currentPathname: string) => {
+    const match = currentPathname.match(/^\/(zh-CN|en)/);
     return match ? match[0] : '';
   };
 
@@ -45,9 +43,9 @@ export default function OidcCallbackPage() {
     if (processed.current) return;
     processed.current = true;
 
-    const localePrefix = getLocalePrefix();
+    const localePrefix = getLocalePrefix(pathname);
 
-    if (urlError) {
+    if (callbackError) {
       // Clean URL for error case too
       window.history.replaceState(null, '', window.location.pathname);
       return;
@@ -118,14 +116,11 @@ export default function OidcCallbackPage() {
         setExchangeFailed(true);
       }
     })();
-  }, [searchParams, urlError]);
+  }, [callbackError, pathname, searchParams]);
 
   // Error state
   if (error) {
-    const localePrefix =
-      typeof window !== 'undefined'
-        ? window.location.pathname.match(/^\/(zh-CN|en)/)?.[0] || ''
-        : '';
+    const localePrefix = getLocalePrefix(pathname);
 
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">

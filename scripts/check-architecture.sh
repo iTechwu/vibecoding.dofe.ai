@@ -49,13 +49,22 @@ report_matches() {
   rm -f "$tmp"
 }
 
-section "Infra exact version boundary"
+section "Infra version alignment boundary"
 if node <<'NODE'
 const fs = require('fs');
 const path = require('path');
-const expected = '0.1.81';
 const ignored = new Set(['node_modules', '.git', 'dist', '.next', 'coverage', '.turbo']);
 const bad = [];
+const versions = new Map();
+
+function record(name, version, location) {
+  if (!/^\d+\.\d+\.\d+$/.test(version)) {
+    bad.push(`${location} must use an exact version, found ${version}`);
+    return;
+  }
+  if (!versions.has(version)) versions.set(version, []);
+  versions.get(version).push(`${location} (${name})`);
+}
 
 function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -70,26 +79,31 @@ function walk(dir) {
     const rel = path.relative(process.cwd(), full);
     for (const section of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
       for (const [name, version] of Object.entries(json[section] || {})) {
-        if (name.startsWith('@dofe/infra-') && version !== expected) {
-          bad.push(`${rel} ${section}.${name}=${version}`);
+        if (name.startsWith('@dofe/infra-')) {
+          record(name, version, `${rel} ${section}.${name}`);
         }
       }
     }
     for (const [name, version] of Object.entries(json.pnpm?.overrides || {})) {
-      if (name.startsWith('@dofe/infra-') && version !== expected) {
-        bad.push(`${rel} pnpm.overrides.${name}=${version}`);
+      if (name.startsWith('@dofe/infra-')) {
+        record(name, version, `${rel} pnpm.overrides.${name}`);
       }
     }
   }
 }
 
 walk(process.cwd());
+if (versions.size > 1) {
+  for (const [version, locations] of versions) {
+    bad.push(`@dofe/infra-* version ${version} is used by: ${locations.join(', ')}`);
+  }
+}
 if (bad.length > 0) {
-  console.error(`FAIL: @dofe/infra-* direct versions must be exact ${expected}`);
+  console.error('FAIL: @dofe/infra-* direct versions must be exact and aligned');
   for (const item of bad) console.error(item);
   process.exit(1);
 }
-console.log(`PASS: @dofe/infra-* direct versions are exact ${expected}`);
+console.log(`PASS: @dofe/infra-* direct versions are exact and aligned (${[...versions.keys()].join(', ')})`);
 NODE
 then
   :
@@ -131,20 +145,24 @@ else
   failures=$((failures + 1))
 fi
 
-section "SSO SDK exact version boundary"
+section "SSO SDK version consistency boundary"
 if node <<'NODE'
 const fs = require('fs');
 const path = require('path');
-const expected = {
-  '@dofe/sso-contracts': '0.1.74',
-  '@dofe/sso-node': '0.1.61',
-  '@dofe/sso-nestjs': '0.1.60',
-  '@dofe/sso-browser': '0.1.81',
-  '@dofe/sso-hooks': '0.1.62',
-  '@dofe/sso-ui': '0.1.61',
-};
 const ignored = new Set(['node_modules', '.git', 'dist', '.next', 'coverage', '.turbo']);
 const failures = [];
+const versionsByPackage = new Map();
+
+function record(name, version, location) {
+  if (!/^\d+\.\d+\.\d+$/.test(version)) {
+    failures.push(`${location} must use an exact version, found ${version}`);
+    return;
+  }
+  if (!versionsByPackage.has(name)) versionsByPackage.set(name, new Map());
+  const versions = versionsByPackage.get(name);
+  if (!versions.has(version)) versions.set(version, []);
+  versions.get(version).push(location);
+}
 
 function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -159,8 +177,8 @@ function walk(dir) {
     const rel = path.relative(process.cwd(), full);
     for (const section of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
       for (const [name, version] of Object.entries(json[section] || {})) {
-        if (expected[name] && version !== expected[name]) {
-          failures.push(`${rel} ${section}.${name} must be exact ${expected[name]}, found ${version}`);
+        if (name.startsWith('@dofe/sso-')) {
+          record(name, version, `${rel} ${section}.${name}`);
         }
       }
     }
@@ -168,13 +186,21 @@ function walk(dir) {
 }
 
 walk(process.cwd());
+for (const [name, versions] of versionsByPackage) {
+  if (versions.size > 1) {
+    const details = [...versions.entries()]
+      .map(([version, locations]) => `${version}: ${locations.join(', ')}`)
+      .join('; ');
+    failures.push(`${name} must use one version across the workspace (${details})`);
+  }
+}
 if (failures.length > 0) {
-  console.error('FAIL: @dofe/sso-* direct versions must match current latest baseline');
+  console.error('FAIL: @dofe/sso-* direct versions must be exact and consistent');
   for (const failure of failures) console.error(failure);
   process.exit(1);
 }
 
-console.log('PASS: @dofe/sso-* direct versions match current latest baseline');
+console.log('PASS: @dofe/sso-* direct versions are exact and consistent');
 NODE
 then
   :

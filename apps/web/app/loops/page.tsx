@@ -2335,7 +2335,11 @@ export default function LoopsPage() {
           )}
         </section>
 
-        <section aria-labelledby="agent-runtime-title" className="rounded-lg border p-4">
+        <section
+          id="agent-runtime"
+          aria-labelledby="agent-runtime-title"
+          className="rounded-lg border p-4"
+        >
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <h2 className="text-sm font-semibold" id="agent-runtime-title">

@@ -66,11 +66,7 @@ interface UseNotificationSSEReturn {
 export function useNotificationSSE(
   options: UseNotificationSSEOptions = {},
 ): UseNotificationSSEReturn {
-  const {
-    enabled = true,
-    initialRetryDelay = 1000,
-    maxRetryDelay = 30000,
-  } = options;
+  const { enabled = true, initialRetryDelay = 1000, maxRetryDelay = 30000 } = options;
 
   const [unreadCount, setUnreadCount] = useState(0);
   const [isConnected, setIsConnected] = useState(false);
@@ -81,13 +77,14 @@ export function useNotificationSSE(
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const tokenCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isVisibleRef = useRef(true);
+  const connectRef = useRef<() => Promise<void>>(async () => undefined);
 
   const queryClient = useQueryClient();
 
   /**
    * 清理函数
    */
-  const cleanup = useCallback(() => {
+  const cleanup = useCallback((notify = true) => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
@@ -100,7 +97,7 @@ export function useNotificationSSE(
       clearInterval(tokenCheckIntervalRef.current);
       tokenCheckIntervalRef.current = null;
     }
-    setIsConnected(false);
+    if (notify) setIsConnected(false);
   }, []);
 
   /**
@@ -144,8 +141,7 @@ export function useNotificationSSE(
           // 检查 token 是否过期或即将过期
           if (isTokenExpired()) {
             logger.info('Token 已过期，重新连接 SSE...');
-            // connect 是 async 函数，但这里不需要 await
-            connect().catch((err) => {
+            connectRef.current().catch((err) => {
               logger.error('Token 过期后重连失败:', err);
             });
           }
@@ -186,12 +182,8 @@ export function useNotificationSSE(
 
           // 指数退避重连
           retryTimeoutRef.current = setTimeout(() => {
-            retryDelayRef.current = Math.min(
-              retryDelayRef.current * 2,
-              maxRetryDelay,
-            );
-            // connect 是 async 函数，需要处理 Promise
-            connect().catch((err) => {
+            retryDelayRef.current = Math.min(retryDelayRef.current * 2, maxRetryDelay);
+            connectRef.current().catch((err) => {
               logger.error('重连失败:', err);
             });
           }, retryDelayRef.current);
@@ -204,6 +196,10 @@ export function useNotificationSSE(
       setIsConnected(false);
     }
   }, [cleanup, enabled, initialRetryDelay, maxRetryDelay, queryClient]);
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   /**
    * 手动重连
@@ -250,12 +246,15 @@ export function useNotificationSSE(
    */
   useEffect(() => {
     if (enabled) {
-      connect();
+      // Establishing an EventSource subscription is the effect's purpose; its
+      // state updates occur later in EventSource callbacks, not synchronously.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      void connect();
     } else {
-      cleanup();
+      cleanup(false);
     }
 
-    return cleanup;
+    return () => cleanup(false);
   }, [enabled, connect, cleanup]);
 
   return {

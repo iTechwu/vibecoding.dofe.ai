@@ -1,6 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
+
+const subscribeToMount = () => () => undefined;
+const getClientMountSnapshot = () => true;
+const getServerMountSnapshot = () => false;
 
 interface ClientOnlyProps {
   children: React.ReactNode;
@@ -14,11 +18,11 @@ interface ClientOnlyProps {
  * APIs or generate different markup on server vs client (e.g. Radix UI useId).
  */
 export function ClientOnly({ children, fallback = null }: ClientOnlyProps) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useSyncExternalStore(
+    subscribeToMount,
+    getClientMountSnapshot,
+    getServerMountSnapshot,
+  );
 
   if (!mounted) {
     return <>{fallback}</>;

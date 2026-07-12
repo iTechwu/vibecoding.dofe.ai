@@ -25,6 +25,15 @@ export function classifyBrowserQaRequestFailure(reason: string): string | undefi
   return BROWSER_QA_NAVIGATION_CANCELLED_PATTERN.test(reason) ? 'navigation-cancelled' : undefined;
 }
 
+/** Browser QA may load normal subresources, but document redirects must not escape the validated origin. */
+export function isBrowserQaNavigationAllowed(targetUrl: string, candidateUrl: string): boolean {
+  try {
+    return new URL(targetUrl).origin === new URL(candidateUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
 type BrowserQaWorkerResult = {
   title?: string;
   consoleErrors: string[];
@@ -70,6 +79,7 @@ export class LoopsBrowserQaWorkerService {
       await fs.mkdir(path.dirname(input.screenshotPath), { recursive: true });
       const scriptInput: Record<string, unknown> = {
         targetUrl: input.request.targetUrl,
+        allowedNavigationOrigin: new URL(input.request.targetUrl).origin,
         screenshotPath: input.screenshotPath,
         tracePath: input.tracePath,
         handoffPath: input.handoffPath,
@@ -366,6 +376,15 @@ function buildContextOptions(viewport, authSession) {
 	    const context = await browser.newContext(contextOpts);
     await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
     const page = await context.newPage();
+    await page.route('**/*', async (route) => {
+      const request = route.request();
+      if (request.isNavigationRequest() && new URL(request.url()).origin !== input.allowedNavigationOrigin) {
+        networkFailures.push({ url: request.url() });
+        await route.abort('blockedbyclient');
+        return;
+      }
+      await route.continue();
+    });
     page.on('console', (msg) => {
       if (msg.type() === 'error') consoleErrors.push(msg.text());
     });

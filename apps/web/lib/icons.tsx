@@ -39,13 +39,7 @@ const svgCache = new Map<string, string>();
  * 动态加载 SVG 图标内容
  * 在 Next.js 中，SVG 文件存储在 public 目录下可以直接访问
  */
-export function SVGIcon({
-  name,
-  className,
-  width,
-  height,
-  ...props
-}: SVGIconProps) {
+export function SVGIcon({ name, className, width, height, ...props }: SVGIconProps) {
   // 先检查映射表，如果找到映射就使用映射后的路径
   const mappedName = ICON_PATH_MAP[name] || name;
 
@@ -54,20 +48,18 @@ export function SVGIcon({
   // 或者: more.svg -> /icons/more.svg
   const iconPath = `/icons/${mappedName}.svg`;
 
-  const [svgContent, setSvgContent] = useState<string>('');
-  const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
+  const [loadedIcon, setLoadedIcon] = useState<{ path: string; content: string } | null>(null);
+  const [failedIconPath, setFailedIconPath] = useState<string | null>(null);
+  const cachedContent = svgCache.get(iconPath);
+  const svgContent = cachedContent ?? (loadedIcon?.path === iconPath ? loadedIcon.content : '');
+  const isLoading = !cachedContent && loadedIcon?.path !== iconPath && failedIconPath !== iconPath;
+  const hasError = failedIconPath === iconPath;
 
   useEffect(() => {
     // 检查缓存
-    if (svgCache.has(iconPath)) {
-      const cachedContent = svgCache.get(iconPath);
-      if (cachedContent) {
-        setSvgContent(cachedContent);
-        setIsLoading(false);
-        return;
-      }
-    }
+    if (svgCache.has(iconPath)) return;
+
+    let cancelled = false;
 
     // 加载 SVG 内容
     fetch(iconPath)
@@ -79,9 +71,7 @@ export function SVGIcon({
       })
       .then((text) => {
         // 处理 SVG 内容，移除 width 和 height 属性以便通过 className 控制大小
-        let processedSvg = text
-          .replace(/width="[^"]*"/gi, '')
-          .replace(/height="[^"]*"/gi, '');
+        let processedSvg = text.replace(/width="[^"]*"/gi, '').replace(/height="[^"]*"/gi, '');
 
         // 处理 SVG 中使用 CSS 类的情况（如 .b{fill:currentColor}）
         // 将使用这些类的元素转换为内联 fill 属性，确保颜色能够正确应用
@@ -92,9 +82,7 @@ export function SVGIcon({
           // 提取所有定义了 fill:currentColor 的类名
           const currentColorClasses =
             styleContent &&
-            styleContent.match(
-              /\.([a-zA-Z0-9_-]+)\s*\{[^}]*fill:\s*currentColor[^}]*\}/gi,
-            );
+            styleContent.match(/\.([a-zA-Z0-9_-]+)\s*\{[^}]*fill:\s*currentColor[^}]*\}/gi);
           if (currentColorClasses) {
             currentColorClasses.forEach((classRule) => {
               const classNameMatch = classRule.match(/\.([a-zA-Z0-9_-]+)/);
@@ -107,14 +95,9 @@ export function SVGIcon({
                 );
                 // 处理同时有多个类的情况，如 class="a b"
                 processedSvg = processedSvg.replace(
-                  new RegExp(
-                    `class="([^"]*\\s+)?${className}(\\s+[^"]*)?"`,
-                    'gi',
-                  ),
+                  new RegExp(`class="([^"]*\\s+)?${className}(\\s+[^"]*)?"`, 'gi'),
                   (match, before, after) => {
-                    const newClasses = [before?.trim(), after?.trim()]
-                      .filter(Boolean)
-                      .join(' ');
+                    const newClasses = [before?.trim(), after?.trim()].filter(Boolean).join(' ');
                     return newClasses
                       ? `class="${newClasses}" fill="currentColor"`
                       : 'fill="currentColor"';
@@ -139,14 +122,16 @@ export function SVGIcon({
 
         // 缓存 SVG 内容（保留原始结构，只移除尺寸属性并处理颜色）
         svgCache.set(iconPath, processedSvg);
-        setSvgContent(processedSvg);
-        setIsLoading(false);
+        if (!cancelled) setLoadedIcon({ path: iconPath, content: processedSvg });
       })
       .catch((error) => {
         logger.warn(`Icon not found: ${iconPath}`, error);
-        setHasError(true);
-        setIsLoading(false);
+        if (!cancelled) setFailedIconPath(iconPath);
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [iconPath]);
 
   if (isLoading) {
@@ -161,14 +146,7 @@ export function SVGIcon({
         xmlns="http://www.w3.org/2000/svg"
         {...props}
       >
-        <circle
-          cx="12"
-          cy="12"
-          r="10"
-          stroke="currentColor"
-          strokeWidth="2"
-          opacity="0.3"
-        />
+        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" opacity="0.3" />
       </svg>
     );
   }
@@ -238,9 +216,7 @@ export function SVGIcon({
  * <MoreIcon className="w-5 h-5" />
  * ```
  */
-export function getSVGIcon(
-  name: IconName,
-): React.ComponentType<React.SVGProps<SVGSVGElement>> {
+export function getSVGIcon(name: IconName): React.ComponentType<React.SVGProps<SVGSVGElement>> {
   const IconComponent = (props: React.SVGProps<SVGSVGElement>) => (
     <SVGIcon name={name} {...props} />
   );

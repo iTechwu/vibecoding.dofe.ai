@@ -2496,6 +2496,26 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(detail.releaseGate?.checklist.browserQaPassed).toBe(true);
   });
 
+  it('rejects private Browser QA targets before starting the worker', async () => {
+    const browserQaWorker = createFakeBrowserQaWorker('passed');
+    const runtimeService = buildRuntimeService([], browserQaWorker);
+    const created = await runtimeService.createIssue({
+      title: 'Private Browser QA target',
+      targetRepo: workspace,
+      body: 'Private targets must not be fetched by the Browser QA worker.',
+      priority: 'P1',
+      acceptanceCriteria: ['- Reject private Browser QA target URLs'],
+    });
+
+    await expect(
+      runtimeService.runBrowserQa(created.issue.id, {
+        targetUrl: 'http://127.0.0.1:3000',
+        checkedFlows: ['page-load'],
+      }),
+    ).rejects.toThrow('private, loopback, link-local, or reserved');
+    expect(browserQaWorker.run).not.toHaveBeenCalled();
+  });
+
   it('runs a Claude Code second-opinion worker and stores evidence on the loop detail', async () => {
     const secondOpinionWorker = createFakeSecondOpinionWorker('passed');
     const runtimeService = buildRuntimeService([], undefined, secondOpinionWorker);

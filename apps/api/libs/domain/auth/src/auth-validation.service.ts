@@ -8,7 +8,6 @@ import { apiError } from '@dofe/infra-common';
  */
 @Injectable()
 export class AuthValidationService {
-
   /**
    * MVP: 基础验证方法（预留接口）
    * 后续可扩展团队和空间验证

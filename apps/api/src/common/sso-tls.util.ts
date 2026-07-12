@@ -33,6 +33,5 @@ export function configureInsecureSsoTls(): void {
   if (!allowInsecureSsoTls()) return;
 
   axios.defaults.httpsAgent = new https.Agent({ rejectUnauthorized: false });
-  // eslint-disable-next-line turbo/no-undeclared-env-vars
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 }

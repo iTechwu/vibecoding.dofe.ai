@@ -30,7 +30,14 @@ function assertHttpOrigin(name, value, issues) {
   return origin;
 }
 
-function compareOptionalOrigin({ name, value, expectedName, expectedValue, expectedOrigin, issues }) {
+function compareOptionalOrigin({
+  name,
+  value,
+  expectedName,
+  expectedValue,
+  expectedOrigin,
+  issues,
+}) {
   if (!value) return;
   const origin = originOf(value);
   if (!origin) {
@@ -97,13 +104,15 @@ function validate(env) {
   return issues;
 }
 
-function expectedOidcCallback(apiOrigin) {
+function expectedOidcCallback(apiOrigin, configuredRedirectUri) {
+  if (configuredRedirectUri) return configuredRedirectUri;
   return `${apiOrigin.replace(/\/+$/, '')}/auth/oidc/callback`;
 }
 
 const env = {
   webBaseUrl: process.env.E2E_WEB_BASE_URL ?? DEFAULT_WEB_BASE_URL,
-  apiOrigin: process.env.E2E_API_ORIGIN ?? process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? DEFAULT_API_ORIGIN,
+  apiOrigin:
+    process.env.E2E_API_ORIGIN ?? process.env.NEXT_PUBLIC_SERVER_BASE_URL ?? DEFAULT_API_ORIGIN,
   ssoOrigin: process.env.E2E_SSO_ORIGIN ?? DEFAULT_SSO_ORIGIN,
   ssoLoginOrigin: process.env.E2E_SSO_LOGIN_ORIGIN ?? DEFAULT_SSO_LOGIN_ORIGIN,
   serverBaseUrl: process.env.NEXT_PUBLIC_SERVER_BASE_URL,
@@ -113,10 +122,13 @@ const env = {
   ssoIssuer: process.env.SSO_ISSUER,
   ssoApiUrl: process.env.SSO_API_URL,
   ssoInternalApiUrl: process.env.SSO_INTERNAL_API_URL,
+  ssoRedirectUri: process.env.SSO_REDIRECT_URI,
 };
 
 const issues = validate(env);
-console.log(`SSO E2E preflight callback: ${expectedOidcCallback(env.apiOrigin)}`);
+console.log(
+  `SSO E2E preflight callback: ${expectedOidcCallback(env.apiOrigin, env.ssoRedirectUri)}`,
+);
 
 if (issues.length > 0) {
   console.error('SSO E2E environment is not aligned.');

@@ -77,7 +77,7 @@ export class OidcClientApiController {
     if (error) {
       this.logger.warn('OIDC callback received error', {
         error,
-        errorDescription,
+        hasErrorDescription: Boolean(errorDescription),
         state,
       });
       const frontendUrl = new URL(this.oidcClientService.callbackFrontendUrl);

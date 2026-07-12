@@ -18,6 +18,11 @@ describe('proxy auth guard', () => {
     ).toBe(true);
   });
 
+  it('treats the registered SSO callback alias as public', () => {
+    expect(isPublicPath('/auth/callback')).toBe(true);
+    expect(isPublicPath('/zh-CN/auth/callback')).toBe(true);
+  });
+
   it('redirects protected routes when auth presence is missing or expired', () => {
     expect(shouldRedirectToLogin({ pathname: '/', now: 1000 })).toBe(true);
     expect(

@@ -102,17 +102,14 @@ function PasswordStrength({
   onStrengthChange,
   ...props
 }: PasswordStrengthProps) {
-  const [result, setResult] = React.useState<PasswordStrengthResult | null>(null);
+  const result = React.useMemo(
+    () => (password && password.length >= minLengthToShow ? checkPasswordStrength(password) : null),
+    [password, minLengthToShow],
+  );
 
   React.useEffect(() => {
-    if (password && password.length >= minLengthToShow) {
-      const strengthResult = checkPasswordStrength(password);
-      setResult(strengthResult);
-      onStrengthChange?.(strengthResult);
-    } else {
-      setResult(null);
-    }
-  }, [password, minLengthToShow, onStrengthChange]);
+    if (result) onStrengthChange?.(result);
+  }, [onStrengthChange, result]);
 
   // Don't render if password is too short
   if (!password || password.length < minLengthToShow || !result) {
@@ -176,15 +173,10 @@ function PasswordStrength({
  * ```
  */
 function usePasswordStrength(password: string, minLength = 1) {
-  const [result, setResult] = React.useState<PasswordStrengthResult | null>(null);
-
-  React.useEffect(() => {
-    if (password && password.length >= minLength) {
-      setResult(checkPasswordStrength(password));
-    } else {
-      setResult(null);
-    }
-  }, [password, minLength]);
+  const result = React.useMemo(
+    () => (password && password.length >= minLength ? checkPasswordStrength(password) : null),
+    [password, minLength],
+  );
 
   return {
     /** Full strength result */

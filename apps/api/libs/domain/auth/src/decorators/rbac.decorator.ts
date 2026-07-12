@@ -23,11 +23,7 @@ export const MODULE_PERMISSION_KEY = 'modulePermission';
  * @RequireModulePermission('recruitment', 'job', 'create')
  * async createJob() { ... }
  */
-export const RequireModulePermission = (
-  module: string,
-  resource: string,
-  action: string,
-) =>
+export const RequireModulePermission = (module: string, resource: string, action: string) =>
   SetMetadata(MODULE_PERMISSION_KEY, {
     module,
     resource,
@@ -46,9 +42,8 @@ export const RequireModulePermission = (
  * async viewRecruitmentData() { ... }
  * ```
  */
-export const RequireAnyModulePermission = (
-  permissions: ModulePermissionMeta[],
-) => SetMetadata('anyModulePermission', permissions);
+export const RequireAnyModulePermission = (permissions: ModulePermissionMeta[]) =>
+  SetMetadata('anyModulePermission', permissions);
 
 /**
  * 多个模块权限检查装饰器（必须满足所有条件）
@@ -62,6 +57,5 @@ export const RequireAnyModulePermission = (
  * async createCandidateForJob() { ... }
  * ```
  */
-export const RequireAllModulePermissions = (
-  permissions: ModulePermissionMeta[],
-) => SetMetadata('allModulePermissions', permissions);
+export const RequireAllModulePermissions = (permissions: ModulePermissionMeta[]) =>
+  SetMetadata('allModulePermissions', permissions);

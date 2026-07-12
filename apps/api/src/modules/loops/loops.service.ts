@@ -95,13 +95,11 @@ import type {
   LoopTraceSummary,
   LoopRecordShardImplementationRequest,
   LoopReleaseGate,
-  LoopReviewRecord,
   LoopReviewGate,
   LoopReviewShardRequest,
   LoopRunShardTestsRequest,
   LoopReviewSpecRequest,
   LoopRuntimeSecurityException,
-  LoopShard,
   LoopPhase,
   LoopSecondOpinion,
   LoopSpec,
@@ -124,6 +122,7 @@ import {
   type LoopsEvalLogSink,
 } from '@app/services/loops-eval';
 import { LoopsCrossTenantArchiveService } from './loops-cross-tenant-archive.service';
+import { assertLoopTargetUrlAllowed } from './loops-target-url-policy';
 import { createRemoteShardStateAdapter } from './loops-remote-shard-state.adapter';
 import { LoopsRemoteShardDetailAdapter } from './loops-remote-shard-detail.adapter';
 import { LoopsMcpClientService, LoopsMcpSecretService } from '@app/services/loops-integrations';
@@ -945,6 +944,7 @@ export class LoopsService implements LoopsIssueCreationPort {
   }
 
   async runBrowserQa(issueId: string, request: LoopBrowserQaRequest) {
+    await assertLoopTargetUrlAllowed(request.targetUrl);
     const detail = await this.store.readDetail(issueId);
     const reportId = `browser-qa-${issueId}-${Date.now()}`;
     const paths = this.store.browserQaArtifactPaths(issueId, reportId);
@@ -1076,6 +1076,8 @@ export class LoopsService implements LoopsIssueCreationPort {
       );
     }
 
+    await assertLoopTargetUrlAllowed(input.targetUrl);
+
     const detail = await this.getIssue(issueId);
     const now = new Date().toISOString();
     const canarySteps: string[] = ['canary-start'];
@@ -1192,6 +1194,7 @@ export class LoopsService implements LoopsIssueCreationPort {
 
         const response = await fetch(url, {
           signal: controller.signal,
+          redirect: 'error',
           headers: { 'User-Agent': 'DofeAI-Loops-ReleaseCanary/1.0' },
         });
         clearTimeout(timeout);

@@ -47,7 +47,7 @@ export interface AppMessages {
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace IntlMessages {
-    interface Messages extends AppMessages {}
+    type Messages = AppMessages;
   }
 }
 

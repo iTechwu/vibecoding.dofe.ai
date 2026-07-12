@@ -2,7 +2,7 @@ export const AUTH_PRESENCE_COOKIE = 'tokenPresence';
 export const AUTH_EXPIRE_COOKIE = 'tokenExpire';
 
 const LOCALE_PATTERN = /^\/(zh-CN|en)(?=\/|$)/;
-const PUBLIC_PATHS = ['/login', '/auth/oidc/callback', '/auth/oidc/success'];
+const PUBLIC_PATHS = ['/login', '/auth/callback', '/auth/oidc/callback', '/auth/oidc/success'];
 
 function stripLocale(pathname: string): string {
   const withoutLocale = pathname.replace(LOCALE_PATTERN, '') || '/';

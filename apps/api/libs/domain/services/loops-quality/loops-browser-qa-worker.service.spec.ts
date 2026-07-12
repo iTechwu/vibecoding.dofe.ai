@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import * as path from 'path';
 import {
   classifyBrowserQaRequestFailure,
+  isBrowserQaNavigationAllowed,
   LoopsBrowserQaWorkerService,
 } from './loops-browser-qa-worker.service';
 
@@ -29,6 +30,20 @@ describe('classifyBrowserQaRequestFailure', () => {
   it('does not ignore real request failures', () => {
     expect(classifyBrowserQaRequestFailure('net::ERR_CONNECTION_REFUSED')).toBeUndefined();
     expect(classifyBrowserQaRequestFailure('net::ERR_NAME_NOT_RESOLVED')).toBeUndefined();
+  });
+});
+
+describe('isBrowserQaNavigationAllowed', () => {
+  it('allows same-origin document navigation and blocks cross-origin redirects', () => {
+    expect(
+      isBrowserQaNavigationAllowed(
+        'https://canary.example/release',
+        'https://canary.example/health',
+      ),
+    ).toBe(true);
+    expect(
+      isBrowserQaNavigationAllowed('https://canary.example/release', 'http://127.0.0.1:3000'),
+    ).toBe(false);
   });
 });
 

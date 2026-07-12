@@ -51,9 +51,7 @@ export interface ResourceOwnerCheck {
  * })
  * async updateCandidate() {}
  */
-export const RequireResourceOwner = (
-  check: ResourceOwnerCheck,
-): MethodDecorator => {
+export const RequireResourceOwner = (check: ResourceOwnerCheck): MethodDecorator => {
   // 导入 Guard（延迟导入避免循环依赖）
   const { ResourceOwnerGuard } = require('../guards/resource-owner.guard');
 

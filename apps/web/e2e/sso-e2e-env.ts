@@ -11,6 +11,7 @@ export interface SsoE2eEnv {
   ssoIssuer?: string;
   ssoApiUrl?: string;
   ssoInternalApiUrl?: string;
+  ssoRedirectUri?: string;
 }
 
 function originOf(value: string): string | undefined {
@@ -64,7 +65,8 @@ function compareOptionalOrigin(input: {
   }
 }
 
-export function expectedOidcCallback(apiOrigin: string): string {
+export function expectedOidcCallback(apiOrigin: string, configuredRedirectUri?: string): string {
+  if (configuredRedirectUri) return configuredRedirectUri;
   return `${apiOrigin.replace(/\/+$/, '')}/auth/oidc/callback`;
 }
 
@@ -74,6 +76,21 @@ export function expectedLoopsNewUrl(webBaseUrl: string): string {
 
 export function isUsableLoopsRouteStatus(status: number | undefined): boolean {
   return typeof status === 'number' && status >= 200 && status < 400;
+}
+
+export type SsoNavigationState = 'outside-app' | 'pending-login' | 'pending-callback' | 'complete';
+
+export function classifySsoNavigation(url: string, webBaseUrl: string): SsoNavigationState {
+  const currentUrl = new URL(url);
+  if (currentUrl.origin !== new URL(webBaseUrl).origin) return 'outside-app';
+
+  const pathname = currentUrl.pathname.replace(/\/+$/, '') || '/';
+  if (/(?:^|\/)login$/.test(pathname)) return 'pending-login';
+  if (/^(?:\/(?:zh-CN|en))?\/auth(?:\/oidc)?\/callback$/.test(pathname)) {
+    return 'pending-callback';
+  }
+
+  return 'complete';
 }
 
 export function validateSsoE2eEnv(env: SsoE2eEnv): string[] {
@@ -156,6 +173,7 @@ export function buildSsoE2eEnvFromProcess(
     ssoIssuer: processEnv.SSO_ISSUER,
     ssoApiUrl: processEnv.SSO_API_URL,
     ssoInternalApiUrl: processEnv.SSO_INTERNAL_API_URL,
+    ssoRedirectUri: processEnv.SSO_REDIRECT_URI,
   };
 }
 

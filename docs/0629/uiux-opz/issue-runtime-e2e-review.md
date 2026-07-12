@@ -282,3 +282,31 @@ Next execution plan:
 - 受益: QA can complete issue submission and agent runtime UI checks even when
   external SSO is down or misconfigured, while still preserving separate real
   SSO coverage.
+
+### UX-07: Documented Agent Runtime URL Lands on an "Issue Not Found" Page
+
+Observed on 2026-07-12:
+
+- The controlled browser flow displayed `优惠豚`, created
+  `issue-20260711-52c73208`, and advanced it to spec review.
+- Navigating to the documented `/loops/agent-runtime` URL did not show runtime
+  health. It was consumed by the dynamic `/loops/[issueId]` route and rendered
+  `Issue not found.` for the literal id `agent-runtime`.
+- The actual Agent Runtime panel is embedded in `/loops` Dashboard.
+
+Impact:
+
+- A user following the documented runtime entry point reaches an error page
+  rather than the runtime information needed to decide whether to continue a
+  loop.
+
+Next execution plan:
+
+- 目标: Give Agent Runtime a stable, user-visible entry point.
+- 范围: Add an explicit `/loops/agent-runtime` page or a redirect to the
+  runtime section of `/loops`; update navigation and add a browser regression
+  that asserts Codex and Claude runtime cards render at the public URL.
+- 不做: Do not duplicate runtime data fetching or create a second runtime
+  control plane.
+- 受益: Operators can bookmark, share, and reach runtime health without
+  encountering a misleading issue-detail error.

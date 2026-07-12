@@ -1,12 +1,45 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildSsoE2eEnvFromProcess,
+  classifySsoNavigation,
   expectedLoopsNewUrl,
   expectedOidcCallback,
   isUsableLoopsRouteStatus,
   probeLoopsRoute,
   validateSsoE2eEnv,
 } from '../e2e/sso-e2e-env';
+
+describe('classifySsoNavigation', () => {
+  const webBaseUrl = 'https://vibecoding.local.dofe.ai';
+
+  it('keeps only actual callback routes pending', () => {
+    expect(
+      classifySsoNavigation('https://vibecoding.local.dofe.ai/auth/callback?code=abc', webBaseUrl),
+    ).toBe('pending-callback');
+    expect(
+      classifySsoNavigation(
+        'https://vibecoding.local.dofe.ai/zh-CN/auth/oidc/callback?code=abc',
+        webBaseUrl,
+      ),
+    ).toBe('pending-callback');
+  });
+
+  it('treats terminal success and OAuth failure pages as complete', () => {
+    expect(
+      classifySsoNavigation(
+        'https://vibecoding.local.dofe.ai/auth/oidc/success?error=invalid_scope',
+        webBaseUrl,
+      ),
+    ).toBe('complete');
+    expect(classifySsoNavigation('https://vibecoding.local.dofe.ai/loops', webBaseUrl)).toBe(
+      'complete',
+    );
+  });
+
+  it('distinguishes the SSO portal from an application callback', () => {
+    expect(classifySsoNavigation('https://sso.ixicai.cn/login', webBaseUrl)).toBe('outside-app');
+  });
+});
 
 describe('validateSsoE2eEnv', () => {
   it('accepts aligned local web/api/sso origins', () => {
@@ -137,6 +170,15 @@ describe('expectedOidcCallback', () => {
       'http://127.0.0.1:13100/auth/oidc/callback',
     );
   });
+
+  it('uses the configured browser callback when SSO_REDIRECT_URI is set', () => {
+    expect(
+      expectedOidcCallback(
+        'https://api.vibecoding.local.dofe.ai',
+        'https://vibecoding.local.dofe.ai/auth/callback',
+      ),
+    ).toBe('https://vibecoding.local.dofe.ai/auth/callback');
+  });
 });
 
 describe('expectedLoopsNewUrl', () => {
@@ -178,6 +220,7 @@ describe('buildSsoE2eEnvFromProcess', () => {
       ssoIssuer: undefined,
       ssoApiUrl: undefined,
       ssoInternalApiUrl: undefined,
+      ssoRedirectUri: undefined,
     });
   });
 
@@ -199,6 +242,7 @@ describe('buildSsoE2eEnvFromProcess', () => {
         SSO_ISSUER: 'http://sso.example',
         SSO_API_URL: 'http://sso.example',
         SSO_INTERNAL_API_URL: 'http://sso.example',
+        SSO_REDIRECT_URI: 'https://web.example/auth/callback',
         VIBECODING_APP_BASE_URL: 'http://api.example',
         VIBECODING_APP_FRONTEND_URL: 'http://web.example',
       },
@@ -213,6 +257,7 @@ describe('buildSsoE2eEnvFromProcess', () => {
     expect(env.appBaseUrl).toBe('http://api.example');
     expect(env.appFrontendUrl).toBe('http://web.example');
     expect(env.ssoInternalApiUrl).toBe('http://sso.example');
+    expect(env.ssoRedirectUri).toBe('https://web.example/auth/callback');
   });
 
   it('falls back to NEXT_PUBLIC_SERVER_BASE_URL for the API origin when E2E_API_ORIGIN is unset', () => {

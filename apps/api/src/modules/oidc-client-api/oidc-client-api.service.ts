@@ -34,7 +34,12 @@ import {
 } from '@dofe/sso-contracts/token';
 import type { Configuration, CustomFetch } from 'openid-client';
 import type { Dispatcher } from 'undici';
-import { resolveOidcApiBaseUrl, resolveOidcFrontendBaseUrl } from './url-resolver';
+import {
+  resolveOidcApiBaseUrl,
+  resolveOidcFrontendBaseUrl,
+  resolveOidcRedirectUri,
+  resolveOidcScopes,
+} from './url-resolver';
 
 const OIDC_CALLBACK_RESULT_PREFIX = 'dofe:oidc:callback-result:';
 const OIDC_CALLBACK_RESULT_TTL_S = OIDC_EXCHANGE_CODE_TTL_S;
@@ -147,7 +152,7 @@ export class OidcClientApiService implements OnModuleInit {
   }
 
   private get redirectUri(): string {
-    return `${this.resolveApiBaseUrl()}/auth/oidc/callback`;
+    return resolveOidcRedirectUri(this.configService);
   }
 
   get callbackFrontendUrl(): string {
@@ -241,7 +246,7 @@ export class OidcClientApiService implements OnModuleInit {
     );
 
     const url = buildAuthorizationUrl(this.config!, {
-      scope: 'openid profile email tenant offline_access',
+      scope: resolveOidcScopes(this.configService),
       state,
       nonce,
       code_challenge: codeChallenge,

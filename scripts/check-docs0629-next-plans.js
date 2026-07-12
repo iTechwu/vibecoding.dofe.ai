@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 
 const REQUIRED_PARTS = ['目标:', '范围:', '不做:', '受益:'];
+const DEFAULT_DOCS_DIRECTORIES = ['docs/0629', 'docs/0712'];
 
 function listMarkdownFiles(dir) {
   const files = [];
@@ -42,26 +43,30 @@ function checkNextExecutionPlans(input) {
   return issues;
 }
 
-function checkDocs0629(rootDir) {
-  const docsDir = path.join(rootDir, 'docs/0629');
+function checkDocsExecutionPlans(rootDir, docsDirectories = DEFAULT_DOCS_DIRECTORIES) {
   const issues = [];
-  for (const file of listMarkdownFiles(docsDir)) {
-    const rel = path.relative(rootDir, file);
-    const content = fs.readFileSync(file, 'utf8');
-    issues.push(...checkNextExecutionPlans({ file: rel, content }));
+
+  for (const docsDirectory of docsDirectories) {
+    const docsDir = path.join(rootDir, docsDirectory);
+    for (const file of listMarkdownFiles(docsDir)) {
+      const rel = path.relative(rootDir, file);
+      const content = fs.readFileSync(file, 'utf8');
+      issues.push(...checkNextExecutionPlans({ file: rel, content }));
+    }
   }
+
   return issues;
 }
 
 function main() {
   const root = path.resolve(__dirname, '..');
-  const issues = checkDocs0629(root);
+  const issues = checkDocsExecutionPlans(root);
   if (issues.length > 0) {
-    console.error('docs/0629 next execution plans must include 目标, 范围, 不做, 受益.');
+    console.error('docs/0629 and docs/0712 next execution plans must include 目标, 范围, 不做, 受益.');
     for (const issue of issues) console.error(issue);
     process.exit(1);
   }
-  console.log('docs/0629 next execution plans include 目标, 范围, 不做, 受益.');
+  console.log('docs/0629 and docs/0712 next execution plans include 目标, 范围, 不做, 受益.');
 }
 
 if (require.main === module) {
@@ -69,5 +74,6 @@ if (require.main === module) {
 }
 
 module.exports = {
+  checkDocsExecutionPlans,
   checkNextExecutionPlans,
 };

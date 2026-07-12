@@ -15,6 +15,20 @@ export default [
     },
   },
   {
+    // Root-level tooling configs (jest.config.ts, prisma.config.ts) are
+    // intentionally excluded from tsconfig.json's `include`, so type-aware
+    // parsing has no TS project for them and the parser throws a fatal
+    // "file was not found in any of the provided project(s)" error — which
+    // breaks lint-staged whenever such a file is staged. Disable `project`
+    // for them so basic (non-type-aware) linting still runs.
+    files: ['*.config.ts'],
+    languageOptions: {
+      parserOptions: {
+        project: null,
+      },
+    },
+  },
+  {
     plugins: {
       import: importPlugin,
     },

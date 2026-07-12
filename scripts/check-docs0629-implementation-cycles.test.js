@@ -1,6 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { checkImplementationCycles } = require('./check-docs0629-implementation-cycles');
+const path = require('node:path');
+const {
+  checkCycleLogFiles,
+  checkImplementationCycles,
+} = require('./check-docs0629-implementation-cycles');
 
 test('accepts cycles with implementation validation and docs markers', () => {
   const issues = checkImplementationCycles({
@@ -58,4 +62,10 @@ test('checks every cycle before the final review section', () => {
   assert.deepEqual(issues, [
     'docs/0629/IMPLEMENTATION-ANNOTATIONS.md:8 ## Cycle 4 - Missing Validation is missing **Validation:**',
   ]);
+});
+
+test('includes the 0712 UI/UX cycle log in the implementation evidence check', () => {
+  const root = path.resolve(__dirname, '..');
+
+  assert.deepEqual(checkCycleLogFiles(root, ['docs/0712/uiux-opz/CYCLE-LOG.md']), []);
 });

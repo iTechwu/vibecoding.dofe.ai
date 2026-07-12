@@ -1,6 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { checkNextExecutionPlans } = require('./check-docs0629-next-plans');
+const path = require('node:path');
+const {
+  checkDocsExecutionPlans,
+  checkNextExecutionPlans,
+} = require('./check-docs0629-next-plans');
 
 test('accepts a complete next execution plan', () => {
   const issues = checkNextExecutionPlans({
@@ -62,4 +66,10 @@ Next execution plan:
   });
 
   assert.deepEqual(issues, ['docs/0629/long.md:13 Next execution plan is missing 不做:']);
+});
+
+test('includes the 0712 UI/UX review directory in the execution-plan check', () => {
+  const root = path.resolve(__dirname, '..');
+
+  assert.deepEqual(checkDocsExecutionPlans(root, ['docs/0712/uiux-opz']), []);
 });

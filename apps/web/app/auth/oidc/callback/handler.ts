@@ -5,7 +5,20 @@ import { getOidcApiBaseUrl } from '@/app/api/auth/oidc/internal';
 const CALLBACK_PATH = '/auth/oidc/callback';
 
 function buildErrorRedirect(request: NextRequest, error: string, description: string) {
-  const url = new URL('/auth/oidc/success', request.url);
+  const configuredFrontendUrl = process.env.VIBECODING_APP_FRONTEND_URL?.trim();
+  let baseUrl = request.url;
+  if (configuredFrontendUrl) {
+    try {
+      const parsed = new URL(configuredFrontendUrl);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        baseUrl = parsed.toString();
+      }
+    } catch {
+      // Keep the request origin as a safe fallback for an invalid local config.
+    }
+  }
+
+  const url = new URL('/auth/oidc/success', baseUrl);
   url.searchParams.set('error', error);
   url.searchParams.set('error_description', description);
   return NextResponse.redirect(url);

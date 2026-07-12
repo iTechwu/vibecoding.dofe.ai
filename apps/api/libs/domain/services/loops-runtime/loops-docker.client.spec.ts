@@ -1,164 +1,151 @@
 import {
-  getDockerConnectionOptions,
-  getLocalImageId,
-  pullImage as pullDockerImage,
-} from '@dofe/infra-docker/docker.utils';
+  createDockerClient,
+  inspectDockerImage,
+  probeDockerDaemon,
+  pullDockerImage,
+  redactDockerAuth,
+  registryAuthFromEnv,
+  safeDockerMessage,
+} from '@dofe/infra-docker';
 import { LoopsDockerClient } from './loops-docker.client';
 
-const mockModem = { followProgress: jest.fn() };
-const mockDockerInstance = {
-  ping: jest.fn(),
-  version: jest.fn(),
-  pull: jest.fn(),
-  modem: mockModem,
-};
+const mockDockerInstance = {};
 
-jest.mock('dockerode', () => jest.fn(() => mockDockerInstance));
-
-jest.mock('@dofe/infra-docker/docker.utils', () => ({
-  getDockerConnectionOptions: jest.fn(() => ({ socketPath: '/var/run/docker.sock' })),
-  getLocalImageId: jest.fn(),
-  pullImage: jest.fn(),
+jest.mock('@dofe/infra-docker', () => ({
+  createDockerClient: jest.fn(() => mockDockerInstance),
+  inspectDockerImage: jest.fn(),
+  probeDockerDaemon: jest.fn(),
+  pullDockerImage: jest.fn(),
+  redactDockerAuth: jest.fn((message: string, auth?: { password?: string }) =>
+    auth?.password ? message.replaceAll(auth.password, '***') : message,
+  ),
+  registryAuthFromEnv: jest.fn(),
+  safeDockerMessage: jest.fn((message: string) => message),
 }));
 
-const mockedGetDockerConnectionOptions = getDockerConnectionOptions as jest.Mock;
-const mockedGetLocalImageId = getLocalImageId as jest.Mock;
+const mockedCreateDockerClient = createDockerClient as jest.Mock;
+const mockedInspectDockerImage = inspectDockerImage as jest.Mock;
+const mockedProbeDockerDaemon = probeDockerDaemon as jest.Mock;
 const mockedPullDockerImage = pullDockerImage as jest.Mock;
+const mockedRedactDockerAuth = redactDockerAuth as jest.Mock;
+const mockedRegistryAuthFromEnv = registryAuthFromEnv as jest.Mock;
+const mockedSafeDockerMessage = safeDockerMessage as jest.Mock;
 
-describe('LoopsDockerClient (0622 · infra-docker adapter)', () => {
+describe('LoopsDockerClient (infra-docker adapter)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     delete process.env.DOCKER_HOST;
     delete process.env.DOCKER_REGISTRY_SERVER;
     delete process.env.DOCKER_REGISTRY_USERNAME;
     delete process.env.DOCKER_REGISTRY_PASSWORD;
-    mockDockerInstance.ping.mockResolvedValue({});
-    mockDockerInstance.version.mockResolvedValue({ Version: '25.0.1' });
-    // Default authenticated-pull flow resolves immediately (overridden per test).
-    mockDockerInstance.pull.mockImplementation((_image, _opts, cb) => cb(null, {}));
-    mockModem.followProgress.mockImplementation((_stream, done) => done());
+    mockedProbeDockerDaemon.mockResolvedValue({ ok: true, version: '25.0.1' });
+    mockedInspectDockerImage.mockResolvedValue({ present: false });
+    mockedPullDockerImage.mockResolvedValue({ ok: true, message: 'Image pulled.' });
+    mockedRegistryAuthFromEnv.mockReturnValue(undefined);
+    mockedSafeDockerMessage.mockImplementation((message: string) => message);
+    mockedRedactDockerAuth.mockImplementation((message: string, auth?: { password?: string }) =>
+      auth?.password ? message.replaceAll(auth.password, '***') : message,
+    );
   });
 
-  it('probes Docker Engine through @dofe/infra-docker connection options', async () => {
+  it('probes Docker through the shared client and daemon helpers', async () => {
     const client = new LoopsDockerClient();
 
-    const result = await client.probeDaemon();
-
-    expect(result).toEqual({ ok: true, version: '25.0.1' });
-    expect(mockedGetDockerConnectionOptions).toHaveBeenCalledWith('/var/run/docker.sock');
-    expect(mockDockerInstance.ping).toHaveBeenCalledTimes(1);
-    expect(mockDockerInstance.version).toHaveBeenCalledTimes(1);
+    await expect(client.probeDaemon()).resolves.toEqual({ ok: true, version: '25.0.1' });
+    expect(mockedCreateDockerClient).toHaveBeenCalledWith({ dockerHost: undefined });
+    expect(mockedProbeDockerDaemon).toHaveBeenCalledWith(mockDockerInstance, 8000);
   });
 
-  it('maps daemon errors to an unavailable probe without throwing', async () => {
-    mockDockerInstance.ping.mockRejectedValue(new Error('connect ENOENT'));
-    const client = new LoopsDockerClient();
+  it('maps a failed shared daemon probe to an unavailable result', async () => {
+    mockedProbeDockerDaemon.mockResolvedValue({ ok: false, message: 'connect ENOENT' });
 
-    await expect(client.probeDaemon()).resolves.toEqual({ ok: false });
+    await expect(new LoopsDockerClient().probeDaemon()).resolves.toEqual({ ok: false });
   });
 
-  it('checks local image presence through infra-docker image helpers', async () => {
-    mockedGetLocalImageId.mockResolvedValue('sha256:image-id');
-    const client = new LoopsDockerClient();
+  it('checks local image presence through the shared image helper', async () => {
+    mockedInspectDockerImage.mockResolvedValue({ present: true });
 
-    await expect(client.imagePresent('example/image:latest')).resolves.toBe(true);
-    expect(mockedGetLocalImageId).toHaveBeenCalledWith(expect.anything(), 'example/image:latest');
+    await expect(new LoopsDockerClient().imagePresent('example/image:latest')).resolves.toBe(true);
+    expect(mockedInspectDockerImage).toHaveBeenCalledWith(
+      mockDockerInstance,
+      'example/image:latest',
+      8000,
+    );
   });
 
-  it('pulls images through infra-docker and redacts failure details from callers', async () => {
-    const client = new LoopsDockerClient();
-    mockedPullDockerImage.mockResolvedValueOnce(undefined);
-    await expect(client.pull('example/image:latest')).resolves.toEqual({
+  it('returns the shared successful pull outcome unchanged', async () => {
+    mockedPullDockerImage.mockResolvedValue({
       ok: true,
       message: 'Image example/image:latest pulled successfully.',
     });
 
-    mockedPullDockerImage.mockRejectedValueOnce(new Error('registry token secret=abc failed'));
-    await expect(client.pull('example/image:latest')).resolves.toEqual({
-      ok: false,
-      message: 'Docker image pull failed.',
+    await expect(new LoopsDockerClient().pull('example/image:latest')).resolves.toEqual({
+      ok: true,
+      message: 'Image example/image:latest pulled successfully.',
     });
-  });
-
-  it('authenticates private-registry pulls when DOCKER_REGISTRY_* credentials are set', async () => {
-    process.env.DOCKER_REGISTRY_SERVER = 'uhub.service.ucloud.cn';
-    process.env.DOCKER_REGISTRY_USERNAME = 'techwu';
-    process.env.DOCKER_REGISTRY_PASSWORD = 'secret-token';
-    mockDockerInstance.pull.mockImplementation((_image, _opts, cb) => cb(null, {}));
-    mockModem.followProgress.mockImplementation((_stream, done) => done());
-    const client = new LoopsDockerClient();
-
-    const result = await client.pull('uhub.service.ucloud.cn/techwu/codex-cli@sha256:abc');
-
-    expect(result.ok).toBe(true);
-    // Authenticated path bypasses the unauthenticated shared util.
-    expect(mockedPullDockerImage).not.toHaveBeenCalled();
-    expect(mockDockerInstance.pull).toHaveBeenCalledWith(
-      'uhub.service.ucloud.cn/techwu/codex-cli@sha256:abc',
-      expect.objectContaining({
-        authconfig: expect.objectContaining({
-          username: 'techwu',
-          password: 'secret-token',
-          serveraddress: 'https://uhub.service.ucloud.cn',
-        }),
-      }),
-      expect.any(Function),
-    );
-  });
-
-  it('falls back to the unauthenticated util when no registry credentials are configured', async () => {
-    const client = new LoopsDockerClient();
-    mockedPullDockerImage.mockResolvedValueOnce(undefined);
-
-    await client.pull('uhub.service.ucloud.cn/techwu/codex-cli@sha256:abc');
-
-    expect(mockDockerInstance.pull).not.toHaveBeenCalled();
-    expect(mockedPullDockerImage).toHaveBeenCalled();
-  });
-
-  it('withholds credentials for images outside the configured registry', async () => {
-    process.env.DOCKER_REGISTRY_SERVER = 'uhub.service.ucloud.cn';
-    process.env.DOCKER_REGISTRY_USERNAME = 'techwu';
-    process.env.DOCKER_REGISTRY_PASSWORD = 'secret-token';
-    mockedPullDockerImage.mockResolvedValueOnce(undefined);
-    const client = new LoopsDockerClient();
-
-    // A Docker Hub library image is not the configured private registry, so no
-    // auth is attached and the unauthenticated util path is used.
-    await client.pull('library/nginx:latest');
-
-    expect(mockDockerInstance.pull).not.toHaveBeenCalled();
     expect(mockedPullDockerImage).toHaveBeenCalledWith(
-      expect.anything(),
-      'library/nginx:latest',
-      expect.any(Number),
+      mockDockerInstance,
+      expect.objectContaining({
+        image: 'example/image:latest',
+        registryAuth: undefined,
+        timeoutMs: 300000,
+      }),
     );
   });
 
-  it('redacts registry credentials and surfaces an auth-failure message on 401', async () => {
-    process.env.DOCKER_REGISTRY_SERVER = 'uhub.service.ucloud.cn';
-    process.env.DOCKER_REGISTRY_USERNAME = 'techwu';
-    process.env.DOCKER_REGISTRY_PASSWORD = 'supersecret-token';
-    mockDockerInstance.pull.mockImplementation((_image, _opts, cb) =>
-      cb(new Error('unauthorized: supersecret-token is invalid'), null),
+  it('passes registry credentials only through the shared pull API', async () => {
+    const auth = {
+      username: 'techwu',
+      password: 'secret-token',
+      serveraddress: 'https://uhub.service.ucloud.cn',
+    };
+    mockedRegistryAuthFromEnv.mockReturnValue(auth);
+
+    await new LoopsDockerClient().pull('uhub.service.ucloud.cn/techwu/codex-cli@sha256:abc');
+
+    expect(mockedRegistryAuthFromEnv).toHaveBeenCalledWith(
+      'uhub.service.ucloud.cn/techwu/codex-cli@sha256:abc',
     );
+    expect(mockedPullDockerImage).toHaveBeenCalledWith(
+      mockDockerInstance,
+      expect.objectContaining({
+        image: 'uhub.service.ucloud.cn/techwu/codex-cli@sha256:abc',
+        registryAuth: auth,
+      }),
+    );
+  });
+
+  it('redacts credentials and maps a shared 401 failure to an operator-safe message', async () => {
+    const auth = {
+      username: 'techwu',
+      password: 'supersecret-token',
+      serveraddress: 'https://uhub.service.ucloud.cn',
+    };
     const logger = { warn: jest.fn(), debug: jest.fn(), info: jest.fn() };
+    mockedRegistryAuthFromEnv.mockReturnValue(auth);
+    mockedPullDockerImage.mockResolvedValue({
+      ok: false,
+      message: 'unauthorized: supersecret-token is invalid',
+    });
 
-    const client = new LoopsDockerClient(logger as any);
-
-    const result = await client.pull('uhub.service.ucloud.cn/techwu/img:latest');
-
-    expect(result.ok).toBe(false);
-    expect(result.message).toBe(
-      'Registry authentication failed. Check the Docker registry credentials.',
+    const result = await new LoopsDockerClient(logger as never).pull(
+      'uhub.service.ucloud.cn/techwu/img:latest',
     );
-    // Password never reaches the surfaced message...
-    expect(result.message).not.toContain('supersecret-token');
-    // ...nor the structured log payload — only the redacted form and the
-    // presence flag are logged, never the auth object itself.
+
+    expect(result).toEqual({
+      ok: false,
+      message: 'Registry authentication failed. Check the Docker registry credentials.',
+    });
+    expect(mockedSafeDockerMessage).toHaveBeenCalledWith(
+      'unauthorized: supersecret-token is invalid',
+    );
+    expect(mockedRedactDockerAuth).toHaveBeenCalledWith(
+      'unauthorized: supersecret-token is invalid',
+      auth,
+    );
     const logged = logger.warn.mock.calls[0]?.[1];
-    expect(logged.error).not.toContain('supersecret-token');
     expect(logged.error).toContain('***');
+    expect(logged.error).not.toContain('supersecret-token');
     expect(logged.auth).toBe('present');
   });
 });

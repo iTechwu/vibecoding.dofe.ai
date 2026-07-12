@@ -1250,6 +1250,15 @@ describe('LoopsPage', () => {
     expect(within(reviewInbox).getAllByText('Needs human input').length).toBeGreaterThan(0);
   });
 
+  it('exposes the Agent Runtime panel as the deep-link target', () => {
+    renderWithIntl(<LoopsPage />);
+
+    expect(document.getElementById('agent-runtime')).toHaveAttribute(
+      'aria-labelledby',
+      'agent-runtime-title',
+    );
+  });
+
   it('surfaces Docker image pull business failures without retrying detection', async () => {
     pullImageMutate.mockResolvedValueOnce({
       body: {

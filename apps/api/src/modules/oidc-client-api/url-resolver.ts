@@ -26,6 +26,9 @@ type AppUrlConfig = {
   frontendPort?: number;
 };
 
+const DEFAULT_OIDC_SCOPES = 'openid profile email tenant offline_access';
+const OIDC_SCOPE_TOKEN = /^[A-Za-z0-9._:-]+$/;
+
 function cleanUrl(url: string): string {
   return url.replace(/\/+$/, '');
 }
@@ -80,4 +83,38 @@ export function resolveOidcFrontendBaseUrl(configService: ConfigService): string
   if (configuredUrl) return configuredUrl;
 
   return `http://127.0.0.1:${cfg.frontendPort ?? 3003}`;
+}
+
+export function resolveOidcRedirectUri(configService: ConfigService): string {
+  const configuredRedirectUri = configService.get<string>('SSO_REDIRECT_URI')?.trim();
+  if (configuredRedirectUri) {
+    const redirectUri = new URL(configuredRedirectUri);
+    if (redirectUri.protocol !== 'https:' && redirectUri.protocol !== 'http:') {
+      throw new Error('SSO_REDIRECT_URI must use the http or https scheme');
+    }
+    if (redirectUri.username || redirectUri.password || redirectUri.hash) {
+      throw new Error('SSO_REDIRECT_URI must not include credentials or a fragment');
+    }
+    return redirectUri.toString();
+  }
+
+  return `${resolveOidcApiBaseUrl(configService)}/auth/oidc/callback`;
+}
+
+export function resolveOidcScopes(configService: ConfigService): string {
+  const configuredScopes = configService.get<string>('SSO_SCOPES')?.trim();
+  const scopes = (configuredScopes || DEFAULT_OIDC_SCOPES).split(/\s+/);
+
+  if (
+    !scopes.includes('openid') ||
+    !scopes.includes('tenant') ||
+    scopes.some((scope) => !OIDC_SCOPE_TOKEN.test(scope)) ||
+    new Set(scopes).size !== scopes.length
+  ) {
+    throw new Error(
+      'SSO_SCOPES must contain openid and tenant plus unique scope tokens using letters, numbers, dot, underscore, colon, or hyphen',
+    );
+  }
+
+  return scopes.join(' ');
 }

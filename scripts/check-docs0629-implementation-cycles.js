@@ -3,6 +3,10 @@ const fs = require('fs');
 const path = require('path');
 
 const REQUIRED_MARKERS = ['**Implementation:**', '**Validation:**', '**Docs:**'];
+const DEFAULT_CYCLE_LOG_FILES = [
+  'docs/0629/IMPLEMENTATION-ANNOTATIONS.md',
+  'docs/0712/uiux-opz/CYCLE-LOG.md',
+];
 
 function checkImplementationCycles(input) {
   const issues = [];
@@ -28,19 +32,24 @@ function checkImplementationCycles(input) {
   return issues;
 }
 
+function checkCycleLogFiles(root, files = DEFAULT_CYCLE_LOG_FILES) {
+  return files.flatMap((file) => {
+    const content = fs.readFileSync(path.join(root, file), 'utf8');
+    return checkImplementationCycles({ file, content });
+  });
+}
+
 function main() {
   const root = path.resolve(__dirname, '..');
-  const file = 'docs/0629/IMPLEMENTATION-ANNOTATIONS.md';
-  const content = fs.readFileSync(path.join(root, file), 'utf8');
-  const issues = checkImplementationCycles({ file, content });
+  const issues = checkCycleLogFiles(root);
 
   if (issues.length > 0) {
-    console.error('docs/0629 implementation cycles must include Implementation, Validation, and Docs markers.');
+    console.error('docs/0629 and docs/0712 implementation cycles must include Implementation, Validation, and Docs markers.');
     for (const issue of issues) console.error(issue);
     process.exit(1);
   }
 
-  console.log('docs/0629 implementation cycles include Implementation, Validation, and Docs markers.');
+  console.log('docs/0629 and docs/0712 implementation cycles include Implementation, Validation, and Docs markers.');
 }
 
 if (require.main === module) {
@@ -48,5 +57,6 @@ if (require.main === module) {
 }
 
 module.exports = {
+  checkCycleLogFiles,
   checkImplementationCycles,
 };

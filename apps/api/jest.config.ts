@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url';
 const configDir = dirname(fileURLToPath(import.meta.url));
 const tsconfigRaw = readFileSync(resolve(configDir, 'tsconfig.json'), 'utf-8');
 const tsconfig = JSON.parse(tsconfigRaw.replace(/^\s*\/\/.*$/gm, ''));
-const { paths, ...restCompilerOptions } = tsconfig.compilerOptions;
+const { paths } = tsconfig.compilerOptions;
 // Exclude the wildcard "*" path which breaks module resolution
 const { '*': _, ...filteredPaths } = paths;
 
@@ -31,6 +31,7 @@ const config: Config = {
   // transform `.pnpm/` entries whose store dir starts with uuid/@dofe/@repo
   // (e.g. `uuid@14.0.0`, `@dofe+infra-utils@...`); keep a flat-layout fallback.
   transformIgnorePatterns: [
+    'generated/prisma-client/',
     'node_modules/\\.pnpm/(?!(uuid|@dofe|@repo)[+@])',
     'node_modules/(?!\\.pnpm/)(?!(uuid|@dofe|@repo)/)',
   ],

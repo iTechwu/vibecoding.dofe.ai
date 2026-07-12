@@ -166,6 +166,10 @@ messages. The evidence was observed in terminal output; credential-bearing
 lines are intentionally not copied verbatim into this artifact beyond the
 pattern description.
 
+2026-07-12 rerun reproduced the same unredacted startup-console path. The
+generated local log artifacts were removed after verification; no credential
+value is retained in this document.
+
 Observed:
 
 - Startup logs print full RabbitMQ connection URLs.
@@ -321,3 +325,51 @@ Next execution plan:
   builds, and do not treat this as replacing real SSO E2E.
 - 受益: UI regressions in issue intake and agent runtime can be tested even when
   SSO integration is unavailable, while real SSO remains a separate gate.
+
+### OPZ-09: Probe API-to-SSO Egress Before Starting Real Browser E2E
+
+Observed on 2026-07-12:
+
+- The local environment preflight and `/loops/new` route probe passed.
+- Both Node `fetch` and a direct HTTPS probe from the API host timed out while
+  connecting to `api.sso.test.dofe.ai:443`.
+- The browser could submit the requested mobile login, but the Web callback
+  waited on the API's OIDC exchange and exposed `SSO authorize request timed
+out` to the user.
+
+Next execution plan:
+
+- 目标: Fail real SSO E2E before credential entry when the API host cannot
+  reach the configured SSO issuer.
+- 范围: Extend the non-secret E2E preflight with a bounded API-origin egress
+  probe to the issuer discovery endpoint; report DNS, connect-timeout, TLS, or
+  HTTP readiness separately and require it before Playwright opens the login
+  page.
+- 不做: Do not send user credentials, authorization codes, client secrets, or
+  tokens through the probe, and do not weaken TLS verification in production.
+- 受益: QA distinguishes network reachability from OAuth client or account
+  failures and avoids a misleading callback timeout after successful login.
+
+### OPZ-10: Make OIDC Scopes Client-Policy Aware
+
+Observed on 2026-07-12:
+
+- The `sso.ixicai.cn` OIDC discovery endpoint and vibecoding OIDC client initialization
+  both succeeded.
+- The authorization request uses a hard-coded
+  `openid profile email tenant offline_access` scope set.
+- The registered development client rejected the request with `invalid_scope`,
+  preventing real tenant and issue/runtime E2E before consent completes.
+
+Next execution plan:
+
+- 目标: Keep requested OIDC scopes aligned with each SSO client registration.
+- 范围: Introduce a validated, client-specific scope configuration with a safe
+  default; register the required `tenant` and refresh capability scopes for
+  `vibecoding-dofe-ai-techwu-dev`, then add an authorize-request regression
+  asserting the emitted scope set.
+- 不做: Do not silently drop `tenant` scope for a tenant-governed run, broaden
+  production client permissions, or log authorization requests containing
+  secrets.
+- 受益: Real SSO E2E fails only on genuine authentication issues and can carry
+  the selected tenant into issue/runtime governance.

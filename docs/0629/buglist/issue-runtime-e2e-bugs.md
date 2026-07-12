@@ -386,3 +386,121 @@ Next execution plan:
   matrix.
 - 不做: Do not hand-edit generated Next internals beyond formatting alignment.
 - 受益: Worktree remains easier to review after E2E runs.
+
+### BUG-08: Real SSO Callback Fails When the API Host Cannot Reach Test SSO
+
+Severity: P0
+
+Status: Open from 2026-07-12 real-account rerun.
+
+Observed:
+
+- The SSO environment preflight reported aligned origins and `/loops/new`
+  returned its expected `307` login redirect.
+- The browser accepted the requested mobile login, then the localized callback
+  page returned raw JSON with `SSO authorize request timed out`.
+- API logs recorded `UND_ERR_CONNECT_TIMEOUT` when initializing the OIDC client
+  against `api.sso.test.dofe.ai:443`; an independent Node fetch and HTTPS probe
+  from the same host reproduced the connect timeout.
+
+Expected:
+
+- The API must establish a connection to its configured SSO issuer and complete
+  the authorization-code exchange before the callback response deadline.
+
+Impact:
+
+- Real-account issue submission, tenant selection, runtime verification,
+  refresh, upload metadata, and logout cannot complete, even though browser
+  login succeeds.
+
+Next execution plan:
+
+- 目标: Restore API-to-test-SSO connectivity for the real browser flow.
+- 范围: Diagnose DNS, firewall, proxy, route, and test-SSO availability from
+  the API execution host; validate issuer discovery and token exchange reach
+  the configured test issuer, then rerun the existing real SSO Playwright test
+  with the requested account and tenant.
+- 不做: Do not introduce wildcard redirect URIs, disable production TLS checks,
+  or retain credentials, authorization codes, tokens, or credential-bearing
+  traces.
+- 受益: The real tenant-scoped issue and agent-runtime path can be verified
+  end-to-end instead of stopping at the callback.
+
+### BUG-09: `/loops/agent-runtime` Is Shadowed by the Dynamic Issue Route
+
+Severity: P1
+
+Status: Open from 2026-07-12 controlled browser validation.
+
+Observed:
+
+- `GET /loops/agent-runtime` returns a rendered page, but the route resolves
+  as `/loops/[issueId]` with `issueId=agent-runtime` and displays `Issue not
+found.`.
+- The issue-detail route also requests delivery evidence for that literal id;
+  the API then attempts to read a nonexistent `.loops/issues/agent-runtime.json`
+  file and emits an `ENOENT` exception.
+- Runtime cards are available only inside `/loops`, despite prior test material
+  naming `/loops/agent-runtime` as the runtime entry point.
+
+Expected:
+
+- A documented runtime URL should render runtime health or redirect to the
+  dashboard runtime panel, not invoke issue-detail lookup.
+
+Impact:
+
+- Operators cannot navigate directly to runtime diagnostics and receive an
+  error unrelated to their intent.
+
+Next execution plan:
+
+- 目标: Make the runtime URL resolve to runtime diagnostics.
+- 范围: Reserve `/loops/agent-runtime` with an explicit page or redirect before
+  the dynamic issue route, update links/docs, and add route-level browser
+  coverage for Codex and Claude cards.
+- 不做: Do not change existing issue identifiers or duplicate the dashboard
+  runtime data model.
+- 受益: Runtime diagnostics become a reliable operational URL and the error
+  path remains reserved for genuine unknown issue ids.
+
+### BUG-10: sso.ixicai.cn OAuth Client Rejects Vibecoding's Required OIDC Scopes
+
+Severity: P0
+
+Status: Open from 2026-07-12 real-account E2E.
+
+Observed:
+
+- OIDC discovery at `https://sso.ixicai.cn/api` returned successfully and the
+  vibecoding OIDC client initialized with the configured development client id.
+- The authorization request for the requested account reached the configured
+  callback with `error=invalid_scope` and a provider message that the requested
+  scope is not allowed for this client.
+- The rejected request contains the application's hard-coded tenant and refresh
+  scopes, so tenant `优惠豚`, issue creation, runtime validation, refresh, upload
+  metadata, and logout could not be exercised through real SSO.
+
+Expected:
+
+- The registered development client must authorize the scope set required for
+  vibecoding's tenant-aware OIDC flow, or vibecoding must request the approved
+  contractually supported scope set.
+
+Impact:
+
+- Real-account QA cannot enter the product despite valid HTTPS, callback,
+  issuer discovery, and client initialization.
+
+Next execution plan:
+
+- 目标: Restore real-account, tenant-aware OIDC authorization for vibecoding.
+- 范围: Inspect the `vibecoding-dofe-ai-techwu-dev` scope allow-list in
+  `sso.ixicai.cn`, align it with the validated application scope configuration, then rerun
+  the real browser flow with account `13800138000` and tenant `优惠豚`.
+- 不做: Do not use wildcard scopes, remove tenant governance merely to pass E2E,
+  or place credentials, tokens, authorization codes, or client secrets in test
+  artifacts.
+- 受益: The requested account can complete login and the tenant-scoped issue and
+  agent-runtime workflow becomes verifiable end-to-end.

@@ -26,7 +26,7 @@ import { IpInfoServiceModule } from '@app/services/ip-info';
 import { LoopsModule } from '../modules/loops/loops.module';
 import { OidcClientApiModule } from '../modules/oidc-client-api/oidc-client-api.module';
 import { SsoInternalModule } from '../modules/sso-internal/sso-internal.module';
-import { AuthModule } from '@app/auth';
+import { AuthModule } from '@app/auth/auth.module';
 import { createBullMqRootOptions } from './bullmq.bootstrap';
 import type { BootstrapLogger, RedisVersionCheckClientFactory } from './bullmq.bootstrap';
 import { createI18nRootOptions } from './i18n.bootstrap';

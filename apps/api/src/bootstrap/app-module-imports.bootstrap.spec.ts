@@ -41,7 +41,7 @@ jest.mock('../modules/oidc-client-api/oidc-client-api.module', () => ({
   OidcClientApiModule: class OidcClientApiModule {},
 }));
 
-jest.mock('@app/auth', () => ({
+jest.mock('@app/auth/auth.module', () => ({
   AuthModule: class AuthModule {},
 }));
 
