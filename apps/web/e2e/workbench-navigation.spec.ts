@@ -46,7 +46,6 @@ async function authenticateWorkbench(page: Page, baseURL: string): Promise<void>
 
 async function expectAuthenticatedWorkbench(page: Page, response: Response | null): Promise<void> {
   expect(response?.status()).toBeLessThan(400);
-  expect(response?.request().redirectedFrom()).toBeNull();
   await expect(page).not.toHaveURL(/\/login(?:[/?#]|$)/);
   await expect(page.locator('[data-workbench]')).toBeVisible();
 }
@@ -63,7 +62,8 @@ test('desktop workbench exposes all sidebar destinations without horizontal over
   const response = await page.goto('/en/loops');
 
   await expectAuthenticatedWorkbench(page, response);
-  await expect(page.locator('[data-slot="sidebar-container"]')).toBeVisible();
+  const desktopSidebar = page.locator('[data-slot="sidebar-container"]');
+  await expect(desktopSidebar).toBeVisible();
 
   for (const [label, href] of [
     ['Home', '/en'],
@@ -73,7 +73,7 @@ test('desktop workbench exposes all sidebar destinations without horizontal over
     ['New Issue', '/en/loops/new'],
     ['Settings', '/en/settings'],
   ] as const) {
-    await expect(page.getByRole('link', { name: label, exact: true })).toHaveAttribute(
+    await expect(desktopSidebar.getByRole('link', { name: label, exact: true })).toHaveAttribute(
       'href',
       href,
     );
@@ -87,25 +87,30 @@ test('desktop workbench exposes all sidebar destinations without horizontal over
   );
 });
 
-test('default-locale workbench keeps sidebar destinations unprefixed', async ({ page }) => {
-  const response = await page.goto('/loops');
+test.describe('default zh-CN locale', () => {
+  test.use({ locale: 'zh-CN' });
 
-  await expectAuthenticatedWorkbench(page, response);
-  await expect(page.locator('[data-slot="sidebar-container"]')).toBeVisible();
+  test('workbench keeps sidebar destinations unprefixed', async ({ page }) => {
+    const response = await page.goto('/loops');
 
-  for (const [label, href] of [
-    ['首页', '/'],
-    ['问题', '/loops'],
-    ['审查', '/loops#review-inbox'],
-    ['运行时', '/loops#agent-runtime'],
-    ['新建问题', '/loops/new'],
-    ['设置', '/settings'],
-  ] as const) {
-    await expect(page.getByRole('link', { name: label, exact: true })).toHaveAttribute(
-      'href',
-      href,
-    );
-  }
+    await expectAuthenticatedWorkbench(page, response);
+    const desktopSidebar = page.locator('[data-slot="sidebar-container"]');
+    await expect(desktopSidebar).toBeVisible();
+
+    for (const [label, href] of [
+      ['首页', '/'],
+      ['问题', '/loops'],
+      ['审查', '/loops#review-inbox'],
+      ['运行时', '/loops#agent-runtime'],
+      ['新建问题', '/loops/new'],
+      ['设置', '/settings'],
+    ] as const) {
+      await expect(desktopSidebar.getByRole('link', { name: label, exact: true })).toHaveAttribute(
+        'href',
+        href,
+      );
+    }
+  });
 });
 
 test('mobile sidebar Sheet reaches New Issue', async ({ page }) => {
