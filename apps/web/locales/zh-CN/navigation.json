@@ -10,6 +10,7 @@
     "profile": "个人资料",
     "account": "账户",
     "search": "搜索",
+    "commandSearch": "打开 Loop 命令",
     "logout": "退出登录"
   },
   "groupMain": "主要",

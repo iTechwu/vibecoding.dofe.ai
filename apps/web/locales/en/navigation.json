@@ -10,6 +10,7 @@
     "profile": "Profile",
     "account": "Account",
     "search": "Search",
+    "commandSearch": "Open loop command",
     "logout": "Sign Out"
   },
   "groupMain": "Main",

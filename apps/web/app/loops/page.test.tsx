@@ -869,6 +869,37 @@ describe('LoopsPage', () => {
     vi.useRealTimers();
   });
 
+  it('focuses the loop command input for its hash target', () => {
+    window.history.replaceState(null, '', '#loop-command-input');
+    renderWithIntl(<LoopsPage />);
+
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+
+    expect(
+      screen.getByRole('textbox', {
+        name: 'Search commands, loops, exceptions, or create a delivery request...',
+      }),
+    ).toHaveFocus();
+  });
+
+  it('focuses the loop command input when its hash changes in place', () => {
+    renderWithIntl(<LoopsPage />);
+    window.history.replaceState(null, '', '#loop-command-input');
+    fireEvent(window, new HashChangeEvent('hashchange'));
+
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+
+    expect(
+      screen.getByRole('textbox', {
+        name: 'Search commands, loops, exceptions, or create a delivery request...',
+      }),
+    ).toHaveFocus();
+  });
+
   it('renders the control plane dashboard from loop metrics', async () => {
     renderWithIntl(<LoopsPage />);
     openOperations();

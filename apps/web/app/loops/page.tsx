@@ -492,6 +492,25 @@ export default function LoopsPage() {
     return () => window.clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+    let focusTimer: number | undefined;
+
+    const focusCommandInput = () => {
+      if (window.location.hash !== '#loop-command-input') return;
+
+      focusTimer = window.setTimeout(() => {
+        document.getElementById('loop-command-input')?.focus();
+      }, 0);
+    };
+
+    focusCommandInput();
+    window.addEventListener('hashchange', focusCommandInput);
+    return () => {
+      window.removeEventListener('hashchange', focusCommandInput);
+      if (focusTimer !== undefined) window.clearTimeout(focusTimer);
+    };
+  }, []);
+
   return (
     <main className="dark min-h-screen bg-[#0b0b0d] px-4 py-4 text-foreground sm:px-6">
       <div className="mx-auto flex max-w-[1560px] flex-col gap-4">
