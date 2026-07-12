@@ -220,36 +220,67 @@ SSO/审计证据脚本）、全局聚合 list/logs 的 tenant 过滤（store 层
 **计划状态**：P1-1 完成（localStorage 降级 + React Query 失效）。Step 3/5 与全局聚合 tenant
 过滤仍待 SSO 契约或数据回填推进。
 
-## Final Review：Cycle 7-11 后的剩余边界
+## Cycle 12：SSO scope 契约确认 + current-tenant 解析升级
 
-**审查结论**：在 Cycle 1-6 基础上，Cycle 7-11 把 verified SSO scope 从契约贯穿到 controller
-读/写隔离与前端缓存失效：
+**实施**：直接审查已消费的 `@dofe/sso-nestjs@0.1.67` / `@dofe/sso-node` SDK，结论记录于
+[SSO-CONTRACT-AUDIT.md](./SSO-CONTRACT-AUDIT.md)。据此升级 `SsoScopeService.resolve`：用
+`client.users.getTenantPreference(ssoSubject).lastTenantId` 作为 current-tenant 的**权威唯一源**，
+客户端候选（`x-current-tenant`）仅在 SSO 无 preference 时 fallback；`getTenants` 始终验证成员关系，
+显示名取自 SSO。`getTenantPreference` 与 `getTenants` 并行（`Promise.allSettled`），preference 不可用
+时降级到候选，不阻塞请求。
 
-- **Cycle 7**：新增 `LoopIssueScope` 契约，DB/Persistence/Issues/Service 的 additive scope 过滤
-  能力（`listIssues`/`getIssueDetailByIssueId` 下推 tenantId、`readDetailScoped` 绝不回退文件）。
-- **Cycle 8**：`list`/`listLegacy`/`getIssue` controller 下推 verified scope，启用资源级读隔离；
-  历史 NULL 与跨 tenant 记录在读路径不可见，不匹配 scope 返回 404。
-- **Cycle 9**：核心推进写操作（generateSpec/review/decompose/runLoop/advance/reloop/finalize 等）
-  与证据读经 `LoopsService.assertIssueScope` 绑定 verified scope。
-- **Cycle 10**：辅助 issueId 操作（naturalCommand/browserQa/secondOpinion/delivery/intervene/
-  getBrowserQaArtifact）+ logs/notifications 的 issueId 分支接入同一归属断言；文件回退一致性在
-  Cycle 7 已奠定。
-- **Cycle 11（P1-1）**：前端 localStorage 降级为非权威 UI cache，`useTenantQueryInvalidation`
-  在 tenant 切换时失效 tenant-scoped 的 React Query 缓存（`['loops']`）。
+**关键结论（修正早期"SSO 阻塞"判断）**：
 
-**验证**：`pnpm quality:gate` 完整通过（架构、SSO source boundary、全 workspace type-check）。
-后端三个 scope spec（persistence/issues/service）共 13 tests、前端 invalidation hook 4 tests、
-既有 storage/tenant 15 tests 全部通过。期间发现并修复 quality:gate 的目录遍历未忽略本地
-`.worktrees/`（现与 `.gitignore` 一致），使 gate 反映主仓库真实状态。
+- `req.isAdmin` 即 SSO super admin，已由 `DofeSsoAuthGuardBase` 注入 → **跨 tenant 管理能力阻塞解除**。
+- current-**tenant** 已有权威源（`getTenantPreference`），不再依赖客户端候选。
+- current-**team** 确认无契约：`UserTenantPreference` 只含 tenant，token claim 也无 team → Loop 继续
+  只用 tenant scope，`teamId` 保持 NULL（Cycle 6-10 已如此）。
+- guard 注入 `ssoSub/userId/isAdmin/authClaims/userInfo`，**不**注入 `tenantId/teamId`（必须服务端解析）。
 
-**仍不可标记完成**（不依赖新增 SSO 能力即无法本地 fallback）：
+**验证**：`pnpm --filter @repo/api exec jest libs/domain/auth/src/sso-scope.service.spec.ts --runInBand`
+通过（5 tests：preference 优先、preference null→候选 fallback、preference 不可用→候选 fallback、
+preference tenant 不在 membership→拒绝、无 preference 无候选→拒绝）；API `type-check` 通过。
 
-1. **历史 NULL scope 回填（Step 3）**：需 SSO/审计证据脚本将历史 `loop_issue.tenant_id` 映射到
-   verified tenant；回填完成前这些行对所有 tenant 不可见。
-2. **全局聚合的 tenant 过滤**：`logs`/`notifications` 无 issueId 的跨 issue 聚合分支仍从文件
-   store 跨 tenant 读取，需在 store 层引入 tenant-scoped 读。
-3. **当前 team 选择 / 显式跨 tenant 管理能力（Step 5）**：受 SSO 未发布 current-team /
-   global-admin scope 契约阻塞。
+**审查待实施项**：契约确认完成，剩余项不再被 SSO 阻塞，转为纯实施：
 
-**后续实施准入**：先确认 SSO 的 current-team 与 global-admin 契约，再据此回填历史 NULL 并设计
-跨 tenant 管理端点；在此之前任何本地 fallback 都不得让历史 NULL 或跨 tenant 数据对普通路径可见。
+1. 历史 NULL `tenant_id` 回填（Cycle 13）—— 用 issue 创建者 `submitterId` → SSO `getTenants`/
+   `getTenantPreference` 映射归属 tenant；无法映射的行标记待处理。
+2. 跨 tenant 管理端点（Cycle 14）—— 用 `req.isAdmin` 保护 eval/archive 跨 tenant 聚合枚举，配合
+   目标 tenant 校验与审计。
+3. 全局聚合 logs/notifications（无 issueId 分支）的 store 层 tenant 过滤。
+
+**计划状态**：Step 1（SSO 契约确认）完成；current-tenant 解析升级为唯一源。Step 3/5 的 SSO 阻塞
+前提已解除，剩余为本地实施工作。
+
+## Final Review：Cycle 7-12 后的剩余边界
+
+**审查结论**：在 Cycle 1-6 基础上，Cycle 7-12 把 verified SSO scope 从契约确认贯穿到 controller
+读/写隔离、前端缓存失效与 current-tenant 唯一源解析：
+
+- **Cycle 7-10**：`LoopIssueScope` 契约 + DB/Persistence/Issues/Service scope 过滤；`list`/`getIssue`
+  读隔离；核心推进写操作 + 辅助 issueId 操作 + 证据/logs 经 `assertIssueScope` 绑定 verified scope；
+  `readDetailScoped` 绝不回退文件，历史 NULL 与跨 tenant 记录在这些路径不可见。
+- **Cycle 11（P1-1）**：前端 localStorage 降级为非权威 UI cache，`useTenantQueryInvalidation` 在
+  tenant 切换时失效 React Query 缓存。
+- **Cycle 12**：直接审查 SSO SDK 确认契约（[SSO-CONTRACT-AUDIT.md](./SSO-CONTRACT-AUDIT.md)）；
+  `SsoScopeService` 升级为 `getTenantPreference.lastTenantId` 优先的 current-tenant 唯一源解析。
+
+**Cycle 12 契约确认的关键修正**：`req.isAdmin` 已由 guard 注入 → 跨 tenant 管理阻塞解除；
+current-**tenant** 有权威源（preference）；仅 current-**team** 确认无契约（`UserTenantPreference`
+只含 tenant），Loop 继续只用 tenant scope。
+
+**验证**：`pnpm quality:gate` 完整通过（架构、SSO source boundary、全 workspace type-check）。后端
+scope specs（persistence/issues/service/sso-scope）共 18 tests、前端 invalidation hook 4 tests、
+既有 storage/tenant 15 tests 全部通过。期间修复 quality:gate 目录遍历未忽略本地 `.worktrees/`。
+
+**剩余项**（契约已确认，转为本地实施；仅 team 仍受 SSO 阻塞）：
+
+1. **历史 NULL scope 回填（Step 3，Cycle 13）**：用 issue 创建者 `submitterId` → SSO
+   `getTenants`/`getTenantPreference` 映射归属 tenant；无法映射的行标记待处理，不归入任何 tenant。
+2. **跨 tenant 管理端点（Step 5，Cycle 14）**：用 `req.isAdmin` 保护 eval/archive 跨 tenant 聚合枚举，
+   配合目标 tenant 校验与审计。
+3. **全局聚合 logs/notifications 的 store 层 tenant 过滤**：无 issueId 分支仍跨 tenant 读取文件 store。
+4. **current-team 投影/过滤**：唯一仍受 SSO 阻塞项——待 SSO 发布 team preference / token claim 契约。
+
+**后续实施准入**：Cycle 13 起按「历史回填 → 跨 tenant 端点」顺序本地实施；历史 NULL 行在回填完成前
+对所有 tenant 不可见，跨 tenant 数据仅经 `req.isAdmin` 保护的专用端点暴露，不进入普通 READ/OPERATE 路径。

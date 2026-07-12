@@ -102,9 +102,10 @@ service 的 Issue load/list 入口加入 scope filter / ownership assertion，�
 
 ### P0-4：收紧跨 tenant 端点和文件路径
 
-**状态：部分实施（Cycle 3-5）。** 普通 archive/Eval 路径已绑定 current SSO tenant，
-归档路径已验证，未验证的跨 tenant Eval 已拒绝。SSO 全局管理员的专用跨 tenant
-接口尚未实现，不能由普通 `READ` / `OPERATE` 路径绕过。
+**状态：部分实施（Cycle 3-5，12）。** 普通 archive/Eval 路径已绑定 current SSO tenant，
+归档路径已验证，未验证的跨 tenant Eval 已拒绝。Cycle 12 直接审查 SSO SDK 确认 `req.isAdmin`
+即 SSO super admin（见 [SSO-CONTRACT-AUDIT.md](./SSO-CONTRACT-AUDIT.md)），跨 tenant 管理端点
+**不再被 SSO 阻塞**，待 Cycle 14 用专用 admin 端点实现；在此之前不能由普通 `READ` / `OPERATE` 路径绕过。
 
 Eval 聚合和归档接口把 `tenantId` 放在 query/body 中，但 controller 没有把调用者
 的 SSO scope 传入 service。归档列表仅要求 `READ`，归档 URL 刷新仅要求
