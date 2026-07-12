@@ -6,6 +6,20 @@
     "resuming": "恢复中",
     "loadError": "Loops 数据加载失败。请检查网络或稍后重试。",
     "newIssue": "新建 Issue",
+    "issues": {
+      "eyebrow": "交付工作",
+      "title": "Issue",
+      "loading": "正在加载 Issue",
+      "error": "无法加载 Issue。",
+      "retry": "重试",
+      "emptyTitle": "暂无 Issue。",
+      "emptyDescription": "创建一个 Issue 以启动交付 Loop。"
+    },
+    "operations": {
+      "eyebrow": "控制平面",
+      "title": "运营",
+      "trigger": "运营"
+    },
     "workbench": {
       "subtitle": "融合 Cursor 工作台体验的交付控制面，用于创建需求、审阅决策、继续 Loop 和审计证据。",
       "railTitle": "工作台",

@@ -827,6 +827,10 @@ function renderWithIntl(ui: React.ReactElement) {
   return render(ui, { wrapper: IntlWrapper });
 }
 
+function openOperations() {
+  fireEvent.click(screen.getByRole('button', { name: 'Operations' }));
+}
+
 describe('LoopsPage', () => {
   it('keeps operator focus create fallback copy localized', () => {
     expect(loopsMessages.dashboard.operatorFocus.title.create).toBe('Create a new Loop');
@@ -841,6 +845,7 @@ describe('LoopsPage', () => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-23T01:00:00.000Z'));
+    window.history.replaceState(null, '', '/loops');
   });
 
   afterEach(() => {
@@ -849,6 +854,7 @@ describe('LoopsPage', () => {
 
   it('renders the control plane dashboard from loop metrics', async () => {
     renderWithIntl(<LoopsPage />);
+    openOperations();
     act(() => {
       vi.runOnlyPendingTimers();
     });
@@ -1250,7 +1256,8 @@ describe('LoopsPage', () => {
     expect(within(reviewInbox).getAllByText('Needs human input').length).toBeGreaterThan(0);
   });
 
-  it('exposes the Agent Runtime panel as the deep-link target', () => {
+  it('opens the Agent Runtime panel for its deep-link target', () => {
+    window.history.replaceState(null, '', '#agent-runtime');
     renderWithIntl(<LoopsPage />);
 
     expect(document.getElementById('agent-runtime')).toHaveAttribute(
@@ -1272,6 +1279,7 @@ describe('LoopsPage', () => {
     });
 
     renderWithIntl(<LoopsPage />);
+    openOperations();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Pull image' }));
@@ -1288,6 +1296,7 @@ describe('LoopsPage', () => {
     pullImageMutate.mockRejectedValueOnce(new Error('Docker pull request failed.'));
 
     renderWithIntl(<LoopsPage />);
+    openOperations();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Pull image' }));
@@ -1313,6 +1322,7 @@ describe('LoopsPage', () => {
       });
 
     renderWithIntl(<LoopsPage />);
+    openOperations();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Pull image' }));

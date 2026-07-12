@@ -6,6 +6,20 @@
     "resuming": "Resuming",
     "loadError": "Failed to load Loops data. Check your connection and retry.",
     "newIssue": "New Issue",
+    "issues": {
+      "eyebrow": "Delivery work",
+      "title": "Issues",
+      "loading": "Loading issues",
+      "error": "Unable to load issues.",
+      "retry": "Retry",
+      "emptyTitle": "No issues yet.",
+      "emptyDescription": "Create an issue to start a delivery loop."
+    },
+    "operations": {
+      "eyebrow": "Control plane",
+      "title": "Operations",
+      "trigger": "Operations"
+    },
     "workbench": {
       "subtitle": "A Cursor-style delivery workbench for creating issues, reviewing decisions, continuing loops, and auditing evidence.",
       "railTitle": "Workbench",
