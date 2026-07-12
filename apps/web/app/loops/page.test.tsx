@@ -827,6 +827,10 @@ function renderWithIntl(ui: React.ReactElement) {
   return render(ui, { wrapper: IntlWrapper });
 }
 
+function openOperations() {
+  fireEvent.click(screen.getByRole('button', { name: 'Operations' }));
+}
+
 describe('LoopsPage', () => {
   it('keeps operator focus create fallback copy localized', () => {
     expect(loopsMessages.dashboard.operatorFocus.title.create).toBe('Create a new Loop');
@@ -837,18 +841,68 @@ describe('LoopsPage', () => {
     expect(loopsMessages.dashboard.operatorFocus.ctaLabel).toBe('{action}: {title}');
   });
 
+  it('filters issue rows by command title or issue id', () => {
+    renderWithIntl(<LoopsPage />);
+
+    const input = screen.getByRole('textbox', {
+      name: 'Search commands, loops, exceptions, or create a delivery request...',
+    });
+    const issues = screen.getByRole('region', { name: 'Issues' });
+
+    fireEvent.change(input, { target: { value: 'update docs' } });
+    expect(within(issues).getByText('Update docs')).toBeInTheDocument();
+    expect(within(issues).queryByText('Fix checkout flow')).not.toBeInTheDocument();
+
+    fireEvent.change(input, { target: { value: 'ISSUE-1' } });
+    expect(within(issues).getByText('Fix checkout flow')).toBeInTheDocument();
+    expect(within(issues).queryByText('Update docs')).not.toBeInTheDocument();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-23T01:00:00.000Z'));
+    window.history.replaceState(null, '', '/loops');
   });
 
   afterEach(() => {
     vi.useRealTimers();
   });
 
+  it('focuses the loop command input for its hash target', () => {
+    window.history.replaceState(null, '', '#loop-command-input');
+    renderWithIntl(<LoopsPage />);
+
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+
+    expect(
+      screen.getByRole('textbox', {
+        name: 'Search commands, loops, exceptions, or create a delivery request...',
+      }),
+    ).toHaveFocus();
+  });
+
+  it('focuses the loop command input when its hash changes in place', () => {
+    renderWithIntl(<LoopsPage />);
+    window.history.replaceState(null, '', '#loop-command-input');
+    fireEvent(window, new HashChangeEvent('hashchange'));
+
+    act(() => {
+      vi.runOnlyPendingTimers();
+    });
+
+    expect(
+      screen.getByRole('textbox', {
+        name: 'Search commands, loops, exceptions, or create a delivery request...',
+      }),
+    ).toHaveFocus();
+  });
+
   it('renders the control plane dashboard from loop metrics', async () => {
     renderWithIntl(<LoopsPage />);
+    openOperations();
     act(() => {
       vi.runOnlyPendingTimers();
     });
@@ -1250,7 +1304,8 @@ describe('LoopsPage', () => {
     expect(within(reviewInbox).getAllByText('Needs human input').length).toBeGreaterThan(0);
   });
 
-  it('exposes the Agent Runtime panel as the deep-link target', () => {
+  it('opens the Agent Runtime panel for its deep-link target', () => {
+    window.history.replaceState(null, '', '#agent-runtime');
     renderWithIntl(<LoopsPage />);
 
     expect(document.getElementById('agent-runtime')).toHaveAttribute(
@@ -1272,6 +1327,7 @@ describe('LoopsPage', () => {
     });
 
     renderWithIntl(<LoopsPage />);
+    openOperations();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Pull image' }));
@@ -1288,6 +1344,7 @@ describe('LoopsPage', () => {
     pullImageMutate.mockRejectedValueOnce(new Error('Docker pull request failed.'));
 
     renderWithIntl(<LoopsPage />);
+    openOperations();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Pull image' }));
@@ -1313,6 +1370,7 @@ describe('LoopsPage', () => {
       });
 
     renderWithIntl(<LoopsPage />);
+    openOperations();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Pull image' }));

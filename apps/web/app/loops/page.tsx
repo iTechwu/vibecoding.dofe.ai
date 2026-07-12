@@ -102,6 +102,8 @@ import {
   type RiskLevel,
 } from './loops-dashboard-model';
 import { formatLoopEvent, formatLoopLabel, formatLoopStatus } from './loops-display';
+import { LoopsIssuesView } from './loops-issues-view';
+import { LoopsOperationsView } from './loops-operations-view';
 
 const WORKBENCH_NAV_ITEMS = [
   { href: '#loop-board', labelKey: 'board', icon: KanbanSquare },
@@ -446,6 +448,15 @@ export default function LoopsPage() {
     boardItems.find((item) => item.columnId === 'blocked') ??
     boardItems.find((item) => item.columnId === 'running') ??
     boardItems[0];
+  const normalizedCommandQuery = commandQuery.trim().toLowerCase();
+  const issueItems = data?.list ?? [];
+  const filteredIssueItems = normalizedCommandQuery
+    ? issueItems.filter(({ issue }) => {
+        const title = issue.title.toLowerCase();
+        const id = issue.id.toLowerCase();
+        return title.includes(normalizedCommandQuery) || id.includes(normalizedCommandQuery);
+      })
+    : issueItems;
   const commandItems = [
     {
       id: 'new',
@@ -471,9 +482,7 @@ export default function LoopsPage() {
       meta: t('command.meta.loopBoard', { count: fallbackSummary.items.length }),
       href: '#loop-board',
     },
-  ].filter((item) =>
-    `${item.label} ${item.meta}`.toLowerCase().includes(commandQuery.trim().toLowerCase()),
-  );
+  ].filter((item) => `${item.label} ${item.meta}`.toLowerCase().includes(normalizedCommandQuery));
   // Distinct error state: previously a failed list/doctor query rendered as
   // perpetual "loading". Surface it as an explicit banner instead.
   const dataLoadFailed = listQuery.isError || doctorQuery.isError;
@@ -481,6 +490,25 @@ export default function LoopsPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => setAgingNow(new Date()), 0);
     return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    let focusTimer: number | undefined;
+
+    const focusCommandInput = () => {
+      if (window.location.hash !== '#loop-command-input') return;
+
+      focusTimer = window.setTimeout(() => {
+        document.getElementById('loop-command-input')?.focus();
+      }, 0);
+    };
+
+    focusCommandInput();
+    window.addEventListener('hashchange', focusCommandInput);
+    return () => {
+      window.removeEventListener('hashchange', focusCommandInput);
+      if (focusTimer !== undefined) window.clearTimeout(focusTimer);
+    };
   }, []);
 
   return (
@@ -517,7 +545,48 @@ export default function LoopsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-0 lg:grid-cols-[220px_minmax(0,1fr)_320px]">
+          <div className="p-4">
+            <div className="rounded-lg border border-border bg-background/80 p-3">
+              <label className="flex items-center gap-2 text-sm" htmlFor="loop-command-input">
+                <Search className="size-4 text-muted-foreground" />
+                <span className="sr-only">{t('command.placeholder')}</span>
+                <input
+                  className="h-8 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                  id="loop-command-input"
+                  onChange={(event) => setCommandQuery(event.target.value)}
+                  placeholder={t('command.placeholder')}
+                  value={commandQuery}
+                />
+              </label>
+              <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                {commandItems.map((item) => (
+                  <Link
+                    className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-sm transition hover:bg-muted/50"
+                    href={item.href}
+                    key={item.id}
+                  >
+                    <span className="font-medium">{item.label}</span>
+                    <span className="mt-1 block truncate text-xs text-muted-foreground">
+                      {item.meta}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <LoopsIssuesView
+          isError={listQuery.isError}
+          isFiltered={Boolean(normalizedCommandQuery)}
+          isLoading={listQuery.isLoading}
+          items={filteredIssueItems}
+          onRetry={() => void listQuery.refetch()}
+        />
+
+        {/* prettier-ignore */}
+        <LoopsOperationsView>
+          <div className="grid grid-cols-1 gap-0 rounded-lg border lg:grid-cols-[220px_minmax(0,1fr)_320px]">
             <aside className="border-b border-border/70 p-3 lg:border-b-0 lg:border-r">
               <div className="flex items-center gap-2 px-2 py-1 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
                 <Command className="size-3.5" />
@@ -538,35 +607,7 @@ export default function LoopsPage() {
             </aside>
 
             <section className="min-w-0 border-b border-border/70 p-4 lg:border-b-0 lg:border-r">
-              <div className="rounded-lg border border-border bg-background/80 p-3">
-                <label className="flex items-center gap-2 text-sm" htmlFor="loop-command-input">
-                  <Search className="size-4 text-muted-foreground" />
-                  <span className="sr-only">{t('command.placeholder')}</span>
-                  <input
-                    className="h-8 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                    id="loop-command-input"
-                    onChange={(event) => setCommandQuery(event.target.value)}
-                    placeholder={t('command.placeholder')}
-                    value={commandQuery}
-                  />
-                </label>
-                <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
-                  {commandItems.map((item) => (
-                    <Link
-                      className="rounded-md border border-border/70 bg-muted/20 px-3 py-2 text-sm transition hover:bg-muted/50"
-                      href={item.href}
-                      key={item.id}
-                    >
-                      <span className="font-medium">{item.label}</span>
-                      <span className="mt-1 block truncate text-xs text-muted-foreground">
-                        {item.meta}
-                      </span>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-5">
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
                 <WorkbenchStat
                   label={t('metrics.active')}
                   note={t('metrics.activeNote', { total: summary.total })}
@@ -627,7 +668,6 @@ export default function LoopsPage() {
               ) : null}
             </aside>
           </div>
-        </header>
 
         <section className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-col gap-1 text-sm">
@@ -663,7 +703,8 @@ export default function LoopsPage() {
               <span className="text-xs text-muted-foreground">
                 {t('workspace.runtimeSummary', {
                   codex:
-                    runtimeDetection.find((r) => r.agent === 'codex')?.preferredMode ?? 'local-cli',
+                    runtimeDetection.find((r) => r.agent === 'codex')?.preferredMode ??
+                    'local-cli',
                   claude:
                     runtimeDetection.find((r) => r.agent === 'claude-code')?.preferredMode ??
                     'local-cli',
@@ -915,7 +956,9 @@ export default function LoopsPage() {
                   {t('ciEvidence.workPackages')}
                 </h3>
                 {latestCiWorkPackageCommitMap.length === 0 ? (
-                  <p className="mt-2 text-xs text-muted-foreground">{t('ciEvidence.noCommits')}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {t('ciEvidence.noCommits')}
+                  </p>
                 ) : (
                   <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2">
                     {latestCiWorkPackageCommitMap.slice(0, 6).map((item) => (
@@ -991,7 +1034,9 @@ export default function LoopsPage() {
                     </p>
                   </div>
                   {index < deliveryFlow.steps.length - 1 ? (
-                    <span className="flex items-center pt-1 text-muted-foreground text-xs">→</span>
+                    <span className="flex items-center pt-1 text-muted-foreground text-xs">
+                      →
+                    </span>
                   ) : null}
                 </div>
               ))}
@@ -1026,7 +1071,9 @@ export default function LoopsPage() {
             </div>
             <div className="rounded-md border bg-muted/20 p-3 text-xs">
               <p className="text-muted-foreground">{t('fleetHealth.humanGates')}</p>
-              <p className="mt-1 text-lg font-semibold">{fleetHealth.summary.humanGatesWaiting}</p>
+              <p className="mt-1 text-lg font-semibold">
+                {fleetHealth.summary.humanGatesWaiting}
+              </p>
             </div>
             <div className="rounded-md border bg-muted/20 p-3 text-xs">
               <p className="text-muted-foreground">{t('fleetHealth.runtimeReady')}</p>
@@ -1199,11 +1246,15 @@ export default function LoopsPage() {
                   {loopBench.browserQaRegressionRate}%
                 </span>
               </div>
-              <p className="mt-2 text-muted-foreground">{t('loopBench.browserQaRegressionDesc')}</p>
+              <p className="mt-2 text-muted-foreground">
+                {t('loopBench.browserQaRegressionDesc')}
+              </p>
             </div>
             <div className="rounded-md border bg-muted/20 p-3 text-xs">
               <div className="flex items-center justify-between gap-2">
-                <span className="font-medium truncate">{t('loopBench.secondOpinionConflict')}</span>
+                <span className="font-medium truncate">
+                  {t('loopBench.secondOpinionConflict')}
+                </span>
                 <span
                   className={`shrink-0 rounded-md border px-2 py-0.5 ${
                     loopBench.secondOpinionConflictRate <= 10
@@ -1939,7 +1990,9 @@ export default function LoopsPage() {
                     <option value="fast-fix">Fast Fix (minimal gates)</option>
                     <option value="risky-release">Risky Release (all gates)</option>
                     <option value="visual-change">Visual Change (browser QA focused)</option>
-                    <option value="security-sensitive">Security Sensitive (security first)</option>
+                    <option value="security-sensitive">
+                      Security Sensitive (security first)
+                    </option>
                   </select>
                   <span className="shrink-0 rounded bg-background px-2 py-0.5 text-muted-foreground">
                     {['feature'].includes(kind)
@@ -2386,7 +2439,9 @@ export default function LoopsPage() {
                           : t('agentRuntime.noUpdate')}
                       </span>
                       {agent.href ? (
-                        <span className="shrink-0 font-medium">{t('agentRuntime.openIssue')}</span>
+                        <span className="shrink-0 font-medium">
+                          {t('agentRuntime.openIssue')}
+                        </span>
                       ) : null}
                     </div>
                   </div>
@@ -2438,7 +2493,7 @@ export default function LoopsPage() {
           </div>
 
           {/* 0622 · B6: environment-derived runtime detection (local CLI + Docker)
-              with per-check action buttons. */}
+            with per-check action buttons. */}
           <div className="mt-4 border-t pt-4">
             <div className="flex items-center justify-between gap-3">
               <h3 className="text-xs font-semibold text-muted-foreground">
@@ -3070,10 +3125,14 @@ export default function LoopsPage() {
                 <p className="text-xs text-muted-foreground">
                   {t('resumeSummary.resumableShards')}
                 </p>
-                <p className="mt-2 text-lg font-semibold">{resumeSummary?.resumableShards ?? 0}</p>
+                <p className="mt-2 text-lg font-semibold">
+                  {resumeSummary?.resumableShards ?? 0}
+                </p>
               </div>
               <div className="rounded-md bg-muted/40 p-3">
-                <p className="text-xs text-muted-foreground">{t('resumeSummary.affectedIssues')}</p>
+                <p className="text-xs text-muted-foreground">
+                  {t('resumeSummary.affectedIssues')}
+                </p>
                 <p className="mt-2 text-lg font-semibold">{resumeSummary?.affectedIssues ?? 0}</p>
               </div>
             </div>
@@ -3346,7 +3405,9 @@ export default function LoopsPage() {
                 <h2 className="text-sm font-semibold" id="aging-queue-title">
                   {t('agingQueue.title')}
                 </h2>
-                <p className="mt-1 text-xs text-muted-foreground">{AGING_QUEUE_SLA_POLICY.label}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {AGING_QUEUE_SLA_POLICY.label}
+                </p>
               </div>
               <AlertTriangle className="size-4 text-muted-foreground" />
             </div>
@@ -3515,6 +3576,7 @@ export default function LoopsPage() {
             )}
           </div>
         </section>
+        </LoopsOperationsView>
       </div>
     </main>
   );

@@ -2,6 +2,9 @@
   "title": "Settings",
   "general": "General",
   "account": "Account",
+  "email": "Email",
+  "language": "Language",
+  "notAvailable": "Not available",
   "security": "Security",
   "notifications": "Notifications",
   "hub": {

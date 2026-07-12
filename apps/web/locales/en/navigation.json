@@ -2,10 +2,15 @@
   "menu": {
     "home": "Home",
     "dashboard": "Dashboard",
+    "issues": "Issues",
+    "review": "Review",
+    "runtime": "Runtime",
+    "newIssue": "New Issue",
     "settings": "Settings",
     "profile": "Profile",
     "account": "Account",
     "search": "Search",
+    "commandSearch": "Open loop command",
     "logout": "Sign Out"
   },
   "groupMain": "Main",

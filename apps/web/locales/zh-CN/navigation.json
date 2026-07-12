@@ -2,10 +2,15 @@
   "menu": {
     "home": "首页",
     "dashboard": "仪表盘",
+    "issues": "问题",
+    "review": "审查",
+    "runtime": "运行时",
+    "newIssue": "新建问题",
     "settings": "设置",
     "profile": "个人资料",
     "account": "账户",
     "search": "搜索",
+    "commandSearch": "打开 Loop 命令",
     "logout": "退出登录"
   },
   "groupMain": "主要",
