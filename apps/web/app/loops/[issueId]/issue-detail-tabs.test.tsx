@@ -1,4 +1,6 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { hydrateRoot } from 'react-dom/client';
+import { renderToString } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { IssueDetailTabPanel, IssueDetailTabs } from './issue-detail-tabs';
 
@@ -70,8 +72,8 @@ const labels = {
   evidence: 'Evidence',
 };
 
-function renderTabs() {
-  return render(
+function TabsFixture() {
+  return (
     <IssueDetailTabs labels={labels}>
       <IssueDetailTabPanel primary value="overview">
         <p id="loop-intake-tenant-title">Overview content</p>
@@ -85,8 +87,12 @@ function renderTabs() {
       <IssueDetailTabPanel primary value="evidence">
         <div id="delivery-controls">Evidence content</div>
       </IssueDetailTabPanel>
-    </IssueDetailTabs>,
+    </IssueDetailTabs>
   );
+}
+
+function renderTabs() {
+  return render(<TabsFixture />);
 }
 
 describe('IssueDetailTabs', () => {
@@ -168,5 +174,44 @@ describe('IssueDetailTabs', () => {
       );
       expect(scrollIntoView).toHaveBeenCalled();
     });
+  });
+
+  it('hydrates Overview markup before selecting a hash-owned tab after mount', async () => {
+    vi.stubGlobal('window', undefined);
+    const html = renderToString(<TabsFixture />);
+    vi.unstubAllGlobals();
+
+    expect(html).toContain('aria-selected="true"');
+    window.history.replaceState(null, '', '#delivery-controls');
+    Element.prototype.scrollIntoView = vi.fn();
+
+    const container = document.createElement('div');
+    container.innerHTML = html;
+    document.body.appendChild(container);
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    let root: ReturnType<typeof hydrateRoot> | undefined;
+
+    try {
+      await act(async () => {
+        root = hydrateRoot(container, <TabsFixture />);
+        await Promise.resolve();
+      });
+
+      expect(consoleError).not.toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Hydration failed because the server rendered text didn't match the client",
+        ),
+        expect.anything(),
+      );
+      await waitFor(() => {
+        expect(screen.getByRole('tab', { name: 'Evidence' })).toHaveAttribute(
+          'aria-selected',
+          'true',
+        );
+      });
+    } finally {
+      act(() => root?.unmount());
+      container.remove();
+    }
   });
 });

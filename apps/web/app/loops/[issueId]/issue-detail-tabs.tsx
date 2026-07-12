@@ -6,17 +6,17 @@ import { Tabs, TabsList, TabsTrigger } from '@repo/ui';
 
 export type IssueDetailTab = 'overview' | 'plan' | 'execution' | 'evidence';
 
-type IssueDetailTabsProps = {
+interface IssueDetailTabsProps {
   children: ReactNode;
   labels: Record<IssueDetailTab, string>;
-};
+}
 
-type IssueDetailTabPanelProps = {
+interface IssueDetailTabPanelProps {
   children: ReactNode;
   className?: string;
   primary?: boolean;
   value: IssueDetailTab;
-};
+}
 
 const anchorTabs: Record<string, IssueDetailTab> = {
   'next-action-diagnostic': 'overview',
@@ -33,9 +33,7 @@ function tabForHash(hash: string): IssueDetailTab {
 }
 
 export function IssueDetailTabs({ children, labels }: IssueDetailTabsProps) {
-  const [value, setValue] = useState<IssueDetailTab>(() =>
-    typeof window === 'undefined' ? 'overview' : tabForHash(window.location.hash),
-  );
+  const [value, setValue] = useState<IssueDetailTab>('overview');
 
   useEffect(() => {
     const syncHash = () => {
