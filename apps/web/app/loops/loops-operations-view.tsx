@@ -30,6 +30,8 @@ export function LoopsOperationsView({ children }: { children: ReactNode }) {
       if (OPERATIONS_HASHES.has(hash)) {
         setTargetHash(hash);
         setIsOpen(true);
+      } else {
+        setTargetHash('');
       }
     };
 
@@ -60,7 +62,7 @@ export function LoopsOperationsView({ children }: { children: ReactNode }) {
           </h2>
         </div>
         <button
-          aria-controls="operations-content"
+          aria-controls={isOpen ? 'operations-content' : undefined}
           aria-expanded={isOpen}
           className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background/70 px-3 text-sm font-medium hover:bg-muted/50"
           onClick={() => setIsOpen((open) => !open)}

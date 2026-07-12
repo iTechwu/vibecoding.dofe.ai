@@ -100,6 +100,29 @@ describe('LoopsIssuesView', () => {
 });
 
 describe('LoopsOperationsView', () => {
+  it('only exposes aria-controls while the controlled content is mounted', () => {
+    window.history.replaceState(null, '', '/loops');
+    renderWithIntl(
+      <LoopsOperationsView>
+        <section aria-label="Review Inbox">Review Inbox</section>
+      </LoopsOperationsView>,
+    );
+
+    const trigger = screen.getByRole('button', { name: 'Operations' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger).not.toHaveAttribute('aria-controls');
+
+    fireEvent.click(trigger);
+    const contentId = trigger.getAttribute('aria-controls');
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(contentId).toBe('operations-content');
+    expect(document.getElementById(contentId!)).toBeInTheDocument();
+
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger).not.toHaveAttribute('aria-controls');
+  });
+
   it('reveals management content from the Operations trigger', () => {
     window.history.replaceState(null, '', '/loops');
     renderWithIntl(
@@ -154,6 +177,32 @@ describe('LoopsOperationsView', () => {
 
     expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears a stale target before Operations is manually reopened', async () => {
+    window.history.replaceState(null, '', '#agent-runtime');
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+
+    renderWithIntl(
+      <LoopsOperationsView>
+        <section id="agent-runtime" aria-label="Agent Runtime">
+          Agent Runtime
+        </section>
+      </LoopsOperationsView>,
+    );
+
+    await screen.findByRole('region', { name: 'Agent Runtime' });
+    scrollIntoView.mockClear();
+
+    window.history.replaceState(null, '', '#unrelated');
+    fireEvent(window, new HashChangeEvent('hashchange'));
+
+    const trigger = screen.getByRole('button', { name: 'Operations' });
+    fireEvent.click(trigger);
+    fireEvent.click(trigger);
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
   it('opens management content for the agent runtime hash', async () => {
