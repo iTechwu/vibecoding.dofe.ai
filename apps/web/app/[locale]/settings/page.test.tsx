@@ -34,7 +34,8 @@ describe('SettingsPage', () => {
     expect(screen.getByText('Ada')).toBeInTheDocument();
     expect(screen.getByText('ada@example.com')).toBeInTheDocument();
     expect(screen.getByText('Language')).toBeInTheDocument();
-    expect(screen.getByText('en')).toBeInTheDocument();
+    expect(screen.getByText('English')).toBeInTheDocument();
+    expect(screen.queryByText('en')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Switch language' })).toBeInTheDocument();
     expect(mocks.redirect).not.toHaveBeenCalled();
   });

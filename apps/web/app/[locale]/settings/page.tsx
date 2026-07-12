@@ -1,6 +1,7 @@
 'use client';
 
 import { AppShell, LocaleSwitcher } from '@/components/layout';
+import { localeNames, type Locale } from '@/i18n/config';
 import { useAuth } from '@/providers';
 import { useLocale, useTranslations } from 'next-intl';
 
@@ -28,7 +29,7 @@ export default function SettingsPage() {
           <div className="flex items-center justify-between gap-4 py-4">
             <div>
               <dt className="text-sm text-muted-foreground">{t('language')}</dt>
-              <dd className="text-sm">{locale}</dd>
+              <dd className="text-sm">{localeNames[locale as Locale] ?? locale}</dd>
             </div>
             <LocaleSwitcher />
           </div>

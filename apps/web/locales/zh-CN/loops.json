@@ -756,8 +756,8 @@
   },
   "newIssue": {
     "eyebrow": "Web Issue 录入",
-    "title": "新建 Loops Issue",
-    "back": "返回",
+    "title": "新建 Issue",
+    "back": "返回 Issue 列表",
     "workbench": {
       "subtitle": "只描述一次交付意图，Dofe 会生成可审阅的 issue、spec 路径、关卡和证据计划。",
       "steps": {

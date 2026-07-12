@@ -756,8 +756,8 @@
   },
   "newIssue": {
     "eyebrow": "Web Issue Intake",
-    "title": "New Loops Issue",
-    "back": "Back",
+    "title": "New Issue",
+    "back": "Back to Issues",
     "workbench": {
       "subtitle": "Describe the delivery intent once; Dofe turns it into a reviewable issue, spec path, gates, and evidence plan.",
       "steps": {
