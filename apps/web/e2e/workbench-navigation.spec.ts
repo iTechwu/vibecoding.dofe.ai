@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page, type Response } from '@playwright/test';
 
 const AUTH_SESSION_DURATION_MS = 60 * 60 * 1000;
 
@@ -44,6 +44,13 @@ async function authenticateWorkbench(page: Page, baseURL: string): Promise<void>
   }, expiresAt);
 }
 
+async function expectAuthenticatedWorkbench(page: Page, response: Response | null): Promise<void> {
+  expect(response?.status()).toBeLessThan(400);
+  expect(response?.request().redirectedFrom()).toBeNull();
+  await expect(page).not.toHaveURL(/\/login(?:[/?#]|$)/);
+  await expect(page.locator('[data-workbench]')).toBeVisible();
+}
+
 test.beforeEach(async ({ page, baseURL }) => {
   expect(baseURL, 'Playwright baseURL must be configured').toBeTruthy();
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -55,8 +62,7 @@ test('desktop workbench exposes all sidebar destinations without horizontal over
 }) => {
   const response = await page.goto('/en/loops');
 
-  expect(response?.status()).toBeLessThan(500);
-  await expect(page.locator('[data-workbench]')).toBeVisible();
+  await expectAuthenticatedWorkbench(page, response);
   await expect(page.locator('[data-slot="sidebar-container"]')).toBeVisible();
 
   for (const [label, href] of [
@@ -81,12 +87,32 @@ test('desktop workbench exposes all sidebar destinations without horizontal over
   );
 });
 
+test('default-locale workbench keeps sidebar destinations unprefixed', async ({ page }) => {
+  const response = await page.goto('/loops');
+
+  await expectAuthenticatedWorkbench(page, response);
+  await expect(page.locator('[data-slot="sidebar-container"]')).toBeVisible();
+
+  for (const [label, href] of [
+    ['首页', '/'],
+    ['问题', '/loops'],
+    ['审查', '/loops#review-inbox'],
+    ['运行时', '/loops#agent-runtime'],
+    ['新建问题', '/loops/new'],
+    ['设置', '/settings'],
+  ] as const) {
+    await expect(page.getByRole('link', { name: label, exact: true })).toHaveAttribute(
+      'href',
+      href,
+    );
+  }
+});
+
 test('mobile sidebar Sheet reaches New Issue', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
   const response = await page.goto('/en/loops');
 
-  expect(response?.status()).toBeLessThan(500);
-  await expect(page.locator('[data-workbench]')).toBeVisible();
+  await expectAuthenticatedWorkbench(page, response);
 
   await page.getByRole('button', { name: 'Toggle Sidebar' }).first().click();
 
