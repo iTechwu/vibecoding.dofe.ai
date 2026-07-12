@@ -31,18 +31,24 @@ describe('workbench selectors', () => {
     expect(result?.issue.id).toBe('running');
   });
 
-  it('falls back to a non-paused non-CLOSED issue, then the first item', () => {
+  it('falls back to a non-paused non-terminal issue, then a non-terminal paused issue', () => {
     expect(
       selectContinuationIssue([issue('closed', 'CLOSED'), issue('open', 'OPEN')])?.issue.id,
     ).toBe('open');
-    expect(selectContinuationIssue([issue('closed', 'CLOSED')])?.issue.id).toBe('closed');
+    expect(
+      selectContinuationIssue([
+        issue('closed', 'CLOSED'),
+        issue('paused', 'OPEN', { paused: true }),
+      ])?.issue.id,
+    ).toBe('paused');
     expect(selectContinuationIssue([])).toBeUndefined();
   });
 
-  it('uses the stated non-CLOSED fallback priority', () => {
+  it('returns undefined when every issue is terminal', () => {
+    expect(selectContinuationIssue([issue('closed', 'CLOSED')])).toBeUndefined();
     expect(
-      selectContinuationIssue([issue('closed', 'CLOSED'), issue('archived', 'ARCHIVED')])?.issue.id,
-    ).toBe('archived');
+      selectContinuationIssue([issue('archived', 'ARCHIVED'), issue('rejected', 'REJECTED')]),
+    ).toBeUndefined();
   });
 
   it('orders human review and paused issues before active work and terminal issues', () => {

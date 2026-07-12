@@ -220,4 +220,42 @@ describe('HomeWorkbench', () => {
     expect(screen.getByText('No issues yet.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'New Issue' })).toHaveAttribute('href', '/loops/new');
   });
+
+  it('does not offer a continuation action when every listed issue is terminal', () => {
+    queryState.list.data = {
+      body: {
+        data: {
+          list: [
+            {
+              issue: {
+                id: 'archived',
+                title: 'Archived issue',
+                status: 'ARCHIVED',
+                priority: 'P2',
+              },
+              state: { phase: 'CLOSED', paused: false },
+            },
+            {
+              issue: {
+                id: 'rejected',
+                title: 'Rejected issue',
+                status: 'REJECTED',
+                priority: 'P2',
+              },
+              state: { phase: 'CLOSED', paused: false },
+            },
+          ],
+          total: 2,
+          page: 1,
+          limit: 20,
+        },
+      },
+    };
+
+    renderWorkbench();
+
+    expect(screen.queryByRole('region', { name: 'Continue' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Continue Loop' })).not.toBeInTheDocument();
+    expect(screen.getByText('Archived issue')).toBeInTheDocument();
+  });
 });

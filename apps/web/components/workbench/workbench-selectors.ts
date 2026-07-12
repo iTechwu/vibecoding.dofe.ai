@@ -18,8 +18,8 @@ function needsHumanAttention(item: LoopIssueListItem) {
 export function selectContinuationIssue(items: LoopIssueListItem[]) {
   return (
     items.find((item) => item.issue.status === 'IN_LOOP' && !isPaused(item)) ??
-    items.find((item) => !isPaused(item) && item.issue.status !== 'CLOSED') ??
-    items[0]
+    items.find((item) => !isPaused(item) && !isTerminal(item)) ??
+    items.find((item) => isPaused(item) && !isTerminal(item))
   );
 }
 
