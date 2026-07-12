@@ -86,6 +86,7 @@ Desktop.ini
 *.bak
 *.tmp
 *.temp
+.worktrees/
 .vercel
 .netlify
 .playwright-mcp
