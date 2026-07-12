@@ -53,19 +53,19 @@ test.beforeEach(async ({ page, baseURL }) => {
 test('desktop workbench exposes all sidebar destinations without horizontal overflow', async ({
   page,
 }) => {
-  const response = await page.goto('/loops');
+  const response = await page.goto('/en/loops');
 
   expect(response?.status()).toBeLessThan(500);
   await expect(page.locator('[data-workbench]')).toBeVisible();
   await expect(page.locator('[data-slot="sidebar-container"]')).toBeVisible();
 
   for (const [label, href] of [
-    ['Home', '/'],
-    ['Issues', '/loops'],
-    ['Review', '/loops#review-inbox'],
-    ['Runtime', '/loops#agent-runtime'],
-    ['New Issue', '/loops/new'],
-    ['Settings', '/settings'],
+    ['Home', '/en'],
+    ['Issues', '/en/loops'],
+    ['Review', '/en/loops#review-inbox'],
+    ['Runtime', '/en/loops#agent-runtime'],
+    ['New Issue', '/en/loops/new'],
+    ['Settings', '/en/settings'],
   ] as const) {
     await expect(page.getByRole('link', { name: label, exact: true })).toHaveAttribute(
       'href',
@@ -83,7 +83,7 @@ test('desktop workbench exposes all sidebar destinations without horizontal over
 
 test('mobile sidebar Sheet reaches New Issue', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
-  const response = await page.goto('/loops');
+  const response = await page.goto('/en/loops');
 
   expect(response?.status()).toBeLessThan(500);
   await expect(page.locator('[data-workbench]')).toBeVisible();
@@ -93,7 +93,7 @@ test('mobile sidebar Sheet reaches New Issue', async ({ page }) => {
   const mobileSidebar = page.locator('[data-sidebar="sidebar"][data-mobile="true"]');
   await expect(mobileSidebar).toBeVisible();
   const newIssue = mobileSidebar.getByRole('link', { name: 'New Issue', exact: true });
-  await expect(newIssue).toHaveAttribute('href', '/loops/new');
+  await expect(newIssue).toHaveAttribute('href', '/en/loops/new');
   await newIssue.click();
-  await expect(page).toHaveURL(/\/loops\/new$/);
+  await expect(page).toHaveURL(/\/en\/loops\/new$/);
 });
