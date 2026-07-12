@@ -65,6 +65,22 @@ describe('workbench selectors', () => {
     ]);
   });
 
+  it('keeps a paused terminal issue ahead of regular terminal work without mutating the input', () => {
+    const input = [
+      issue('closed', 'CLOSED'),
+      issue('paused-archived', 'ARCHIVED', { paused: true }),
+      issue('archived', 'ARCHIVED'),
+    ];
+    const before = input.map((item) => item.issue.id);
+
+    expect(selectActionableIssues(input).map((item) => item.issue.id)).toEqual([
+      'paused-archived',
+      'closed',
+      'archived',
+    ]);
+    expect(input.map((item) => item.issue.id)).toEqual(before);
+  });
+
   it('does not mutate the API list while prioritizing it', () => {
     const input = [issue('open', 'OPEN'), issue('review', 'OPEN', { phase: 'PHASE_2_REVIEW' })];
     const before = input.map((item) => item.issue.id);

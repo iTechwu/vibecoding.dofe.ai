@@ -21,9 +21,9 @@ function IssueMeta({ phase, priority }: { phase?: string; priority?: string }) {
   );
 }
 
-function HomeWorkbenchSkeleton() {
+function HomeWorkbenchSkeleton({ label }: { label: string }) {
   return (
-    <main aria-label="Loading home workbench" className="mx-auto w-full max-w-5xl p-4 sm:p-6">
+    <main aria-label={label} className="mx-auto w-full max-w-5xl p-4 sm:p-6">
       <div className="space-y-3">
         <Skeleton className="h-3 w-24" />
         <Skeleton className="h-8 w-44" />
@@ -67,7 +67,7 @@ export function HomeWorkbench() {
     );
   }
 
-  if (isLoading) return <HomeWorkbenchSkeleton />;
+  if (isLoading) return <HomeWorkbenchSkeleton label={t('loadingLabel')} />;
 
   const items = listQuery.data?.body.data.list ?? [];
   const continuation = selectContinuationIssue(items);

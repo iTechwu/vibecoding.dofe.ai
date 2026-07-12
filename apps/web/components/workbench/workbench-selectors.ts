@@ -10,6 +10,10 @@ function isTerminal(item: LoopIssueListItem) {
   return TERMINAL_STATUSES.has(item.issue.status);
 }
 
+function needsHumanAttention(item: LoopIssueListItem) {
+  return item.state?.phase === 'PHASE_2_REVIEW' || isPaused(item);
+}
+
 /** Chooses the most useful issue to continue without changing API order. */
 export function selectContinuationIssue(items: LoopIssueListItem[]) {
   return (
@@ -27,10 +31,10 @@ export function selectActionableIssues(items: LoopIssueListItem[]) {
   const terminal: LoopIssueListItem[] = [];
 
   for (const item of items) {
-    if (isTerminal(item)) {
-      terminal.push(item);
-    } else if (item.state?.phase === 'PHASE_2_REVIEW' || isPaused(item)) {
+    if (needsHumanAttention(item)) {
       humanReview.push(item);
+    } else if (isTerminal(item)) {
+      terminal.push(item);
     } else if (item.issue.status === 'IN_LOOP') {
       activeLoops.push(item);
     } else {

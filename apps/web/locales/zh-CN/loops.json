@@ -31,6 +31,7 @@
       "reviewEmpty": "当前没有待审阅的决策。",
       "openReview": "打开审阅：{title}",
       "loadError": "无法加载你的工作区。",
+      "loadingLabel": "正在加载首页工作区",
       "retry": "重试",
       "emptyTitle": "暂无 Issue。",
       "emptyDescription": "创建一个 Issue 以启动交付 Loop。"

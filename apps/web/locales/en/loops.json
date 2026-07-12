@@ -31,6 +31,7 @@
       "reviewEmpty": "No review decisions are waiting.",
       "openReview": "Open review: {title}",
       "loadError": "Unable to load your workbench.",
+      "loadingLabel": "Loading home workbench",
       "retry": "Retry",
       "emptyTitle": "No issues yet.",
       "emptyDescription": "Create an issue to start a delivery loop."

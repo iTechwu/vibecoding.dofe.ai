@@ -164,7 +164,7 @@ describe('HomeWorkbench', () => {
 
     renderWorkbench();
 
-    expect(screen.getByLabelText('Loading home workbench')).toBeInTheDocument();
+    expect(screen.getByLabelText(loopsMessages.dashboard.home.loadingLabel)).toBeInTheDocument();
   });
 
   it('offers retry when any required query fails', () => {
