@@ -1207,6 +1207,12 @@
         "body": "Advance the next runnable shard through implementation, tests, and review."
       }
     },
+    "tabs": {
+      "overview": "Overview",
+      "plan": "Plan",
+      "execution": "Execution",
+      "evidence": "Evidence"
+    },
     "runDiagnostics": {
       "ready": "Ready to continue with {shard}.",
       "paused": "The loop is paused. Resume it before continuing.",

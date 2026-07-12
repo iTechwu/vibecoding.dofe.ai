@@ -1207,6 +1207,12 @@
         "body": "推进下一个可运行 shard，完成实现、测试与审阅。"
       }
     },
+    "tabs": {
+      "overview": "概览",
+      "plan": "计划",
+      "execution": "执行",
+      "evidence": "证据"
+    },
     "runDiagnostics": {
       "ready": "准备继续推进 {shard}。",
       "paused": "Loop 当前已暂停。请先恢复，再继续推进。",

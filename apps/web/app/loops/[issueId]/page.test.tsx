@@ -1,10 +1,65 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { LoopDetail } from '@repo/contracts';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import loopsMessages from '@/locales/en/loops.json';
 import zhLoopsMessages from '@/locales/zh-CN/loops.json';
 import LoopIssueDetailPage from './page';
+
+vi.mock('@repo/ui', async () => {
+  const React = await import('react');
+  const TabsContext = React.createContext<{
+    value: string;
+    onValueChange?: (value: string) => void;
+  }>({ value: '' });
+
+  return {
+    Tabs: ({
+      children,
+      onValueChange,
+      value,
+    }: React.PropsWithChildren<{ value: string; onValueChange?: (value: string) => void }>) => (
+      <TabsContext.Provider value={{ value, onValueChange }}>{children}</TabsContext.Provider>
+    ),
+    TabsList: ({ children, ...props }: React.ComponentProps<'div'>) => (
+      <div {...props}>{children}</div>
+    ),
+    TabsTrigger: ({
+      children,
+      value,
+      ...props
+    }: React.PropsWithChildren<{ value: string }> & React.ComponentProps<'button'>) => {
+      const tabs = React.useContext(TabsContext);
+      return (
+        <button
+          {...props}
+          aria-selected={tabs.value === value}
+          onClick={() => tabs.onValueChange?.(value)}
+          role="tab"
+          type="button"
+        >
+          {children}
+        </button>
+      );
+    },
+    TabsContent: ({
+      children,
+      value,
+      ...props
+    }: React.PropsWithChildren<{ value: string }> & React.ComponentProps<'div'>) => {
+      const tabs = React.useContext(TabsContext);
+      const { forceMount: _forceMount, ...contentProps } = props as typeof props & {
+        forceMount?: boolean;
+      };
+      void _forceMount;
+      return (
+        <div {...contentProps} hidden={tabs.value !== value} role="tabpanel">
+          {children}
+        </div>
+      );
+    },
+  };
+});
 
 const runBrowserQa = vi.fn();
 const runSecondOpinion = vi.fn();
@@ -574,6 +629,31 @@ describe('LoopIssueDetailPage', () => {
   beforeEach(() => {
     mockDetail = detail;
     mockRuntimeIssueId = 'issue-1';
+    window.history.replaceState(null, '', '/');
+  });
+
+  it('keeps Continue Loop as the primary action in the stable page header', () => {
+    renderWithIntl(<LoopIssueDetailPage />);
+
+    const header = screen.getByRole('heading', { name: 'Ship trace timeline' }).closest('header');
+    expect(header).not.toBeNull();
+    expect(within(header!).getByRole('button', { name: 'Continue Loop' })).toBeInTheDocument();
+  });
+
+  it('opens Evidence and scrolls delivery controls for its deep link', async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    window.history.replaceState(null, '', '#delivery-controls');
+
+    renderWithIntl(<LoopIssueDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: 'Evidence' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      expect(scrollIntoView).toHaveBeenCalled();
+    });
   });
 
   it('renders a scannable trace timeline from issue logs', () => {
