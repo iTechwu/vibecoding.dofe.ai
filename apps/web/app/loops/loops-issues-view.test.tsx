@@ -113,6 +113,49 @@ describe('LoopsOperationsView', () => {
     expect(screen.getByRole('region', { name: 'Review Inbox' })).toBeInTheDocument();
   });
 
+  it('opens and scrolls to the legacy loop board hash', async () => {
+    window.history.replaceState(null, '', '#loop-board');
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+
+    renderWithIntl(
+      <LoopsOperationsView>
+        <section id="loop-board" aria-label="Loop Board">
+          Loop Board
+        </section>
+      </LoopsOperationsView>,
+    );
+
+    expect(await screen.findByRole('region', { name: 'Loop Board' })).toBeInTheDocument();
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
+  });
+
+  it('scrolls to each recognized hash while Operations stays open', async () => {
+    window.history.replaceState(null, '', '#agent-runtime');
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+
+    renderWithIntl(
+      <LoopsOperationsView>
+        <section id="agent-runtime" aria-label="Agent Runtime">
+          Agent Runtime
+        </section>
+        <section id="review-inbox" aria-label="Review Inbox">
+          Review Inbox
+        </section>
+      </LoopsOperationsView>,
+    );
+
+    await screen.findByRole('region', { name: 'Agent Runtime' });
+    scrollIntoView.mockClear();
+
+    window.history.replaceState(null, '', '#review-inbox');
+    fireEvent(window, new HashChangeEvent('hashchange'));
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+  });
+
   it('opens management content for the agent runtime hash', async () => {
     window.history.replaceState(null, '', '#agent-runtime');
     const scrollIntoView = vi.fn();

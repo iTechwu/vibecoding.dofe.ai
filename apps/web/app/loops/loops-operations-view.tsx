@@ -5,6 +5,7 @@ import { ChevronDown } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 const OPERATIONS_HASHES = new Set([
+  'loop-board',
   'review-inbox',
   'exception-center',
   'runtime-panel',
@@ -19,12 +20,17 @@ function operationsHash() {
 export function LoopsOperationsView({ children }: { children: ReactNode }) {
   const t = useTranslations('loops.dashboard.operations');
   const [isOpen, setIsOpen] = useState(false);
+  const [targetHash, setTargetHash] = useState('');
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const openForHash = () => {
-      if (OPERATIONS_HASHES.has(operationsHash())) setIsOpen(true);
+      const hash = operationsHash();
+      if (OPERATIONS_HASHES.has(hash)) {
+        setTargetHash(hash);
+        setIsOpen(true);
+      }
     };
 
     openForHash();
@@ -34,11 +40,10 @@ export function LoopsOperationsView({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isOpen || typeof window === 'undefined' || typeof document === 'undefined') return;
-    const hash = operationsHash();
-    if (OPERATIONS_HASHES.has(hash)) {
-      document.getElementById(hash)?.scrollIntoView?.({ block: 'start' });
+    if (OPERATIONS_HASHES.has(targetHash)) {
+      document.getElementById(targetHash)?.scrollIntoView?.({ block: 'start' });
     }
-  }, [isOpen]);
+  }, [isOpen, targetHash]);
 
   return (
     <section
