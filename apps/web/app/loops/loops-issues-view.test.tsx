@@ -97,6 +97,14 @@ describe('LoopsIssuesView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
+
+  it('distinguishes a filtered empty result from an empty issue list', () => {
+    renderWithIntl(
+      <LoopsIssuesView isError={false} isFiltered isLoading={false} items={[]} onRetry={vi.fn()} />,
+    );
+
+    expect(screen.getByText('No matching issues.')).toBeInTheDocument();
+  });
 });
 
 describe('LoopsOperationsView', () => {

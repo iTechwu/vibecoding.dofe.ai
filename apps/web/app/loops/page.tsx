@@ -448,6 +448,15 @@ export default function LoopsPage() {
     boardItems.find((item) => item.columnId === 'blocked') ??
     boardItems.find((item) => item.columnId === 'running') ??
     boardItems[0];
+  const normalizedCommandQuery = commandQuery.trim().toLowerCase();
+  const issueItems = data?.list ?? [];
+  const filteredIssueItems = normalizedCommandQuery
+    ? issueItems.filter(({ issue }) => {
+        const title = issue.title.toLowerCase();
+        const id = issue.id.toLowerCase();
+        return title.includes(normalizedCommandQuery) || id.includes(normalizedCommandQuery);
+      })
+    : issueItems;
   const commandItems = [
     {
       id: 'new',
@@ -473,9 +482,7 @@ export default function LoopsPage() {
       meta: t('command.meta.loopBoard', { count: fallbackSummary.items.length }),
       href: '#loop-board',
     },
-  ].filter((item) =>
-    `${item.label} ${item.meta}`.toLowerCase().includes(commandQuery.trim().toLowerCase()),
-  );
+  ].filter((item) => `${item.label} ${item.meta}`.toLowerCase().includes(normalizedCommandQuery));
   // Distinct error state: previously a failed list/doctor query rendered as
   // perpetual "loading". Surface it as an explicit banner instead.
   const dataLoadFailed = listQuery.isError || doctorQuery.isError;
@@ -552,8 +559,9 @@ export default function LoopsPage() {
 
         <LoopsIssuesView
           isError={listQuery.isError}
+          isFiltered={Boolean(normalizedCommandQuery)}
           isLoading={listQuery.isLoading}
-          items={data?.list ?? []}
+          items={filteredIssueItems}
           onRetry={() => void listQuery.refetch()}
         />
 

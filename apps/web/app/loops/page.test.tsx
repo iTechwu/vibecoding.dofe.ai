@@ -841,6 +841,23 @@ describe('LoopsPage', () => {
     expect(loopsMessages.dashboard.operatorFocus.ctaLabel).toBe('{action}: {title}');
   });
 
+  it('filters issue rows by command title or issue id', () => {
+    renderWithIntl(<LoopsPage />);
+
+    const input = screen.getByRole('textbox', {
+      name: 'Search commands, loops, exceptions, or create a delivery request...',
+    });
+    const issues = screen.getByRole('region', { name: 'Issues' });
+
+    fireEvent.change(input, { target: { value: 'update docs' } });
+    expect(within(issues).getByText('Update docs')).toBeInTheDocument();
+    expect(within(issues).queryByText('Fix checkout flow')).not.toBeInTheDocument();
+
+    fireEvent.change(input, { target: { value: 'ISSUE-1' } });
+    expect(within(issues).getByText('Fix checkout flow')).toBeInTheDocument();
+    expect(within(issues).queryByText('Update docs')).not.toBeInTheDocument();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();

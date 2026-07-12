@@ -13,7 +13,9 @@
       "error": "无法加载 Issue。",
       "retry": "重试",
       "emptyTitle": "暂无 Issue。",
-      "emptyDescription": "创建一个 Issue 以启动交付 Loop。"
+      "emptyDescription": "创建一个 Issue 以启动交付 Loop。",
+      "noMatchesTitle": "没有匹配的 Issue。",
+      "noMatchesDescription": "请尝试其他 Issue 标题或 ID。"
     },
     "operations": {
       "eyebrow": "控制平面",

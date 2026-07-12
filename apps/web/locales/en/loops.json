@@ -13,7 +13,9 @@
       "error": "Unable to load issues.",
       "retry": "Retry",
       "emptyTitle": "No issues yet.",
-      "emptyDescription": "Create an issue to start a delivery loop."
+      "emptyDescription": "Create an issue to start a delivery loop.",
+      "noMatchesTitle": "No matching issues.",
+      "noMatchesDescription": "Try a different issue title or ID."
     },
     "operations": {
       "eyebrow": "Control plane",

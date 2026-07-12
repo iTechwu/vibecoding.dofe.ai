@@ -11,6 +11,7 @@ type LoopsIssuesViewProps = {
   items: LoopIssueListItem[];
   isLoading: boolean;
   isError: boolean;
+  isFiltered?: boolean;
   onRetry: () => void;
 };
 
@@ -24,7 +25,13 @@ function IssuesSkeleton({ label }: { label: string }) {
   );
 }
 
-export function LoopsIssuesView({ items, isLoading, isError, onRetry }: LoopsIssuesViewProps) {
+export function LoopsIssuesView({
+  items,
+  isLoading,
+  isError,
+  isFiltered = false,
+  onRetry,
+}: LoopsIssuesViewProps) {
   const locale = useLocale();
   const t = useTranslations('loops.dashboard.issues');
 
@@ -65,8 +72,12 @@ export function LoopsIssuesView({ items, isLoading, isError, onRetry }: LoopsIss
           </div>
         ) : items.length === 0 ? (
           <div className="rounded-md border border-dashed border-border py-8 text-center">
-            <p className="text-base font-medium">{t('emptyTitle')}</p>
-            <p className="mt-1 text-sm text-muted-foreground">{t('emptyDescription')}</p>
+            <p className="text-base font-medium">
+              {isFiltered ? t('noMatchesTitle') : t('emptyTitle')}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {isFiltered ? t('noMatchesDescription') : t('emptyDescription')}
+            </p>
           </div>
         ) : (
           <div className="divide-y overflow-hidden rounded-md border border-border">
