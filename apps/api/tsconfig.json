@@ -5,6 +5,8 @@
 
     // 输出配置
     "outDir": "./dist",
+    // Shared workspace packages are compiled from source through @repo/* aliases.
+    "rootDir": "../..",
     "module": "CommonJS",
     "moduleResolution": "Node",
     "ignoreDeprecations": "6.0",

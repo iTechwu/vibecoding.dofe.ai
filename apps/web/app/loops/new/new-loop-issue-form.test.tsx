@@ -139,7 +139,7 @@ describe('NewLoopIssueForm', () => {
     expect(push).toHaveBeenCalledWith('/loops/issue-template-1');
   });
 
-  it('confirms current tenant before full issue submission and includes it in the payload', async () => {
+  it('shows the current tenant but does not submit it as an issue field', async () => {
     vi.mocked(window.localStorage.getItem).mockImplementation((key) => {
       if (key === 'currentTenant') return 'tenant-youhuitun';
       if (key === 'currentTenantSnapshot') {
@@ -164,15 +164,8 @@ describe('NewLoopIssueForm', () => {
     await user.type(screen.getByLabelText('Title'), 'Fix checkout regression');
     await user.click(screen.getByRole('button', { name: 'Create Issue' }));
 
-    expect(mutateAsync).toHaveBeenCalledWith({
-      body: expect.objectContaining({
-        tenantContext: {
-          tenantId: 'tenant-youhuitun',
-          tenantName: '优惠豚',
-          teamId: 'team-1',
-        },
-      }),
-    });
+    expect(mutateAsync).toHaveBeenCalled();
+    expect(mutateAsync.mock.calls[0]?.[0].body).not.toHaveProperty('tenantContext');
   });
 
   it('blocks submit and shows a field error when the payload fails Zod validation (R10)', async () => {

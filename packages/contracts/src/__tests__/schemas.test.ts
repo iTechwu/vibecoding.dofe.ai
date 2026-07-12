@@ -7,6 +7,7 @@ import { z } from 'zod';
 
 // Import all schemas to verify exports
 import * as schemas from '../schemas';
+import { loopsContract } from '../api/loops.contract';
 
 describe('Schemas', () => {
   describe('Schema Exports', () => {
@@ -73,36 +74,47 @@ describe('Schemas', () => {
     });
 
     describe('Loops metrics schema', () => {
-      it('should validate loop tenant context in issue intake contracts', () => {
+      it('does not accept client tenant context in issue intake contracts', () => {
         const tenantContext = {
           tenantId: 'tenant-youhuitun',
           tenantName: '优惠豚',
           teamId: 'team-1',
         };
 
-        expect(
-          schemas.CreateLoopIssueRequestSchema.safeParse({
-            title: 'Add tenant scoped loop audit',
-            targetRepo: '.',
-            body: 'Persist and display the selected tenant during loop intake.',
-            priority: 'P1',
-            acceptanceCriteria: ['tenant context is visible'],
-            tenantContext,
-          }).success,
-        ).toBe(true);
+        const full = schemas.CreateLoopIssueRequestSchema.parse({
+          title: 'Add tenant scoped loop audit',
+          targetRepo: '.',
+          body: 'Persist and display the selected tenant during loop intake.',
+          priority: 'P1',
+          acceptanceCriteria: ['tenant context is visible'],
+          tenantContext,
+        });
+        const simple = schemas.CreateLoopIssueSimpleRequestSchema.parse({
+          request: 'Persist tenant context for the simple issue flow',
+          tenantContext,
+        });
 
-        expect(
-          schemas.CreateLoopIssueSimpleRequestSchema.safeParse({
-            request: 'Persist tenant context for the simple issue flow',
-            tenantContext,
-          }).success,
-        ).toBe(true);
+        expect(full).not.toHaveProperty('tenantContext');
+        expect(simple).not.toHaveProperty('tenantContext');
 
         expect(
           schemas.LoopTenantContextSchema.safeParse({
             tenantId: ' ',
           }).success,
         ).toBe(false);
+      });
+
+      it('does not expose a client-selected tenant on archive contracts', () => {
+        const archive = loopsContract.archiveTenant.body.parse({
+          tenantId: 'tenant-other',
+          includeClosed: true,
+        });
+        const list = loopsContract.listArchives.query.parse({ tenantId: 'tenant-other' });
+        const refresh = loopsContract.refreshArchiveUrl.body.parse({ tenantId: 'tenant-other' });
+
+        expect(archive).not.toHaveProperty('tenantId');
+        expect(list).not.toHaveProperty('tenantId');
+        expect(refresh).not.toHaveProperty('tenantId');
       });
 
       it('should validate the Loops capability registry', () => {

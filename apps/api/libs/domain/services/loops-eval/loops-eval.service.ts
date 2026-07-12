@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import type {
   EvalHistoricalBaselineSnapshot,
   EvalRun,
@@ -737,7 +737,10 @@ export class LoopsEvalService {
     const period = input.period ?? '30d';
     const generatedAt = new Date().toISOString();
     const { suites } = await input.evidencePort.collectEvalEvidence();
-    const tenantId = input.tenantId ?? 'default';
+    const tenantId = input.tenantId?.trim();
+    if (!tenantId) {
+      throw new BadRequestException('An SSO-resolved tenant ID is required for eval aggregation');
+    }
 
     const flat: LoopsAggregationFlatItem[] = suites.map((suite) => ({
       suiteId: suite.id,

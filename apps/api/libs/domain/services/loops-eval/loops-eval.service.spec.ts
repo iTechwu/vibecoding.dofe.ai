@@ -241,36 +241,17 @@ describe('LoopsEvalService worker orchestration', () => {
       expect(logSink.log).toHaveBeenCalledWith('info', expect.stringContaining('persisted'));
     });
 
-    it('skips persistence and cache when ports are absent', async () => {
+    it('rejects aggregation without an SSO-resolved tenant ID', async () => {
       const evidencePort = {
         collectEvalEvidence: jest.fn().mockResolvedValue({ suites: [buildSuite()], runs: [] }),
         collectLoopBenchInputs: jest.fn(),
       };
-      const compute = jest.fn().mockReturnValue([
-        {
-          tenantId: 'default',
-          workspaceId: 'default',
-          suiteId: 'delivery-readiness',
-          totalChecks: 6,
-          passedChecks: 4,
-          failedChecks: 1,
-          blockedChecks: 1,
-          passRate: 66,
-          averageScore: 66,
-          loopCount: 2,
-          period: '30d',
-          capturedAt: '2026-06-26T00:00:00.000Z',
-        },
-      ]);
-
-      const result = await service.runEvalAggregationWorker({
-        evidencePort,
-        computeAggregation: compute,
-      });
-
-      expect(result.processed).toBe(1);
-      expect(result.persisted).toBe(0);
-      expect(result.cachedInRedis).toBe(false);
+      await expect(
+        service.runEvalAggregationWorker({
+          evidencePort,
+          computeAggregation: jest.fn(),
+        }),
+      ).rejects.toThrow('tenant ID');
     });
 
     it('continues and logs when persistence throws', async () => {
@@ -297,6 +278,7 @@ describe('LoopsEvalService worker orchestration', () => {
       const logSink = { log: jest.fn() };
 
       const result = await service.runEvalAggregationWorker({
+        tenantId: 'tenant-1',
         evidencePort,
         computeAggregation: compute,
         persistAggregation: jest.fn().mockRejectedValue(new Error('db down')),

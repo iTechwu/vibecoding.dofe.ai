@@ -90,6 +90,8 @@ model LoopIssue {
   submitterProvider  String    @default("dev") @map("submitter_provider") @db.VarChar(40)
   submitterId        String    @map("submitter_id") @db.VarChar(120)
   submitterName      String    @map("submitter_name") @db.VarChar(120)
+  tenantId           String?   @map("tenant_id") @db.VarChar(64)
+  teamId             String?   @map("team_id") @db.VarChar(64)
   targetRepo         String    @map("target_repo") @db.Text
   acceptanceCriteria Json      @map("acceptance_criteria")
   rawPayloadRef      String    @map("raw_payload_ref") @db.Text
@@ -104,6 +106,8 @@ model LoopIssue {
 
   @@index([status, updatedAt(sort: Desc)])
   @@index([submitterId, createdAt(sort: Desc)])
+  @@index([tenantId, updatedAt(sort: Desc)])
+  @@index([teamId, updatedAt(sort: Desc)])
   @@index([createdAt(sort: Desc)])
   @@map("loop_issue")
 }

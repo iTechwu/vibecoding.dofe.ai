@@ -12,7 +12,7 @@ function fail(message) {
 
 function* walk(dir) {
   for (const entry of readdirSync(dir)) {
-    if (['.next', 'coverage', 'dist', 'generated', 'node_modules'].includes(entry)) {
+    if (['.next', 'coverage', 'dist', 'generated', 'node_modules', '.worktrees'].includes(entry)) {
       continue;
     }
 

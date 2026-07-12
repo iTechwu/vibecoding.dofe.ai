@@ -59,6 +59,7 @@ import type {
   LoopGlobalReviewRecord,
   LoopImplementationRecord,
   LoopInterventionRequest,
+  LoopIssueScope,
   LoopIssuesQuery,
   LoopLearning,
   LoopLearningGovernanceRequest,
@@ -104,6 +105,7 @@ import type {
   LoopSecondOpinion,
   LoopSpec,
   LoopStateItem,
+  LoopTenantContext,
   LoopWorkflowRecipe,
   LoopWorkspacesResponse,
   UpsertLoopWorkspaceRequest,
@@ -401,14 +403,16 @@ export class LoopsService implements LoopsIssueCreationPort {
     };
   }
 
-  async list(query: LoopIssuesQuery): Promise<LoopListResponse> {
-    return this.issues.list(query, (result) => this.withDeliveryControlsList(result));
+  async list(query: LoopIssuesQuery, scope?: LoopIssueScope): Promise<LoopListResponse> {
+    return this.issues.list(query, (result) => this.withDeliveryControlsList(result), scope);
   }
 
-  async getIssue(issueId: string) {
+  async getIssue(issueId: string, scope?: LoopIssueScope) {
     try {
-      return this.issues.getIssue(issueId, (detail: LoopIssueDetail) =>
-        this.withRequirementsCoverage(detail),
+      return this.issues.getIssue(
+        issueId,
+        (detail: LoopIssueDetail) => this.withRequirementsCoverage(detail),
+        scope,
       );
     } catch (error) {
       // Surface the original failure (corrupted workspace vs. genuinely
@@ -418,6 +422,27 @@ export class LoopsService implements LoopsIssueCreationPort {
         issueId,
         error: error instanceof Error ? error.message : String(error),
       });
+      throw new NotFoundException(`Issue ${issueId} not found`);
+    }
+  }
+
+  /**
+   * Ownership assertion shared by every issueId-scoped mutation/read. Reuses
+   * the scoped detail path so a tenant mismatch reads as 404
+   * (NotFoundException) without leaking the existence of another tenant's
+   * issue. No-op when no scope is supplied, so CLI/internal/system paths that
+   * call the service directly are unaffected.
+   */
+  async assertIssueScope(issueId: string, scope?: LoopIssueScope): Promise<void> {
+    if (!scope) {
+      return;
+    }
+    if (!this.persistence) {
+      // Standalone (no DB) cannot prove ownership — refuse rather than trust files.
+      throw new NotFoundException(`Issue ${issueId} not found`);
+    }
+    const detail = await this.persistence.readDetailScoped(issueId, scope);
+    if (!detail) {
       throw new NotFoundException(`Issue ${issueId} not found`);
     }
   }
@@ -438,7 +463,10 @@ export class LoopsService implements LoopsIssueCreationPort {
     };
   }
 
-  async createIssue(input: CreateLoopIssueRequest, authUser?: AuthUserInfo) {
+  async createIssue(
+    input: CreateLoopIssueRequest & { tenantContext?: LoopTenantContext },
+    authUser?: AuthUserInfo,
+  ) {
     // 结构优化 nextstep Step N3：issue intake 完整编排已下沉到
     // `LoopsIssuesService.createIssue`（含 workflow recipe 派生）。facade 仅保留
     // permission/audit wrapper 与兼容入口，对外行为不变。
@@ -451,7 +479,10 @@ export class LoopsService implements LoopsIssueCreationPort {
    * and persistence are identical to the full path. The SSO submitter stays
    * server-derived; the original `request` is preserved verbatim as `body`.
    */
-  async createSimpleIssue(input: CreateLoopIssueSimpleRequest, authUser?: AuthUserInfo) {
+  async createSimpleIssue(
+    input: CreateLoopIssueSimpleRequest & { tenantContext?: LoopTenantContext },
+    authUser?: AuthUserInfo,
+  ) {
     const targetRepo = await this.issues.resolveSimpleTargetRepo(input);
     const normalised = normaliseSimpleIssue({
       request: input.request,

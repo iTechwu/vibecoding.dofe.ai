@@ -23,13 +23,14 @@
  * - 过期知识检测：1分钟（需要快速响应）
  */
 
+import { useTenantQueryInvalidation } from '@/hooks/use-tenant-query-invalidation';
+import { cacheTime, gcTime } from '@/lib/api/cache-config';
+import { handleApiErrorResponse } from '@/lib/errors';
 import type { Query } from '@tanstack/react-query';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { handleApiErrorResponse } from '@/lib/errors';
-import { cacheTime, gcTime } from '@/lib/api/cache-config';
 
 // ============================================================================
 // 缓存策略配置
@@ -134,9 +135,7 @@ function createQueryClient() {
         onError: (error) => {
           // Handle API errors with domain-specific messages
           if (error && typeof error === 'object' && 'body' in error) {
-            const result = handleApiErrorResponse(
-              (error as { body: unknown }).body,
-            );
+            const result = handleApiErrorResponse((error as { body: unknown }).body);
             toast.error(result.message || 'Operation failed');
             result.action?.();
           } else if (error instanceof Error) {
@@ -171,10 +170,11 @@ interface QueryProviderProps {
 
 export function QueryProvider({ children }: QueryProviderProps) {
   const [queryClient] = useState(() => getQueryClient());
+  // Drop cached tenant-scoped server data (e.g. Loops) when the SSO current
+  // tenant changes, so results always reflect the active tenant.
+  useTenantQueryInvalidation(queryClient);
 
-  return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-  );
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }
 
-export { getQueryClient, getStaleTimeByQueryKey, getGcTimeByQueryKey };
+export { getGcTimeByQueryKey, getQueryClient, getStaleTimeByQueryKey };

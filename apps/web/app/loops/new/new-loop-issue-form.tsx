@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@/i18n/navigation';
+import { useCreateLoopIssue } from '@/lib/api/contracts/hooks';
 import { useAuth } from '@/providers';
 import { CreateLoopIssueRequestSchema } from '@repo/contracts';
-import { useCreateLoopIssue } from '@/lib/api/contracts/hooks';
+import { useTranslations } from 'next-intl';
+import { useEffect, useState } from 'react';
 import {
   DEFAULT_LOOP_ISSUE_TEMPLATE,
   LOOP_ISSUE_TEMPLATES,
@@ -74,7 +74,6 @@ export default function NewLoopIssueForm({ defaultTargetRepo }: NewLoopIssueForm
       body: body.trim(),
       priority,
       acceptanceCriteria: criteria,
-      tenantContext,
     };
     const parsed = CreateLoopIssueRequestSchema.safeParse(payload);
     if (!parsed.success) {

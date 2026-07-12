@@ -1,4 +1,10 @@
-import { BadRequestException, Inject, Injectable, Optional } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  Optional,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import type { AuthUserInfo } from '@app/auth/types/auth.interface';
 import type {
@@ -7,11 +13,13 @@ import type {
   LoopDetail,
   LoopIntake,
   LoopIssue,
+  LoopIssueScope,
   LoopIssuesQuery,
   LoopListResponse,
   LoopRuleSnapshot,
   LoopStateItem,
   LoopSubmitter,
+  LoopTenantContext,
   LoopWorkflowRecipe,
 } from '@repo/contracts';
 import {
@@ -83,7 +91,7 @@ export class LoopsIssuesService {
    * port 直接消费本 service，不再依赖 legacy facade。
    */
   async createIssue(
-    input: CreateLoopIssueRequest,
+    input: CreateLoopIssueRequest & { tenantContext?: LoopTenantContext },
     authUser?: AuthUserInfo,
   ): Promise<{
     issue: LoopIssue;
@@ -271,7 +279,22 @@ export class LoopsIssuesService {
   async getIssue<TDetail extends LoopDetail>(
     issueId: string,
     enrichDetail: (detail: TDetail) => TDetail,
+    scope?: LoopIssueScope,
   ): Promise<TDetail> {
+    if (scope) {
+      // A verified scope must be proven through the DB. Without persistence
+      // (standalone/CLI) we cannot prove ownership, so refuse rather than
+      // degrade to trusting the file JSON. A non-matching row reads as 404 so
+      // the existence of another tenant's issue is never leaked.
+      if (!this.persistence) {
+        throw new NotFoundException(`Loop issue ${issueId} not found`);
+      }
+      const detail = await this.persistence.readDetailScoped(issueId, scope);
+      if (!detail) {
+        throw new NotFoundException(`Loop issue ${issueId} not found`);
+      }
+      return enrichDetail(detail as TDetail);
+    }
     const detail = this.persistence
       ? await this.persistence.readDetail(issueId)
       : await this.store.readDetail(issueId);
@@ -281,12 +304,16 @@ export class LoopsIssuesService {
   async list(
     query: LoopIssuesQuery,
     enrichList: (result: LoopListResponse) => Promise<LoopListResponse>,
+    scope?: LoopIssueScope,
   ): Promise<LoopListResponse> {
-    const result = await (this.persistence?.list(query) ?? this.listFromFile(query));
+    const result = await (this.persistence?.list(query, scope) ?? this.listFromFile(query, scope));
     return enrichList(result);
   }
 
-  private async listFromFile(query: LoopIssuesQuery): Promise<LoopListResponse> {
+  private async listFromFile(
+    query: LoopIssuesQuery,
+    scope?: LoopIssueScope,
+  ): Promise<LoopListResponse> {
     const fallback = await this.store.list();
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
@@ -300,7 +327,8 @@ export class LoopsIssuesService {
           (!query.status || item.issue.status === query.status) &&
           (!query.phase || item.state?.phase === query.phase) &&
           (!query.priority || item.issue.priority === query.priority) &&
-          (!query.targetRepo || item.issue.targetRepo === query.targetRepo),
+          (!query.targetRepo || item.issue.targetRepo === query.targetRepo) &&
+          (!scope || item.issue.tenantContext?.tenantId === scope.tenantId),
       );
     const start = (page - 1) * limit;
     return {
