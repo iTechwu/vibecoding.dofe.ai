@@ -27,6 +27,7 @@ import { LoopsEvalAggregationProcessor } from './loops-eval-aggregation.processo
 import { LoopsRemoteRunnerProcessor } from './loops-remote-runner.processor';
 import { LoopsTriggerSchedulerProcessor } from './loops-trigger-scheduler.processor';
 import { LoopsCrossTenantArchiveService } from './loops-cross-tenant-archive.service';
+import { LoopsScopeBackfillService } from './loops-scope-backfill.service';
 import {
   createRemoteShardExecutionPort,
   createRemoteShardRuntimeAdapter,
@@ -114,6 +115,7 @@ import { LoopsEngineService } from '@app/services/loops-engine';
       inject: [LoopsService],
     },
     LoopsCrossTenantArchiveService,
+    LoopsScopeBackfillService,
     {
       provide: LoopsRemoteShardRuntimeAdapter,
       useFactory: (

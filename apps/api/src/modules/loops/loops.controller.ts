@@ -5,7 +5,7 @@ import type { Queue } from 'bullmq';
 import { created, success } from '@dofe/infra-common/ts-rest';
 import { CURRENT_TENANT_HEADER } from '@dofe/infra-contracts';
 import { loopsContract as c } from '@repo/contracts/api';
-import { Auth, SsoScopeService, type VerifiedTenantScope } from '@app/auth';
+import { Auth, RequireSuperAdmin, SsoScopeService, type VerifiedTenantScope } from '@app/auth';
 import type { AuthenticatedRequest } from '@app/auth';
 import { AuditLogService } from '@app/audit-log';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
@@ -13,6 +13,7 @@ import type { Logger } from 'winston';
 import type { Prisma } from '@prisma/client';
 import { LOOPS_PERMISSION, RequireLoopsPermission } from './loops-rbac.decorator';
 import { LoopsService } from './loops.service';
+import { LoopsScopeBackfillService } from './loops-scope-backfill.service';
 
 type BrowserQaArtifactRequest = AuthenticatedRequest & {
   params?: {
@@ -38,6 +39,7 @@ function pickTenantCandidate(req: AuthenticatedRequest): string | undefined {
 export class LoopsController {
   constructor(
     private readonly loopsService: LoopsService,
+    private readonly scopeBackfillService: LoopsScopeBackfillService,
     private readonly ssoScopeService: SsoScopeService,
     private readonly auditLogService: AuditLogService,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
@@ -484,6 +486,7 @@ export class LoopsController {
   // --- Eval Suite / Eval Run (P0-3) ---
 
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @RequireSuperAdmin()
   @TsRestHandler(c.listEvalSuites)
   async listEvalSuites() {
     return tsRestHandler(c.listEvalSuites, async ({ query }) => {
@@ -492,6 +495,7 @@ export class LoopsController {
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @RequireSuperAdmin()
   @TsRestHandler(c.getEvalSuite)
   async getEvalSuite() {
     return tsRestHandler(c.getEvalSuite, async ({ params }) => {
@@ -500,6 +504,7 @@ export class LoopsController {
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @RequireSuperAdmin()
   @TsRestHandler(c.listEvalRuns)
   async listEvalRuns() {
     return tsRestHandler(c.listEvalRuns, async ({ query }) => {
@@ -508,6 +513,7 @@ export class LoopsController {
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @RequireSuperAdmin()
   @TsRestHandler(c.getEvalRun)
   async getEvalRun() {
     return tsRestHandler(c.getEvalRun, async ({ params }) => {
@@ -516,6 +522,7 @@ export class LoopsController {
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @RequireSuperAdmin()
   @TsRestHandler(c.runEvalTrendWorker)
   async runEvalTrendWorker(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.runEvalTrendWorker, async () => {
@@ -536,6 +543,7 @@ export class LoopsController {
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @RequireSuperAdmin()
   @TsRestHandler(c.runLoopBenchTrendWorker)
   async runLoopBenchTrendWorker(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.runLoopBenchTrendWorker, async () => {
@@ -829,6 +837,7 @@ export class LoopsController {
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
+  @RequireSuperAdmin()
   @TsRestHandler(c.doctor)
   async doctor() {
     return tsRestHandler(c.doctor, async () => {
@@ -838,17 +847,17 @@ export class LoopsController {
 
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.cost)
-  async cost() {
+  async cost(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.cost, async () => {
-      return success(await this.loopsService.cost());
+      return success(await this.loopsService.cost(await this.resolveTenantContext(req)));
     });
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.metrics)
-  async metrics() {
+  async metrics(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.metrics, async () => {
-      return success(await this.loopsService.metrics());
+      return success(await this.loopsService.metrics(await this.resolveTenantContext(req)));
     });
   }
 
@@ -862,9 +871,9 @@ export class LoopsController {
 
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.agentRuntime)
-  async agentRuntime() {
+  async agentRuntime(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.agentRuntime, async () => {
-      return success(await this.loopsService.agentRuntime());
+      return success(await this.loopsService.agentRuntime(await this.resolveTenantContext(req)));
     });
   }
 
@@ -877,6 +886,7 @@ export class LoopsController {
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @RequireSuperAdmin()
   @TsRestHandler(c.governLearning)
   async governLearning(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.governLearning, async ({ params, body }) => {
@@ -891,6 +901,7 @@ export class LoopsController {
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @RequireSuperAdmin()
   @TsRestHandler(c.runLearningAutoMergeWorker)
   async runLearningAutoMergeWorker(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.runLearningAutoMergeWorker, async () => {
@@ -910,6 +921,7 @@ export class LoopsController {
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  @RequireSuperAdmin()
   @TsRestHandler(c.runLearningIndexWorker)
   async runLearningIndexWorker(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.runLearningIndexWorker, async () => {
@@ -977,13 +989,11 @@ export class LoopsController {
   @TsRestHandler(c.logs)
   async logs(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.logs, async ({ query }) => {
-      // When scoped to an issue, assert ownership first. The issueId-less
-      // branch is a cross-issue file aggregate and remains a follow-up for
-      // tenant-scoped read at the store layer.
+      const scope = await this.resolveTenantContext(req);
       if (query.issueId) {
-        await this.authorizeIssueScope(req, query.issueId);
+        await this.loopsService.assertIssueScope(query.issueId, scope);
       }
-      return success(await this.loopsService.logs(query));
+      return success(await this.loopsService.logs({ ...query, scope }));
     });
   }
 
@@ -991,14 +1001,16 @@ export class LoopsController {
   @TsRestHandler(c.notifications)
   async notifications(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.notifications, async ({ query }) => {
+      const scope = await this.resolveTenantContext(req);
       if (query.issueId) {
-        await this.authorizeIssueScope(req, query.issueId);
+        await this.loopsService.assertIssueScope(query.issueId, scope);
       }
-      return success(await this.loopsService.notifications(query));
+      return success(await this.loopsService.notifications({ ...query, scope }));
     });
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
+  @RequireSuperAdmin()
   @TsRestHandler(c.resume)
   async resume(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.resume, async () => {
@@ -1363,6 +1375,32 @@ export class LoopsController {
     });
   }
 
+  @TsRestHandler(c.adminGetTenantEvalAggregation)
+  @RequireSuperAdmin()
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  async adminGetTenantEvalAggregation(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.adminGetTenantEvalAggregation, async ({ params, query }) => {
+      const result = await this.loopsService.getCrossTenantEvalAggregation({
+        ...query,
+        tenantId: params.tenantId,
+      });
+      await this.auditLog(
+        req,
+        'UPDATE',
+        'eval_aggregation',
+        params.tenantId,
+        'adminGetTenantEvalAggregation',
+        {
+          targetTenantId: params.tenantId,
+          authorizationSource: 'sso-superadmin',
+          source: result.source,
+          total: result.total,
+        } as Prisma.InputJsonObject,
+      );
+      return success(result);
+    });
+  }
+
   @TsRestHandler(c.runEvalAggregationWorker)
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   async runEvalAggregationWorker(@Req() req: AuthenticatedRequest) {
@@ -1420,6 +1458,7 @@ export class LoopsController {
 
   @TsRestHandler(c.getEvalAggregationCacheHealth)
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @RequireSuperAdmin()
   async getEvalAggregationCacheHealth() {
     return tsRestHandler(c.getEvalAggregationCacheHealth, async () => {
       return success(await this.loopsService.getEvalAggregationCacheHealth());
@@ -1432,6 +1471,7 @@ export class LoopsController {
 
   @TsRestHandler(c.startTriggerScheduler)
   @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
+  @RequireSuperAdmin()
   async startTriggerScheduler(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.startTriggerScheduler, async ({ body }) => {
       const intervalSeconds = body?.intervalSeconds ?? 60;
@@ -1466,6 +1506,7 @@ export class LoopsController {
 
   @TsRestHandler(c.stopTriggerScheduler)
   @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
+  @RequireSuperAdmin()
   async stopTriggerScheduler(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.stopTriggerScheduler, async () => {
       if (this.evalAggQueue) {
@@ -1488,6 +1529,7 @@ export class LoopsController {
 
   @TsRestHandler(c.getTriggerSchedulerStatus)
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @RequireSuperAdmin()
   async getTriggerSchedulerStatus() {
     return tsRestHandler(c.getTriggerSchedulerStatus, async () => {
       return success(await this.loopsService.getTriggerSchedulerStatus());
@@ -1532,6 +1574,80 @@ export class LoopsController {
       const result = await this.loopsService.refreshArchiveUrl(
         tenantContext.tenantId,
         params.archiveId,
+      );
+      return success(result);
+    });
+  }
+
+  @TsRestHandler(c.adminArchiveTenant)
+  @RequireSuperAdmin()
+  @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
+  async adminArchiveTenant(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.adminArchiveTenant, async ({ params, body }) => {
+      const result = await this.loopsService.archiveTenant({ ...body, tenantId: params.tenantId });
+      await this.auditLog(req, 'CREATE', 'loops_archive', result.archiveId, 'adminArchiveTenant', {
+        targetTenantId: params.tenantId,
+        authorizationSource: 'sso-superadmin',
+        fileCount: result.fileCount,
+      } as Prisma.InputJsonObject);
+      return success(result);
+    });
+  }
+
+  @TsRestHandler(c.adminListArchives)
+  @RequireSuperAdmin()
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  async adminListArchives(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.adminListArchives, async ({ params }) => {
+      const result = await this.loopsService.listArchives(params.tenantId);
+      await this.auditLog(req, 'UPDATE', 'loops_archive', params.tenantId, 'adminListArchives', {
+        targetTenantId: params.tenantId,
+        authorizationSource: 'sso-superadmin',
+      } as Prisma.InputJsonObject);
+      return success(result);
+    });
+  }
+
+  @TsRestHandler(c.adminRefreshArchiveUrl)
+  @RequireSuperAdmin()
+  @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
+  async adminRefreshArchiveUrl(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.adminRefreshArchiveUrl, async ({ params }) => {
+      const result = await this.loopsService.refreshArchiveUrl(params.tenantId, params.archiveId);
+      await this.auditLog(
+        req,
+        'UPDATE',
+        'loops_archive',
+        params.archiveId,
+        'adminRefreshArchiveUrl',
+        {
+          targetTenantId: params.tenantId,
+          authorizationSource: 'sso-superadmin',
+        } as Prisma.InputJsonObject,
+      );
+      return success(result);
+    });
+  }
+
+  @TsRestHandler(c.adminBackfillTenantScopes)
+  @RequireSuperAdmin()
+  @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
+  async adminBackfillTenantScopes(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.adminBackfillTenantScopes, async ({ body }) => {
+      const result = await this.scopeBackfillService.run(body);
+      await this.auditLog(
+        req,
+        'UPDATE',
+        'loop_issue_scope',
+        'historical-tenant-backfill',
+        'backfill',
+        {
+          authorizationSource: 'sso-superadmin',
+          dryRun: result.dryRun,
+          examined: result.examined,
+          updated: result.updated,
+          pending: result.pending.length,
+        } as Prisma.InputJsonObject,
       );
       return success(result);
     });

@@ -2192,13 +2192,16 @@ export class LoopsService implements LoopsIssueCreationPort {
     return found;
   }
 
-  private async collectEvalEvidence(): Promise<EvalEvidence> {
-    const [list, cost] = await Promise.all([this.list({ page: 1, limit: 200 }), this.cost()]);
+  private async collectEvalEvidence(scope?: LoopIssueScope): Promise<EvalEvidence> {
+    const [list, cost] = await Promise.all([
+      this.list({ page: 1, limit: 200 }, scope),
+      this.cost(scope),
+    ]);
     const details = new Map<string, LoopIssueDetail>();
     await Promise.all(
       list.list.map(async (item) => {
         try {
-          details.set(item.issue.id, await this.readDetail(item.issue.id));
+          details.set(item.issue.id, await this.getIssue(item.issue.id, scope));
         } catch (error) {
           this.log('warn', '[Loops] unable to read eval detail evidence', {
             issueId: item.issue.id,
@@ -2339,7 +2342,7 @@ export class LoopsService implements LoopsIssueCreationPort {
    * 3. Request-time aggregation (slowest, last resort)
    */
   async getCrossTenantEvalAggregation(input: {
-    tenantId?: string;
+    tenantId: string;
     suiteId?: string;
     period?: '7d' | '30d' | '90d' | 'all';
     blueprintId?: string;
@@ -2368,17 +2371,10 @@ export class LoopsService implements LoopsIssueCreationPort {
     limit: number;
     source: 'redis-cache' | 'db-query' | 'request-time';
   }> {
-    const {
-      tenantId = 'default',
-      suiteId,
-      period = '30d',
-      blueprintId,
-      page = 1,
-      limit = 20,
-    } = input;
+    const { tenantId, suiteId, period = '30d', blueprintId, page = 1, limit = 20 } = input;
 
     // Tier 1: Redis cache
-    if (tenantId && suiteId && !blueprintId && this.evalAggregationWorker) {
+    if (suiteId && !blueprintId && this.evalAggregationWorker) {
       const cached = await this.evalAggregationWorker.getCachedAggregation(
         tenantId,
         suiteId,
@@ -2417,7 +2413,7 @@ export class LoopsService implements LoopsIssueCreationPort {
     if (this.evalAggregationDb) {
       try {
         const where: Record<string, unknown> = {};
-        if (tenantId) where.tenantId = tenantId;
+        where.tenantId = tenantId;
         if (suiteId) where.suiteId = suiteId;
         if (blueprintId) where.blueprintId = blueprintId;
         where.period = period;
@@ -2723,7 +2719,7 @@ export class LoopsService implements LoopsIssueCreationPort {
     page: number,
     limit: number,
   ): Promise<ReturnType<LoopsService['getCrossTenantEvalAggregation']>> {
-    const evidence = await this.collectEvalEvidence();
+    const evidence = await this.collectEvalEvidence({ tenantId });
     const suites = this.buildEvalSuites(evidence);
     return this.evalService.buildRequestTimeAggregation({
       tenantId,
@@ -3379,17 +3375,24 @@ export class LoopsService implements LoopsIssueCreationPort {
     return this.persistence?.doctor() ?? this.store.doctor();
   }
 
-  async cost() {
-    return this.store.readCost();
+  async cost(scope?: LoopIssueScope) {
+    const cost = await this.store.readCost();
+    const issueIds = await this.scopedIssueIds(scope);
+    if (!issueIds) return cost;
+
+    const allowedIssueIds = new Set(issueIds);
+    return {
+      loops: cost.loops.filter((item) => allowedIssueIds.has(item.issueId)),
+    };
   }
 
-  async metrics(): Promise<LoopMetricsResponse> {
+  async metrics(scope?: LoopIssueScope): Promise<LoopMetricsResponse> {
     const [list, doctor, cost, logs, loopBenchTrend] = await Promise.all([
-      this.list({ page: 1, limit: 200 }),
-      this.doctor(),
-      this.cost(),
-      this.store.readLogs({ limit: 200 }),
-      this.readLoopBenchTrendSummary(),
+      this.list({ page: 1, limit: 200 }, scope),
+      scope ? undefined : this.doctor(),
+      this.cost(scope),
+      this.logs({ limit: 200, scope }),
+      scope ? undefined : this.readLoopBenchTrendSummary(),
     ]);
     const coverageSummaries = await Promise.all(
       list.list.map(async (item) => this.readCoverageSummary(item.issue.id)),
@@ -3417,11 +3420,14 @@ export class LoopsService implements LoopsIssueCreationPort {
 
     return {
       health: {
-        ok: doctor.ok,
-        root: doctor.root,
-        loops: doctor.loops,
-        issues: doctor.issues,
-        problems: doctor.problems,
+        // The file doctor reports system-wide paths and inconsistencies. It is
+        // intentionally omitted from a tenant response rather than leaking
+        // another tenant's state through operational diagnostics.
+        ok: doctor?.ok ?? true,
+        root: doctor?.root ?? 'tenant-scoped',
+        loops: doctor?.loops ?? list.total,
+        issues: doctor?.issues ?? list.total,
+        problems: doctor?.problems ?? [],
       },
       summary: {
         total: list.total,
@@ -3451,14 +3457,17 @@ export class LoopsService implements LoopsIssueCreationPort {
       riskQueue: this.buildRiskQueue(list.list, cost.loops, coverageSummaries),
       actionQueue: this.buildActionQueue(list.list),
       requirementsCoverage,
-      traceSummary: this.buildTraceSummary(logs),
+      traceSummary: this.buildTraceSummary(logs.entries),
       resumeSummary: this.buildResumeSummary(list.list),
-      loopBenchTrend,
+      ...(loopBenchTrend ? { loopBenchTrend } : {}),
     };
   }
 
-  async agentRuntime(): Promise<LoopAgentRuntimeResponse> {
-    const [list, cost] = await Promise.all([this.list({ page: 1, limit: 200 }), this.cost()]);
+  async agentRuntime(scope?: LoopIssueScope): Promise<LoopAgentRuntimeResponse> {
+    const [list, cost] = await Promise.all([
+      this.list({ page: 1, limit: 200 }, scope),
+      this.cost(scope),
+    ]);
     const costByIssue = new Map(cost.loops.map((item) => [item.issueId, item]));
     const activeItems = list.list.filter(
       ({ issue }) => !['CLOSED', 'ARCHIVED', 'REJECTED'].includes(issue.status),
@@ -3672,16 +3681,26 @@ export class LoopsService implements LoopsIssueCreationPort {
     return this.capabilityRegistry.build();
   }
 
-  async logs(input: { issueId?: string; limit?: number }) {
+  async logs(input: { issueId?: string; limit?: number; scope?: LoopIssueScope }) {
+    const issueIds = await this.scopedIssueIds(input.scope);
     return {
-      entries: await this.store.readLogs(input),
+      entries: await this.store.readLogs({ ...input, issueIds }),
     };
   }
 
-  async notifications(input: { issueId?: string; limit?: number }) {
+  async notifications(input: { issueId?: string; limit?: number; scope?: LoopIssueScope }) {
+    const issueIds = await this.scopedIssueIds(input.scope);
     return {
-      notifications: await this.store.readNotifications(input),
+      notifications: await this.store.readNotifications({ ...input, issueIds }),
     };
+  }
+
+  private async scopedIssueIds(scope?: LoopIssueScope): Promise<string[] | undefined> {
+    if (!scope) return undefined;
+    // A scoped caller without persisted ownership data must fail closed rather
+    // than derive authorization from .loops files.
+    if (!this.persistence) return [];
+    return this.persistence.listIssueIdsByScope(scope);
   }
 
   async resume() {

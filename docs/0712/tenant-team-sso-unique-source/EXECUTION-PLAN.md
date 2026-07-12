@@ -51,8 +51,9 @@ scope 一致。
 
 **状态（Cycle 6-7）**：部分完成。`LoopIssue` 已新增 nullable tenantId/teamId 投影及
 索引，迁移和新写入已落地（Cycle 6）；verified scope 已作为可选参数贯穿 DB/Persistence/
-Issues/Service 的 list/detail 读路径（Cycle 7，additive）。历史记录保持 NULL，回填报告、
-可证明的 SSO 映射、在回填完成后收紧非空约束，以及在 controller 启用过滤仍待执行。
+Issues/Service 的 list/detail 读路径（Cycle 7，additive）。Cycle 16 已完成 default-dry-run 的
+SSO preference+membership 回填工具与条件写入；历史记录在实际映射前保持 NULL。完成生产批次、
+保存回填报告及评估非空约束仍待执行。
 
 **目标**：让 Loop Issue 的归属能由数据库可靠查询和索引，而不是依赖 `.loops` 或
 `rawPayload` 中的 JSON。
@@ -74,10 +75,10 @@ DB service 写入/读取，编写 migration、回填脚本、失败报表和回�
 （Cycle 9）+ 辅助 issueId 操作接入（Cycle 10）。verified scope 作为可选参数贯穿
 DB/Persistence/Issues/Service；`list`/`listLegacy`/`getIssue`、核心推进写操作、证据读、辅助
 issueId 操作（naturalCommand/browserQa/secondOpinion/delivery/intervene/getBrowserQaArtifact）
-与 logs/notifications 的 issueId 分支均经 `assertIssueScope` 绑定 verified scope，跨 tenant 与
-历史 NULL 记录在这些路径不可见，不匹配 scope 返回 404。文件回退一致性在 Cycle 7 已奠定
-（list 文件回退按 scope 过滤、readDetailScoped 绝不回退文件）。剩余：全局聚合 list/logs 的
-tenant 过滤、历史 NULL 回填与 SSO 阻塞的跨 tenant 管理员能力。
+与 logs/notifications 的全部分支均经 verified scope 绑定：无 `issueId` 的文件聚合由 DB tenant
+allowlist 过滤，跨 tenant 与历史 NULL 记录在这些路径不可见，不匹配 scope 返回 404。文件回退一致性在 Cycle 7 已奠定
+（list 文件回退按 scope 过滤、readDetailScoped 绝不回退文件）。剩余：metrics/runtime/cost 等
+全局统计的 tenant 过滤（Cycle 13-14 已完成）、历史 NULL 回填与显式跨 tenant 管理员能力。
 
 **目标**：任何 Issue 的读取、推进、审阅、证据访问或写入都先验证调用者 SSO scope
 与记录归属一致。
@@ -95,10 +96,11 @@ worker、scheduler 和内部调用，要求它们传入系统身份或显式受�
 
 ## Step 5：重构跨 tenant 聚合与归档权限
 
-**状态（Cycle 3-4）**：部分完成。archive 文件路径已验证，Eval 的普通读取、同步
+**状态（Cycle 3-5、15）**：archive 文件路径已验证，Eval 的普通读取、同步
 运行和入队已绑定当前 SSO tenant，`default` tenant 与未验证的 `aggregate-all` 已被
 拒绝。Cycle 5 已将普通 archive create/list/refresh 绑定当前 SSO tenant；仅 SSO
-全局管理员的明确跨 tenant 能力仍待完成。
+全局管理员的明确 archive 跨 tenant 能力已在 Cycle 15 完成；Eval target-tenant 管理查询已在 Cycle 17
+完成，二者均要求 SSO superadmin、显式目标 tenant 与审计。
 
 **目标**：将跨 tenant 行为从“客户端提供 tenantId”改为“SSO 显式授权的管理操作”。
 
@@ -114,6 +116,10 @@ SSO ID allowlist/安全编码，拒绝路径分隔符；移除生产路径的 `d
 文件系统或缓存分区。
 
 ## Step 6：验证、观测与渐进上线
+
+**状态（Cycle 13-18）**：focused type-check、contracts、scope、backfill、archive 和 permission guard
+验证已通过；`pnpm quality:gate` 已完整通过。生产回填结果与 current-team SSO 契约仍是上线前
+需外部确认的证据，不能由本项目伪造。
 
 **目标**：证明唯一源改造在 tenant 切换、历史迁移和后台任务中持续生效，并可安全
 发布。

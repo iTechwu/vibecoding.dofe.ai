@@ -90,6 +90,40 @@ import {
 
 const c = initContract();
 
+const EvalAggregationQuerySchema = z.object({
+  suiteId: z.string().trim().min(1).optional(),
+  period: z.enum(['7d', '30d', '90d', 'all']).default('30d'),
+  blueprintId: z.string().trim().min(1).optional(),
+  page: z.coerce.number().positive().min(1).optional().default(1),
+  limit: z.coerce.number().positive().optional().default(20),
+});
+
+const EvalAggregationResponseSchema = z.object({
+  aggregations: z.array(
+    z.object({
+      id: z.string(),
+      tenantId: z.string(),
+      workspaceId: z.string(),
+      suiteId: z.string(),
+      blueprintId: z.string().optional(),
+      totalChecks: z.number(),
+      passedChecks: z.number(),
+      failedChecks: z.number(),
+      blockedChecks: z.number(),
+      passRate: z.number(),
+      averageScore: z.number(),
+      loopCount: z.number(),
+      trendDelta: z.number().optional(),
+      period: z.string(),
+      capturedAt: z.string(),
+    }),
+  ),
+  total: z.number(),
+  page: z.number(),
+  limit: z.number(),
+  source: z.enum(['redis-cache', 'db-query', 'request-time']),
+});
+
 export const loopsContract = c.router(
   {
     list: {
@@ -398,44 +432,19 @@ export const loopsContract = c.router(
     getCrossTenantEvalAggregation: {
       method: 'GET',
       path: '/eval-aggregation',
-      query: z.object({
-        tenantId: z.string().trim().min(1).optional(),
-        suiteId: z.string().trim().min(1).optional(),
-        period: z.enum(['7d', '30d', '90d', 'all']).default('30d'),
-        blueprintId: z.string().trim().min(1).optional(),
-        page: z.coerce.number().positive().min(1).optional().default(1),
-        limit: z.coerce.number().positive().optional().default(20),
-      }),
+      query: EvalAggregationQuerySchema,
       responses: {
-        200: ApiResponseSchema(
-          z.object({
-            aggregations: z.array(
-              z.object({
-                id: z.string(),
-                tenantId: z.string(),
-                workspaceId: z.string(),
-                suiteId: z.string(),
-                blueprintId: z.string().optional(),
-                totalChecks: z.number(),
-                passedChecks: z.number(),
-                failedChecks: z.number(),
-                blockedChecks: z.number(),
-                passRate: z.number(),
-                averageScore: z.number(),
-                loopCount: z.number(),
-                trendDelta: z.number().optional(),
-                period: z.string(),
-                capturedAt: z.string(),
-              }),
-            ),
-            total: z.number(),
-            page: z.number(),
-            limit: z.number(),
-            source: z.enum(['redis-cache', 'db-query', 'request-time']),
-          }),
-        ),
+        200: ApiResponseSchema(EvalAggregationResponseSchema),
       },
-      summary: 'Get cross-tenant eval quality aggregation (Redis-cached + DB-persisted, R33)',
+      summary: 'Get eval quality aggregation for the current SSO tenant (R33)',
+    },
+    adminGetTenantEvalAggregation: {
+      method: 'GET',
+      path: '/admin/tenants/:tenantId/eval-aggregation',
+      pathParams: z.object({ tenantId: z.string().trim().min(1).max(128) }),
+      query: EvalAggregationQuerySchema,
+      responses: { 200: ApiResponseSchema(EvalAggregationResponseSchema) },
+      summary: 'SSO super-admin eval aggregation for an explicit target tenant',
     },
     runEvalAggregationWorker: {
       method: 'POST',
@@ -607,6 +616,100 @@ export const loopsContract = c.router(
         ),
       },
       summary: 'Refresh the presigned download URL for an archive (URLs expire after 7 days) (R35)',
+    },
+    adminArchiveTenant: {
+      method: 'POST',
+      path: '/admin/tenants/:tenantId/archives',
+      pathParams: z.object({ tenantId: z.string().trim().min(1).max(128) }),
+      body: z.object({
+        includeClosed: z.boolean().default(false),
+        period: z.enum(['7d', '30d', '90d', 'all']).default('all'),
+      }),
+      responses: {
+        200: ApiResponseSchema(
+          z.object({
+            archiveId: z.string(),
+            tenantId: z.string(),
+            fileCount: z.number(),
+            totalSizeBytes: z.number(),
+            storageKey: z.string(),
+            downloadUrl: z.string().optional(),
+            archivedAt: z.string(),
+          }),
+        ),
+      },
+      summary: 'SSO super-admin archive for an explicit target tenant',
+    },
+    adminListArchives: {
+      method: 'GET',
+      path: '/admin/tenants/:tenantId/archives',
+      pathParams: z.object({ tenantId: z.string().trim().min(1).max(128) }),
+      responses: {
+        200: ApiResponseSchema(
+          z.object({
+            archives: z.array(
+              z.object({
+                archiveId: z.string(),
+                tenantId: z.string(),
+                storageKey: z.string(),
+                downloadUrl: z.string().optional(),
+                fileCount: z.number(),
+                totalSizeBytes: z.number(),
+                archivedAt: z.string(),
+              }),
+            ),
+          }),
+        ),
+      },
+      summary: 'SSO super-admin archive list for an explicit target tenant',
+    },
+    adminRefreshArchiveUrl: {
+      method: 'POST',
+      path: '/admin/tenants/:tenantId/archives/:archiveId/refresh-url',
+      pathParams: z.object({
+        tenantId: z.string().trim().min(1).max(128),
+        archiveId: z.string().trim().min(1).max(128),
+      }),
+      body: z.object({}),
+      responses: {
+        200: ApiResponseSchema(
+          z.object({
+            archiveId: z.string(),
+            downloadUrl: z.string().optional(),
+            message: z.string(),
+          }),
+        ),
+      },
+      summary: 'SSO super-admin refresh for an explicit target tenant archive',
+    },
+    adminBackfillTenantScopes: {
+      method: 'POST',
+      path: '/admin/scope-backfill',
+      body: z.object({
+        dryRun: z.boolean().default(true),
+        limit: z.number().int().min(1).max(500).default(100),
+      }),
+      responses: {
+        200: ApiResponseSchema(
+          z.object({
+            dryRun: z.boolean(),
+            examined: z.number().int().nonnegative(),
+            mapped: z.array(z.object({ issueId: z.string(), tenantId: z.string().optional() })),
+            pending: z.array(
+              z.object({
+                issueId: z.string(),
+                reason: z.enum([
+                  'non-sso-submitter',
+                  'unverified-sso-scope',
+                  'concurrent-scope-assignment',
+                ]),
+              }),
+            ),
+            updated: z.number().int().nonnegative(),
+          }),
+        ),
+      },
+      summary: 'SSO super-admin dry-run or audited backfill for historical LoopIssue tenant scope',
     },
     // R36: Remote Runner external artifact upload
     uploadRemoteRunnerArtifacts: {

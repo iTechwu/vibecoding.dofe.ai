@@ -1,5 +1,5 @@
 import { Injectable, Optional } from '@nestjs/common';
-import type { LoopIssuesQuery } from '@repo/contracts';
+import type { LoopIssueScope, LoopIssuesQuery } from '@repo/contracts';
 import { LoopsEvidenceService } from '@app/services/loops-evidence';
 import { LoopsIssuesService } from '@app/services/loops-issues';
 import { type LoopsArchiveCollectionPort, type LoopsArchivePeriod } from './loops-admin.service';
@@ -31,11 +31,15 @@ export class LoopsArchiveCollectionService implements LoopsArchiveCollectionPort
 
   list(
     query: LoopIssuesQuery,
+    scope: LoopIssueScope,
   ): Promise<{ list: Array<{ issue: { id: string; status?: string } }> }> {
-    return this.issues.list(query, async (result) => result);
+    return this.issues.list(query, async (result) => result, scope);
   }
 
-  getIssue(issueId: string): Promise<{
+  getIssue(
+    issueId: string,
+    scope: LoopIssueScope,
+  ): Promise<{
     issue: unknown;
     state?: unknown;
     shards?: unknown[];
@@ -43,8 +47,11 @@ export class LoopsArchiveCollectionService implements LoopsArchiveCollectionPort
     reviewRecords?: unknown[];
     implementationRecords?: unknown[];
   }> {
-    return this.issues.getIssue(issueId, (detail) =>
-      this.evidence.withRequirementsCoverage(detail, this.evidence.buildSecondOpinion(detail)),
+    return this.issues.getIssue(
+      issueId,
+      (detail) =>
+        this.evidence.withRequirementsCoverage(detail, this.evidence.buildSecondOpinion(detail)),
+      scope,
     );
   }
 

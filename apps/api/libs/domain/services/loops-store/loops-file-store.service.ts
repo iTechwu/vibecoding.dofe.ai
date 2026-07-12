@@ -327,8 +327,9 @@ export class LoopsFileStoreService {
     };
   }
 
-  async readLogs(input: { issueId?: string; limit?: number } = {}) {
+  async readLogs(input: { issueId?: string; issueIds?: readonly string[]; limit?: number } = {}) {
     await this.ensureInitialized();
+    const allowedIssueIds = input.issueIds ? new Set(input.issueIds) : undefined;
     const content = await fs.readFile(path.join(this.root, 'log.jsonl'), 'utf8').catch(() => '');
     const entries = content
       .split('\n')
@@ -336,22 +337,31 @@ export class LoopsFileStoreService {
       .map((line) => this.parseLogLine(line))
       .filter((entry): entry is LoopLogEntry => Boolean(entry))
       .filter((entry) => {
-        if (!input.issueId) return true;
-        return entry.loop === input.issueId || entry.issue === input.issueId;
+        const issueId = entry.loop ?? entry.issue;
+        if (input.issueId && issueId !== input.issueId) return false;
+        return !allowedIssueIds || (issueId !== undefined && allowedIssueIds.has(issueId));
       })
       .sort((a, b) => b.ts.localeCompare(a.ts));
 
     return entries.slice(0, input.limit ?? 50);
   }
 
-  async readNotifications(input: { issueId?: string; limit?: number } = {}) {
+  async readNotifications(
+    input: {
+      issueId?: string;
+      issueIds?: readonly string[];
+      limit?: number;
+    } = {},
+  ) {
     await this.ensureInitialized();
     const issueIds = input.issueId
       ? [input.issueId]
-      : await fs
-          .readdir(path.join(this.root, 'notifications'))
-          .catch(() => [])
-          .then((entries) => entries.filter((entry) => !entry.startsWith('.')));
+      : input.issueIds
+        ? [...input.issueIds]
+        : await fs
+            .readdir(path.join(this.root, 'notifications'))
+            .catch(() => [])
+            .then((entries) => entries.filter((entry) => !entry.startsWith('.')));
     const notifications = await Promise.all(
       issueIds.map(async (issueId) => {
         const dir = path.join(this.root, 'notifications', issueId);

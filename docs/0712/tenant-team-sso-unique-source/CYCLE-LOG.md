@@ -284,3 +284,117 @@ scope specs（persistence/issues/service/sso-scope）共 18 tests、前端 inval
 
 **后续实施准入**：Cycle 13 起按「历史回填 → 跨 tenant 端点」顺序本地实施；历史 NULL 行在回填完成前
 对所有 tenant 不可见，跨 tenant 数据仅经 `req.isAdmin` 保护的专用端点暴露，不进入普通 READ/OPERATE 路径。
+
+## Cycle 13：全局日志与通知聚合 tenant allowlist
+
+**实施**：为 `LoopsDbService` 新增 `listIssueIdsByScope`，以 `tenant_id` 和 `is_deleted=false`
+返回完整、DB 权威的 issue ID 集合；`LoopsPersistenceService` 只透传该集合，明确不从 `.loops`
+回退。`logs` / `notifications` controller 每次都解析 verified SSO scope，带 `issueId` 时继续先做
+404 归属断言；无 `issueId` 时也将 scope 下传。文件 store 的聚合读新增 `issueIds` allowlist，日志按
+`loop`/`issue` 字段筛选，通知仅遍历允许的目录。没有 persistence 的 scoped 调用返回空集合，fail closed。
+
+**验证**：`pnpm --filter @repo/api type-check` 通过；`pnpm --filter @repo/api exec jest
+loops.service.scope.spec --runInBand` 通过（4 tests）。
+
+**审查待实施项**：`metrics`、`agentRuntime` 和 `cost` 仍先读取全局文件数据；它们虽使用
+`list`，但尚未传入 verified scope，且 cost / trace / health 可携带其他 tenant 的统计。下一轮需要
+将 metrics 与 runtime 的 issue list、cost、logs、health 分别收敛到同一个 scope，不能仅过滤最终 UI。
+
+**计划状态**：Step 4 的 logs/notifications 无 issueId 聚合分支关闭；历史 NULL 回填（Step 3）、
+跨 tenant 管理端点（Step 5）和 metrics/runtime 全局统计仍待执行。
+
+## Cycle 14：cost、metrics 与 agent runtime tenant 统计隔离
+
+**实施**：`LoopsService.cost(scope?)` 以 Cycle 13 的 DB issue allowlist 过滤 file-store cost 行；
+`metrics(scope?)` 与 `agentRuntime(scope?)` 将 verified scope 下推到 `list` 和 `cost`，metrics 的 trace
+复用 scoped logs。tenant metrics 不再调用全局 file doctor 或共享 benchmark history：health 返回仅反映
+该 tenant 的 issue 数与安全的 `tenant-scoped` 标识，problems 为空，`loopBenchTrend` 省略。`/cost`、
+`/metrics`、`/agent-runtime` controller 均先解析 SSO scope。
+
+**验证**：`pnpm --filter @repo/api type-check` 通过；`pnpm --filter @repo/api exec jest
+loops.service.spec --runInBand` 通过（69 tests）。
+
+**审查待实施项**：普通聚合读取已按 tenant 收敛；但跨 tenant 的 archive/eval 仍只存在 service 内部
+方法，没有专用、可审计的 HTTP contract。认证层已经有 `@RequireSuperAdmin()`，下一轮应通过显式
+`targetTenantId` 管理端点暴露所需 archive 能力，禁止复用普通端点或接受普通用户的任意 tenant 参数。
+
+**计划状态**：Step 4 的当前 HTTP 聚合读路径完成。Step 5 转入跨 tenant 管理端点实施；Step 3 历史
+NULL scope 回填仍待处理。
+
+## Cycle 15：显式 SSO superadmin 跨 tenant archive
+
+**实施**：新增三个专用 ts-rest contract：`POST/GET /admin/tenants/:tenantId/archives` 与
+`POST /admin/tenants/:tenantId/archives/:archiveId/refresh-url`。它们同时要求 `@RequireSuperAdmin()`
+和模块权限，目标 tenant 只能来自明确的 path 参数；所有管理动作审计 `targetTenantId` 与
+`authorizationSource: sso-superadmin`。普通 `/archives` contract 保持只使用当前 verified SSO tenant。
+同时收紧 `LoopsArchiveCollectionPort`：`list` / `getIssue` 必须接收 `LoopIssueScope`，cross-tenant
+archive service 把 target tenant 下推到 collection 读取，修复原先归档收集可能遍历全局 issue 的缺口。
+
+**验证**：`pnpm --filter @repo/contracts test` 通过（56 tests）；API `type-check` 通过；
+`loops-archive-collection.service.spec.ts` 与 `loops-admin.service.spec.ts` 通过（6 tests）。
+
+**审查待实施项**：归档跨 tenant 入口与内部读取已绑定 SSO superadmin + target scope。历史 NULL
+`tenant_id` 仍使旧 Issue 对所有 tenant 隐藏，需有可审计的 SSO preference/membership 回填机制；该流程
+必须以 dry-run 为默认，无法由 SSO 证明归属的记录不得写入任何 tenant。
+
+**计划状态**：Step 5 的 archive 跨 tenant 能力完成。Eval 的跨 tenant 管理操作与历史回填（Step 3）
+仍需继续；team 仍等待 SSO current-team 契约。
+
+## Cycle 16：历史 NULL tenant scope 的受控 SSO 回填
+
+**实施**：`LoopsDbService.listUnscopedIssues` 只读取活跃且 `tenant_id IS NULL` 的最早记录；
+`assignTenantIdIfUnscoped` 采用 `tenant_id IS NULL` 条件更新，防止并发任务覆盖新归属。新增
+`LoopsScopeBackfillService`：仅处理 `submitterProvider=dofe-sso`，且只调用
+`SsoScopeService.resolve({ ssoSubject })`，没有客户端 candidate，因此必须同时具备 SSO preference
+和 membership 才能映射。新 superadmin contract `POST /admin/scope-backfill` 默认
+`dryRun=true`，限制 1-500 条；无法证明、非 SSO submitter 或并发已处理的行保持 NULL 并返回明确
+pending reason。每次调用均审计 dry-run、处理量、更新量和 pending 数量。
+
+**验证**：API `type-check` 通过；`loops-scope-backfill.service.spec.ts` 通过（4 tests，覆盖
+dry-run 不写入、真实条件写入、非 SSO/无验证 scope 保持 pending、并发更新不误计数）；contracts
+tests 通过（56 tests）。
+
+**审查待实施项**：历史回填已可安全执行，但尚未对生产数据执行，运行结果必须在每个 batch 后作为
+审计证据保存。Eval service 的 `getCrossTenantEvalAggregation` 仍保留内部 `tenantId='default'` fallback，
+与无 default tenant 原则冲突；下一轮应移除该 fallback，并新增由 SSO superadmin 保护的明确 target
+tenant Eval 查询端点。
+
+**计划状态**：Step 3 的回填工具与 fail-closed 策略完成，生产数据回填成为受控运维动作；Step 5
+剩余 Eval 管理面收敛。
+
+## Cycle 17：Eval target tenant 收敛与 superadmin 管理查询
+
+**实施**：普通 `GET /eval-aggregation` contract 移除 client `tenantId` 字段，controller 继续只写入
+当前 verified SSO tenant。`LoopsService.getCrossTenantEvalAggregation` 的 tenantId 改为必填，删除
+`tenantId='default'` fallback；DB predicate 无条件写入 target tenant，request-time fallback 的
+`collectEvalEvidence` 也接收 `{ tenantId }` scope，list/cost/detail 全部按目标 tenant 读取。新增
+`GET /admin/tenants/:tenantId/eval-aggregation`，要求 `@RequireSuperAdmin()` + READ，并审计目标 tenant、
+授权来源、数据源和总数。
+
+**验证**：API `type-check` 通过；contracts tests 通过（56 tests）；`loops.service.spec.ts` 通过
+（69 tests）。
+
+**审查待实施项**：普通与跨 tenant Eval 读取均已收敛。仍需审计全局控制面：`doctor`、`resume`、
+scheduler 等不以 tenant 为单位的操作不能只凭某一 tenant 的 Loops ADMIN 权限暴露；下一轮应把真正
+全局操作明确限制为 SSO superadmin，或将其改为 tenant scope。
+
+**计划状态**：Step 5 的 archive/Eval 跨 tenant 管理端点完成；后续仅剩全局控制面收紧、生产回填执行
+与 current-team SSO 契约。
+
+## Cycle 18：全局控制面限定为 SSO superadmin
+
+**实施**：审查无 tenant 资源边界的 controller 后，为 `doctor`、`resume`、trigger scheduler 的
+start/stop/status、Eval suite/run 与 trend/bench worker、Eval cache health、learning governance 及其
+auto-merge/index worker 加上 `@RequireSuperAdmin()`。这些接口继续保留原模块权限，但 PermissionGuard
+首先验证 SSO guard 写入的 `req.isAdmin`；已 tenant-scoped 的 issue 读写、普通 Eval aggregation、
+cost/metrics/runtime 不受影响。
+
+**验证**：API `type-check` 通过；`permission.guard.spec.ts` 通过（4 tests）；
+`loops-scope-backfill.service.spec.ts` + `loops.service.scope.spec.ts` 通过（8 tests）。
+
+**审查结论**：本地可实施的 tenant 唯一源待办已经关闭：tenant 解析、持久化投影、标准资源与聚合隔离、
+显式跨 tenant 管理面、历史回填工具和全局控制面均已有 fail-closed 边界。剩余工作不是代码 fallback：
+生产回填需由授权运维执行；current-team 仍等待 SSO 发布可信契约。
+
+**计划状态**：Step 4、Step 5 的代码实施完成；Step 3 等待生产回填执行与报告，Step 6 等待完整质量门禁
+和上线运维证据；team projection 仍是唯一 SSO 外部依赖。

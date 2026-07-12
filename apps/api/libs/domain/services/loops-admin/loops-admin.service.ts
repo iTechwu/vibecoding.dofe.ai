@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import type {
+  LoopIssueScope,
   CreateBlueprintRequest,
   LoopBlueprint,
   LoopBlueprintListResponse,
@@ -44,10 +45,16 @@ export interface LoopsArchiveControlPort {
 export const LOOPS_ARCHIVE_COLLECTION_PORT = 'LOOPS_ARCHIVE_COLLECTION_PORT';
 
 export interface LoopsArchiveCollectionPort {
-  list(query: LoopIssuesQuery): Promise<{
+  list(
+    query: LoopIssuesQuery,
+    scope: LoopIssueScope,
+  ): Promise<{
     list: Array<{ issue: { id: string; status?: string } }>;
   }>;
-  getIssue(issueId: string): Promise<{
+  getIssue(
+    issueId: string,
+    scope: LoopIssueScope,
+  ): Promise<{
     issue: unknown;
     state?: unknown;
     shards?: unknown[];

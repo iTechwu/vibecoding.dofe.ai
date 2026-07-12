@@ -135,6 +135,22 @@ export class LoopsPersistenceService {
     };
   }
 
+  /**
+   * File aggregates carry issue IDs but no authoritative tenant field. Build
+   * their allowlist from persisted SSO scope, without a file fallback.
+   */
+  async listIssueIdsByScope(scope: LoopIssueScope): Promise<string[]> {
+    return this.db.listIssueIdsByScope(scope);
+  }
+
+  async listUnscopedIssues(limit: number) {
+    return this.db.listUnscopedIssues(limit);
+  }
+
+  async assignTenantIdIfUnscoped(issueId: string, tenantId: string): Promise<boolean> {
+    return this.db.assignTenantIdIfUnscoped(issueId, tenantId);
+  }
+
   async writeIssue(input: {
     issue: LoopIssue;
     intake: LoopIntake;

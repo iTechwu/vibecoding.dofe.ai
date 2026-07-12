@@ -197,13 +197,17 @@ export class LoopsCrossTenantArchiveService {
     const artifacts: Array<{ path: string; sizeBytes: number; sha256: string }> = [];
 
     try {
-      const list = await this.collectionPort.list({ limit: 500, page: 1 });
+      // Cross-tenant archive is invoked only by a dedicated super-admin route,
+      // but the collection port must still receive the target tenant explicitly
+      // so every artifact read remains tenant-bound.
+      const scope = { tenantId };
+      const list = await this.collectionPort.list({ limit: 500, page: 1 }, scope);
       const includeClosed = options?.includeClosed ?? false;
 
       for (const item of list.list) {
         if (!includeClosed && item.issue.status === 'CLOSED') continue;
         try {
-          const detail = await this.collectionPort.getIssue(item.issue.id);
+          const detail = await this.collectionPort.getIssue(item.issue.id, scope);
           const detailJson = JSON.stringify({
             issue: detail.issue,
             state: detail.state,

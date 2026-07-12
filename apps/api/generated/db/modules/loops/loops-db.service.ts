@@ -233,6 +233,41 @@ export class LoopsDbService extends TransactionalServiceBase {
     return { list, total, page, limit };
   }
 
+  /**
+   * Return the complete DB-authoritative issue set for a verified tenant.
+   * Historical NULL-scope rows remain excluded until audited backfill.
+   */
+  @HandlePrismaError(DbOperationType.QUERY)
+  async listIssueIdsByScope(scope: LoopIssueScope): Promise<string[]> {
+    const issues = await this.getReadClient().loopIssue.findMany({
+      where: { isDeleted: false, tenantId: scope.tenantId },
+      select: { id: true },
+    });
+    return issues.map((issue) => issue.id);
+  }
+
+  @HandlePrismaError(DbOperationType.QUERY)
+  async listUnscopedIssues(
+    limit: number,
+  ): Promise<Array<{ id: string; submitterId: string; submitterProvider: string }>> {
+    return this.getReadClient().loopIssue.findMany({
+      where: { isDeleted: false, tenantId: null },
+      select: { id: true, submitterId: true, submitterProvider: true },
+      orderBy: { createdAt: 'asc' },
+      take: limit,
+    });
+  }
+
+  /** Conditional update keeps a concurrently-scoped row untouched. */
+  @HandlePrismaError(DbOperationType.UPDATE)
+  async assignTenantIdIfUnscoped(issueId: string, tenantId: string): Promise<boolean> {
+    const result = await this.getWriteClient().loopIssue.updateMany({
+      where: { id: issueId, isDeleted: false, tenantId: null },
+      data: { tenantId },
+    });
+    return result.count === 1;
+  }
+
   @HandlePrismaError(DbOperationType.QUERY)
   async listAllIssueStates(): Promise<Array<DbLoopIssue & { state: LoopState | null }>> {
     return this.getReadClient().loopIssue.findMany({
