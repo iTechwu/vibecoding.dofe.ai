@@ -124,7 +124,7 @@ describe('SimpleLoopIssueForm (0622 · B5 simple-mode intake)', () => {
     expect(screen.getByRole('button', { name: 'Create Issue' })).toBeDisabled();
   });
 
-  it('confirms current tenant before simple issue submission and includes it in the payload', async () => {
+  it('shows the current tenant but does not submit it as an issue field', async () => {
     vi.mocked(window.localStorage.getItem).mockImplementation((key) => {
       if (key === 'currentTenant') return 'tenant-youhuitun';
       if (key === 'currentTenantSnapshot') {
@@ -150,15 +150,8 @@ describe('SimpleLoopIssueForm (0622 · B5 simple-mode intake)', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Create Issue' }));
 
-    expect(mutateAsync).toHaveBeenCalledWith({
-      body: expect.objectContaining({
-        tenantContext: {
-          tenantId: 'tenant-youhuitun',
-          tenantName: '优惠豚',
-          teamId: 'team-1',
-        },
-      }),
-    });
+    expect(mutateAsync).toHaveBeenCalled();
+    expect(mutateAsync.mock.calls[0]?.[0].body).not.toHaveProperty('tenantContext');
   });
 
   it('keeps submit disabled until the request is at least 10 characters', async () => {

@@ -16,6 +16,7 @@ import {
   oidcAuthContract,
 } from '@repo/contracts';
 import { getHeaders } from '@repo/utils/headers';
+import { CURRENT_TENANT_HEADER } from '@dofe/infra-contracts';
 import { VERSION_HEADERS } from '@dofe/infra-web-runtime/version';
 import { API_CONFIG } from '@/config';
 import { getToken, ensureValidToken, clearToken, refreshToken } from '../../token-manager';
@@ -27,6 +28,7 @@ import {
   VersionMismatchError,
 } from '@/lib/version-mismatch';
 import { checkDeprecationWarning } from '@/lib/deprecation-warning';
+import { getCurrentTenantSnapshot } from '@/lib/storage';
 
 /**
  * ts-rest API Client for type-safe API calls
@@ -132,6 +134,13 @@ const baseFetch = async (
     [VERSION_HEADERS.API_VERSION]: APP_VERSION.apiVersion,
     [VERSION_HEADERS.APP_BUILD]: APP_VERSION.appBuild,
   };
+
+  // This is only a selection hint. The API resolves it against SSO membership
+  // before it becomes Loop ownership metadata.
+  const tenantId = getCurrentTenantSnapshot()?.tenantId;
+  if (tenantId) {
+    headers[CURRENT_TENANT_HEADER] = tenantId;
+  }
 
   // Merge ts-rest headers, but handle Content-Type specially to avoid duplicates
   const tsRestHeaders = args.headers as Record<string, string> | undefined;

@@ -19,6 +19,7 @@ import { AuthService } from './auth.service';
 import { AuthValidationService } from './auth-validation.service';
 import { PermissionGuard } from './guards/permission.guard';
 import { PermissionService } from './permission.service';
+import { SsoScopeService } from './sso-scope.service';
 import { UserSyncService } from './user-sync.service';
 import { VibecodingSsoAuthHooks } from './sso-auth-hooks';
 import { IS_PUBLIC_KEY } from './auth';
@@ -74,6 +75,7 @@ import { IS_PUBLIC_KEY } from './auth';
     AuthValidationService,
     UserSyncService,
     PermissionService,
+    SsoScopeService,
     PermissionGuard,
     {
       provide: APP_GUARD,
@@ -90,6 +92,7 @@ import { IS_PUBLIC_KEY } from './auth';
     AuthValidationService,
     UserSyncService,
     PermissionService,
+    SsoScopeService,
     PermissionGuard,
     JwtModule,
     UserInfoModule,

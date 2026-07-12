@@ -1,14 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useTranslations } from 'next-intl';
 import { Link, useRouter } from '@/i18n/navigation';
-import { useAuth } from '@/providers';
-import { normaliseSimpleIssue } from '@repo/contracts';
-import type { LoopLearning, LoopPriority, LoopSimpleIssueTemplate } from '@repo/contracts';
 import { useCreateSimpleLoopIssue, useLoopsWorkspaces } from '@/lib/api/contracts/hooks';
-import { LOOP_ISSUE_TEMPLATES } from './loop-issue-templates';
+import { useAuth } from '@/providers';
+import type { LoopLearning, LoopPriority, LoopSimpleIssueTemplate } from '@repo/contracts';
+import { normaliseSimpleIssue } from '@repo/contracts';
 import { Command, Sparkles } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { useEffect, useMemo, useState } from 'react';
+import { LOOP_ISSUE_TEMPLATES } from './loop-issue-templates';
 import { useCurrentLoopTenant } from './use-current-loop-tenant';
 
 const TEMPLATE_OPTIONS: Array<{ id: LoopSimpleIssueTemplate; labelKey: string }> = [
@@ -183,7 +183,6 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
           priority: priorityOverride || undefined,
           title: titleOverride.trim() || undefined,
           acceptanceCriteria: criteriaLines.length > 0 ? criteriaLines : undefined,
-          tenantContext,
         },
       })
       .then((result) => {

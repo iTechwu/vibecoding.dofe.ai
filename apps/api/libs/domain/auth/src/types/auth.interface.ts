@@ -42,6 +42,9 @@ export type AuthUserInfo = z.infer<typeof AuthUserInfoSchema>;
  * AuthGuard always sets before the handler runs.
  */
 export interface AuthenticatedRequest extends FastifyRequest {
+  /** SSO subject verified by the SDK guard before local user resolution. */
+  ssoSub: string;
+
   /** User ID guaranteed to be present (set by AuthGuard). */
   userId: string;
 

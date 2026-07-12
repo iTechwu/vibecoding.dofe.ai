@@ -442,7 +442,6 @@ export const loopsContract = c.router(
       path: '/eval-aggregation/worker',
       body: z
         .object({
-          tenantId: z.string().trim().min(1).optional(),
           period: z.enum(['7d', '30d', '90d', 'all']).default('30d'),
         })
         .optional(),
@@ -465,8 +464,6 @@ export const loopsContract = c.router(
       path: '/eval-aggregation/enqueue',
       body: z
         .object({
-          type: z.enum(['aggregate-all', 'aggregate-tenant']).default('aggregate-all'),
-          tenantId: z.string().trim().min(1).optional(),
           periods: z.array(z.enum(['7d', '30d', '90d', 'all'])).optional(),
         })
         .optional(),
@@ -480,7 +477,7 @@ export const loopsContract = c.router(
           }),
         ),
       },
-      summary: 'Enqueue a cross-tenant Eval aggregation job via BullMQ (async, R33+)',
+      summary: 'Enqueue an SSO-tenant Eval aggregation job via BullMQ (async, R33+)',
     },
     getEvalAggregationCacheHealth: {
       method: 'GET',
@@ -554,7 +551,6 @@ export const loopsContract = c.router(
       method: 'POST',
       path: '/archives',
       body: z.object({
-        tenantId: z.string().trim().min(1),
         includeClosed: z.boolean().default(false),
         period: z.enum(['7d', '30d', '90d', 'all']).default('all'),
       }),
@@ -571,13 +567,12 @@ export const loopsContract = c.router(
           }),
         ),
       },
-      summary:
-        'Archive all Loops artifacts for a tenant to object storage (R35: object storage + SSO)',
+      summary: 'Archive current SSO tenant Loops artifacts to object storage (R35)',
     },
     listArchives: {
       method: 'GET',
       path: '/archives',
-      query: z.object({ tenantId: z.string().trim().min(1) }),
+      query: z.object({}),
       responses: {
         200: ApiResponseSchema(
           z.object({
@@ -595,13 +590,13 @@ export const loopsContract = c.router(
           }),
         ),
       },
-      summary: 'List all archives for a tenant (R35)',
+      summary: 'List archives for the current SSO tenant (R35)',
     },
     refreshArchiveUrl: {
       method: 'POST',
       path: '/archives/:archiveId/refresh-url',
       pathParams: z.object({ archiveId: z.string() }),
-      body: z.object({ tenantId: z.string().trim().min(1) }),
+      body: z.object({}),
       responses: {
         200: ApiResponseSchema(
           z.object({

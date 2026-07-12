@@ -49,6 +49,7 @@ import {
   withLearningSimilaritySuggestions,
 } from './loops-learning-memory.util';
 import { readLoopsRuntimeConfig } from './loops-runtime-config.util';
+import { archiveIndexDirectory, archiveIndexFile } from './loops-archive-path.util';
 
 type StateFile = {
   loops: LoopStateItem[];
@@ -2905,17 +2906,17 @@ export class LoopsFileStoreService {
       archivedAt: string;
     },
   ): void {
-    const dir = path.join(this.root, 'archives', tenantId);
+    const dir = archiveIndexDirectory(this.root, tenantId);
     mkdirSync(dir, { recursive: true });
     // Update the per-archive entry
-    const file = path.join(dir, `${entry.archiveId}.json`);
+    const file = archiveIndexFile(this.root, tenantId, entry.archiveId);
     writeFileSync(file, `${JSON.stringify(entry, null, 2)}\n`, 'utf8');
     // Update the tenant index
     const index = this.listArchiveIndex(tenantId);
     const updated = index.filter((e) => e.archiveId !== entry.archiveId);
     updated.push(entry);
     updated.sort((a, b) => b.archivedAt.localeCompare(a.archivedAt));
-    const indexFile = path.join(dir, 'index.json');
+    const indexFile = archiveIndexFile(this.root, tenantId, 'index');
     writeFileSync(indexFile, `${JSON.stringify(updated, null, 2)}\n`, 'utf8');
   }
 
@@ -2928,7 +2929,7 @@ export class LoopsFileStoreService {
     totalSizeBytes: number;
     archivedAt: string;
   }> {
-    const file = path.join(this.root, 'archives', tenantId, 'index.json');
+    const file = archiveIndexFile(this.root, tenantId, 'index');
     try {
       return JSON.parse(readFileSync(file, 'utf8'));
     } catch {
@@ -2950,7 +2951,7 @@ export class LoopsFileStoreService {
         archivedAt: string;
       }
     | undefined {
-    const file = path.join(this.root, 'archives', tenantId, `${archiveId}.json`);
+    const file = archiveIndexFile(this.root, tenantId, archiveId);
     try {
       return JSON.parse(readFileSync(file, 'utf8'));
     } catch {

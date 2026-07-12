@@ -16,6 +16,9 @@ declare module 'fastify' {
     /** Authenticated user ID (set by AuthGuard / StreamingAsrSessionGuard). */
     userId?: string;
 
+    /** SSO subject (set by the SSO AuthGuard base after token verification). */
+    ssoSub?: string;
+
     /** Whether the authenticated user is an admin (set by AuthGuard). */
     isAdmin?: boolean;
 

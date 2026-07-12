@@ -124,7 +124,6 @@ export const CreateLoopIssueRequestSchema = z.object({
   submitterName: z.string().trim().min(1).optional(),
   sourceChannel: LoopSourceChannelSchema.optional(),
   sourceKind: LoopSourceKindSchema.optional(),
-  tenantContext: LoopTenantContextSchema.optional(),
 });
 
 export const LoopIssueSchema = z.object({
@@ -1387,6 +1386,21 @@ export const LoopIssuesQuerySchema = PaginationQuerySchema.extend({
   targetRepo: z.string().trim().min(1).optional(),
 });
 
+/**
+ * Verified SSO scope used as the single source of truth for Issue ownership,
+ * filtering and resource-level authorization.
+ *
+ * `tenantId` is always required and is the only field enforced today: the
+ * published SSO SDK does not yet expose a trusted "current team" selection, so
+ * `teamId` is accepted (persisted when SSO provides it) but NOT used as an
+ * authorization condition until that contract lands. See
+ * docs/0712/tenant-team-sso-unique-source.
+ */
+export const LoopIssueScopeSchema = z.object({
+  tenantId: z.string().trim().min(1),
+  teamId: z.string().trim().min(1).nullable().optional(),
+});
+
 export const LoopIssueListItemSchema = z.object({
   issue: LoopIssueSchema,
   state: LoopStateItemSchema.optional(),
@@ -1701,7 +1715,6 @@ export const CreateLoopIssueSimpleRequestSchema = z.object({
   priority: LoopPrioritySchema.optional(),
   title: z.string().trim().min(4).max(160).optional(),
   acceptanceCriteria: z.array(z.string().trim().min(1)).optional(),
-  tenantContext: LoopTenantContextSchema.optional(),
 });
 
 /** Normalised preview of what the simple request will become before create. */
@@ -1796,6 +1809,8 @@ export type LoopAgentRuntimeResponse = z.infer<typeof LoopAgentRuntimeResponseSc
 export type LoopMetricsResponse = z.infer<typeof LoopMetricsResponseSchema>;
 export type LoopDetail = z.infer<typeof LoopDetailSchema>;
 export type LoopIssuesQuery = z.infer<typeof LoopIssuesQuerySchema>;
+
+export type LoopIssueScope = z.infer<typeof LoopIssueScopeSchema>;
 export type LoopIssueListItem = z.infer<typeof LoopIssueListItemSchema>;
 export type LoopListResponse = z.infer<typeof LoopListResponseSchema>;
 export type LoopIssueCreatedResponse = z.infer<typeof LoopIssueCreatedResponseSchema>;

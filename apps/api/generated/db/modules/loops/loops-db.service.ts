@@ -6,6 +6,7 @@ import { PAGINATION } from '@dofe/infra-contracts';
 import type {
   LoopIntake,
   LoopIssue,
+  LoopIssueScope,
   LoopIssuesQuery,
   LoopStateItem,
   RuntimeBackendPolicyUpdate,
@@ -59,6 +60,8 @@ export class LoopsDbService extends TransactionalServiceBase {
           submitterProvider: input.intake.submitter.provider,
           submitterId: input.issue.submitterId,
           submitterName: input.issue.submitterName,
+          tenantId: input.issue.tenantContext?.tenantId ?? null,
+          teamId: input.issue.tenantContext?.teamId ?? null,
           targetRepo: input.issue.targetRepo,
           acceptanceCriteria: input.issue.acceptanceCriteria,
           rawPayloadRef: input.issue.rawPayloadRef,
@@ -192,7 +195,10 @@ export class LoopsDbService extends TransactionalServiceBase {
   }
 
   @HandlePrismaError(DbOperationType.QUERY)
-  async listIssues(query: LoopIssuesQuery): Promise<{
+  async listIssues(
+    query: LoopIssuesQuery,
+    scope?: LoopIssueScope,
+  ): Promise<{
     list: Array<DbLoopIssue & { state: LoopState | null }>;
     total: number;
     page: number;
@@ -205,6 +211,11 @@ export class LoopsDbService extends TransactionalServiceBase {
       priority: query.priority,
       targetRepo: query.targetRepo,
       state: query.phase ? { phase: query.phase, isDeleted: false } : { isDeleted: false },
+      // Verified SSO scope is pushed down to the DB so list reads cannot cross
+      // tenant boundaries. Historical rows with NULL tenant_id are excluded as
+      // soon as a scope is present — they must not be visible to any tenant
+      // until backfilled with audited SSO evidence.
+      ...(scope ? { tenantId: scope.tenantId } : {}),
     };
     const skip = (page - 1) * limit;
 
@@ -232,9 +243,16 @@ export class LoopsDbService extends TransactionalServiceBase {
   }
 
   @HandlePrismaError(DbOperationType.QUERY)
-  async getIssueDetailByIssueId(issueId: string): Promise<LoopIssueDetailPersistence | null> {
-    const issue = await this.getReadClient().loopIssue.findUnique({
-      where: { id: issueId },
+  async getIssueDetailByIssueId(
+    issueId: string,
+    scope?: LoopIssueScope,
+  ): Promise<LoopIssueDetailPersistence | null> {
+    // When a verified scope is present, the tenant predicate is applied here so
+    // a mismatch reads as "not found" (null → 404) instead of leaking the
+    // existence of another tenant's issue. findFirst keeps the unique-id fast
+    // path while allowing the additive tenant filter.
+    const issue = await this.getReadClient().loopIssue.findFirst({
+      where: { id: issueId, ...(scope ? { tenantId: scope.tenantId } : {}) },
       include: {
         intakes: { orderBy: { createdAt: 'asc' } },
         state: true,

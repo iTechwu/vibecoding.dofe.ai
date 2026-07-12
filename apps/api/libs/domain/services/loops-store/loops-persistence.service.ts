@@ -7,6 +7,7 @@ import type {
   LoopDetail,
   LoopIssue,
   LoopIssueCreatedResponse,
+  LoopIssueScope,
   LoopIssuesQuery,
   LoopListResponse,
   LoopsDoctorResponse,
@@ -41,8 +42,8 @@ export class LoopsPersistenceService {
     this.logger?.[level](message, meta);
   }
 
-  async list(query: LoopIssuesQuery): Promise<LoopListResponse> {
-    const result = await this.db.listIssues(query);
+  async list(query: LoopIssuesQuery, scope?: LoopIssueScope): Promise<LoopListResponse> {
+    const result = await this.db.listIssues(query, scope);
     if (result.total > 0 || this.hasListFilters(query)) {
       return {
         list: result.list.map((item) => ({
@@ -63,7 +64,10 @@ export class LoopsPersistenceService {
         issue,
         state: fallback.loops.find((state) => state.issueId === issue.id),
       }))
-      .filter((item) => this.matchesQuery(item.issue, item.state, query));
+      .filter(
+        (item) =>
+          this.matchesQuery(item.issue, item.state, query) && this.matchesScope(item.issue, scope),
+      );
     const start = (page - 1) * limit;
 
     return {
@@ -82,6 +86,38 @@ export class LoopsPersistenceService {
     }
     const latestIntake = dbDetail.intakes.at(-1);
 
+    const intake = latestIntake ? this.toContractIntake(latestIntake) : detail.intake;
+
+    return {
+      ...detail,
+      issue: {
+        ...this.toContractIssue(dbDetail.issue),
+        tenantContext: detail.issue.tenantContext,
+      },
+      intake: {
+        ...intake,
+        ruleSnapshot: detail.intake.ruleSnapshot,
+        tenantContext: detail.intake.tenantContext ?? detail.issue.tenantContext,
+      },
+      state: this.toContractState(dbDetail.state),
+    };
+  }
+
+  /**
+   * Scoped detail read: the verified SSO scope is enforced through the DB. A
+   * row that does not exist for this tenant reads as `null` (→ 404 by the
+   * caller); we intentionally do NOT fall back to the file store here, because
+   * the `.loops` JSON `tenantContext` is a creation-time display snapshot, not
+   * an authorization source. Historical NULL-scope rows are therefore hidden
+   * from every tenant until audited backfill.
+   */
+  async readDetailScoped(issueId: string, scope: LoopIssueScope): Promise<LoopDetail | null> {
+    const dbDetail = await this.db.getIssueDetailByIssueId(issueId, scope);
+    if (!dbDetail) {
+      return null;
+    }
+    const detail = await this.store.readDetail(issueId);
+    const latestIntake = dbDetail.intakes.at(-1);
     const intake = latestIntake ? this.toContractIntake(latestIntake) : detail.intake;
 
     return {
@@ -283,6 +319,20 @@ export class LoopsPersistenceService {
       (!query.priority || issue.priority === query.priority) &&
       (!query.targetRepo || issue.targetRepo === query.targetRepo)
     );
+  }
+
+  /**
+   * File-fallback scope predicate. Only applied on the dev/empty-DB fallback
+   * branch of `list`; it uses the issue's creation-time tenantContext, which is
+   * itself derived from the verified SSO scope at write time (same source as
+   * the DB column). A NULL/missing context is treated as out-of-scope so
+   * historical unsocoped rows stay hidden once a scope is requested.
+   */
+  private matchesScope(issue: LoopIssue, scope?: LoopIssueScope) {
+    if (!scope) {
+      return true;
+    }
+    return issue.tenantContext?.tenantId === scope.tenantId;
   }
 
   private toInputJson(value: unknown): Prisma.InputJsonValue {

@@ -53,7 +53,7 @@ section "Infra version alignment boundary"
 if node <<'NODE'
 const fs = require('fs');
 const path = require('path');
-const ignored = new Set(['node_modules', '.git', 'dist', '.next', 'coverage', '.turbo']);
+const ignored = new Set(['node_modules', '.git', 'dist', '.next', 'coverage', '.turbo', '.worktrees']);
 const bad = [];
 const versions = new Map();
 
@@ -149,7 +149,7 @@ section "SSO SDK version consistency boundary"
 if node <<'NODE'
 const fs = require('fs');
 const path = require('path');
-const ignored = new Set(['node_modules', '.git', 'dist', '.next', 'coverage', '.turbo']);
+const ignored = new Set(['node_modules', '.git', 'dist', '.next', 'coverage', '.turbo', '.worktrees']);
 const failures = [];
 const versionsByPackage = new Map();
 
@@ -213,7 +213,7 @@ if node <<'NODE'
 const fs = require('fs');
 const path = require('path');
 const expectedOpenidClientVersion = '6.8.4';
-const ignored = new Set(['node_modules', '.git', 'dist', '.next', 'coverage', '.turbo']);
+const ignored = new Set(['node_modules', '.git', 'dist', '.next', 'coverage', '.turbo', '.worktrees']);
 const failures = [];
 
 function walk(dir) {
@@ -532,7 +532,7 @@ const allowed = new Set([
   'apps/web/vitest.config.ts',
   'apps/web/next.config.ts',
 ]);
-const ignored = new Set(['node_modules', 'dist', 'coverage', '.turbo', '.next']);
+const ignored = new Set(['node_modules', 'dist', 'coverage', '.turbo', '.next', '.worktrees']);
 const extensions = new Set(['.ts', '.tsx', '.js', '.mjs', '.json']);
 const failures = [];
 

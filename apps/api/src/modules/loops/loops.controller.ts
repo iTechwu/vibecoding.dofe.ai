@@ -5,8 +5,7 @@ import type { Queue } from 'bullmq';
 import { created, success } from '@dofe/infra-common/ts-rest';
 import { CURRENT_TENANT_HEADER } from '@dofe/infra-contracts';
 import { loopsContract as c } from '@repo/contracts/api';
-import type { LoopTenantContext } from '@repo/contracts';
-import { Auth } from '@app/auth';
+import { Auth, SsoScopeService, type VerifiedTenantScope } from '@app/auth';
 import type { AuthenticatedRequest } from '@app/auth';
 import { AuditLogService } from '@app/audit-log';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
@@ -27,20 +26,9 @@ function firstHeaderValue(value: string | string[] | undefined): string | undefi
   return trimmed && trimmed.length > 0 ? trimmed : undefined;
 }
 
-function pickTenantContext(
-  req: AuthenticatedRequest,
-  bodyTenantContext?: LoopTenantContext,
-): LoopTenantContext | undefined {
+function pickTenantCandidate(req: AuthenticatedRequest): string | undefined {
   const headerTenantId = firstHeaderValue(req.headers[CURRENT_TENANT_HEADER]);
-  const tenantId = req.tenantId ?? headerTenantId ?? bodyTenantContext?.tenantId;
-  const teamId = req.teamId ?? bodyTenantContext?.teamId;
-  const tenantName = bodyTenantContext?.tenantName;
-  const tenantContext: LoopTenantContext = {
-    ...(tenantId ? { tenantId } : {}),
-    ...(tenantName ? { tenantName } : {}),
-    ...(teamId ? { teamId } : {}),
-  };
-  return Object.keys(tenantContext).length > 0 ? tenantContext : undefined;
+  return req.tenantId ?? headerTenantId;
 }
 
 @Auth('api')
@@ -50,25 +38,53 @@ function pickTenantContext(
 export class LoopsController {
   constructor(
     private readonly loopsService: LoopsService,
+    private readonly ssoScopeService: SsoScopeService,
     private readonly auditLogService: AuditLogService,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
     // R33+: BullMQ queue for async Eval aggregation jobs
     @Optional() @InjectQueue('loops-eval-aggregation') private readonly evalAggQueue?: Queue,
   ) {}
 
+  private async resolveTenantContext(req: AuthenticatedRequest): Promise<VerifiedTenantScope> {
+    return this.ssoScopeService.resolve({
+      ssoSubject: req.ssoSub,
+      tenantId: pickTenantCandidate(req),
+    });
+  }
+
+  /**
+   * Resolve the verified SSO scope and assert it owns the issue before any
+   * issueId-scoped mutation/read. A tenant mismatch surfaces as 404 (via the
+   * service) so cross-tenant issue existence is never leaked. Returns the
+   * resolved scope for callers that also need it downstream.
+   */
+  private async authorizeIssueScope(
+    req: AuthenticatedRequest,
+    issueId: string,
+  ): Promise<VerifiedTenantScope> {
+    const scope = await this.resolveTenantContext(req);
+    await this.loopsService.assertIssueScope(issueId, scope);
+    return scope;
+  }
+
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.list)
-  async list() {
+  async list(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.list, async ({ query }) => {
-      return success(await this.loopsService.list(query));
+      // Resource-level isolation: the verified SSO tenant is pushed down so the
+      // list cannot cross tenant boundaries, and historical NULL-scope rows are
+      // hidden from every tenant until audited backfill.
+      const scope = await this.resolveTenantContext(req);
+      return success(await this.loopsService.list(query, scope));
     });
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.listLegacy)
-  async listLegacy() {
+  async listLegacy(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.listLegacy, async ({ query }) => {
-      return success(await this.loopsService.list(query));
+      const scope = await this.resolveTenantContext(req);
+      return success(await this.loopsService.list(query, scope));
     });
   }
 
@@ -80,10 +96,8 @@ export class LoopsController {
       // (provider `dofe-sso`), ignoring any client-supplied submitter fields
       // so identity cannot be spoofed. The CLI/internal path calls the service
       // directly without a request and falls back to the `dev` defaults.
-      const result = await this.loopsService.createIssue(
-        { ...body, tenantContext: pickTenantContext(req, body.tenantContext) },
-        req.userInfo,
-      );
+      const tenantContext = await this.resolveTenantContext(req);
+      const result = await this.loopsService.createIssue({ ...body, tenantContext }, req.userInfo);
       await this.auditLoopCreate(req, result.issue.id, {
         title: result.issue.title,
         priority: result.issue.priority,
@@ -114,8 +128,9 @@ export class LoopsController {
     return tsRestHandler(c.createSimpleIssue, async ({ body }) => {
       // Same SSO-derived submitter + audit path as the full createIssue; the
       // service normalises the one-sentence request first (0622 · B4).
+      const tenantContext = await this.resolveTenantContext(req);
       const result = await this.loopsService.createSimpleIssue(
-        { ...body, tenantContext: pickTenantContext(req, body.tenantContext) },
+        { ...body, tenantContext },
         req.userInfo,
       );
       await this.auditLoopCreate(req, result.issue.id, {
@@ -130,16 +145,20 @@ export class LoopsController {
 
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.getIssue)
-  async getIssue() {
+  async getIssue(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.getIssue, async ({ params }) => {
-      return success(await this.loopsService.getIssue(params.issueId));
+      // Ownership assertion: a non-matching tenant reads as 404 so the existence
+      // of another tenant's issue is never leaked.
+      const scope = await this.resolveTenantContext(req);
+      return success(await this.loopsService.getIssue(params.issueId, scope));
     });
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.getDeliveryEvidence)
-  async getDeliveryEvidence() {
+  async getDeliveryEvidence(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.getDeliveryEvidence, async ({ params }) => {
+      await this.authorizeIssueScope(req, params.issueId);
       return success(await this.loopsService.getDeliveryEvidence(params.issueId));
     });
   }
@@ -541,6 +560,7 @@ export class LoopsController {
   @TsRestHandler(c.generateSpec)
   async generateSpec(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.generateSpec, async ({ params }) => {
+      await this.authorizeIssueScope(req, params.issueId);
       const result = await this.loopsService.generateSpec(params.issueId);
       await this.auditLoopUpdate(req, params.issueId, 'generateSpec', {
         specVersion: result.state.specVersion,
@@ -554,6 +574,7 @@ export class LoopsController {
   @TsRestHandler(c.reviewSpec)
   async reviewSpec(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.reviewSpec, async ({ params, body }) => {
+      await this.authorizeIssueScope(req, params.issueId);
       const result = await this.loopsService.reviewSpec(params.issueId, body);
       await this.auditLoopUpdate(req, params.issueId, 'reviewSpec', {
         action: body.action,
@@ -569,6 +590,7 @@ export class LoopsController {
   @TsRestHandler(c.decompose)
   async decompose(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.decompose, async ({ params }) => {
+      await this.authorizeIssueScope(req, params.issueId);
       const result = await this.loopsService.decompose(params.issueId);
       await this.auditLoopUpdate(req, params.issueId, 'decompose', {
         shardsTotal: result.state.shardsTotal,
@@ -582,6 +604,7 @@ export class LoopsController {
   @TsRestHandler(c.runShardTests)
   async runShardTests(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.runShardTests, async ({ params, body }) => {
+      await this.authorizeIssueScope(req, params.issueId);
       const result = await this.loopsService.runShardTests(params.issueId, params.shardId, body);
       await this.auditLoopUpdate(req, params.issueId, 'runShardTests', {
         shardId: params.shardId,
@@ -596,6 +619,7 @@ export class LoopsController {
   @TsRestHandler(c.recordShardImplementation)
   async recordShardImplementation(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.recordShardImplementation, async ({ params, body }) => {
+      await this.authorizeIssueScope(req, params.issueId);
       const result = await this.loopsService.recordShardImplementation(
         params.issueId,
         params.shardId,
@@ -615,6 +639,7 @@ export class LoopsController {
   @TsRestHandler(c.reviewShard)
   async reviewShard(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.reviewShard, async ({ params, body }) => {
+      await this.authorizeIssueScope(req, params.issueId);
       const result = await this.loopsService.reviewShard(params.issueId, params.shardId, body);
       await this.auditLoopUpdate(req, params.issueId, 'reviewShard', {
         shardId: params.shardId,
@@ -629,6 +654,7 @@ export class LoopsController {
   @TsRestHandler(c.runLoop)
   async runLoop(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.runLoop, async ({ params }) => {
+      await this.authorizeIssueScope(req, params.issueId);
       const result = await this.loopsService.runLoop(params.issueId);
       await this.auditLoopUpdate(req, params.issueId, 'runLoop', {
         phase: result.state.phase,
@@ -643,6 +669,7 @@ export class LoopsController {
   @TsRestHandler(c.advance)
   async advance(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.advance, async ({ params }) => {
+      await this.authorizeIssueScope(req, params.issueId);
       const result = await this.loopsService.advance(params.issueId);
       await this.auditLoopUpdate(req, params.issueId, 'advance', {
         phase: result.state.phase,
@@ -660,6 +687,7 @@ export class LoopsController {
   @TsRestHandler(c.reviewGlobal)
   async reviewGlobal(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.reviewGlobal, async ({ params }) => {
+      await this.authorizeIssueScope(req, params.issueId);
       const result = await this.loopsService.reviewGlobal(params.issueId);
       await this.auditLoopUpdate(req, params.issueId, 'reviewGlobal', {
         globalVerdict: result.state.globalVerdict,
@@ -673,6 +701,7 @@ export class LoopsController {
   @TsRestHandler(c.reloop)
   async reloop(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.reloop, async ({ params, body }) => {
+      await this.authorizeIssueScope(req, params.issueId);
       const result = await this.loopsService.reloop(params.issueId, body);
       await this.auditLoopUpdate(req, params.issueId, 'reloop', {
         reviewer: body.reviewer,
@@ -688,6 +717,7 @@ export class LoopsController {
   @TsRestHandler(c.finalize)
   async finalize(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.finalize, async ({ params }) => {
+      await this.authorizeIssueScope(req, params.issueId);
       const result = await this.loopsService.finalize(params.issueId);
       await this.auditLoopUpdate(req, params.issueId, 'finalize', {
         phase: result.state.phase,
@@ -701,6 +731,7 @@ export class LoopsController {
   @TsRestHandler(c.naturalCommand)
   async naturalCommand(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.naturalCommand, async ({ params, body }) => {
+      await this.authorizeIssueScope(req, params.issueId);
       const result = await this.loopsService.naturalCommand(params.issueId, body);
       await this.auditLoopUpdate(req, params.issueId, 'naturalCommand', {
         intent: result.intent,
@@ -714,6 +745,7 @@ export class LoopsController {
   @TsRestHandler(c.runBrowserQa)
   async runBrowserQa(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.runBrowserQa, async ({ params, body }) => {
+      await this.authorizeIssueScope(req, params.issueId);
       const result = await this.loopsService.runBrowserQa(params.issueId, body);
       const latestReport = result.browserQaReports?.[0];
       await this.auditLoopUpdate(req, params.issueId, 'runBrowserQa', {
@@ -729,6 +761,7 @@ export class LoopsController {
   @TsRestHandler(c.runSecondOpinion)
   async runSecondOpinion(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.runSecondOpinion, async ({ params }) => {
+      await this.authorizeIssueScope(req, params.issueId);
       const result = await this.loopsService.runSecondOpinion(params.issueId);
       await this.auditLoopUpdate(req, params.issueId, 'runSecondOpinion', {
         status: result.secondOpinion?.status,
@@ -742,6 +775,7 @@ export class LoopsController {
   @TsRestHandler(c.resolveSecondOpinion)
   async resolveSecondOpinion(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.resolveSecondOpinion, async ({ params, body }) => {
+      await this.authorizeIssueScope(req, params.issueId);
       const result = await this.loopsService.resolveSecondOpinion(params.issueId, body);
       await this.auditLoopUpdate(req, params.issueId, 'resolveSecondOpinion', {
         action: body.action,
@@ -755,6 +789,7 @@ export class LoopsController {
   @TsRestHandler(c.runReleaseCanary)
   async runReleaseCanary(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.runReleaseCanary, async ({ params, body }) => {
+      await this.authorizeIssueScope(req, params.issueId);
       const result = await this.loopsService.runReleaseCanary(params.issueId, body);
       await this.auditLoopUpdate(req, params.issueId, 'runReleaseCanary', {
         targetUrl: body.targetUrl,
@@ -768,6 +803,7 @@ export class LoopsController {
   @TsRestHandler(c.governDelivery)
   async governDelivery(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.governDelivery, async ({ params, body }) => {
+      await this.authorizeIssueScope(req, params.issueId);
       const result = await this.loopsService.governDelivery(params.issueId, body);
       await this.auditLoopUpdate(req, params.issueId, 'governDelivery', {
         action: body.action,
@@ -780,6 +816,7 @@ export class LoopsController {
   @TsRestHandler(c.intervene)
   async intervene(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.intervene, async ({ params, body }) => {
+      await this.authorizeIssueScope(req, params.issueId);
       const result = await this.loopsService.intervene(params.issueId, body);
       await this.auditLoopUpdate(req, params.issueId, 'intervene', {
         action: body.action,
@@ -938,16 +975,25 @@ export class LoopsController {
 
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.logs)
-  async logs() {
+  async logs(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.logs, async ({ query }) => {
+      // When scoped to an issue, assert ownership first. The issueId-less
+      // branch is a cross-issue file aggregate and remains a follow-up for
+      // tenant-scoped read at the store layer.
+      if (query.issueId) {
+        await this.authorizeIssueScope(req, query.issueId);
+      }
       return success(await this.loopsService.logs(query));
     });
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
   @TsRestHandler(c.notifications)
-  async notifications() {
+  async notifications(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.notifications, async ({ query }) => {
+      if (query.issueId) {
+        await this.authorizeIssueScope(req, query.issueId);
+      }
       return success(await this.loopsService.notifications(query));
     });
   }
@@ -970,6 +1016,7 @@ export class LoopsController {
   async getBrowserQaArtifact(@Req() req: BrowserQaArtifactRequest) {
     return tsRestHandler(c.getBrowserQaArtifact, async ({ params }) => {
       const artifactPath = req.params?.['0'] ?? '';
+      await this.authorizeIssueScope(req, params.issueId);
       const result = await this.loopsService.getBrowserQaArtifact(params.issueId, artifactPath);
       return { status: 200 as const, body: result };
     });
@@ -1304,9 +1351,15 @@ export class LoopsController {
 
   @TsRestHandler(c.getCrossTenantEvalAggregation)
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
-  async getCrossTenantEvalAggregation() {
+  async getCrossTenantEvalAggregation(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.getCrossTenantEvalAggregation, async ({ query }) => {
-      return success(await this.loopsService.getCrossTenantEvalAggregation(query));
+      const tenantContext = await this.resolveTenantContext(req);
+      return success(
+        await this.loopsService.getCrossTenantEvalAggregation({
+          ...query,
+          tenantId: tenantContext.tenantId,
+        }),
+      );
     });
   }
 
@@ -1314,7 +1367,11 @@ export class LoopsController {
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   async runEvalAggregationWorker(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.runEvalAggregationWorker, async ({ body }) => {
-      const result = await this.loopsService.runEvalAggregationWorker(body);
+      const tenantContext = await this.resolveTenantContext(req);
+      const result = await this.loopsService.runEvalAggregationWorker({
+        tenantId: tenantContext.tenantId,
+        period: body?.period,
+      });
       await this.auditLog(req, 'UPDATE', 'eval_aggregation', 'worker', 'runEvalAggregationWorker', {
         processed: result.processed,
         persisted: result.persisted,
@@ -1328,9 +1385,10 @@ export class LoopsController {
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
   async enqueueEvalAggregationJob(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.enqueueEvalAggregationJob, async ({ body }) => {
+      const tenantContext = await this.resolveTenantContext(req);
       const jobData = {
-        type: (body?.type ?? 'aggregate-all') as 'aggregate-all' | 'aggregate-tenant',
-        tenantId: body?.tenantId,
+        type: 'aggregate-tenant' as const,
+        tenantId: tenantContext.tenantId,
         periods: body?.periods,
       };
       const job = this.evalAggQueue
@@ -1444,9 +1502,13 @@ export class LoopsController {
   @RequireLoopsPermission(LOOPS_PERMISSION.ADMIN)
   async archiveTenant(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.archiveTenant, async ({ body }) => {
-      const result = await this.loopsService.archiveTenant(body);
+      const tenantContext = await this.resolveTenantContext(req);
+      const result = await this.loopsService.archiveTenant({
+        ...body,
+        tenantId: tenantContext.tenantId,
+      });
       await this.auditLog(req, 'CREATE', 'loops_archive', result.archiveId, 'archiveTenant', {
-        tenantId: body.tenantId,
+        tenantId: tenantContext.tenantId,
         fileCount: result.fileCount,
       } as Prisma.InputJsonObject);
       return success(result);
@@ -1455,17 +1517,22 @@ export class LoopsController {
 
   @TsRestHandler(c.listArchives)
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
-  async listArchives() {
-    return tsRestHandler(c.listArchives, async ({ query }) => {
-      return success(await this.loopsService.listArchives(query.tenantId));
+  async listArchives(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.listArchives, async () => {
+      const tenantContext = await this.resolveTenantContext(req);
+      return success(await this.loopsService.listArchives(tenantContext.tenantId));
     });
   }
 
   @TsRestHandler(c.refreshArchiveUrl)
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)
-  async refreshArchiveUrl() {
-    return tsRestHandler(c.refreshArchiveUrl, async ({ params, body }) => {
-      const result = await this.loopsService.refreshArchiveUrl(body.tenantId, params.archiveId);
+  async refreshArchiveUrl(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.refreshArchiveUrl, async ({ params }) => {
+      const tenantContext = await this.resolveTenantContext(req);
+      const result = await this.loopsService.refreshArchiveUrl(
+        tenantContext.tenantId,
+        params.archiveId,
+      );
       return success(result);
     });
   }
