@@ -14,7 +14,7 @@ export default async function NewLoopIssuePage() {
   const t = await getTranslations('loops.newIssue');
 
   return (
-    <section className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6">
+    <section className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6" data-testid="new-issue-page">
       <PageHeader
         action={
           <Link
