@@ -677,9 +677,9 @@
       "tools": "{count} tools",
       "owners": "{count} owners",
       "assetPermissions": {
-        "title": "SSO Asset Permissions",
-        "summary": "{granted} granted · {blocked} blocked · source: SSO",
-        "loading": "Loading SSO asset permissions.",
+        "title": "Tenant Access",
+        "summary": "{granted} granted · {blocked} blocked · source: tenant membership",
+        "loading": "Loading tenant access.",
         "granted": "Granted",
         "blocked": "Blocked"
       },

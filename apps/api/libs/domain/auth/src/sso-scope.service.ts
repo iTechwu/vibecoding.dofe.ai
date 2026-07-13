@@ -51,9 +51,9 @@ export class SsoScopeService {
 
     const preferredTenantId = preference?.lastTenantId?.trim() || undefined;
     const candidateTenantId = input.tenantId?.trim() || undefined;
-    const resolvedTenantId = preferredTenantId ?? candidateTenantId;
+    const resolvedTenantId = preferredTenantId ?? candidateTenantId ?? tenants[0]?.tenantId;
 
-    if (!resolvedTenantId) {
+    if (!resolvedTenantId || (tenants.length > 1 && !preferredTenantId && !candidateTenantId)) {
       throw apiError(CommonErrorCode.UnAuthorized, 'SSO tenant scope is required');
     }
 

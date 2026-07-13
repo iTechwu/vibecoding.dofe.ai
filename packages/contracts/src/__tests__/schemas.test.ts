@@ -646,7 +646,7 @@ describe('Schemas', () => {
             tenantId: 'tenant-1',
             teamId: 'team-1',
             actorId: 'sso-user-42',
-            sourcePermission: 'vibecoding:loops:create',
+            sourcePermission: 'tenant:member',
             requestedAt: '2026-06-24T00:00:00.000Z',
             reason: 'promote tenant recipe',
             evidenceRefs: ['loop-1'],

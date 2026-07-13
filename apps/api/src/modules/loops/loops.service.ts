@@ -112,7 +112,6 @@ import type {
 } from '@repo/contracts';
 import { normaliseSimpleIssue } from '@repo/contracts';
 import type { AuthUserInfo } from '@app/auth/types/auth.interface';
-import { PermissionService } from '@app/auth/permission.service';
 import { LoopsFileStoreService } from '@app/services/loops-store';
 import {
   LoopsEvalAggregationWorkerService,
@@ -279,8 +278,6 @@ export class LoopsService implements LoopsIssueCreationPort {
     private readonly secondOpinionWorker: LoopsSecondOpinionWorkerService = new LoopsSecondOpinionWorkerService(),
     @Optional()
     private readonly prProvider?: LoopsPrProviderClient,
-    @Optional()
-    private readonly permissionService?: PermissionService,
     // R33: Cross-tenant eval aggregation (DB + Redis + BullMQ)
     @Optional()
     private readonly evalAggregationDb?: LoopEvalAggregationService,
@@ -1286,19 +1283,8 @@ export class LoopsService implements LoopsIssueCreationPort {
     teamId?: string;
     tenantId?: string;
   }): Promise<LoopAssetPermissionsResponse> {
-    const snapshot =
-      this.permissionService && !input.isAdmin
-        ? await this.permissionService.getUserPermissionSnapshot(input.userId, input.teamId)
-        : { permissions: [], roles: [] };
-    const permissions = input.isAdmin
-      ? [
-          'vibecoding:loops:read',
-          'vibecoding:loops:create',
-          'vibecoding:loops:operate',
-          'vibecoding:loops:admin',
-        ]
-      : snapshot.permissions;
-    const assets = this.buildAssetPermissionItems(permissions, Boolean(input.isAdmin));
+    const hasTenantAccess = Boolean(input.tenantId);
+    const assets = this.buildAssetPermissionItems(hasTenantAccess);
 
     return {
       identity: {
@@ -1307,9 +1293,9 @@ export class LoopsService implements LoopsIssueCreationPort {
         tenantId: input.tenantId,
         isSuperAdmin: Boolean(input.isAdmin),
       },
-      source: 'sso',
-      permissions,
-      roles: snapshot.roles,
+      source: 'tenant-membership',
+      permissions: hasTenantAccess ? ['tenant:member'] : [],
+      roles: [],
       assets,
       summary: {
         total: assets.length,
@@ -1332,30 +1318,10 @@ export class LoopsService implements LoopsIssueCreationPort {
     if (permission?.granted) {
       return;
     }
-    throw new ForbiddenException(
-      `SSO permission ${permission?.sourcePermission ?? `vibecoding:loops:${input.action}`} is required for ${input.assetKind}`,
-    );
+    throw new ForbiddenException(`Verified tenant membership is required for ${input.assetKind}`);
   }
 
-  private buildAssetPermissionItems(
-    permissions: string[],
-    isSuperAdmin: boolean,
-  ): LoopAssetPermissionItem[] {
-    const hasAction = (action: LoopAssetPermissionAction) =>
-      isSuperAdmin ||
-      permissions.includes(`vibecoding:loops:${action}`) ||
-      permissions.includes(`loops:${action}`);
-    const canRead =
-      hasAction('read') || hasAction('create') || hasAction('operate') || hasAction('admin');
-    const canCreate = hasAction('create') || hasAction('operate') || hasAction('admin');
-    const canOperate = hasAction('operate') || hasAction('admin');
-    const canAdmin = hasAction('admin');
-    const grantedByAction: Record<LoopAssetPermissionAction, boolean> = {
-      read: canRead,
-      create: canCreate,
-      operate: canOperate,
-      admin: canAdmin,
-    };
+  private buildAssetPermissionItems(hasTenantAccess: boolean): LoopAssetPermissionItem[] {
     const defs: Array<Omit<LoopAssetPermissionItem, 'granted' | 'sourcePermission'>> = [
       {
         assetKind: 'workspace',
@@ -1424,8 +1390,8 @@ export class LoopsService implements LoopsIssueCreationPort {
 
     return defs.map((def) => ({
       ...def,
-      granted: grantedByAction[def.requiredAction],
-      sourcePermission: `vibecoding:loops:${def.requiredAction}`,
+      granted: hasTenantAccess,
+      sourcePermission: 'tenant:member',
     }));
   }
 
@@ -1967,7 +1933,7 @@ export class LoopsService implements LoopsIssueCreationPort {
       tenantId: permissionContext.tenantId,
       teamId: permissionContext.teamId,
       actorId: permissionContext.userId,
-      sourcePermission: 'vibecoding:loops:create',
+      sourcePermission: 'tenant:member',
       requestedAt,
       reason: request.reason,
       evidenceRefs: request.evidenceRefs,
@@ -2022,7 +1988,7 @@ export class LoopsService implements LoopsIssueCreationPort {
         authStatus: 'missing',
         health: {
           ok: false,
-          message: 'Provider token is not configured; connect is gated by SSO admin permission.',
+          message: 'Provider token is not configured; connect requires tenant membership.',
         },
         risks: ['External URL tests require SSRF-safe target allowlists before production.'],
       },

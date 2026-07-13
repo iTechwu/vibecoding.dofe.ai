@@ -375,8 +375,8 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
               provider: 'github',
               status: 'ready',
               tenantId: 'tenant-1',
-              permissions: ['vibecoding:loops:operate'],
-              requiredPermission: 'vibecoding:loops:operate',
+              permissions: ['tenant:member'],
+              requiredPermission: 'tenant:member',
               lastPublication: undefined,
             },
           ],
@@ -463,10 +463,10 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
             tenantId: 'tenant-1',
             isSuperAdmin: false,
           },
-          source: 'sso',
-          permissions: ['vibecoding:loops:read', 'vibecoding:loops:create'],
-          roles: ['MEMBER'],
-          summary: { total: 3, granted: 1, blocked: 2 },
+          source: 'tenant-membership',
+          permissions: ['tenant:member'],
+          roles: [],
+          summary: { total: 3, granted: 3, blocked: 0 },
           assets: [
             {
               assetKind: 'blueprint',
@@ -475,7 +475,7 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
               scope: 'tenant',
               requiredAction: 'create',
               granted: true,
-              sourcePermission: 'vibecoding:loops:create',
+              sourcePermission: 'tenant:member',
             },
             {
               assetKind: 'runtime-backend',
@@ -483,8 +483,8 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
               label: 'Codex / Claude Code runtime backends',
               scope: 'workspace',
               requiredAction: 'operate',
-              granted: false,
-              sourcePermission: 'vibecoding:loops:operate',
+              granted: true,
+              sourcePermission: 'tenant:member',
             },
             {
               assetKind: 'mcp-server',
@@ -492,8 +492,8 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
               label: 'MCP server registry',
               scope: 'tenant',
               requiredAction: 'admin',
-              granted: false,
-              sourcePermission: 'vibecoding:loops:admin',
+              granted: true,
+              sourcePermission: 'tenant:member',
             },
           ],
         },
@@ -1212,15 +1212,15 @@ describe('LoopsPage', () => {
     expect(within(capabilityRegistry).getByText('Network')).toBeInTheDocument();
     expect(within(capabilityRegistry).getByText('Approval')).toBeInTheDocument();
     expect(screen.getByText('2 third-party tool compatibilities planned')).toBeInTheDocument();
-    expect(within(capabilityRegistry).getByText('SSO Asset Permissions')).toBeInTheDocument();
+    expect(within(capabilityRegistry).getByText('Tenant Access')).toBeInTheDocument();
     expect(
-      within(capabilityRegistry).getByText('1 granted · 2 blocked · source: SSO'),
+      within(capabilityRegistry).getByText('3 granted · 0 blocked · source: tenant membership'),
     ).toBeInTheDocument();
     expect(screen.getByText('Delivery blueprints')).toBeInTheDocument();
     const recipeAdminRegion = screen.getByRole('region', { name: 'Recipe Admin' });
     expect(within(recipeAdminRegion).getByText('Tenant scope')).toBeInTheDocument();
     expect(screen.getAllByText('Granted').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('vibecoding:loops:create').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('tenant:member').length).toBeGreaterThan(0);
     expect(within(recipeAdminRegion).getByText('Create version')).toBeInTheDocument();
     expect(within(recipeAdminRegion).getByText('Review approval')).toBeInTheDocument();
     expect(within(recipeAdminRegion).getByText('Rollback version')).toBeInTheDocument();
@@ -1230,7 +1230,7 @@ describe('LoopsPage', () => {
       body: {
         actionId: 'createVersion',
         blueprintId: 'delivery-blueprints',
-        reason: 'vibecoding:loops:create grants recipe version changes',
+        reason: 'tenant:member grants recipe version changes',
         evidenceRefs: [],
       },
     });

@@ -187,17 +187,14 @@ function createFakeSecondOpinionWorker(status: 'passed' | 'needs_changes' = 'pas
   } as unknown as LoopsSecondOpinionWorkerService;
 }
 
-function createPermissionedLoopsService(
+function createTenantScopedLoopsService(
   store: LoopsFileStoreService,
-  permissions: string[],
-  roles: string[] = ['MEMBER'],
-  runtimeDetection?: AgentRuntimeDetectionService,
-  persistence?: LoopsPersistenceService,
-  prProvider?: LoopsPrProviderClient,
+  options: {
+    runtimeDetection?: AgentRuntimeDetectionService;
+    persistence?: LoopsPersistenceService;
+    prProvider?: LoopsPrProviderClient;
+  } = {},
 ) {
-  const permissionService = {
-    getUserPermissionSnapshot: jest.fn().mockResolvedValue({ permissions, roles }),
-  };
   const scopedService = new LoopsService(
     store,
     createFakeRunner(),
@@ -205,17 +202,16 @@ function createPermissionedLoopsService(
     new DeterministicLoopsAgentAdapter(),
     new DeterministicLoopsClaudeAdapter(),
     createFakeGitAdapter(),
-    persistence,
+    options.persistence,
     undefined,
     undefined,
-    runtimeDetection,
+    options.runtimeDetection,
     new LoopsWorkspaceProfileService(),
     undefined,
     undefined,
-    prProvider,
-    permissionService as never,
+    options.prProvider,
   );
-  return { scopedService, permissionService };
+  return { scopedService };
 }
 
 describe('LoopsService v1 main chain (file-only smoke)', () => {
@@ -308,73 +304,40 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     return target.reviewSpec(created.issue.id, { action: 'approve', reviewer: 'tester' });
   }
 
-  it('derives Loops asset permissions from the SSO permission snapshot', async () => {
-    const permissionService = {
-      getUserPermissionSnapshot: jest.fn().mockResolvedValue({
-        permissions: ['vibecoding:loops:read', 'vibecoding:loops:create'],
-        roles: ['MEMBER'],
-      }),
-    };
-    const scopedService = new LoopsService(
-      store,
-      createFakeRunner(),
-      new LoopsWorkLockService(),
-      new DeterministicLoopsAgentAdapter(),
-      new DeterministicLoopsClaudeAdapter(),
-      createFakeGitAdapter(),
-      undefined,
-      undefined,
-      undefined,
-      undefined,
-      new LoopsWorkspaceProfileService(),
-      undefined,
-      undefined,
-      undefined,
-      permissionService as never,
-    );
-
-    const snapshot = await scopedService.assetPermissions({
+  it('derives Loops asset permissions from verified tenant membership', async () => {
+    const snapshot = await service.assetPermissions({
       userId: 'sso-user-42',
       teamId: 'team-1',
       tenantId: 'tenant-1',
       isAdmin: false,
     });
 
-    expect(permissionService.getUserPermissionSnapshot).toHaveBeenCalledWith(
-      'sso-user-42',
-      'team-1',
-    );
-    expect(snapshot.source).toBe('sso');
+    expect(snapshot.source).toBe('tenant-membership');
+    expect(snapshot.permissions).toEqual(['tenant:member']);
     expect(snapshot.identity).toMatchObject({
       userId: 'sso-user-42',
       teamId: 'team-1',
       tenantId: 'tenant-1',
       isSuperAdmin: false,
     });
-    expect(snapshot.roles).toEqual(['MEMBER']);
+    expect(snapshot.roles).toEqual([]);
     expect(
       snapshot.assets.map((asset) => [asset.assetKind, asset.requiredAction, asset.granted]),
     ).toEqual([
-      ['workspace', 'operate', false],
+      ['workspace', 'operate', true],
       ['blueprint', 'create', true],
-      ['runtime-backend', 'operate', false],
-      ['tool', 'operate', false],
-      ['eval-suite', 'operate', false],
-      ['trigger', 'operate', false],
-      ['remote-runner', 'admin', false],
-      ['mcp-server', 'admin', false],
-      ['ci-check', 'operate', false],
+      ['runtime-backend', 'operate', true],
+      ['tool', 'operate', true],
+      ['eval-suite', 'operate', true],
+      ['trigger', 'operate', true],
+      ['remote-runner', 'admin', true],
+      ['mcp-server', 'admin', true],
+      ['ci-check', 'operate', true],
     ]);
-    expect(snapshot.summary).toEqual({ total: 9, granted: 1, blocked: 8 });
+    expect(snapshot.summary).toEqual({ total: 9, granted: 9, blocked: 0 });
   });
 
-  it('blocks runtime backend operations without the SSO runtime asset permission', async () => {
-    const permissionService = {
-      getUserPermissionSnapshot: jest.fn().mockResolvedValue({
-        permissions: ['vibecoding:loops:read', 'vibecoding:loops:create'],
-        roles: ['MEMBER'],
-      }),
-    };
+  it('blocks runtime backend operations without verified tenant membership', async () => {
     const scopedService = new LoopsService(
       store,
       createFakeRunner(),
@@ -400,7 +363,6 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
       undefined,
       undefined,
       undefined,
-      permissionService as never,
     );
 
     await expect(
@@ -410,20 +372,14 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
         {
           userId: 'sso-user-42',
           teamId: 'team-1',
-          tenantId: 'tenant-1',
+          tenantId: undefined,
           isAdmin: false,
         },
       ),
-    ).rejects.toThrow('SSO permission vibecoding:loops:operate is required for runtime-backend');
+    ).rejects.toThrow('Verified tenant membership is required for runtime-backend');
   });
 
-  it('allows runtime backend operations with the SSO runtime asset permission', async () => {
-    const permissionService = {
-      getUserPermissionSnapshot: jest.fn().mockResolvedValue({
-        permissions: ['vibecoding:loops:operate'],
-        roles: ['OPERATOR'],
-      }),
-    };
+  it('allows runtime backend operations for a verified tenant member', async () => {
     const scopedService = new LoopsService(
       store,
       createFakeRunner(),
@@ -449,7 +405,6 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
       undefined,
       undefined,
       undefined,
-      permissionService as never,
     );
 
     const backend = await scopedService.updateRuntimeBackendPolicy(
@@ -464,18 +419,11 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     );
 
     expect(backend.permissionProfile).toBe('workspace-write');
-    expect(permissionService.getUserPermissionSnapshot).toHaveBeenCalledWith(
-      'sso-user-42',
-      'team-1',
-    );
   });
 
   it('persists runtime backend policy patches in the Loops file store', async () => {
-    const { scopedService } = createPermissionedLoopsService(
-      store,
-      ['vibecoding:loops:operate'],
-      ['OPERATOR'],
-      {
+    const { scopedService } = createTenantScopedLoopsService(store, {
+      runtimeDetection: {
         detectAll: async () => [
           {
             agent: 'codex',
@@ -486,7 +434,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
           },
         ],
       } as unknown as AgentRuntimeDetectionService,
-    );
+    });
 
     await scopedService.updateRuntimeBackendPolicy(
       'runtime-backend-codex',
@@ -523,11 +471,8 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
       }),
       readRuntimeBackendPolicies: jest.fn(async () => Object.fromEntries(policies)),
     } as unknown as LoopsPersistenceService;
-    const { scopedService } = createPermissionedLoopsService(
-      store,
-      ['vibecoding:loops:operate'],
-      ['OPERATOR'],
-      {
+    const { scopedService } = createTenantScopedLoopsService(store, {
+      runtimeDetection: {
         detectAll: async () => [
           {
             agent: 'codex',
@@ -539,7 +484,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
         ],
       } as unknown as AgentRuntimeDetectionService,
       persistence,
-    );
+    });
 
     await scopedService.updateRuntimeBackendPolicy(
       'runtime-backend-codex',
@@ -585,8 +530,8 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     );
   });
 
-  it('gates remote runner leases with SSO admin asset permission', async () => {
-    const { scopedService } = createPermissionedLoopsService(store, ['vibecoding:loops:operate']);
+  it('blocks remote runner leases without verified tenant membership', async () => {
+    const { scopedService } = createTenantScopedLoopsService(store);
 
     await expect(
       scopedService.acquireRemoteRunnerLease(
@@ -600,19 +545,15 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
         {
           userId: 'sso-user-42',
           teamId: 'team-1',
-          tenantId: 'tenant-1',
+          tenantId: undefined,
           isAdmin: false,
         },
       ),
-    ).rejects.toThrow('SSO permission vibecoding:loops:admin is required for remote-runner');
+    ).rejects.toThrow('Verified tenant membership is required for remote-runner');
   });
 
-  it('acquires and releases remote runner control-plane leases with SSO admin permission', async () => {
-    const { scopedService } = createPermissionedLoopsService(
-      store,
-      ['vibecoding:loops:admin'],
-      ['ADMIN'],
-    );
+  it('acquires and releases remote runner control-plane leases for a tenant member', async () => {
+    const { scopedService } = createTenantScopedLoopsService(store);
 
     const lease = await scopedService.acquireRemoteRunnerLease(
       'remote-runner-primary',
@@ -660,8 +601,8 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     });
   });
 
-  it('gates remote runner jobs with SSO admin asset permission', async () => {
-    const { scopedService } = createPermissionedLoopsService(store, ['vibecoding:loops:operate']);
+  it('blocks remote runner jobs without verified tenant membership', async () => {
+    const { scopedService } = createTenantScopedLoopsService(store);
 
     await expect(
       scopedService.runRemoteRunnerJob(
@@ -675,19 +616,15 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
         {
           userId: 'sso-user-42',
           teamId: 'team-1',
-          tenantId: 'tenant-1',
+          tenantId: undefined,
           isAdmin: false,
         },
       ),
-    ).rejects.toThrow('SSO permission vibecoding:loops:admin is required for remote-runner');
+    ).rejects.toThrow('Verified tenant membership is required for remote-runner');
   });
 
   it('runs a remote runner worker job and persists artifact metadata', async () => {
-    const { scopedService } = createPermissionedLoopsService(
-      store,
-      ['vibecoding:loops:admin'],
-      ['ADMIN'],
-    );
+    const { scopedService } = createTenantScopedLoopsService(store);
 
     const job = await scopedService.runRemoteRunnerJob(
       'remote-runner-primary',
@@ -780,8 +717,8 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     );
   });
 
-  it('gates MCP server lifecycle actions with SSO admin asset permission', async () => {
-    const { scopedService } = createPermissionedLoopsService(store, ['vibecoding:loops:operate']);
+  it('blocks MCP server lifecycle actions without verified tenant membership', async () => {
+    const { scopedService } = createTenantScopedLoopsService(store);
 
     await expect(
       scopedService.connectMcpServer(
@@ -790,19 +727,15 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
         {
           userId: 'sso-user-42',
           teamId: 'team-1',
-          tenantId: 'tenant-1',
+          tenantId: undefined,
           isAdmin: false,
         },
       ),
-    ).rejects.toThrow('SSO permission vibecoding:loops:admin is required for mcp-server');
+    ).rejects.toThrow('Verified tenant membership is required for mcp-server');
   });
 
-  it('connects MCP server configs when SSO admin asset permission is present', async () => {
-    const { scopedService, permissionService } = createPermissionedLoopsService(
-      store,
-      ['vibecoding:loops:admin'],
-      ['ADMIN'],
-    );
+  it('connects MCP server configs for a tenant member', async () => {
+    const { scopedService } = createTenantScopedLoopsService(store);
 
     const result = await scopedService.connectMcpServer(
       'mcp-repo-tools',
@@ -829,18 +762,10 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(
       existsSync(join(workspace, result.executionAudit?.artifactRef ?? 'missing-artifact')),
     ).toBe(true);
-    expect(permissionService.getUserPermissionSnapshot).toHaveBeenCalledWith(
-      'sso-user-42',
-      'team-1',
-    );
   });
 
   it('records MCP provider execution audit artifacts when disconnecting a server', async () => {
-    const { scopedService } = createPermissionedLoopsService(
-      store,
-      ['vibecoding:loops:admin'],
-      ['ADMIN'],
-    );
+    const { scopedService } = createTenantScopedLoopsService(store);
 
     const result = await scopedService.disconnectMcpServer(
       'mcp-repo-tools',
@@ -869,11 +794,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
   });
 
   it('returns MCP provider execution audit metadata when testing a server', async () => {
-    const { scopedService, permissionService } = createPermissionedLoopsService(
-      store,
-      ['vibecoding:loops:admin'],
-      ['ADMIN'],
-    );
+    const { scopedService } = createTenantScopedLoopsService(store);
 
     const result = await scopedService.testMcpServer(
       'mcp-repo-tools',
@@ -900,14 +821,10 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(
       existsSync(join(workspace, result.executionAudit?.artifactRef ?? 'missing-artifact')),
     ).toBe(true);
-    expect(permissionService.getUserPermissionSnapshot).toHaveBeenCalledWith(
-      'sso-user-42',
-      'team-1',
-    );
   });
 
-  it('gates CI check lifecycle actions with SSO operate asset permission', async () => {
-    const { scopedService } = createPermissionedLoopsService(store, ['vibecoding:loops:create']);
+  it('blocks CI check lifecycle actions without verified tenant membership', async () => {
+    const { scopedService } = createTenantScopedLoopsService(store);
 
     await expect(
       scopedService.connectCiCheck(
@@ -916,19 +833,15 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
         {
           userId: 'sso-user-42',
           teamId: 'team-1',
-          tenantId: 'tenant-1',
+          tenantId: undefined,
           isAdmin: false,
         },
       ),
-    ).rejects.toThrow('SSO permission vibecoding:loops:operate is required for ci-check');
+    ).rejects.toThrow('Verified tenant membership is required for ci-check');
   });
 
-  it('connects CI check integrations when SSO operate asset permission is present', async () => {
-    const { scopedService } = createPermissionedLoopsService(
-      store,
-      ['vibecoding:loops:operate'],
-      ['OPERATOR'],
-    );
+  it('connects CI check integrations for a tenant member', async () => {
+    const { scopedService } = createTenantScopedLoopsService(store);
 
     const result = await scopedService.connectCiCheck(
       'github-delivery-evidence',
@@ -955,14 +868,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
         url: 'https://github.com/dofe/repo/runs/11',
       }),
     } as unknown as LoopsPrProviderClient;
-    const { scopedService } = createPermissionedLoopsService(
-      store,
-      ['vibecoding:loops:operate'],
-      ['OPERATOR'],
-      undefined,
-      undefined,
-      prProvider,
-    );
+    const { scopedService } = createTenantScopedLoopsService(store, { prProvider });
     const finalized = await createFinalizedLoopForEvidence(scopedService);
     const evidenceBacklink = `https://vibecoding.dofe.ai/loops/${finalized.issue.id}/delivery-evidence`;
 
@@ -1090,14 +996,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
         reason: 'repository not allowlisted',
       }),
     } as unknown as LoopsPrProviderClient;
-    const { scopedService } = createPermissionedLoopsService(
-      store,
-      ['vibecoding:loops:operate'],
-      ['OPERATOR'],
-      undefined,
-      undefined,
-      prProvider,
-    );
+    const { scopedService } = createTenantScopedLoopsService(store, { prProvider });
 
     const result = await scopedService.testCiCheck(
       'github-delivery-evidence',
@@ -1153,8 +1052,8 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     });
   });
 
-  it('gates recipe admin action requests with SSO blueprint create permission', async () => {
-    const { scopedService } = createPermissionedLoopsService(store, ['vibecoding:loops:read']);
+  it('blocks recipe admin action requests without verified tenant membership', async () => {
+    const { scopedService } = createTenantScopedLoopsService(store);
 
     await expect(
       scopedService.requestRecipeAdminAction(
@@ -1167,19 +1066,15 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
         {
           userId: 'sso-user-42',
           teamId: 'team-1',
-          tenantId: 'tenant-1',
+          tenantId: undefined,
           isAdmin: false,
         },
       ),
-    ).rejects.toThrow('SSO permission vibecoding:loops:create is required for blueprint');
+    ).rejects.toThrow('Verified tenant membership is required for blueprint');
   });
 
   it('records tenant-scoped recipe admin action artifacts', async () => {
-    const { scopedService } = createPermissionedLoopsService(
-      store,
-      ['vibecoding:loops:create'],
-      ['MEMBER'],
-    );
+    const { scopedService } = createTenantScopedLoopsService(store);
 
     const result = await scopedService.requestRecipeAdminAction(
       {
@@ -1207,7 +1102,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
       tenantId: 'tenant-1',
       teamId: 'team-1',
       actorId: 'sso-user-42',
-      sourcePermission: 'vibecoding:loops:create',
+      sourcePermission: 'tenant:member',
       reason: 'rollback failed recipe',
       evidenceRefs: ['issue-1'],
       message:

@@ -398,3 +398,28 @@ cost/metrics/runtime 不受影响。
 
 **计划状态**：Step 4、Step 5 的代码实施完成；Step 3 等待生产回填执行与报告，Step 6 等待完整质量门禁
 和上线运维证据；team projection 仍是唯一 SSO 外部依赖。
+
+## Cycle 19：Loops 业务权限与 SSO 成员事实解耦
+
+**实施**：根据登录后的实际 401 证据，移除 Loops controller 上全部
+`RequireModulePermission('vibecoding', 'loops', ...)` 路由要求及其专用 decorator。新增
+`LoopsTenantAccessGuard`，它只通过 `SsoScopeService` 验证认证 subject 对当前 tenant 的成员关系，并将
+验证后的 tenantId 写入 request，供既有 tenant 隔离链复用。`SsoScopeService` 在用户恰有一个 SSO
+tenant membership 且尚未设置 preference/header 时选择该唯一成员；多 tenant 用户仍要求 SSO preference
+或候选 tenant，避免任意选择。`LoopsService` 的 asset access 由 verified tenant membership 本地派生，
+不再注入或调用 `PermissionService`；契约 `source` 和前端展示统一改为 `tenant-membership` / `tenant:member`。
+
+**验证**：API Loops service、tenant guard、SSO scope 共 77 个 focused tests 通过；contracts schema
+tests 20 个通过；Web Loops dashboard/page 41 个 focused tests 通过。全量 Web test 命令还暴露一个与本轮
+无关的既有断言漂移：agent-runtime deep link 期望 `/loops#agent-runtime`，实际为
+`/loops?view=operations#agent-runtime`，未在本轮修改。API/Web type-check 通过；完整
+`quality:gate` 在既有 infra 版本一致性基线处停止（多数 `@dofe/infra-*` 为 `0.1.91`，
+`@dofe/infra-common` 为 `0.1.92`），与本轮无关。
+
+**审查待实施项**：普通 Loops 路由不再依赖 SSO 下发任何 `vibecoding:loops:*`，tenant 归属与资源级
+隔离继续由 SSO membership + 本地 scope 过滤完成。`@RequireSuperAdmin()` 保留在真正全局控制面，它判断
+SSO superadmin 身份而非 Loops 资源权限。生产历史 scope 回填与 SSO current-team 契约仍按 Cycle 16/18
+的受控运维和外部依赖继续处理。
+
+**计划状态**：已完成 SSO “身份/成员事实”与 Vibecoding “产品业务访问”职责切分；新 Loops 项目或资产
+不需要向 SSO 增加资源权限。

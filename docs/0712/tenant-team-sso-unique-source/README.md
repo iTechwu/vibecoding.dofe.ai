@@ -7,6 +7,10 @@ Tenant 的唯一权威已收敛到 SSO：本项目不维护 tenant、team、成�
 tenant，`getTenants` 验证成员关系，客户端 header/localStorage 仅在 SSO 尚无 preference 时作为候选，
 绝不作为授权或归属依据。
 
+Loops 的业务访问另有明确边界：SSO 只提供“该用户属于哪个 tenant”的事实，Vibecoding 在本地把已验证
+tenant 成员资格解释为可使用 Loops 的产品访问权。不得在 SSO 中定义或要求 `vibecoding:loops:*`；仅真正
+全局的控制面仍使用 SSO superadmin 身份判断。
+
 | 项目                                    | 状态                     | 当前边界                                                                                   |
 | --------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------ |
 | SSO current tenant 解析                 | 已完成                   | preference 优先，membership 必验，显示名仅取自 SSO。                                       |

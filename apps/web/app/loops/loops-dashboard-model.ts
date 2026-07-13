@@ -2230,8 +2230,8 @@ export function buildRecipeAdminSummary(
       id: 'createVersion',
       state: canCreateRecipe ? 'ready' : 'blocked',
       evidence: canCreateRecipe
-        ? `${sourcePermission ?? 'sso'} grants recipe version changes`
-        : 'SSO blueprint create permission required',
+        ? `${sourcePermission ?? 'tenant:member'} grants recipe version changes`
+        : 'Verified tenant membership required',
       sourcePermission,
     },
     {

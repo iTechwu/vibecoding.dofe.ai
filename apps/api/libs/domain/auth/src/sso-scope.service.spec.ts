@@ -67,6 +67,18 @@ describe('SsoScopeService', () => {
     ).resolves.toEqual({ tenantId: 'tenant-cand', tenantName: 'Candidate' });
   });
 
+  it('uses the sole SSO tenant membership when no preference or client candidate exists', async () => {
+    const { service } = buildService({
+      tenants: [{ tenantId: 'tenant-only', tenantName: 'Only Tenant' }],
+      preference: { userId: 'sso-user-1', lastTenantId: null, updatedAt: '2026-07-12' },
+    });
+
+    await expect(service.resolve({ ssoSubject: 'sso-user-1' })).resolves.toEqual({
+      tenantId: 'tenant-only',
+      tenantName: 'Only Tenant',
+    });
+  });
+
   it('rejects when the SSO-preferred tenant is not in the user membership list', async () => {
     const { service } = buildService({
       tenants: [{ tenantId: 'tenant-other', tenantName: 'Other' }],
@@ -78,9 +90,12 @@ describe('SsoScopeService', () => {
     ).rejects.toThrow(expect.objectContaining({ errorCode: CommonErrorCode.UnAuthorized }));
   });
 
-  it('rejects when neither preference nor a client candidate provides a tenant', async () => {
+  it('rejects for multiple memberships when neither preference nor a client candidate provides a tenant', async () => {
     const { service } = buildService({
-      tenants: [{ tenantId: 'tenant-1', tenantName: 'T' }],
+      tenants: [
+        { tenantId: 'tenant-1', tenantName: 'T1' },
+        { tenantId: 'tenant-2', tenantName: 'T2' },
+      ],
       preference: { userId: 'sso-user-1', lastTenantId: null, updatedAt: '2026-07-12' },
     });
 

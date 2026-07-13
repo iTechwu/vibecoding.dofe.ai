@@ -1100,7 +1100,7 @@ describe('loops-dashboard-model', () => {
     ]);
   });
 
-  it('builds recipe admin tenant governance from SSO asset permissions', () => {
+  it('builds recipe admin tenant governance from verified tenant membership', () => {
     const recipe = buildRecipeAdminSummary(list.list, cost, {
       identity: {
         userId: 'sso-user-42',
@@ -1108,9 +1108,9 @@ describe('loops-dashboard-model', () => {
         tenantId: 'tenant-1',
         isSuperAdmin: false,
       },
-      source: 'sso',
-      permissions: ['vibecoding:loops:create'],
-      roles: ['MEMBER'],
+      source: 'tenant-membership',
+      permissions: ['tenant:member'],
+      roles: [],
       summary: { total: 1, granted: 1, blocked: 0 },
       assets: [
         {
@@ -1120,7 +1120,7 @@ describe('loops-dashboard-model', () => {
           scope: 'tenant',
           requiredAction: 'create',
           granted: true,
-          sourcePermission: 'vibecoding:loops:create',
+          sourcePermission: 'tenant:member',
         },
       ],
     });
@@ -1129,13 +1129,13 @@ describe('loops-dashboard-model', () => {
       scope: 'tenant',
       granted: true,
       requiredAction: 'create',
-      sourcePermission: 'vibecoding:loops:create',
+      sourcePermission: 'tenant:member',
     });
     expect(recipe.actions).toEqual([
       expect.objectContaining({
         id: 'createVersion',
         state: 'ready',
-        sourcePermission: 'vibecoding:loops:create',
+        sourcePermission: 'tenant:member',
       }),
       expect.objectContaining({
         id: 'reviewApproval',

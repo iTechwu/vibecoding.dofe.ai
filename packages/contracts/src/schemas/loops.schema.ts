@@ -1660,7 +1660,7 @@ export const LoopAssetPermissionsResponseSchema = z.object({
     tenantId: z.string().optional(),
     isSuperAdmin: z.boolean(),
   }),
-  source: z.literal('sso'),
+  source: z.literal('tenant-membership'),
   permissions: z.array(z.string()),
   roles: z.array(z.string()).default([]),
   assets: z.array(LoopAssetPermissionItemSchema),

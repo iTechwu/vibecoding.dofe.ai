@@ -32,6 +32,7 @@ import { LOOPS_ADVANCE_QUEUE, LoopsAdvanceQueueService } from './loops-advance-q
 import { LoopsAdvanceStatusService } from './loops-advance-status.service';
 import { LoopsCrossTenantArchiveService } from './loops-cross-tenant-archive.service';
 import { LoopsScopeBackfillService } from './loops-scope-backfill.service';
+import { LoopsTenantAccessGuard } from './loops-tenant-access.guard';
 import {
   createRemoteShardExecutionPort,
   createRemoteShardRuntimeAdapter,
@@ -88,6 +89,7 @@ import { LoopsEngineService } from '@app/services/loops-engine';
   controllers: [LoopsController],
   providers: [
     LoopsService,
+    LoopsTenantAccessGuard,
     // 0622 · B2: host runtime detection / workspace profile / Docker client
     // 已下沉到 `LoopsRuntimeModule`（经 LoopsDomainModule re-export）。
     // 结构优化 Step 1c：file-store / persistence / LOOPS_PERSISTENCE /

@@ -196,7 +196,7 @@ export const loopsContract = c.router(
         200: ApiResponseSchema(LoopAssetPermissionsResponseSchema),
       },
       summary:
-        'Get SSO-derived Loops asset permissions for workspace, runtime, tools, eval, triggers, MCP, remote runner, and CI checks',
+        'Get tenant-membership-derived Loops access for workspace, runtime, tools, eval, triggers, MCP, remote runner, and CI checks',
     },
     // --- Runtime Backend Registry (P0-2) ---
     listRuntimeBackends: {
@@ -257,7 +257,7 @@ export const loopsContract = c.router(
         200: ApiResponseSchema(LoopRemoteRunnerLeaseSchema),
       },
       summary:
-        'Acquire a control-plane lease for a remote runner slot after SSO asset permission checks',
+        'Acquire a control-plane lease for a remote runner slot after tenant membership verification',
     },
     releaseRemoteRunnerLease: {
       method: 'POST',
@@ -267,7 +267,7 @@ export const loopsContract = c.router(
       responses: {
         200: ApiResponseSchema(LoopRemoteRunnerLeaseSchema),
       },
-      summary: 'Release a control-plane remote runner lease after SSO asset permission checks',
+      summary: 'Release a control-plane remote runner lease after tenant membership verification',
     },
     runRemoteRunnerJob: {
       method: 'POST',
@@ -278,7 +278,7 @@ export const loopsContract = c.router(
         200: ApiResponseSchema(LoopRemoteRunnerJobSchema),
       },
       summary:
-        'Run a remote runner worker job and persist artifact metadata after SSO admin checks',
+        'Run a remote runner worker job and persist artifact metadata after tenant membership verification',
     },
     // --- MCP Server Registry (P1-2) ---
     listMcpServers: {
@@ -288,7 +288,7 @@ export const loopsContract = c.router(
       responses: {
         200: ApiResponseSchema(LoopMcpServerListResponseSchema),
       },
-      summary: 'List SSO-governed MCP server configurations and compatibility posture',
+      summary: 'List tenant-scoped MCP server configurations and compatibility posture',
     },
     connectMcpServer: {
       method: 'POST',
@@ -298,7 +298,7 @@ export const loopsContract = c.router(
       responses: {
         200: ApiResponseSchema(LoopMcpServerSchema),
       },
-      summary: 'Connect an MCP server configuration after SSO asset permission checks',
+      summary: 'Connect an MCP server configuration after tenant membership verification',
     },
     disconnectMcpServer: {
       method: 'POST',
@@ -308,7 +308,7 @@ export const loopsContract = c.router(
       responses: {
         200: ApiResponseSchema(LoopMcpServerSchema),
       },
-      summary: 'Disconnect an MCP server configuration after SSO asset permission checks',
+      summary: 'Disconnect an MCP server configuration after tenant membership verification',
     },
     testMcpServer: {
       method: 'POST',
@@ -338,7 +338,7 @@ export const loopsContract = c.router(
       responses: {
         200: ApiResponseSchema(LoopCiCheckIntegrationSchema),
       },
-      summary: 'Connect a CI check integration after SSO asset permission checks',
+      summary: 'Connect a CI check integration after tenant membership verification',
     },
     disconnectCiCheck: {
       method: 'POST',
@@ -348,7 +348,7 @@ export const loopsContract = c.router(
       responses: {
         200: ApiResponseSchema(LoopCiCheckIntegrationSchema),
       },
-      summary: 'Disconnect a CI check integration after SSO asset permission checks',
+      summary: 'Disconnect a CI check integration after tenant membership verification',
     },
     testCiCheck: {
       method: 'POST',
@@ -378,7 +378,7 @@ export const loopsContract = c.router(
         200: ApiResponseSchema(LoopRecipeAdminActionResponseSchema),
       },
       summary:
-        'Request a tenant-scoped recipe admin action and persist an auditable artifact after SSO blueprint permission checks',
+        'Request a tenant-scoped recipe admin action and persist an auditable artifact after tenant membership verification',
     },
     // --- Eval Suite / Eval Run (P0-3) ---
     listEvalSuites: {
