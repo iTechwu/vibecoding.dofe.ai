@@ -1,10 +1,9 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Optional, ServiceUnavailableException } from '@nestjs/common';
 import type { LoopImplementationRecord, LoopRuntimeMode } from '@repo/contracts';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import type { Logger } from 'winston';
 import { z } from 'zod';
 import type { LoopsClaudeAdapter, LoopsClaudeRunInput } from './loops-claude-adapter.interface';
-import { DeterministicLoopsClaudeAdapter } from './deterministic-loops-claude.adapter';
 import { extractJson, runProcess } from '@app/services/loops-runners';
 import { resolveAllowedTargetRepo } from '@app/services/loops-store';
 import { readLoopsRuntimeConfig } from '@app/services/loops-store';
@@ -22,15 +21,13 @@ const ClaudeCliResultSchema = z.object({
  * 真实 Claude Code CLI 双手实现（07 §3）。
  *
  * 以非交互模式 `claude -p <prompt> --output-format json --add-dir <root>` 启动一个独立进程实施单个 Shard，
- * 回收 stdout 中的结构化结果生成 Implementation Record。当 `claude` 不可用或调用失败时，
- * 优雅降级到 `DeterministicLoopsClaudeAdapter`，保证 Loop 仍可推进。
+ * 回收 stdout 中的结构化结果生成 Implementation Record。当 `claude` 不可用、调用失败或
+ * 结果不符合 schema 时会重试；最终失败会显式报错，避免伪造实施证据。
  *
  * 仅在 `LOOPS_AGENT_MODE=cli` 时由 Module 注入；默认仍为确定性实现。
  */
 @Injectable()
 export class CliLoopsClaudeAdapter implements LoopsClaudeAdapter {
-  private readonly fallback = new DeterministicLoopsClaudeAdapter();
-
   constructor(
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
     @Optional()
@@ -81,10 +78,12 @@ export class CliLoopsClaudeAdapter implements LoopsClaudeAdapter {
           continue;
         }
         this.logger.warn?.(
-          `Claude Code CLI unavailable/failed for ${shard.id} (exit=${result.exitCode}) after ${attempts} attempts; falling back to deterministic implementation.`,
+          `Claude Code CLI unavailable/failed for ${shard.id} (exit=${result.exitCode}) after ${attempts} attempts.`,
           'CliLoopsClaudeAdapter',
         );
-        return this.fallback.run(input);
+        throw new ServiceUnavailableException(
+          `Claude Code CLI could not implement shard ${shard.id} after ${attempts} attempt(s).`,
+        );
       }
 
       const parsed = ClaudeCliResultSchema.safeParse(extractJson(result.stdout));
@@ -97,10 +96,12 @@ export class CliLoopsClaudeAdapter implements LoopsClaudeAdapter {
           continue;
         }
         this.logger.warn?.(
-          `Claude Code CLI returned invalid implementation schema for ${shard.id} after ${attempts} attempts; falling back to deterministic implementation.`,
+          `Claude Code CLI returned invalid implementation schema for ${shard.id} after ${attempts} attempts.`,
           'CliLoopsClaudeAdapter',
         );
-        return this.fallback.run(input);
+        throw new ServiceUnavailableException(
+          `Claude Code CLI did not produce a valid implementation result for shard ${shard.id} after ${attempts} attempt(s).`,
+        );
       }
 
       const output = parsed.data;
@@ -124,7 +125,9 @@ export class CliLoopsClaudeAdapter implements LoopsClaudeAdapter {
       return { record };
     }
 
-    return this.fallback.run(input);
+    throw new ServiceUnavailableException(
+      `Claude Code CLI did not produce an implementation result for shard ${shard.id}.`,
+    );
   }
 
   private async maxRetry() {

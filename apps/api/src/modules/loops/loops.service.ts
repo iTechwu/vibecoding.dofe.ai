@@ -531,7 +531,11 @@ export class LoopsService implements LoopsIssueCreationPort {
     return this.syncAndRead(issueId);
   }
 
-  async reviewSpec(issueId: string, request: LoopReviewSpecRequest) {
+  async reviewSpec(
+    issueId: string,
+    request: LoopReviewSpecRequest,
+    options: { advanceAfterApproval?: boolean } = {},
+  ) {
     const detail = await this.getIssue(issueId);
     if (!detail.spec) {
       throw new BadRequestException('Spec must be generated before review');
@@ -572,7 +576,7 @@ export class LoopsService implements LoopsIssueCreationPort {
       to: spec.status,
       reviewer: request.reviewer,
     });
-    if (request.action === 'approve') {
+    if (request.action === 'approve' && options.advanceAfterApproval !== false) {
       return this.advance(issueId);
     }
     return this.syncAndRead(issueId);

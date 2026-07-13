@@ -26,6 +26,9 @@ import { LoopsService } from './loops.service';
 import { LoopsEvalAggregationProcessor } from './loops-eval-aggregation.processor';
 import { LoopsRemoteRunnerProcessor } from './loops-remote-runner.processor';
 import { LoopsTriggerSchedulerProcessor } from './loops-trigger-scheduler.processor';
+import { LoopsAdvanceProcessor } from './loops-advance.processor';
+import { LOOPS_ADVANCE_QUEUE, LoopsAdvanceQueueService } from './loops-advance-queue.service';
+import { LoopsAdvanceStatusService } from './loops-advance-status.service';
 import { LoopsCrossTenantArchiveService } from './loops-cross-tenant-archive.service';
 import { LoopsScopeBackfillService } from './loops-scope-backfill.service';
 import {
@@ -73,6 +76,7 @@ import { LoopsEngineService } from '@app/services/loops-engine';
     BullModule.registerQueue({ name: 'loops-remote-runner' }),
     // R34b: BullMQ queue for trigger auto-execution scheduler.
     BullModule.registerQueue({ name: 'loops-trigger-scheduler' }),
+    BullModule.registerQueue({ name: LOOPS_ADVANCE_QUEUE }),
     // 结构优化 Step 0/1：domain 装配入口，re-export 已下沉的子域 module
     // （loops-store / loops-locks / …），API 层 provider 经此注入 domain service。
     LoopsDomainModule,
@@ -87,6 +91,9 @@ import { LoopsEngineService } from '@app/services/loops-engine';
     LoopsEvalAggregationProcessor,
     LoopsRemoteRunnerProcessor,
     LoopsTriggerSchedulerProcessor,
+    LoopsAdvanceProcessor,
+    LoopsAdvanceQueueService,
+    LoopsAdvanceStatusService,
     {
       provide: LOOPS_ARCHIVE_COLLECTION_PORT,
       useExisting: LoopsArchiveCollectionService,

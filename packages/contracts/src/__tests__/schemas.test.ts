@@ -185,6 +185,29 @@ describe('Schemas', () => {
         expect(result.success).toBe(true);
       });
 
+      it('should validate persisted advance job status for polling and SSE', () => {
+        expect(
+          schemas.LoopAdvanceJobStatusSchema.safeParse({
+            jobId: 'advance:issue-1',
+            issueId: 'issue-1',
+            status: 'retrying',
+            attempt: 2,
+            updatedAt: '2026-07-13T00:00:00.000Z',
+            phase: 'PHASE_4_IMPLEMENT',
+            issueStatus: 'IN_LOOP',
+          }).success,
+        ).toBe(true);
+        expect(
+          schemas.LoopAdvanceJobStatusSchema.safeParse({
+            jobId: 'advance:issue-1',
+            issueId: 'issue-1',
+            status: 'unknown',
+            attempt: 0,
+            updatedAt: '2026-07-13T00:00:00.000Z',
+          }).success,
+        ).toBe(false);
+      });
+
       it('should validate control-plane metrics', () => {
         const result = schemas.LoopMetricsResponseSchema.safeParse({
           health: {

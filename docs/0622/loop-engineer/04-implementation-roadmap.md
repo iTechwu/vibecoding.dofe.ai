@@ -271,13 +271,7 @@ pnpm --filter @repo/api exec tsc -p tsconfig.type-check.json --noEmit
 
 本轮（2026-06-22）已在该门禁内补齐 `advance` 决策表的回归覆盖：CLOSED 幂等、REVISION_REQUESTED 重生成、paused 自动恢复、非 APPROVED 拒绝、PHASE_6_CONVERGE 全局审阅+finalize、非 PASS 停留，以及 `LOOP_ADVANCE_LIMIT` 最大步数保护；同时补齐 dashboard action queue 用户语义标签测试。前端补齐 Spec 四态渲染、暂停态 secondary safety control 与 dashboard model 标签回归测试。`turbo.json` 已声明 Loops 测试使用的 `LOOPS_WORKSPACE_ROOT` / `LOOPS_ALLOWED_REPO_ROOTS` 环境变量，API eslint 不再产生 Turbo 依赖告警。当前聚焦回归结果：`loops.service.spec.ts` 20 tests，`page.test.tsx` + `loops-dashboard-model.test.ts` 共 14 tests。
 
-新增后台 worker 后，还需要增加：
-
-- queue worker integration tests；
-- issue/repo lock tests；
-- resume after worker crash tests；
-- SSE / polling UI tests；
-- exception action card tests。
+后台 worker 已落地生产可观测切片：默认 `advance` 与 Web 审批后的自动推进均通过 `loops-advance` BullMQ queue 调度；worker 单并发复用既有状态机与锁语义，并配置 3 次指数退避。已覆盖 queue 入队、不可用时 fail-closed、worker 调用状态机、审批延迟推进和重复推进的 job-id 生命周期。Redis 持久化 `queued/active/retrying/completed/failed` 状态，BullMQ stalled/failure 事件更新状态；真实 Redis/BullMQ 集成测试会强制关闭已领取任务的 worker，验证锁过期后替代 worker 重新领取任务。JSON status endpoint 与 SSO scope-protected SSE 流对外暴露状态。后续增强：前端 EventSource 消费与异常 action card。
 
 ## 不做事项
 

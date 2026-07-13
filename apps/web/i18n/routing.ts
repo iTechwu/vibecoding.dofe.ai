@@ -13,6 +13,9 @@ export const routing = defineRouting({
   // 默认语言
   defaultLocale,
 
+  // 无语言前缀的页面始终使用产品默认中文，不受浏览器或历史语言偏好影响。
+  localeDetection: false,
+
   // 语言前缀策略
   // 'as-needed': 默认语言不显示前缀，其他语言显示
   // 'always': 所有语言都显示前缀

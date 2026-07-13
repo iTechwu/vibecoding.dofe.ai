@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Optional, ServiceUnavailableException } from '@nestjs/common';
 import type {
   LoopAnnotation,
   LoopConvergencePr,
@@ -46,8 +46,8 @@ const CodexReviewOutputSchema = z.object({
  * 真实 Codex CLI 大脑实现（07 §2 六类调用）。
  *
  * 以 headless `codex exec` 调用，输入构造好的 Prompt + 输出 schema 要求，解析 JSON。
- * 任何一次调用不可用 / 解析失败 / schema 不符时，降级到 `DeterministicLoopsAgentAdapter`，
- * 并记录 warn 日志（07 §7：Codex 输出不符合 schema → 解析失败重试，仍失败则报错告警）。
+ * 调用不可用、解析失败或 schema 不符时会重试；最后一次失败后显式报错，避免将
+ * 确定性结果误标为真实 Codex 证据（07 §7）。
  *
  * 仅在 `LOOPS_AGENT_MODE=cli` 时由 Module 注入；默认仍为确定性实现。
  * 具体 `codex` 子命令/flag 以所用 CLI 版本为准，封装在本 Adapter 内，不外泄到编排层。
@@ -67,8 +67,7 @@ export class CliLoopsAgentAdapter implements LoopsAgentAdapter {
     const spec = await this.callCodexWithParsedOutput(prompt, 'plan', (candidate) =>
       this.asSpec(issue, createdAt, candidate),
     );
-    if (spec) return spec;
-    return this.fallback.plan(issue, createdAt);
+    return spec;
   }
 
   async decompose(issue: LoopIssue, spec: LoopSpec): Promise<LoopsDecomposition> {
@@ -76,10 +75,7 @@ export class CliLoopsAgentAdapter implements LoopsAgentAdapter {
     const shards = await this.callCodexWithParsedOutput(prompt, 'decompose', (candidate) =>
       this.asShards(candidate),
     );
-    if (shards) {
-      return { shards, annotations: this.initialAnnotations(issue, spec, shards) };
-    }
-    return this.fallback.decompose(issue, spec);
+    return { shards, annotations: this.initialAnnotations(issue, spec, shards) };
   }
 
   async designTests(
@@ -106,8 +102,7 @@ export class CliLoopsAgentAdapter implements LoopsAgentAdapter {
     const parsed = await this.callCodexWithParsedOutput(prompt, 'review', (candidate) =>
       this.asReview(candidate),
     );
-    if (parsed) return parsed;
-    return this.fallback.review(input);
+    return parsed;
   }
 
   async reviewGlobal(input: LoopsGlobalReviewInput): Promise<LoopsReviewOutput> {
@@ -118,8 +113,7 @@ export class CliLoopsAgentAdapter implements LoopsAgentAdapter {
     const parsed = await this.callCodexWithParsedOutput(prompt, 'reviewGlobal', (candidate) =>
       this.asReview(candidate),
     );
-    if (parsed) return parsed;
-    return this.fallback.reviewGlobal(input);
+    return parsed;
   }
 
   async annotateFinalize(input: {
@@ -139,7 +133,7 @@ export class CliLoopsAgentAdapter implements LoopsAgentAdapter {
     prompt: string,
     kind: string,
     parse: (raw: unknown) => T | undefined,
-  ): Promise<T | undefined> {
+  ): Promise<T> {
     const attempts = (await this.maxRetry()) + 1;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       const raw = await this.callCodex(prompt, kind);
@@ -153,10 +147,12 @@ export class CliLoopsAgentAdapter implements LoopsAgentAdapter {
       }
     }
     this.logger.warn?.(
-      `Codex CLI ${kind} returned invalid schema after ${attempts} attempts; falling back to deterministic.`,
+      `Codex CLI ${kind} failed after ${attempts} attempts.`,
       'CliLoopsAgentAdapter',
     );
-    return undefined;
+    throw new ServiceUnavailableException(
+      `Codex CLI did not produce a valid ${kind} result after ${attempts} attempt(s).`,
+    );
   }
 
   private async callCodex(prompt: string, kind: string): Promise<unknown | undefined> {
@@ -179,7 +175,7 @@ export class CliLoopsAgentAdapter implements LoopsAgentAdapter {
     });
     if (result.exitCode !== 0) {
       this.logger.warn?.(
-        `Codex CLI unavailable/failed for ${kind} (exit=${result.exitCode}, attempts=${result.attempts}); falling back to deterministic.`,
+        `Codex CLI unavailable/failed for ${kind} (exit=${result.exitCode}, attempts=${result.attempts}).`,
         'CliLoopsAgentAdapter',
       );
       return undefined;

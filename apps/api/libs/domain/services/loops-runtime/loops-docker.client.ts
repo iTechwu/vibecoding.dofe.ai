@@ -124,19 +124,6 @@ export class LoopsDockerClient {
     return this.docker;
   }
 
-  private async withTimeout<T>(promise: Promise<T>, defaultMs: number, label: string): Promise<T> {
-    const ms = this.timeoutMs(defaultMs);
-    let timer: NodeJS.Timeout | undefined;
-    const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-    });
-    try {
-      return await Promise.race([promise, timeout]);
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
-  }
-
   private timeoutMs(defaultMs: number): number {
     const parsed = Number(process.env.LOOPS_RUNTIME_DETECT_TIMEOUT_MS);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultMs;

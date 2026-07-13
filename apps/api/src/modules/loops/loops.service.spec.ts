@@ -2979,6 +2979,28 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(detail.state.finalized).toBe(true);
   });
 
+  it('can defer automatic continuation after spec approval for the queue worker', async () => {
+    const created = await service.createIssue({
+      title: 'Queue spec continuation',
+      targetRepo: workspace,
+      body: 'The HTTP approval path should enqueue rather than run the state machine inline.',
+      priority: 'P2',
+      acceptanceCriteria: ['- worker continues after approval'],
+    });
+    await service.advance(created.issue.id);
+    await prepareReleaseGate(service, created.issue.id);
+
+    const detail = await service.reviewSpec(
+      created.issue.id,
+      { action: 'approve', reviewer: 'tester' },
+      { advanceAfterApproval: false },
+    );
+
+    expect(detail.spec?.status).toBe('APPROVED');
+    expect(detail.state.phase).toBe('PHASE_3_DECOMPOSE');
+    expect(detail.shards).toHaveLength(0);
+  });
+
   it('keeps granular compatibility endpoints idempotent after automatic finalization', async () => {
     const created = await service.createIssue({
       title: 'Legacy granular endpoints after auto advance',

@@ -1,4 +1,13 @@
-import { Controller, Inject, Optional, Req, VERSION_NEUTRAL } from '@nestjs/common';
+import {
+  Controller,
+  Inject,
+  MessageEvent,
+  Optional,
+  Param,
+  Req,
+  Sse,
+  VERSION_NEUTRAL,
+} from '@nestjs/common';
 import { TsRestHandler, tsRestHandler } from '@ts-rest/nest';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
@@ -14,6 +23,9 @@ import type { Prisma } from '@prisma/client';
 import { LOOPS_PERMISSION, RequireLoopsPermission } from './loops-rbac.decorator';
 import { LoopsService } from './loops.service';
 import { LoopsScopeBackfillService } from './loops-scope-backfill.service';
+import { LoopsAdvanceQueueService } from './loops-advance-queue.service';
+import { LoopsAdvanceStatusService } from './loops-advance-status.service';
+import { map, type Observable } from 'rxjs';
 
 type BrowserQaArtifactRequest = AuthenticatedRequest & {
   params?: {
@@ -42,7 +54,9 @@ export class LoopsController {
     private readonly scopeBackfillService: LoopsScopeBackfillService,
     private readonly ssoScopeService: SsoScopeService,
     private readonly auditLogService: AuditLogService,
+    private readonly advanceQueue: LoopsAdvanceQueueService,
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: Logger,
+    private readonly advanceStatus: LoopsAdvanceStatusService,
     // R33+: BullMQ queue for async Eval aggregation jobs
     @Optional() @InjectQueue('loops-eval-aggregation') private readonly evalAggQueue?: Queue,
   ) {}
@@ -583,12 +597,17 @@ export class LoopsController {
   async reviewSpec(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.reviewSpec, async ({ params, body }) => {
       await this.authorizeIssueScope(req, params.issueId);
-      const result = await this.loopsService.reviewSpec(params.issueId, body);
+      const result = await this.loopsService.reviewSpec(params.issueId, body, {
+        advanceAfterApproval: false,
+      });
+      const queued =
+        body.action === 'approve' ? await this.advanceQueue.enqueue(params.issueId) : undefined;
       await this.auditLoopUpdate(req, params.issueId, 'reviewSpec', {
         action: body.action,
         reviewer: body.reviewer,
         specStatus: result.spec?.status,
         phase: result.state.phase,
+        advanceJobId: queued?.jobId,
       });
       return success(result);
     });
@@ -678,17 +697,35 @@ export class LoopsController {
   async advance(@Req() req: AuthenticatedRequest) {
     return tsRestHandler(c.advance, async ({ params }) => {
       await this.authorizeIssueScope(req, params.issueId);
-      const result = await this.loopsService.advance(params.issueId);
-      await this.auditLoopUpdate(req, params.issueId, 'advance', {
-        phase: result.state.phase,
-        specStatus: result.spec?.status,
-        shardsDone: result.state.shardsDone,
-        shardsInProgress: result.state.shardsInProgress,
-        globalVerdict: result.state.globalVerdict,
-        finalized: result.state.finalized,
+      const queued = await this.advanceQueue.enqueue(params.issueId);
+      const result = await this.loopsService.getIssue(params.issueId);
+      await this.auditLoopUpdate(req, params.issueId, 'advanceQueued', {
+        jobId: queued.jobId,
+        queueName: 'loops-advance',
       });
       return success(result);
     });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @TsRestHandler(c.getAdvanceStatus)
+  async getAdvanceStatus(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.getAdvanceStatus, async ({ params }) => {
+      await this.authorizeIssueScope(req, params.issueId);
+      return success((await this.advanceStatus.get(params.issueId)) ?? null);
+    });
+  }
+
+  @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @Sse('issues/:issueId/advance-events')
+  async advanceEvents(
+    @Req() req: AuthenticatedRequest,
+    @Param('issueId') issueId: string,
+  ): Promise<Observable<MessageEvent>> {
+    await this.authorizeIssueScope(req, issueId);
+    return this.advanceStatus
+      .watch(issueId)
+      .pipe(map((status) => ({ type: 'advance-status', data: status })));
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.OPERATE)

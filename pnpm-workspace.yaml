@@ -2,6 +2,7 @@ packages:
   - 'apps/*'
   - 'packages/*'
 overrides:
+  '@hono/node-server': 1.19.13
   '@dofe/infra-clients': 0.1.91
   '@dofe/infra-common': 0.1.91
   '@dofe/infra-config': 0.1.91
@@ -26,11 +27,18 @@ overrides:
   '@dofe/sso-nestjs': 0.1.68
   '@dofe/file-sdk': 0.1.19
   '@dofe/file-sdk-web': 0.1.19
+  'axios': 1.18.1
+  'fast-xml-parser': 5.9.3
   'glob': ^13.0.1
+  'js-yaml': 4.2.0
+  'nodemailer': 9.0.3
   'openai': ^6.17.0
+  'postcss': 8.5.16
+  'protobufjs': 7.6.5
   'punycode': ^2.3.1
   'rimraf': ^6.0.1
   'rxjs': 7.8.2
+  'uuid': 11.1.1
 patchedDependencies:
   eslint-plugin-react@7.37.5: patches/eslint-plugin-react@7.37.5.patch
 peerDependencyRules:
@@ -44,7 +52,7 @@ peerDependencyRules:
     eslint: '10'
     moment-timezone: '0.6'
     music-metadata: '7 || 11'
-    nodemailer: '7'
+    nodemailer: '7 || 9'
     openai: '6'
     react: '19'
     rxjs: 7.8.2

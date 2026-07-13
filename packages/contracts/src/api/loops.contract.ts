@@ -10,6 +10,7 @@ import {
   LoopCapabilitiesResponseSchema,
   LoopAssetPermissionsResponseSchema,
   LoopAgentRuntimeResponseSchema,
+  LoopAdvanceJobStatusSchema,
   LoopCostResponseSchema,
   LoopDeliveryEvidenceSchema,
   LoopDeliveryGovernanceRequestSchema,
@@ -891,6 +892,17 @@ export const loopsContract = c.router(
       },
       summary:
         'Advance a Loops issue to the next product-level checkpoint, stopping only for human approval gates',
+    },
+    getAdvanceStatus: {
+      method: 'GET',
+      path: '/issues/:issueId/advance-status',
+      pathParams: z.object({
+        issueId: z.string(),
+      }),
+      responses: {
+        200: ApiResponseSchema(LoopAdvanceJobStatusSchema.nullable()),
+      },
+      summary: 'Read the durable status of the latest queued Loops advance job',
     },
     reviewGlobal: {
       method: 'POST',

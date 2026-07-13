@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { locales, namespaces } from './config';
+import { defaultLocale, locales, namespaces } from './config';
+import { routing } from './routing';
 
 type MessageValue =
   | string
@@ -47,6 +48,12 @@ function getMessage(messages: MessageValue, keyPath: string): MessageValue | und
 }
 
 describe('i18n configuration', () => {
+  it('uses Chinese for unprefixed routes regardless of browser preferences', () => {
+    expect(defaultLocale).toBe('zh-CN');
+    expect(routing.defaultLocale).toBe('zh-CN');
+    expect(routing.localeDetection).toBe(false);
+  });
+
   it('has one JSON message file for every configured locale and namespace', () => {
     for (const locale of locales) {
       for (const namespace of namespaces) {

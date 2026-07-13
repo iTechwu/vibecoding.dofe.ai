@@ -69,6 +69,16 @@ export const LoopPhaseSchema = z.enum([
   'PAUSED',
 ]);
 
+export const LoopAdvanceJobStatusSchema = z.object({
+  jobId: z.string().min(1),
+  issueId: z.string().min(1),
+  status: z.enum(['queued', 'active', 'retrying', 'completed', 'failed']),
+  attempt: z.number().int().nonnegative(),
+  updatedAt: z.string().datetime(),
+  phase: LoopPhaseSchema.optional(),
+  issueStatus: LoopIssueStatusSchema.optional(),
+});
+
 export const LoopSpecStatusSchema = z.enum(['DRAFT', 'APPROVED', 'REVISION_REQUESTED', 'REJECTED']);
 
 export const LoopShardStatusSchema = z.enum([
@@ -1739,6 +1749,7 @@ export type LoopRuleSnapshotDiagnostic = z.infer<typeof LoopRuleSnapshotDiagnost
 export type LoopRuleSnapshotEnforcement = z.infer<typeof LoopRuleSnapshotEnforcementSchema>;
 export type LoopRuleSnapshot = z.infer<typeof LoopRuleSnapshotSchema>;
 export type LoopPhase = z.infer<typeof LoopPhaseSchema>;
+export type LoopAdvanceJobStatus = z.infer<typeof LoopAdvanceJobStatusSchema>;
 export type LoopIssue = z.infer<typeof LoopIssueSchema>;
 export type LoopIntake = z.infer<typeof LoopIntakeSchema>;
 export type LoopSpec = z.infer<typeof LoopSpecSchema>;

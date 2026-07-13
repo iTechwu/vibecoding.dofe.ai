@@ -34,20 +34,20 @@ Loops 的早期实现把内部执行细节直接暴露给用户：用户能看�
 
 ## 当前落地状态（2026-06-22）
 
-| 能力                   | 状态                      | 说明                                                                                               |
-| ---------------------- | ------------------------- | -------------------------------------------------------------------------------------------------- |
-| 简化 issue 创建        | 已落地                    | `/loops/new` 简单模式优先，用户只需描述需求并选择 workspace/repo                                   |
-| Spec 人工审阅          | 已落地                    | Draft Spec 停住等待批准或要求修改                                                                  |
-| Shard 手动表单移除     | 已落地                    | detail 页 shard 区域改为只读自动化进度与证据视图                                                   |
-| 中断 shard 自动恢复    | 已落地                    | `runLoop` 会自动恢复 `IN_PROGRESS` / `TIMEOUT` shard                                               |
-| 产品级推进接口         | 已落地                    | `advance` 按当前状态自动执行到下一人工关卡或终态，停在 Spec 审阅                                   |
-| 页面主操作收敛         | 已落地                    | detail 页右侧从多阶段按钮收敛为“继续推进 Loop”                                                     |
-| 运行时诊断             | 已落地                    | agent runtime / workspace / docker fallback 有统一诊断面板                                         |
-| Spec 批准后自动推进    | 已落地                    | `reviewSpec(approve)` 会唤醒 Loop Engine，自动拆解、执行、全局审阅并 finalize 到下一人工关卡或终态 |
-| 细粒度端点终态幂等保护 | 已落地                    | `decompose` / `runLoop` / `reviewGlobal` / `finalize` 在 CLOSED 后幂等返回，避免旧调用方把终态倒退 |
-| 队列化后台 worker      | 后续 Epic，不阻断当前闭环 | 当前为同步自动推进；下一步应引入后台队列、worker 重启恢复和 SSE/polling 进度流                     |
-| 异常升级体验           | 已实施 v2                 | 0623 UIUX 已把成本、暂停、全局审阅、runtime、doctor 异常统一成可操作卡片                           |
-| 自然语言控制           | 已实施 v1                 | 0623 UIUX/API 已提供 deterministic command endpoint；UI 命令栏与 LLM intent 后续增强               |
+| 能力                   | 状态      | 说明                                                                                               |
+| ---------------------- | --------- | -------------------------------------------------------------------------------------------------- |
+| 简化 issue 创建        | 已落地    | `/loops/new` 简单模式优先，用户只需描述需求并选择 workspace/repo                                   |
+| Spec 人工审阅          | 已落地    | Draft Spec 停住等待批准或要求修改                                                                  |
+| Shard 手动表单移除     | 已落地    | detail 页 shard 区域改为只读自动化进度与证据视图                                                   |
+| 中断 shard 自动恢复    | 已落地    | `runLoop` 会自动恢复 `IN_PROGRESS` / `TIMEOUT` shard                                               |
+| 产品级推进接口         | 已落地    | `advance` 按当前状态自动执行到下一人工关卡或终态，停在 Spec 审阅                                   |
+| 页面主操作收敛         | 已落地    | detail 页右侧从多阶段按钮收敛为“继续推进 Loop”                                                     |
+| 运行时诊断             | 已落地    | agent runtime / workspace / docker fallback 有统一诊断面板                                         |
+| Spec 批准后自动推进    | 已落地    | `reviewSpec(approve)` 会唤醒 Loop Engine，自动拆解、执行、全局审阅并 finalize 到下一人工关卡或终态 |
+| 细粒度端点终态幂等保护 | 已落地    | `decompose` / `runLoop` / `reviewGlobal` / `finalize` 在 CLOSED 后幂等返回，避免旧调用方把终态倒退 |
+| 队列化后台 worker      | 已落地    | 默认 `advance` 进入单并发 BullMQ worker；Redis 保存生命周期，支持重试、崩溃恢复、轮询与 SSE 进度流 |
+| 异常升级体验           | 已实施 v2 | 0623 UIUX 已把成本、暂停、全局审阅、runtime、doctor 异常统一成可操作卡片                           |
+| 自然语言控制           | 已实施 v1 | 0623 UIUX/API 已提供 deterministic command endpoint；UI 命令栏与 LLM intent 后续增强               |
 
 ## 本轮闭环审查结论（2026-06-22）
 
@@ -61,7 +61,7 @@ Loops 的早期实现把内部执行细节直接暴露给用户：用户能看�
 - 已补齐回归覆盖（本轮新增）：`advance` 决策表新增 CLOSED 幂等、REVISION_REQUESTED 重生成、paused 自动恢复、非 APPROVED 拒绝、PHASE_6_CONVERGE 全局审阅+finalize、非 PASS 停留、`LOOP_ADVANCE_LIMIT` 最大步数保护，以及 dashboard action queue 用户语义标签测试；前端新增 Spec 四态渲染、暂停态 secondary safety control 和 dashboard model 标签回归测试。
 - 已知保留偏差（不阻断闭环）：前端仍保留 `getRunnableShard` / `getRecoverableShard` 等**纯展示用**调度谓词，用于「当前可运行 shard / 中断恢复」提示文案与 Resume Checkpoint 高亮；它们不驱动任何推进决策（主推进仍统一走 `advance`），属于展示层细节。若要彻底消除，应在 `LoopDetail` 上由后端 `resolveNextAction` 暴露 `nextAction` / `activeShardId` 字段供前端直接消费——这仍是后续 contract 增强。
 - 已知保留偏差（不阻断闭环）：细粒度兼容端点的 contract summary、hook 名称/注释和后端内部异常仍保留 implementation evidence / scheduler endpoint / No runnable shard 等内部工程语义；这些入口明确用于 CLI、管理员、兼容调用方或错误诊断，不属于普通用户默认路径。
-- 仍未实施但已准确标注为后续 Epic：队列化后台 worker。这需要独立设计和更大范围基础设施，不阻断当前 Loop Engineering 用户体验闭环。
+- 队列化后台 worker 已用于默认 `advance`：Controller 在 SSO scope 授权后入队，单并发 BullMQ worker 执行既有状态机，失败按指数退避重试三次；完成或最终失败后移除 job，使同一 Issue 可以继续进入下一次产品级推进。生命周期投影持久化在 Redis，`GET /issues/:issueId/advance-status` 提供轮询读取，`GET /issues/:issueId/advance-events` 以 SSE 推送状态变化且在建连前验证 tenant ownership。CLI 和兼容 service 调用仍保留同步语义。
 - 已在 0623 UIUX 循环继续关闭：异常决策中心 v2、round-aware evidence view v2、Spec diff review v1、Natural-language control v1。
 
 ## 产品北极星

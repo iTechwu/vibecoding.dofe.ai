@@ -1,10 +1,11 @@
-import { DeterministicLoopsAgentAdapter } from '../apps/api/src/modules/loops/adapters/deterministic-loops-agent.adapter';
-import { DeterministicLoopsClaudeAdapter } from '../apps/api/src/modules/loops/adapters/deterministic-loops-claude.adapter';
-import { CliLoopsGitAdapter } from '../apps/api/src/modules/loops/adapters/cli-loops-git.adapter';
-import { LoopsFileStoreService } from '../apps/api/src/modules/loops/loops-file-store.service';
-import { LoopsRunnerService } from '../apps/api/src/modules/loops/loops-runner.service';
+import { DeterministicLoopsAgentAdapter } from '../apps/api/libs/domain/services/loops-runners/adapters/deterministic-loops-agent.adapter';
+import { DeterministicLoopsClaudeAdapter } from '../apps/api/libs/domain/services/loops-runners/adapters/deterministic-loops-claude.adapter';
+import { CliLoopsGitAdapter } from '../apps/api/libs/domain/services/loops-runners/adapters/cli-loops-git.adapter';
+import { LoopsFileStoreService } from '../apps/api/libs/domain/services/loops-store/loops-file-store.service';
+import { LoopsPersistenceService } from '../apps/api/libs/domain/services/loops-store/loops-persistence.service';
+import { LoopsRunnerService } from '../apps/api/libs/domain/services/loops-runners/loops-runner.service';
 import { LoopsService } from '../apps/api/src/modules/loops/loops.service';
-import { LoopsWorkLockService } from '../apps/api/src/modules/loops/loops-work-lock.service';
+import { LoopsWorkLockService } from '../apps/api/libs/domain/services/loops-locks/loops-work-lock.service';
 import type { LoopMetricsResponse } from '../packages/contracts/src/schemas/loops.schema';
 
 type Cleanup = () => Promise<void>;
@@ -79,9 +80,6 @@ async function createLoopsService(): Promise<{
   const { PrismaPg } = requireRuntime('@prisma/adapter-pg');
   const { PrismaClient } = requireRuntime('@prisma/client');
   const { LoopsDbService } = requireRuntime('@app/db');
-  const { LoopsPersistenceService } = requireRuntime(
-    '../apps/api/src/modules/loops/loops-persistence.service',
-  );
   const pool = new Pool({ connectionString });
   const prisma = new PrismaClient({ adapter: new PrismaPg(pool) });
   const prismaService = { read: prisma, write: prisma };
