@@ -15,6 +15,7 @@ export const DEFAULT_CORS_ALLOWED_HEADERS = [
   'x-device-id',
   'x-os',
   'x-platform',
+  'x-current-tenant',
 ];
 
 function wildcardToRegex(domain: string): RegExp {

@@ -62,6 +62,7 @@ describe('CORS bootstrap', () => {
         'x-device-id',
         'x-os',
         'x-platform',
+        'x-current-tenant',
       ]),
     );
   });

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { BullModule } from '@nestjs/bullmq';
+import { RedisModule } from '@dofe/infra-redis';
 import { LoopsDbModule } from '@app/db';
 import { LoopEvalAggregationModule } from '@app/db/loop-eval-aggregation';
 import { AuditLogModule } from '@app/audit-log';
@@ -67,6 +68,9 @@ import { LoopsEngineService } from '@app/services/loops-engine';
   // own HttpModule — Step 1c.)
   imports: [
     HttpModule,
+    // LoopsAdvanceStatusService 依赖 RedisService（loops:advance:status:* 状态流）。
+    // 其余 processor 虽以 @Optional() 注入 RedisService，导入此处一并满足。
+    RedisModule,
     LoopsDbModule,
     LoopEvalAggregationModule,
     AuditLogModule,
