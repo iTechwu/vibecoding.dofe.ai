@@ -61,7 +61,7 @@ Loops 的早期实现把内部执行细节直接暴露给用户：用户能看�
 - 已补齐回归覆盖（本轮新增）：`advance` 决策表新增 CLOSED 幂等、REVISION_REQUESTED 重生成、paused 自动恢复、非 APPROVED 拒绝、PHASE_6_CONVERGE 全局审阅+finalize、非 PASS 停留、`LOOP_ADVANCE_LIMIT` 最大步数保护，以及 dashboard action queue 用户语义标签测试；前端新增 Spec 四态渲染、暂停态 secondary safety control 和 dashboard model 标签回归测试。
 - 已知保留偏差（不阻断闭环）：前端仍保留 `getRunnableShard` / `getRecoverableShard` 等**纯展示用**调度谓词，用于「当前可运行 shard / 中断恢复」提示文案与 Resume Checkpoint 高亮；它们不驱动任何推进决策（主推进仍统一走 `advance`），属于展示层细节。若要彻底消除，应在 `LoopDetail` 上由后端 `resolveNextAction` 暴露 `nextAction` / `activeShardId` 字段供前端直接消费——这仍是后续 contract 增强。
 - 已知保留偏差（不阻断闭环）：细粒度兼容端点的 contract summary、hook 名称/注释和后端内部异常仍保留 implementation evidence / scheduler endpoint / No runnable shard 等内部工程语义；这些入口明确用于 CLI、管理员、兼容调用方或错误诊断，不属于普通用户默认路径。
-- 队列化后台 worker 已用于默认 `advance`：Controller 在 SSO scope 授权后入队，单并发 BullMQ worker 执行既有状态机，失败按指数退避重试三次；完成或最终失败后移除 job，使同一 Issue 可以继续进入下一次产品级推进。生命周期投影持久化在 Redis，`GET /issues/:issueId/advance-status` 提供轮询读取，`GET /issues/:issueId/advance-events` 以 SSE 推送状态变化且在建连前验证 tenant ownership。CLI 和兼容 service 调用仍保留同步语义。
+- 队列化后台 worker 已用于默认 `advance`：Controller 在 SSO scope 授权后入队，单并发 BullMQ worker 执行既有状态机，失败按指数退避重试三次；完成或最终失败后移除 job，使同一 Issue 可以继续进入下一次产品级推进。生命周期投影持久化在 Redis，`GET /issues/:issueId/advance-status` 提供轮询读取，`GET /issues/:issueId/advance-events` 以 SSE 推送状态变化且在建连前验证 tenant ownership。Detail 页消费该 SSE 流，刷新受影响的 React Query 缓存，并以 4 秒轮询作为断线回退。CLI 和兼容 service 调用仍保留同步语义。
 - 已在 0623 UIUX 循环继续关闭：异常决策中心 v2、round-aware evidence view v2、Spec diff review v1、Natural-language control v1。
 
 ## 产品北极星

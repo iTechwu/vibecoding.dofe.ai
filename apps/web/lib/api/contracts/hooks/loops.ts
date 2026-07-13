@@ -13,6 +13,7 @@ export const loopsKeys = {
   lists: () => [...loopsKeys.all, 'list'] as const,
   list: (query: Record<string, unknown>) => [...loopsKeys.lists(), query] as const,
   detail: (issueId: string) => [...loopsKeys.all, 'detail', issueId] as const,
+  advanceStatus: (issueId: string) => [...loopsKeys.all, 'advance-status', issueId] as const,
   deliveryEvidence: (issueId: string) => [...loopsKeys.all, 'delivery-evidence', issueId] as const,
   doctor: () => [...loopsKeys.all, 'doctor'] as const,
   cost: () => [...loopsKeys.all, 'cost'] as const,
@@ -152,6 +153,7 @@ const LIVE_LOOP_PHASES = new Set([
 const TERMINAL_LOOP_STATUSES = new Set(['CLOSED', 'ARCHIVED', 'REJECTED']);
 
 const LOOP_POLL_INTERVAL_MS = 4000;
+const ACTIVE_ADVANCE_JOB_STATUSES = new Set(['queued', 'active', 'retrying']);
 
 /**
  * `refetchInterval` predicate for the issue detail query: poll only while the
@@ -194,6 +196,23 @@ export function useLoopIssue(issueId: string) {
   );
 }
 
+/** Durable advance-job status with polling fallback when a stream reconnects. */
+export function useLoopAdvanceStatus(issueId: string) {
+  const queryKey = loopsKeys.advanceStatus(issueId);
+  return tsRestClient.loops.getAdvanceStatus.useQuery(
+    queryKey,
+    { params: { issueId } },
+    {
+      queryKey,
+      enabled: Boolean(issueId),
+      refetchInterval: (query) => {
+        const status = query.state.data?.body.data?.status;
+        return status && ACTIVE_ADVANCE_JOB_STATUSES.has(status) ? LOOP_POLL_INTERVAL_MS : false;
+      },
+    },
+  );
+}
+
 /** Derived, PR-ready delivery evidence summary for a Loops issue (P0-4). */
 export function useLoopDeliveryEvidence(issueId: string) {
   const queryKey = loopsKeys.deliveryEvidence(issueId);
@@ -220,6 +239,7 @@ function useInvalidateIssue(issueId?: string) {
     queryClient.invalidateQueries({ queryKey: loopsKeys.lists() });
     if (issueId) {
       queryClient.invalidateQueries({ queryKey: loopsKeys.detail(issueId) });
+      queryClient.invalidateQueries({ queryKey: loopsKeys.advanceStatus(issueId) });
     }
     queryClient.invalidateQueries({ queryKey: loopsKeys.doctor() });
     queryClient.invalidateQueries({ queryKey: loopsKeys.cost() });

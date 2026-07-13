@@ -73,6 +73,13 @@ const recordRuntimeOverride = vi.fn();
 const setRequiredReviewGates = vi.fn();
 let mockDetail: LoopDetail;
 let mockRuntimeIssueId = 'issue-1';
+let mockAdvanceStatus: {
+  jobId: string;
+  issueId: string;
+  status: 'queued' | 'active' | 'retrying' | 'completed' | 'failed';
+  attempt: number;
+  updatedAt: string;
+} | null = null;
 
 const detail: LoopDetail = {
   issue: {
@@ -522,6 +529,9 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
     },
     isLoading: false,
   }),
+  useLoopAdvanceStatus: () => ({
+    data: { body: { data: mockAdvanceStatus } },
+  }),
   useLoopsAgentRuntime: () => ({
     data: {
       body: {
@@ -586,6 +596,10 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
     `http://localhost:13100/loops/${_issueId}/browser-qa/artifact/${artifactPath}`,
 }));
 
+vi.mock('@/hooks/useLoopAdvanceSSE', () => ({
+  useLoopAdvanceSSE: () => ({ status: null, isConnected: false }),
+}));
+
 vi.mock('./use-loop-operations', () => ({
   useFormState: () => ({
     operations: {
@@ -629,6 +643,7 @@ describe('LoopIssueDetailPage', () => {
   beforeEach(() => {
     mockDetail = detail;
     mockRuntimeIssueId = 'issue-1';
+    mockAdvanceStatus = null;
     window.history.replaceState(null, '', '/');
   });
 
@@ -638,6 +653,20 @@ describe('LoopIssueDetailPage', () => {
     const header = screen.getByRole('heading', { name: 'Ship trace timeline' }).closest('header');
     expect(header).not.toBeNull();
     expect(within(header!).getByRole('button', { name: 'Continue Loop' })).toBeInTheDocument();
+  });
+
+  it('shows the durable queued advance status in the issue header', () => {
+    mockAdvanceStatus = {
+      jobId: 'advance-issue-1',
+      issueId: 'issue-1',
+      status: 'queued',
+      attempt: 0,
+      updatedAt: '2026-07-13T00:00:00.000Z',
+    };
+
+    renderWithIntl(<LoopIssueDetailPage />);
+
+    expect(screen.getByText('Execution queue: Queued')).toBeInTheDocument();
   });
 
   it('opens Evidence and scrolls delivery controls for its deep link', async () => {

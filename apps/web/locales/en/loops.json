@@ -996,6 +996,16 @@
       "yes": "yes",
       "no": "no"
     },
+    "advanceStatus": {
+      "label": "Execution queue",
+      "states": {
+        "queued": "Queued",
+        "active": "Running",
+        "retrying": "Retrying",
+        "completed": "Completed",
+        "failed": "Failed"
+      }
+    },
     "execution": {
       "title": "Flow Status",
       "runtimeMatched": "live runtime",

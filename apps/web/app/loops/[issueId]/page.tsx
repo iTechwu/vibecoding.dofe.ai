@@ -32,10 +32,12 @@ import type {
 import { useFormState } from './use-loop-operations';
 import {
   useLoopIssue,
+  useLoopAdvanceStatus,
   useLoopsAgentRuntime,
   useLoopDeliveryEvidence,
   getBrowserQaArtifactUrl,
 } from '@/lib/api/contracts/hooks';
+import { useLoopAdvanceSSE } from '@/hooks/useLoopAdvanceSSE';
 import { buildAgentHandoffTimeline, type WorkforcePersonaId } from '../loops-dashboard-model';
 import {
   formatLoopEvent,
@@ -160,6 +162,16 @@ function actionToneClass(tone: string) {
     return 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100';
   }
   return 'border-border bg-muted/40 text-foreground';
+}
+
+function advanceStatusClass(status: string) {
+  if (status === 'completed') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100';
+  }
+  if (status === 'failed') {
+    return 'border-red-200 bg-red-50 text-red-950 dark:border-red-900/70 dark:bg-red-950/20 dark:text-red-100';
+  }
+  return 'border-sky-200 bg-sky-50 text-sky-950 dark:border-sky-900/70 dark:bg-sky-950/20 dark:text-sky-100';
 }
 
 function deliveryStatusClass(status: string) {
@@ -773,11 +785,14 @@ export default function LoopIssueDetailPage() {
   const t = useTranslations('loops.detail');
   const { issueId } = useParams<{ issueId: string }>();
   const detailQuery = useLoopIssue(issueId);
+  const advanceStatusQuery = useLoopAdvanceStatus(issueId);
+  const advanceStream = useLoopAdvanceSSE(issueId);
   const agentRuntimeQuery = useLoopsAgentRuntime();
   const deliveryEvidenceQuery = useLoopDeliveryEvidence(issueId);
   const detail = detailQuery.data?.body.data;
   const agentRuntime = agentRuntimeQuery.data?.body.data as LoopAgentRuntimeResponse | undefined;
   const deliveryEvidence = deliveryEvidenceQuery.data?.body.data;
+  const advanceStatus = advanceStream.status ?? advanceStatusQuery.data?.body.data;
   const ops = useFormState(issueId);
 
   if (!detail) {
@@ -947,6 +962,11 @@ export default function LoopIssueDetailPage() {
                 <StatusBadge className="max-w-full truncate">{detail.issue.id}</StatusBadge>
                 <StatusBadge>{formatLoopStatus(detail.issue.status, locale)}</StatusBadge>
                 <StatusBadge>{formatLoopLabel(detail.state.phase, locale)}</StatusBadge>
+                {advanceStatus ? (
+                  <StatusBadge className={advanceStatusClass(advanceStatus.status)}>
+                    {t('advanceStatus.label')}: {t(`advanceStatus.states.${advanceStatus.status}`)}
+                  </StatusBadge>
+                ) : null}
                 {tenantContext ? <StatusBadge>{tenantContext.name}</StatusBadge> : null}
                 {detail.state.paused ? (
                   <StatusBadge className={actionToneClass('attention')}>

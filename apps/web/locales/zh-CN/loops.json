@@ -996,6 +996,16 @@
       "yes": "是",
       "no": "否"
     },
+    "advanceStatus": {
+      "label": "执行队列",
+      "states": {
+        "queued": "等待执行",
+        "active": "执行中",
+        "retrying": "正在重试",
+        "completed": "已完成",
+        "failed": "执行失败"
+      }
+    },
     "execution": {
       "title": "流程状态",
       "runtimeMatched": "实时运行态",

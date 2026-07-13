@@ -46,6 +46,7 @@ export {
   useLoopsLogs,
   useLoopsNotifications,
   useLoopIssue,
+  useLoopAdvanceStatus,
   useLoopDeliveryEvidence,
   useCreateLoopIssue,
   useResumeLoops,

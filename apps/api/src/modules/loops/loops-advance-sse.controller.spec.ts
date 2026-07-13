@@ -1,7 +1,9 @@
 import { firstValueFrom, of } from 'rxjs';
 
+const mockAuth = jest.fn(() => () => undefined);
+
 jest.mock('@app/auth', () => ({
-  Auth: () => () => undefined,
+  Auth: mockAuth,
   RequireSuperAdmin: () => () => undefined,
   RequireModulePermission: () => () => undefined,
   SsoScopeService: class {},
@@ -10,6 +12,10 @@ jest.mock('@app/auth', () => ({
 import { LoopsController } from './loops.controller';
 
 describe('LoopsController advanceEvents', () => {
+  it('uses the SSE auth mode so EventSource can supply its access token', () => {
+    expect(mockAuth).toHaveBeenCalledWith('api', 'sse');
+  });
+
   it('authorizes the issue before streaming the persisted advance status', async () => {
     const assertIssueScope = jest.fn();
     const status = {

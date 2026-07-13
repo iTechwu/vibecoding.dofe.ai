@@ -717,6 +717,7 @@ export class LoopsController {
   }
 
   @RequireLoopsPermission(LOOPS_PERMISSION.READ)
+  @Auth('api', 'sse')
   @Sse('issues/:issueId/advance-events')
   async advanceEvents(
     @Req() req: AuthenticatedRequest,
