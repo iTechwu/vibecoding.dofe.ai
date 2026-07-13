@@ -101,18 +101,23 @@ describe('AppSidebar', () => {
     const user = userEvent.setup();
     renderSidebar();
 
+    expect(screen.getByText('Projects')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Workspace' })).toHaveAttribute('href', '/loops');
+    expect(screen.getByRole('link', { name: 'Workspace' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/');
-    expect(screen.getByRole('link', { name: 'Issues' })).toHaveAttribute('href', '/loops');
-    expect(screen.getByRole('link', { name: 'Issues' })).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('link', { name: 'Review' })).toHaveAttribute(
       'href',
-      '/loops#review-inbox',
+      '/loops?view=operations#review-inbox',
     );
+    expect(screen.getByRole('button', { name: 'More' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Runtime' })).toHaveAttribute(
       'href',
-      '/loops#agent-runtime',
+      '/loops?view=operations#agent-runtime',
     );
-    expect(screen.getByRole('link', { name: 'New Issue' })).toHaveAttribute('href', '/loops/new');
+    expect(screen.getByRole('link', { name: 'New work' })).toHaveAttribute(
+      'href',
+      '/loops#loops-conversation-composer',
+    );
     expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/settings');
     expect(screen.getByRole('button', { name: 'Account' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Sign Out' }));

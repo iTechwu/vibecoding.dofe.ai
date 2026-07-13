@@ -30,6 +30,11 @@ vi.mock('./locale-switcher', () => ({
   LocaleSwitcher: () => <button type="button">Switch language</button>,
 }));
 
+vi.mock('@/providers', () => ({
+  useApp: () => ({ brandName: 'Dofe' }),
+  useAuth: () => ({ user: { nickname: 'Ada' } }),
+}));
+
 function renderNavbar() {
   return render(
     <NextIntlClientProvider locale="en" messages={{ navigation: navigationMessages }}>
@@ -43,7 +48,9 @@ describe('AppNavbar', () => {
     mocks.pathname.mockReturnValue('/loops/issue-1');
     renderNavbar();
 
-    expect(screen.getByText('Issues')).toBeInTheDocument();
+    expect(screen.getByText('Workspace')).toBeInTheDocument();
+    expect(screen.getByText('Team: Dofe')).toBeInTheDocument();
+    expect(screen.getByText('Ada')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Open loop command' })).toHaveAttribute(
       'href',
       '/loops#loop-command-input',

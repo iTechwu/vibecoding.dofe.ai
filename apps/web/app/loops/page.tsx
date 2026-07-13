@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import {
@@ -104,6 +105,7 @@ import {
 import { formatLoopEvent, formatLoopLabel, formatLoopStatus } from './loops-display';
 import { LoopsIssuesView } from './loops-issues-view';
 import { LoopsOperationsView } from './loops-operations-view';
+import { LoopsConversationWorkbench } from '@/components';
 
 const WORKBENCH_NAV_ITEMS = [
   { href: '#loop-board', labelKey: 'board', icon: KanbanSquare },
@@ -239,7 +241,7 @@ function WorkbenchStat({
   );
 }
 
-export default function LoopsPage() {
+function LoopsOperationsDashboard() {
   const locale = useLocale();
   const t = useTranslations('loops.dashboard');
   const formatDashboardPhase = (phase: string) => {
@@ -3580,4 +3582,14 @@ export default function LoopsPage() {
       </div>
     </main>
   );
+}
+
+export default function LoopsPage() {
+  const searchParams = useSearchParams();
+
+  if (searchParams.get('view') !== 'operations') {
+    return <LoopsConversationWorkbench />;
+  }
+
+  return <LoopsOperationsDashboard />;
 }

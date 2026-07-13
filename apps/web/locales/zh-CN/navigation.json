@@ -3,9 +3,11 @@
     "home": "首页",
     "dashboard": "仪表盘",
     "issues": "问题",
+    "workspace": "工作台",
     "review": "审查",
     "runtime": "运行时",
-    "newIssue": "新建问题",
+    "newIssue": "新建任务",
+    "more": "更多",
     "settings": "设置",
     "profile": "个人资料",
     "account": "账户",
@@ -13,7 +15,9 @@
     "commandSearch": "打开 Loop 命令",
     "logout": "退出登录"
   },
-  "groupMain": "主要",
+  "groupMain": "核心",
+  "groupProjects": "项目",
+  "team": "团队：{team}",
   "groupSettings": "设置",
   "breadcrumb": {
     "home": "首页"

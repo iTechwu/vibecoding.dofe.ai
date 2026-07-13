@@ -973,6 +973,33 @@
       }
     }
   },
+  "conversation": {
+    "eyebrow": "执行工作区",
+    "title": "与 VibeCoding 协作",
+    "subtitle": "描述要推进的工作。每条新消息都会创建一个 Issue，并在这里持续呈现执行状态。",
+    "connection": "实时更新",
+    "historyLabel": "Issue 对话",
+    "emptyTitle": "从你要交付的工作开始",
+    "emptyDescription": "发送清晰的需求。VibeCoding 会创建 Issue、组织执行，并在这里返回进度。",
+    "requestLabel": "你的需求",
+    "issueCreated": "Issue 已创建",
+    "issueMeta": "Issue {id} · {priority}",
+    "openIssue": "打开详情",
+    "composerLabel": "描述要执行的工作",
+    "composerPlaceholder": "描述你想构建、修复或优化的内容...",
+    "composerHint": "Enter 发送 · Shift + Enter 换行",
+    "send": "发送需求",
+    "createError": "无法创建 Issue。请检查网络后重试。",
+    "status": {
+      "queued": "等待执行",
+      "active": "执行中",
+      "retrying": "正在重试",
+      "completed": "已完成",
+      "failed": "执行失败",
+      "waiting": "等待决策",
+      "ready": "可继续推进"
+    }
+  },
   "detail": {
     "loading": "正在加载 issue...",
     "notFound": "未找到 issue。",

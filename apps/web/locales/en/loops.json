@@ -973,6 +973,33 @@
       }
     }
   },
+  "conversation": {
+    "eyebrow": "Execution workspace",
+    "title": "Work with VibeCoding",
+    "subtitle": "Describe the work to run. Every new message creates an Issue and keeps its execution in this workspace.",
+    "connection": "Live updates",
+    "historyLabel": "Issue conversation",
+    "emptyTitle": "Start with the work you want to ship",
+    "emptyDescription": "Send a clear request. VibeCoding will create the Issue, organize execution, and return progress here.",
+    "requestLabel": "Your request",
+    "issueCreated": "Issue created",
+    "issueMeta": "Issue {id} · {priority}",
+    "openIssue": "Open details",
+    "composerLabel": "Describe the work to run",
+    "composerPlaceholder": "Describe what you want to build, fix, or improve...",
+    "composerHint": "Enter to send · Shift + Enter for a new line",
+    "send": "Send request",
+    "createError": "Unable to create the Issue. Check your connection and try again.",
+    "status": {
+      "queued": "Queued",
+      "active": "Running",
+      "retrying": "Retrying",
+      "completed": "Completed",
+      "failed": "Failed",
+      "waiting": "Waiting for a decision",
+      "ready": "Ready to continue"
+    }
+  },
   "detail": {
     "loading": "Loading issue...",
     "notFound": "Issue not found.",

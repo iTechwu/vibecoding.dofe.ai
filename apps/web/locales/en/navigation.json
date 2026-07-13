@@ -3,9 +3,11 @@
     "home": "Home",
     "dashboard": "Dashboard",
     "issues": "Issues",
+    "workspace": "Workspace",
     "review": "Review",
     "runtime": "Runtime",
-    "newIssue": "New Issue",
+    "newIssue": "New work",
+    "more": "More",
     "settings": "Settings",
     "profile": "Profile",
     "account": "Account",
@@ -13,7 +15,9 @@
     "commandSearch": "Open loop command",
     "logout": "Sign Out"
   },
-  "groupMain": "Main",
+  "groupMain": "Core",
+  "groupProjects": "Projects",
+  "team": "Team: {team}",
   "groupSettings": "Settings",
   "breadcrumb": {
     "home": "Home"

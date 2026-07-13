@@ -27,6 +27,8 @@ import {
 } from '@repo/ui';
 import {
   Bot,
+  Ellipsis,
+  FolderKanban,
   House,
   Inbox,
   LayoutDashboard,
@@ -41,8 +43,8 @@ import { Link, usePathname } from '@/i18n/navigation';
 import { useApp, useAuth } from '@/providers';
 
 interface NavItem {
-  titleKey: 'home' | 'issues' | 'review' | 'runtime';
-  href: '/' | '/loops' | '/loops#review-inbox' | '/loops#agent-runtime';
+  titleKey: 'home' | 'workspace' | 'review';
+  href: string;
   icon: ComponentType<{ className?: string }>;
   count?: number;
 }
@@ -63,9 +65,13 @@ export function AppSidebar({ reviewCount = 0 }: AppSidebarProps) {
   const initials = getInitials(user?.nickname);
   const items: NavItem[] = [
     { titleKey: 'home', href: '/', icon: House },
-    { titleKey: 'issues', href: '/loops', icon: ListTodo },
-    { titleKey: 'review', href: '/loops#review-inbox', icon: Inbox, count: reviewCount },
-    { titleKey: 'runtime', href: '/loops#agent-runtime', icon: Bot },
+    { titleKey: 'workspace', href: '/loops', icon: ListTodo },
+    {
+      titleKey: 'review',
+      href: '/loops?view=operations#review-inbox',
+      icon: Inbox,
+      count: reviewCount,
+    },
   ];
 
   const isActive = (href: NavItem['href']) => {
@@ -90,6 +96,21 @@ export function AppSidebar({ reviewCount = 0 }: AppSidebarProps) {
 
       <SidebarContent className="pt-2">
         <SidebarGroup>
+          <SidebarGroupLabel>{t('groupProjects')}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu className="px-2">
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={pathname === '/loops'} tooltip={brandName}>
+                  <Link href="/loops">
+                    <FolderKanban />
+                    <span>{brandName}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
           <SidebarGroupLabel>{t('groupMain')}</SidebarGroupLabel>
           <SidebarGroupContent>
             <div className="px-2 pb-2">
@@ -97,7 +118,11 @@ export function AppSidebar({ reviewCount = 0 }: AppSidebarProps) {
                 asChild
                 className="w-full justify-start group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
               >
-                <Link href="/loops/new" aria-label={t('menu.newIssue')} title={t('menu.newIssue')}>
+                <Link
+                  href="/loops#loops-conversation-composer"
+                  aria-label={t('menu.newIssue')}
+                  title={t('menu.newIssue')}
+                >
                   <Plus className="size-4" />
                   <span className="group-data-[collapsible=icon]:hidden">{t('menu.newIssue')}</span>
                 </Link>
@@ -130,12 +155,37 @@ export function AppSidebar({ reviewCount = 0 }: AppSidebarProps) {
       <SidebarFooter className="border-t border-sidebar-border">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild tooltip={t('menu.settings')}>
-              <Link href="/settings">
-                <Settings />
-                <span>{t('menu.settings')}</span>
-              </Link>
-            </SidebarMenuButton>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton aria-label={t('menu.more')} title={t('menu.more')}>
+                  <Ellipsis />
+                  <span>{t('menu.more')}</span>
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="right" align="end" className="w-52">
+                <DropdownMenuLabel>{t('menu.more')}</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/loops?view=operations#agent-runtime">
+                    <Bot className="mr-2 size-4" />
+                    {t('menu.runtime')}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/loops?view=operations">
+                    <LayoutDashboard className="mr-2 size-4" />
+                    {t('menu.dashboard')}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/settings">
+                    <Settings className="mr-2 size-4" />
+                    {t('menu.settings')}
+                  </Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <DropdownMenu>

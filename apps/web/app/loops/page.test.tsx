@@ -6,6 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import loopsMessages from '@/locales/en/loops.json';
 import LoopsPage from './page';
 
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => new URLSearchParams({ view: 'operations' }),
+}));
+
 vi.mock('@/i18n/navigation', () => ({
   Link: ({
     children,
