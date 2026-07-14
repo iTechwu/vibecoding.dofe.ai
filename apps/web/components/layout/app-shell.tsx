@@ -11,7 +11,7 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   return (
     <SidebarProvider defaultOpen={true}>
-      <div data-workbench className="dark flex h-dvh w-full flex-col bg-background text-foreground">
+      <div data-workbench className="flex h-dvh w-full flex-col bg-background text-foreground">
         <AppNavbar />
         <div className="flex min-h-0 flex-1 overflow-hidden [&_[data-slot=sidebar-container]]:top-13 [&_[data-slot=sidebar-container]]:h-[calc(100svh-3.25rem)] [&_[data-slot=sidebar-wrapper]]:min-h-0">
           <AppSidebar />

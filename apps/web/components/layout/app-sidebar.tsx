@@ -1,6 +1,5 @@
 'use client';
 
-import type { ComponentType } from 'react';
 import {
   Avatar,
   AvatarFallback,
@@ -20,7 +19,6 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarTrigger,
@@ -35,56 +33,57 @@ import {
   ListTodo,
   LogOut,
   Plus,
+  Search,
   Settings,
   User,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useSearchParams } from 'next/navigation';
 import { Link, usePathname } from '@/i18n/navigation';
+import { useLoopsWorkspaces } from '@/lib/api/contracts/hooks';
 import { useApp, useAuth } from '@/providers';
+import { getSelectedWorkspace, workspaceLabel } from '@/components/workbench/workspace-context';
 
 interface NavItem {
-  titleKey: 'home' | 'workspace' | 'review';
+  titleKey: 'home' | 'scheduled' | 'search';
   href: string;
-  icon: ComponentType<{ className?: string }>;
-  count?: number;
-}
-
-interface AppSidebarProps {
-  reviewCount?: number;
+  icon: typeof House;
 }
 
 function getInitials(nickname: string | null | undefined): string {
   return nickname?.charAt(0).toUpperCase() ?? '';
 }
 
-export function AppSidebar({ reviewCount = 0 }: AppSidebarProps) {
+export function AppSidebar() {
   const t = useTranslations('navigation');
   const pathname = usePathname() || '/';
+  const searchParams = useSearchParams();
   const { brandName } = useApp();
   const { user, logout } = useAuth();
+  const workspacesQuery = useLoopsWorkspaces();
   const initials = getInitials(user?.nickname);
+  const workspaces = workspacesQuery.data?.body.data.workspaces ?? [];
+  const selectedWorkspace = getSelectedWorkspace(
+    workspaces,
+    searchParams.get('workspace'),
+    workspacesQuery.data?.body.data.current,
+  );
   const items: NavItem[] = [
     { titleKey: 'home', href: '/', icon: House },
-    { titleKey: 'workspace', href: '/loops', icon: ListTodo },
-    {
-      titleKey: 'review',
-      href: '/loops?view=operations#review-inbox',
-      icon: Inbox,
-      count: reviewCount,
-    },
+    { titleKey: 'scheduled', href: '/loops?view=scheduled', icon: ListTodo },
+    { titleKey: 'search', href: '/loops?view=scheduled#scheduled-search', icon: Search },
   ];
 
   const isActive = (href: NavItem['href']) => {
-    const [targetPath, fragment] = href.split('#');
-    if (fragment) return false;
+    if (href === '/') return pathname === '/';
+    if (href.includes('view=scheduled'))
+      return pathname === '/loops' && searchParams.get('view') === 'scheduled';
 
-    return targetPath === '/'
-      ? pathname === '/'
-      : pathname === targetPath || pathname.startsWith(`${targetPath}/`);
+    return pathname === href || pathname.startsWith(`${href}/`);
   };
 
   return (
-    <Sidebar collapsible="icon" variant="sidebar">
+    <Sidebar className="bg-[#eef0e9]" collapsible="icon" variant="sidebar">
       <SidebarHeader className="border-b border-sidebar-border">
         <span className="px-2 text-sm font-semibold group-data-[collapsible=icon]:hidden">
           {brandName}
@@ -95,21 +94,6 @@ export function AppSidebar({ reviewCount = 0 }: AppSidebarProps) {
       </SidebarHeader>
 
       <SidebarContent className="pt-2">
-        <SidebarGroup>
-          <SidebarGroupLabel>{t('groupProjects')}</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu className="px-2">
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={pathname === '/loops'} tooltip={brandName}>
-                  <Link href="/loops">
-                    <FolderKanban />
-                    <span>{brandName}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
         <SidebarGroup>
           <SidebarGroupLabel>{t('groupMain')}</SidebarGroupLabel>
           <SidebarGroupContent>
@@ -141,9 +125,30 @@ export function AppSidebar({ reviewCount = 0 }: AppSidebarProps) {
                         <span>{title}</span>
                       </Link>
                     </SidebarMenuButton>
-                    {item.count && item.count > 0 ? (
-                      <SidebarMenuBadge>{item.count}</SidebarMenuBadge>
-                    ) : null}
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>{t('groupProjects')}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu className="px-2">
+              {workspaces.map((workspace) => {
+                const isSelected = workspace.workspaceId === selectedWorkspace?.workspaceId;
+                const label = workspaceLabel(workspace);
+                return (
+                  <SidebarMenuItem key={workspace.workspaceId}>
+                    <SidebarMenuButton asChild isActive={isSelected} tooltip={label}>
+                      <Link
+                        aria-current={isSelected ? 'page' : undefined}
+                        href={`/loops?workspace=${encodeURIComponent(workspace.workspaceId)}`}
+                      >
+                        <FolderKanban />
+                        <span>{label}</span>
+                      </Link>
+                    </SidebarMenuButton>
                   </SidebarMenuItem>
                 );
               })}
@@ -165,6 +170,12 @@ export function AppSidebar({ reviewCount = 0 }: AppSidebarProps) {
               <DropdownMenuContent side="right" align="end" className="w-52">
                 <DropdownMenuLabel>{t('menu.more')}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/loops?view=operations#review-inbox">
+                    <Inbox className="mr-2 size-4" />
+                    {t('menu.review')}
+                  </Link>
+                </DropdownMenuItem>
                 <DropdownMenuItem asChild>
                   <Link href="/loops?view=operations#agent-runtime">
                     <Bot className="mr-2 size-4" />

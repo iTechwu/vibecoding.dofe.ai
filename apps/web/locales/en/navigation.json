@@ -4,6 +4,7 @@
     "dashboard": "Dashboard",
     "issues": "Issues",
     "workspace": "Workspace",
+    "scheduled": "Scheduled",
     "review": "Review",
     "runtime": "Runtime",
     "newIssue": "New work",
@@ -16,7 +17,7 @@
     "logout": "Sign Out"
   },
   "groupMain": "Core",
-  "groupProjects": "Projects",
+  "groupProjects": "Workspaces",
   "team": "Team: {team}",
   "groupSettings": "Settings",
   "breadcrumb": {
