@@ -22,6 +22,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarTrigger,
+  useSidebar,
 } from '@repo/ui';
 import {
   Bot,
@@ -60,6 +61,7 @@ export function AppSidebar() {
   const searchParams = useSearchParams();
   const { brandName } = useApp();
   const { user, logout } = useAuth();
+  const { isMobile, setOpenMobile } = useSidebar();
   const workspacesQuery = useLoopsWorkspaces();
   const initials = getInitials(user?.nickname);
   const workspaces = workspacesQuery.data?.body.data.workspaces ?? [];
@@ -80,6 +82,9 @@ export function AppSidebar() {
       return pathname === '/loops' && searchParams.get('view') === 'scheduled';
 
     return pathname === href || pathname.startsWith(`${href}/`);
+  };
+  const closeMobileSidebar = () => {
+    if (isMobile) setOpenMobile(false);
   };
 
   return (
@@ -105,6 +110,7 @@ export function AppSidebar() {
                 <Link
                   href="/loops#loops-conversation-composer"
                   aria-label={t('menu.newIssue')}
+                  onClick={closeMobileSidebar}
                   title={t('menu.newIssue')}
                 >
                   <Plus className="size-4" />
@@ -120,7 +126,11 @@ export function AppSidebar() {
                 return (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton asChild isActive={active} tooltip={title}>
-                      <Link href={item.href} aria-current={active ? 'page' : undefined}>
+                      <Link
+                        aria-current={active ? 'page' : undefined}
+                        href={item.href}
+                        onClick={closeMobileSidebar}
+                      >
                         <item.icon />
                         <span>{title}</span>
                       </Link>
@@ -144,6 +154,7 @@ export function AppSidebar() {
                       <Link
                         aria-current={isSelected ? 'page' : undefined}
                         href={`/loops?workspace=${encodeURIComponent(workspace.workspaceId)}`}
+                        onClick={closeMobileSidebar}
                       >
                         <FolderKanban />
                         <span>{label}</span>
@@ -171,26 +182,26 @@ export function AppSidebar() {
                 <DropdownMenuLabel>{t('menu.more')}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href="/loops?view=operations#review-inbox">
+                  <Link href="/loops?view=operations#review-inbox" onClick={closeMobileSidebar}>
                     <Inbox className="mr-2 size-4" />
                     {t('menu.review')}
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link href="/loops?view=operations#agent-runtime">
+                  <Link href="/loops?view=operations#agent-runtime" onClick={closeMobileSidebar}>
                     <Bot className="mr-2 size-4" />
                     {t('menu.runtime')}
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link href="/loops?view=operations">
+                  <Link href="/loops?view=operations" onClick={closeMobileSidebar}>
                     <LayoutDashboard className="mr-2 size-4" />
                     {t('menu.dashboard')}
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href="/settings">
+                  <Link href="/settings" onClick={closeMobileSidebar}>
                     <Settings className="mr-2 size-4" />
                     {t('menu.settings')}
                   </Link>
@@ -213,7 +224,7 @@ export function AppSidebar() {
                 <DropdownMenuLabel>{user?.nickname || t('menu.account')}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href="/">
+                  <Link href="/" onClick={closeMobileSidebar}>
                     <LayoutDashboard className="mr-2 size-4" />
                     {t('menu.dashboard')}
                   </Link>

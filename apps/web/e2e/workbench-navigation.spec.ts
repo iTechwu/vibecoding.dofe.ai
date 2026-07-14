@@ -56,7 +56,7 @@ test.beforeEach(async ({ page, baseURL }) => {
   await authenticateWorkbench(page, baseURL!);
 });
 
-test('desktop workbench exposes all sidebar destinations without horizontal overflow', async ({
+test('desktop workbench exposes core destinations and the More menu without horizontal overflow', async ({
   page,
 }) => {
   const response = await page.goto('/en/loops');
@@ -67,13 +67,24 @@ test('desktop workbench exposes all sidebar destinations without horizontal over
 
   for (const [label, href] of [
     ['Home', '/en'],
-    ['Issues', '/en/loops'],
-    ['Review', '/en/loops#review-inbox'],
-    ['Runtime', '/en/loops#agent-runtime'],
-    ['New Issue', '/en/loops/new'],
-    ['Settings', '/en/settings'],
+    ['Scheduled', '/en/loops?view=scheduled'],
+    ['Search', '/en/loops?view=scheduled#scheduled-search'],
+    ['New work', '/en/loops#loops-conversation-composer'],
   ] as const) {
     await expect(desktopSidebar.getByRole('link', { name: label, exact: true })).toHaveAttribute(
+      'href',
+      href,
+    );
+  }
+
+  await desktopSidebar.getByRole('button', { name: 'More', exact: true }).click();
+  for (const [label, href] of [
+    ['Review', '/en/loops?view=operations#review-inbox'],
+    ['Runtime', '/en/loops?view=operations#agent-runtime'],
+    ['Dashboard', '/en/loops?view=operations'],
+    ['Settings', '/en/settings'],
+  ] as const) {
+    await expect(page.getByRole('menuitem', { name: label, exact: true })).toHaveAttribute(
       'href',
       href,
     );
@@ -99,11 +110,9 @@ test.describe('default zh-CN locale', () => {
 
     for (const [label, href] of [
       ['首页', '/'],
-      ['问题', '/loops'],
-      ['审查', '/loops#review-inbox'],
-      ['运行时', '/loops#agent-runtime'],
-      ['新建问题', '/loops/new'],
-      ['设置', '/settings'],
+      ['已安排', '/loops?view=scheduled'],
+      ['搜索', '/loops?view=scheduled#scheduled-search'],
+      ['新建任务', '/loops#loops-conversation-composer'],
     ] as const) {
       await expect(desktopSidebar.getByRole('link', { name: label, exact: true })).toHaveAttribute(
         'href',
@@ -113,7 +122,7 @@ test.describe('default zh-CN locale', () => {
   });
 });
 
-test('mobile sidebar Sheet reaches New Issue', async ({ page }) => {
+test('mobile sidebar Sheet reaches Scheduled work', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
   const response = await page.goto('/en/loops');
 
@@ -123,8 +132,9 @@ test('mobile sidebar Sheet reaches New Issue', async ({ page }) => {
 
   const mobileSidebar = page.locator('[data-sidebar="sidebar"][data-mobile="true"]');
   await expect(mobileSidebar).toBeVisible();
-  const newIssue = mobileSidebar.getByRole('link', { name: 'New Issue', exact: true });
-  await expect(newIssue).toHaveAttribute('href', '/en/loops/new');
-  await newIssue.click();
-  await expect(page).toHaveURL(/\/en\/loops\/new$/);
+  const scheduled = mobileSidebar.getByRole('link', { name: 'Scheduled', exact: true });
+  await expect(scheduled).toHaveAttribute('href', '/en/loops?view=scheduled');
+  await scheduled.click();
+  await expect(page).toHaveURL(/\/en\/loops\?view=scheduled$/);
+  await expect(page.getByRole('heading', { name: 'Scheduled' })).toBeVisible();
 });

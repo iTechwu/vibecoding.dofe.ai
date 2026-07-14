@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import navigationMessages from '@/locales/en/navigation.json';
 import { AppSidebar } from './app-sidebar';
 
-const mocks = vi.hoisted(() => ({ logout: vi.fn() }));
+const mocks = vi.hoisted(() => ({ logout: vi.fn(), setOpenMobile: vi.fn() }));
 
 vi.mock('@repo/ui', () => {
   const Container = ({ children }: React.PropsWithChildren) => <div>{children}</div>;
@@ -52,6 +52,7 @@ vi.mock('@repo/ui', () => {
     SidebarMenuButton: MenuButton,
     SidebarMenuItem: MenuItem,
     SidebarTrigger: Button,
+    useSidebar: () => ({ isMobile: true, setOpenMobile: mocks.setOpenMobile }),
     Avatar: Container,
     AvatarFallback: Container,
     AvatarImage: () => null,
@@ -170,6 +171,8 @@ describe('AppSidebar', () => {
     );
     expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/settings');
     expect(screen.getByRole('button', { name: 'Account' })).toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: 'Scheduled' }));
+    expect(mocks.setOpenMobile).toHaveBeenCalledWith(false);
     await user.click(screen.getByRole('button', { name: 'Sign Out' }));
     expect(mocks.logout).toHaveBeenCalledOnce();
   });
