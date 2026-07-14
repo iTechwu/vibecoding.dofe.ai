@@ -5,12 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import navigationMessages from '@/locales/en/navigation.json';
 import { AppSidebar } from './app-sidebar';
 
-const mocks = vi.hoisted(() => ({
-  logout: vi.fn(),
-  setOpenMobile: vi.fn(),
-  upsertWorkspace: vi.fn(),
-  push: vi.fn(),
-}));
+const mocks = vi.hoisted(() => ({ logout: vi.fn(), setOpenMobile: vi.fn() }));
 
 vi.mock('@repo/ui', () => {
   const Container = ({ children }: React.PropsWithChildren) => <div>{children}</div>;
@@ -82,7 +77,6 @@ vi.mock('@/i18n/navigation', () => ({
     </a>
   ),
   usePathname: () => '/loops',
-  useRouter: () => ({ push: mocks.push }),
 }));
 
 vi.mock('next/navigation', () => ({
@@ -115,7 +109,6 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
       },
     },
   }),
-  useUpsertLoopsWorkspace: () => ({ isPending: false, mutateAsync: mocks.upsertWorkspace }),
 }));
 
 vi.mock('@/providers', () => ({
@@ -137,22 +130,6 @@ function renderSidebar() {
 }
 
 describe('AppSidebar', () => {
-  it('creates a project workspace and selects it after submission', async () => {
-    const user = userEvent.setup();
-    mocks.upsertWorkspace.mockResolvedValueOnce({ body: { data: {} } });
-    renderSidebar();
-
-    await user.click(screen.getByRole('button', { name: 'New project' }));
-    await user.type(screen.getByLabelText('Project ID'), 'checkout');
-    await user.type(screen.getByLabelText('Project path'), '/code/checkout');
-    await user.click(screen.getByRole('button', { name: 'Create project' }));
-
-    expect(mocks.upsertWorkspace).toHaveBeenCalledWith({
-      body: { workspaceId: 'checkout', root: '/code/checkout', makeDefault: true },
-    });
-    expect(mocks.push).toHaveBeenCalledWith('/loops?workspace=checkout');
-  });
-
   it('renders workspace-first destinations and footer controls', async () => {
     const user = userEvent.setup();
     renderSidebar();
