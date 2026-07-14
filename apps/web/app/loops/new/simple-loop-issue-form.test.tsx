@@ -110,6 +110,9 @@ describe('SimpleLoopIssueForm (0622 · B5 simple-mode intake)', () => {
     // The one prominent field the user must fill.
     expect(
       screen.getByRole('textbox', { name: 'What do you want the agents to do?' }),
+    ).toHaveFocus();
+    expect(
+      screen.getByRole('textbox', { name: 'What do you want the agents to do?' }),
     ).toHaveAccessibleDescription(
       'At least 10 characters. Keep it to one sentence; expand details in the issue after creation.',
     );

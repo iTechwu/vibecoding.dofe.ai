@@ -21,6 +21,19 @@ vi.mock('@/providers', () => ({
   useAuth: () => ({ user: { nickname: 'Ada', email: 'ada@example.com' } }),
 }));
 
+vi.mock('@/lib/api/contracts/hooks', () => ({
+  useLoopsWorkspaces: () => ({
+    data: {
+      body: {
+        data: {
+          current: 'vibecoding',
+          workspaces: [{ workspaceId: 'vibecoding', root: '/repo/vibecoding' }],
+        },
+      },
+    },
+  }),
+}));
+
 describe('SettingsPage', () => {
   it('renders authenticated account and language context without redirecting', () => {
     render(
@@ -35,6 +48,8 @@ describe('SettingsPage', () => {
     expect(screen.getByText('ada@example.com')).toBeInTheDocument();
     expect(screen.getByText('Language')).toBeInTheDocument();
     expect(screen.getByText('English')).toBeInTheDocument();
+    expect(screen.getByText('Workspace')).toBeInTheDocument();
+    expect(screen.getByText('/repo/vibecoding')).toBeInTheDocument();
     expect(screen.queryByText('en')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Switch language' })).toBeInTheDocument();
     expect(mocks.redirect).not.toHaveBeenCalled();

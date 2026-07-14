@@ -225,6 +225,7 @@ export default function SimpleLoopIssueForm({ defaultTargetRepo }: SimpleLoopIss
           <span id="simple-loop-request-label">{t('simple.requestLabel')}</span>
         </label>
         <textarea
+          autoFocus
           aria-describedby="simple-loop-request-hint"
           aria-invalid={requestRemaining > 0}
           aria-labelledby="simple-loop-request-label"

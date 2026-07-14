@@ -19,7 +19,7 @@ export default async function NewLoopIssuePage() {
         action={
           <Link
             className="inline-flex h-9 items-center justify-center rounded-md border border-border px-3 text-sm font-medium text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-            href="/loops"
+            href="/loops?view=scheduled"
           >
             {t('back')}
           </Link>

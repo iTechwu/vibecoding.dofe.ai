@@ -3,6 +3,8 @@
   "general": "General",
   "account": "Account",
   "email": "Email",
+  "workspace": "Workspace",
+  "workspaceUnavailable": "No active workspace",
   "language": "Language",
   "notAvailable": "Not available",
   "security": "Security",
