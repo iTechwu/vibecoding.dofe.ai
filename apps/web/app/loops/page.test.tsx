@@ -843,7 +843,10 @@ function renderWithIntl(ui: React.ReactElement) {
 }
 
 function openOperations() {
-  fireEvent.click(screen.getByRole('button', { name: 'Operations' }));
+  const trigger = screen.getByRole('button', { name: 'Operations' });
+  if (trigger.getAttribute('aria-expanded') !== 'true') {
+    fireEvent.click(trigger);
+  }
 }
 
 describe('LoopsPage', () => {

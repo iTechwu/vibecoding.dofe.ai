@@ -10,6 +10,6 @@ describe('AgentRuntimePage', () => {
   it('redirects the documented deep link to the dashboard runtime panel', () => {
     AgentRuntimePage();
 
-    expect(redirect).toHaveBeenCalledWith('/loops#agent-runtime');
+    expect(redirect).toHaveBeenCalledWith('/loops?view=operations#agent-runtime');
   });
 });

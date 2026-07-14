@@ -17,9 +17,15 @@ function operationsHash() {
   return window.location.hash.slice(1);
 }
 
-export function LoopsOperationsView({ children }: { children: ReactNode }) {
+export function LoopsOperationsView({
+  children,
+  defaultOpen = false,
+}: {
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
   const t = useTranslations('loops.dashboard.operations');
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(defaultOpen);
   const [targetHash, setTargetHash] = useState('');
 
   useEffect(() => {
@@ -48,10 +54,7 @@ export function LoopsOperationsView({ children }: { children: ReactNode }) {
   }, [isOpen, targetHash]);
 
   return (
-    <section
-      aria-labelledby="operations-title"
-      className="rounded-lg border border-white/10 bg-card/80"
-    >
+    <section aria-labelledby="operations-title" className="border-y border-border bg-background">
       <div className="flex items-center justify-between gap-4 p-4">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
