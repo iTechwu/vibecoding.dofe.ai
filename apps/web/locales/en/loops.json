@@ -44,6 +44,7 @@
       "continueAction": "Continue Loop",
       "reviewTitle": "Review queue",
       "recentTitle": "Recent issues",
+      "scheduledTitle": "Scheduled",
       "viewAll": "View all",
       "reviewEmpty": "No review decisions are waiting.",
       "reviewLoading": "Loading review decisions.",

@@ -44,6 +44,7 @@
       "continueAction": "继续 Loop",
       "reviewTitle": "审阅队列",
       "recentTitle": "近期 Issue",
+      "scheduledTitle": "已安排",
       "viewAll": "查看全部",
       "reviewEmpty": "当前没有待审阅的决策。",
       "reviewLoading": "正在加载审阅决策。",
