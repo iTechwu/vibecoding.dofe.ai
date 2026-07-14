@@ -39,9 +39,10 @@ import {
   User,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Link, usePathname } from '@/i18n/navigation';
-import { useLoopsWorkspaces } from '@/lib/api/contracts/hooks';
+import { Link, usePathname, useRouter } from '@/i18n/navigation';
+import { useLoopsWorkspaces, useUpsertLoopsWorkspace } from '@/lib/api/contracts/hooks';
 import { useApp, useAuth } from '@/providers';
 import { getSelectedWorkspace, workspaceLabel } from '@/components/workbench/workspace-context';
 
@@ -58,11 +59,17 @@ function getInitials(nickname: string | null | undefined): string {
 export function AppSidebar() {
   const t = useTranslations('navigation');
   const pathname = usePathname() || '/';
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { brandName } = useApp();
   const { user, logout } = useAuth();
   const { isMobile, setOpenMobile } = useSidebar();
   const workspacesQuery = useLoopsWorkspaces();
+  const upsertWorkspace = useUpsertLoopsWorkspace();
+  const [creatingProject, setCreatingProject] = useState(false);
+  const [projectId, setProjectId] = useState('');
+  const [projectRoot, setProjectRoot] = useState('');
+  const [projectError, setProjectError] = useState<string>();
   const initials = getInitials(user?.nickname);
   const workspaces = workspacesQuery.data?.body.data.workspaces ?? [];
   const selectedWorkspace = getSelectedWorkspace(
@@ -85,6 +92,26 @@ export function AppSidebar() {
   };
   const closeMobileSidebar = () => {
     if (isMobile) setOpenMobile(false);
+  };
+  const createProject = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const workspaceId = projectId.trim();
+    const root = projectRoot.trim();
+    if (!workspaceId || !root) {
+      setProjectError(t('project.required'));
+      return;
+    }
+    setProjectError(undefined);
+    try {
+      await upsertWorkspace.mutateAsync({ body: { workspaceId, root, makeDefault: true } });
+      setCreatingProject(false);
+      setProjectId('');
+      setProjectRoot('');
+      closeMobileSidebar();
+      router.push(`/loops?workspace=${encodeURIComponent(workspaceId)}`);
+    } catch {
+      setProjectError(t('project.createError'));
+    }
   };
 
   return (
@@ -142,8 +169,52 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
-          <SidebarGroupLabel>{t('groupProjects')}</SidebarGroupLabel>
+          <div className="flex items-center justify-between px-2">
+            <SidebarGroupLabel>{t('groupProjects')}</SidebarGroupLabel>
+            <button
+              aria-label={t('project.new')}
+              className="size-7 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+              onClick={() => setCreatingProject((open) => !open)}
+              type="button"
+            >
+              <Plus aria-hidden="true" className="mx-auto size-4" />
+            </button>
+          </div>
           <SidebarGroupContent>
+            {creatingProject ? (
+              <form className="space-y-2 px-2 pb-2" onSubmit={(event) => void createProject(event)}>
+                <label className="block text-xs font-medium" htmlFor="project-workspace-id">
+                  {t('project.id')}
+                </label>
+                <input
+                  className="h-8 w-full border border-input bg-background px-2 text-sm"
+                  id="project-workspace-id"
+                  onChange={(event) => setProjectId(event.target.value)}
+                  value={projectId}
+                />
+                <label className="block text-xs font-medium" htmlFor="project-root">
+                  {t('project.root')}
+                </label>
+                <input
+                  className="h-8 w-full border border-input bg-background px-2 text-sm"
+                  id="project-root"
+                  onChange={(event) => setProjectRoot(event.target.value)}
+                  value={projectRoot}
+                />
+                {projectError ? (
+                  <p className="text-xs text-destructive" role="alert">
+                    {projectError}
+                  </p>
+                ) : null}
+                <button
+                  className="h-8 w-full bg-foreground px-2 text-sm font-medium text-background disabled:opacity-60"
+                  disabled={upsertWorkspace.isPending}
+                  type="submit"
+                >
+                  {t('project.create')}
+                </button>
+              </form>
+            ) : null}
             <SidebarMenu className="px-2">
               {workspaces.map((workspace) => {
                 const isSelected = workspace.workspaceId === selectedWorkspace?.workspaceId;

@@ -18,6 +18,14 @@
   },
   "groupMain": "Core",
   "groupProjects": "Workspaces",
+  "project": {
+    "new": "New project",
+    "id": "Project ID",
+    "root": "Project path",
+    "create": "Create project",
+    "required": "Project ID and path are required.",
+    "createError": "Unable to create the project."
+  },
   "team": "Team: {team}",
   "groupSettings": "Settings",
   "breadcrumb": {

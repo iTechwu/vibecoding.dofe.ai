@@ -18,6 +18,14 @@
   },
   "groupMain": "核心",
   "groupProjects": "工作区",
+  "project": {
+    "new": "新增项目",
+    "id": "项目 ID",
+    "root": "项目路径",
+    "create": "创建项目",
+    "required": "项目 ID 和路径不能为空。",
+    "createError": "无法创建项目。"
+  },
   "team": "团队：{team}",
   "groupSettings": "设置",
   "breadcrumb": {
