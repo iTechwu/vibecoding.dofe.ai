@@ -114,4 +114,5 @@ apps/api/.loops/*
 
 # Claude Code
 .claude/
+.superpowers/
 apps/web/test-results/*
