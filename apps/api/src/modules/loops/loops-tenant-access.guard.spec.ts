@@ -3,7 +3,7 @@ import { LoopsTenantAccessGuard } from './loops-tenant-access.guard';
 import type { SsoScopeService } from '@app/auth/sso-scope.service';
 
 describe('LoopsTenantAccessGuard', () => {
-  it('grants Loops access to an authenticated SSO tenant member', async () => {
+  it('assigns a workspace scope to an authenticated user', async () => {
     const request = {
       ssoSub: 'sso-user-1',
       headers: { 'x-current-tenant': 'tenant-1' },

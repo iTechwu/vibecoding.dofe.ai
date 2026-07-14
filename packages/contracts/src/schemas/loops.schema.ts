@@ -1660,7 +1660,7 @@ export const LoopAssetPermissionsResponseSchema = z.object({
     tenantId: z.string().optional(),
     isSuperAdmin: z.boolean(),
   }),
-  source: z.literal('tenant-membership'),
+  source: z.literal('authenticated-user'),
   permissions: z.array(z.string()),
   roles: z.array(z.string()).default([]),
   assets: z.array(LoopAssetPermissionItemSchema),
@@ -1682,6 +1682,39 @@ export const UpsertLoopWorkspaceRequestSchema = z.object({
   containerWorkdir: z.string().trim().min(1).optional(),
   makeDefault: z.boolean().optional(),
   agents: UpsertLoopWorkspaceAgentsSchema.optional(),
+});
+
+const RelativeLoopWorkspaceDirectoryPathSchema = z
+  .string()
+  .trim()
+  .max(512)
+  .refine(
+    (value) =>
+      !value.startsWith('/') &&
+      !value.includes('\\') &&
+      !value.split('/').some((segment) => segment === '..'),
+    'Directory path must be relative to the configured project root.',
+  );
+
+/** A root-relative folder path used by the server-side local project browser. */
+export const BrowseLoopWorkspaceDirectoriesQuerySchema = z.object({
+  path: RelativeLoopWorkspaceDirectoryPathSchema.optional().default(''),
+});
+
+export const LoopWorkspaceDirectoryEntrySchema = z.object({
+  name: z.string().min(1),
+  path: RelativeLoopWorkspaceDirectoryPathSchema,
+});
+
+export const BrowseLoopWorkspaceDirectoriesResponseSchema = z.object({
+  path: RelativeLoopWorkspaceDirectoryPathSchema,
+  directories: z.array(LoopWorkspaceDirectoryEntrySchema),
+});
+
+/** Creates a workspace from a server-validated local directory, never from an absolute client path. */
+export const CreateLoopWorkspaceFromDirectoryRequestSchema = z.object({
+  path: RelativeLoopWorkspaceDirectoryPathSchema.min(1),
+  makeDefault: z.boolean().optional(),
 });
 
 export const DetectLoopRuntimeResponseSchema = z.object({
@@ -1873,6 +1906,16 @@ export type LoopAssetPermissionKind = z.infer<typeof LoopAssetPermissionKindSche
 export type LoopAssetPermissionItem = z.infer<typeof LoopAssetPermissionItemSchema>;
 export type LoopAssetPermissionsResponse = z.infer<typeof LoopAssetPermissionsResponseSchema>;
 export type UpsertLoopWorkspaceRequest = z.infer<typeof UpsertLoopWorkspaceRequestSchema>;
+export type BrowseLoopWorkspaceDirectoriesQuery = z.infer<
+  typeof BrowseLoopWorkspaceDirectoriesQuerySchema
+>;
+export type LoopWorkspaceDirectoryEntry = z.infer<typeof LoopWorkspaceDirectoryEntrySchema>;
+export type BrowseLoopWorkspaceDirectoriesResponse = z.infer<
+  typeof BrowseLoopWorkspaceDirectoriesResponseSchema
+>;
+export type CreateLoopWorkspaceFromDirectoryRequest = z.infer<
+  typeof CreateLoopWorkspaceFromDirectoryRequestSchema
+>;
 export type DetectLoopRuntimeResponse = z.infer<typeof DetectLoopRuntimeResponseSchema>;
 export type PullLoopImageRequest = z.infer<typeof PullLoopImageRequestSchema>;
 export type PullLoopImageResponse = z.infer<typeof PullLoopImageResponseSchema>;

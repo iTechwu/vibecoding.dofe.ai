@@ -108,6 +108,9 @@ import type {
   LoopTenantContext,
   LoopWorkflowRecipe,
   LoopWorkspacesResponse,
+  BrowseLoopWorkspaceDirectoriesQuery,
+  BrowseLoopWorkspaceDirectoriesResponse,
+  CreateLoopWorkspaceFromDirectoryRequest,
   UpsertLoopWorkspaceRequest,
 } from '@repo/contracts';
 import { normaliseSimpleIssue } from '@repo/contracts';
@@ -1283,8 +1286,7 @@ export class LoopsService implements LoopsIssueCreationPort {
     teamId?: string;
     tenantId?: string;
   }): Promise<LoopAssetPermissionsResponse> {
-    const hasTenantAccess = Boolean(input.tenantId);
-    const assets = this.buildAssetPermissionItems(hasTenantAccess);
+    const assets = this.buildAssetPermissionItems();
 
     return {
       identity: {
@@ -1293,8 +1295,8 @@ export class LoopsService implements LoopsIssueCreationPort {
         tenantId: input.tenantId,
         isSuperAdmin: Boolean(input.isAdmin),
       },
-      source: 'tenant-membership',
-      permissions: hasTenantAccess ? ['tenant:member'] : [],
+      source: 'authenticated-user',
+      permissions: ['authenticated'],
       roles: [],
       assets,
       summary: {
@@ -1318,10 +1320,10 @@ export class LoopsService implements LoopsIssueCreationPort {
     if (permission?.granted) {
       return;
     }
-    throw new ForbiddenException(`Verified tenant membership is required for ${input.assetKind}`);
+    throw new ForbiddenException(`Unknown Loops asset permission: ${input.assetKind}`);
   }
 
-  private buildAssetPermissionItems(hasTenantAccess: boolean): LoopAssetPermissionItem[] {
+  private buildAssetPermissionItems(): LoopAssetPermissionItem[] {
     const defs: Array<Omit<LoopAssetPermissionItem, 'granted' | 'sourcePermission'>> = [
       {
         assetKind: 'workspace',
@@ -1390,8 +1392,8 @@ export class LoopsService implements LoopsIssueCreationPort {
 
     return defs.map((def) => ({
       ...def,
-      granted: hasTenantAccess,
-      sourcePermission: 'tenant:member',
+      granted: true,
+      sourcePermission: 'authenticated',
     }));
   }
 
@@ -1933,7 +1935,7 @@ export class LoopsService implements LoopsIssueCreationPort {
       tenantId: permissionContext.tenantId,
       teamId: permissionContext.teamId,
       actorId: permissionContext.userId,
-      sourcePermission: 'tenant:member',
+      sourcePermission: 'authenticated',
       requestedAt,
       reason: request.reason,
       evidenceRefs: request.evidenceRefs,
@@ -1988,7 +1990,8 @@ export class LoopsService implements LoopsIssueCreationPort {
         authStatus: 'missing',
         health: {
           ok: false,
-          message: 'Provider token is not configured; connect requires tenant membership.',
+          message:
+            'Provider token is not configured; configure a provider token before connecting.',
         },
         risks: ['External URL tests require SSRF-safe target allowlists before production.'],
       },
@@ -3608,6 +3611,28 @@ export class LoopsService implements LoopsIssueCreationPort {
     return this.workspaceProfile!.upsert(input);
   }
 
+  async browseWorkspaceDirectories(
+    input: BrowseLoopWorkspaceDirectoriesQuery,
+  ): Promise<BrowseLoopWorkspaceDirectoriesResponse> {
+    this.requireWorkspaceProfile('browseWorkspaceDirectories');
+    try {
+      return await this.workspaceProfile!.browseDirectories(input);
+    } catch (error) {
+      throw new BadRequestException(this.workspaceDirectoryErrorMessage(error));
+    }
+  }
+
+  async createWorkspaceFromDirectory(
+    input: CreateLoopWorkspaceFromDirectoryRequest,
+  ): Promise<{ workspaceId: string; root: string; workspaces: LoopWorkspacesResponse }> {
+    this.requireWorkspaceProfile('createWorkspaceFromDirectory');
+    try {
+      return await this.workspaceProfile!.createFromDirectory(input);
+    } catch (error) {
+      throw new BadRequestException(this.workspaceDirectoryErrorMessage(error));
+    }
+  }
+
   async setCurrentWorkspace(workspaceId: string): Promise<LoopWorkspacesResponse> {
     this.requireWorkspaceProfile('setCurrentWorkspace');
     return this.workspaceProfile!.setCurrent(workspaceId);
@@ -3645,6 +3670,10 @@ export class LoopsService implements LoopsIssueCreationPort {
         `Workspace profile service is not configured; cannot run ${operation} on this instance`,
       );
     }
+  }
+
+  private workspaceDirectoryErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : 'Selected directory is unavailable.';
   }
 
   async capabilities(): Promise<LoopCapabilitiesResponse> {

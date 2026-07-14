@@ -10,8 +10,8 @@ function firstHeaderValue(value: string | string[] | undefined): string | undefi
 }
 
 /**
- * Loops access is a local product policy: an authenticated SSO tenant member
- * may use Loops for that tenant. SSO only supplies the membership fact.
+ * Loops uses an authenticated-user access model. This guard assigns a stable
+ * workspace namespace but does not make an SSO membership or RBAC decision.
  */
 @Injectable()
 export class LoopsTenantAccessGuard implements CanActivate {

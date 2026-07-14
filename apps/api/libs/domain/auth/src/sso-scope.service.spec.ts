@@ -1,106 +1,23 @@
 import { SsoScopeService } from './sso-scope.service';
-import { CommonErrorCode } from '@repo/contracts/errors';
 
 describe('SsoScopeService', () => {
-  function buildService(
-    opts: {
-      tenants?: Array<Record<string, unknown>>;
-      preference?: Record<string, unknown> | null;
-      preferenceRejects?: boolean;
-    } = {},
-  ) {
-    const getTenants = jest.fn().mockResolvedValue(opts.tenants ?? []);
-    const getTenantPreference = opts.preferenceRejects
-      ? jest.fn().mockRejectedValue(new Error('preference unavailable'))
-      : jest.fn().mockResolvedValue(opts.preference ?? null);
-    const ssoClient = {
-      client: {
-        users: {
-          getTenants,
-          getTeams: jest.fn().mockResolvedValue([]),
-          getTenantPreference,
-        },
-      },
-    };
-    return { service: new SsoScopeService(ssoClient as never), ssoClient };
-  }
-
-  it('prefers the SSO-maintained current tenant (preference.lastTenantId) over the client candidate', async () => {
-    const { service } = buildService({
-      tenants: [
-        { tenantId: 'tenant-pref', tenantName: 'Preferred', tenantDisplayName: 'Preferred' },
-        { tenantId: 'tenant-cand', tenantName: 'Candidate' },
-      ],
-      preference: { userId: 'sso-user-1', lastTenantId: 'tenant-pref', updatedAt: '2026-07-12' },
-    });
-
-    await expect(
-      service.resolve({ ssoSubject: 'sso-user-1', tenantId: 'tenant-cand' }),
-    ).resolves.toEqual({ tenantId: 'tenant-pref', tenantName: 'Preferred' });
-  });
-
-  it('falls back to the client candidate when SSO has no recorded preference', async () => {
-    const { service } = buildService({
-      tenants: [
-        {
-          tenantId: 'tenant-cand',
-          tenantName: 'Candidate',
-          tenantDisplayName: 'Candidate Display',
-        },
-      ],
-      preference: { userId: 'sso-user-1', lastTenantId: null, updatedAt: '2026-07-12' },
-    });
-
-    await expect(
-      service.resolve({ ssoSubject: 'sso-user-1', tenantId: 'tenant-cand' }),
-    ).resolves.toEqual({ tenantId: 'tenant-cand', tenantName: 'Candidate Display' });
-  });
-
-  it('falls back to the client candidate when getTenantPreference is unavailable', async () => {
-    const { service } = buildService({
-      tenants: [{ tenantId: 'tenant-cand', tenantName: 'Candidate' }],
-      preferenceRejects: true,
-    });
-
-    await expect(
-      service.resolve({ ssoSubject: 'sso-user-1', tenantId: 'tenant-cand' }),
-    ).resolves.toEqual({ tenantId: 'tenant-cand', tenantName: 'Candidate' });
-  });
-
-  it('uses the sole SSO tenant membership when no preference or client candidate exists', async () => {
-    const { service } = buildService({
-      tenants: [{ tenantId: 'tenant-only', tenantName: 'Only Tenant' }],
-      preference: { userId: 'sso-user-1', lastTenantId: null, updatedAt: '2026-07-12' },
-    });
+  it('creates a personal workspace scope when an authenticated user has no selection', async () => {
+    const service = new SsoScopeService();
 
     await expect(service.resolve({ ssoSubject: 'sso-user-1' })).resolves.toEqual({
-      tenantId: 'tenant-only',
-      tenantName: 'Only Tenant',
+      tenantId: 'user:sso-user-1',
+      tenantName: 'Personal workspace',
     });
   });
 
-  it('rejects when the SSO-preferred tenant is not in the user membership list', async () => {
-    const { service } = buildService({
-      tenants: [{ tenantId: 'tenant-other', tenantName: 'Other' }],
-      preference: { userId: 'sso-user-1', lastTenantId: 'tenant-pref', updatedAt: '2026-07-12' },
-    });
+  it('uses the selected workspace without querying SSO membership', async () => {
+    const service = new SsoScopeService();
 
     await expect(
-      service.resolve({ ssoSubject: 'sso-user-1', tenantId: 'tenant-other' }),
-    ).rejects.toThrow(expect.objectContaining({ errorCode: CommonErrorCode.UnAuthorized }));
-  });
-
-  it('rejects for multiple memberships when neither preference nor a client candidate provides a tenant', async () => {
-    const { service } = buildService({
-      tenants: [
-        { tenantId: 'tenant-1', tenantName: 'T1' },
-        { tenantId: 'tenant-2', tenantName: 'T2' },
-      ],
-      preference: { userId: 'sso-user-1', lastTenantId: null, updatedAt: '2026-07-12' },
+      service.resolve({ ssoSubject: 'sso-user-1', tenantId: ' tenant-selected ' }),
+    ).resolves.toEqual({
+      tenantId: 'tenant-selected',
+      tenantName: 'tenant-selected',
     });
-
-    await expect(service.resolve({ ssoSubject: 'sso-user-1' })).rejects.toThrow(
-      expect.objectContaining({ errorCode: CommonErrorCode.UnAuthorized }),
-    );
   });
 });

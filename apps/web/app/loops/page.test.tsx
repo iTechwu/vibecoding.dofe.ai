@@ -474,8 +474,8 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
             tenantId: 'tenant-1',
             isSuperAdmin: false,
           },
-          source: 'tenant-membership',
-          permissions: ['tenant:member'],
+          source: 'authenticated-user',
+          permissions: ['authenticated'],
           roles: [],
           summary: { total: 3, granted: 3, blocked: 0 },
           assets: [
@@ -486,7 +486,7 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
               scope: 'tenant',
               requiredAction: 'create',
               granted: true,
-              sourcePermission: 'tenant:member',
+              sourcePermission: 'authenticated',
             },
             {
               assetKind: 'runtime-backend',
@@ -495,7 +495,7 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
               scope: 'workspace',
               requiredAction: 'operate',
               granted: true,
-              sourcePermission: 'tenant:member',
+              sourcePermission: 'authenticated',
             },
             {
               assetKind: 'mcp-server',
@@ -504,7 +504,7 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
               scope: 'tenant',
               requiredAction: 'admin',
               granted: true,
-              sourcePermission: 'tenant:member',
+              sourcePermission: 'authenticated',
             },
           ],
         },
@@ -1244,15 +1244,15 @@ describe('LoopsPage', () => {
     expect(within(capabilityRegistry).getByText('Network')).toBeInTheDocument();
     expect(within(capabilityRegistry).getByText('Approval')).toBeInTheDocument();
     expect(screen.getByText('2 third-party tool compatibilities planned')).toBeInTheDocument();
-    expect(within(capabilityRegistry).getByText('Tenant Access')).toBeInTheDocument();
+    expect(within(capabilityRegistry).getByText('Access')).toBeInTheDocument();
     expect(
-      within(capabilityRegistry).getByText('3 granted · 0 blocked · source: tenant membership'),
+      within(capabilityRegistry).getByText('3 granted · 0 blocked · source: authenticated user'),
     ).toBeInTheDocument();
     expect(screen.getByText('Delivery blueprints')).toBeInTheDocument();
     const recipeAdminRegion = screen.getByRole('region', { name: 'Recipe Admin' });
     expect(within(recipeAdminRegion).getByText('Tenant scope')).toBeInTheDocument();
     expect(screen.getAllByText('Granted').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('tenant:member').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('authenticated').length).toBeGreaterThan(0);
     expect(within(recipeAdminRegion).getByText('Create version')).toBeInTheDocument();
     expect(within(recipeAdminRegion).getByText('Review approval')).toBeInTheDocument();
     expect(within(recipeAdminRegion).getByText('Rollback version')).toBeInTheDocument();
@@ -1262,7 +1262,7 @@ describe('LoopsPage', () => {
       body: {
         actionId: 'createVersion',
         blueprintId: 'delivery-blueprints',
-        reason: 'tenant:member grants recipe version changes',
+        reason: 'authenticated grants recipe version changes',
         evidenceRefs: [],
       },
     });

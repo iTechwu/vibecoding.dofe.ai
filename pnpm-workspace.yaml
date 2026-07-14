@@ -23,7 +23,6 @@ overrides:
   '@dofe/infra-vector': 0.1.91
   '@dofe/infra-web-runtime': 0.1.91
   '@dofe/infra-workspace': 0.1.91
-  '@dofe/sso-node': 0.1.70
   '@dofe/sso-nestjs': 0.1.68
   '@dofe/file-sdk': 0.1.19
   '@dofe/file-sdk-web': 0.1.19

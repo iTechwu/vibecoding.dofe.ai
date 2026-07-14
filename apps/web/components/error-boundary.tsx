@@ -40,18 +40,16 @@ function DefaultErrorFallback({
   return (
     <div className="flex min-h-[200px] flex-col items-center justify-center p-8 text-center">
       <div className="mb-4 text-6xl">😵</div>
-      <h2 className="mb-2 text-xl font-semibold text-gray-900 dark:text-gray-100">
-        Something went wrong
-      </h2>
+      <h2 className="mb-2 text-xl font-semibold text-gray-900 dark:text-gray-100">页面发生错误</h2>
       <p className="mb-4 text-gray-600 dark:text-gray-400">
-        {error?.message || 'An unexpected error occurred on this page.'}
+        {error?.message || '页面发生意外错误。'}
       </p>
       {showRetry && onRetry && (
         <button
           onClick={onRetry}
           className="rounded-md bg-blue-600 px-4 py-2 text-white transition-colors hover:bg-blue-700"
         >
-          Retry
+          重试
         </button>
       )}
     </div>
@@ -70,10 +68,7 @@ function DefaultErrorFallback({
  * </ErrorBoundary>
  * ```
  */
-export class ErrorBoundary extends Component<
-  ErrorBoundaryProps,
-  ErrorBoundaryState
-> {
+export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false };

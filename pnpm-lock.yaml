@@ -26,7 +26,6 @@ overrides:
   '@dofe/infra-vector': 0.1.91
   '@dofe/infra-web-runtime': 0.1.91
   '@dofe/infra-workspace': 0.1.91
-  '@dofe/sso-node': 0.1.70
   '@dofe/sso-nestjs': 0.1.68
   '@dofe/file-sdk': 0.1.19
   '@dofe/file-sdk-web': 0.1.19
@@ -180,9 +179,6 @@ importers:
       '@dofe/sso-nestjs':
         specifier: 0.1.68
         version: 0.1.68(@nestjs/axios@4.0.1(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(axios@1.18.1(debug@4.4.3))(rxjs@7.8.2))(@nestjs/common@11.1.27(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.27)(rxjs@7.8.2)
-      '@dofe/sso-node':
-        specifier: 0.1.70
-        version: 0.1.70
       '@fastify/compress':
         specifier: ^8.3.1
         version: 8.3.1

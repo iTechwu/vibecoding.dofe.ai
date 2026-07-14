@@ -5,7 +5,14 @@ import { describe, expect, it, vi } from 'vitest';
 import navigationMessages from '@/locales/en/navigation.json';
 import { AppSidebar } from './app-sidebar';
 
-const mocks = vi.hoisted(() => ({ logout: vi.fn(), setOpenMobile: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  logout: vi.fn(),
+  setOpenMobile: vi.fn(),
+  push: vi.fn(),
+  createWorkspace: vi.fn(),
+  refetchDirectories: vi.fn(),
+  directoryBrowserError: false,
+}));
 
 vi.mock('@repo/ui', () => {
   const Container = ({ children }: React.PropsWithChildren) => <div>{children}</div>;
@@ -23,8 +30,19 @@ vi.mock('@repo/ui', () => {
         {children}
       </button>
     );
-  const Button = ({ children, asChild }: React.PropsWithChildren<{ asChild?: boolean }>) =>
-    asChild ? <>{children}</> : <button type="button">{children}</button>;
+  const Button = ({
+    children,
+    asChild,
+    ...props
+  }: React.PropsWithChildren<{ asChild?: boolean }> &
+    React.ButtonHTMLAttributes<HTMLButtonElement>) =>
+    asChild ? (
+      <>{children}</>
+    ) : (
+      <button type="button" {...props}>
+        {children}
+      </button>
+    );
   const DropdownItem = ({
     children,
     asChild,
@@ -63,6 +81,12 @@ vi.mock('@repo/ui', () => {
     DropdownMenuLabel: Container,
     DropdownMenuSeparator: () => <hr />,
     DropdownMenuTrigger: Container,
+    Dialog: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
+    DialogContent: Container,
+    DialogDescription: Container,
+    DialogFooter: Container,
+    DialogHeader: Container,
+    DialogTitle: Container,
   };
 });
 
@@ -81,6 +105,7 @@ vi.mock('@/i18n/navigation', () => ({
 
 vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ push: mocks.push }),
 }));
 
 vi.mock('@/lib/api/contracts/hooks', () => ({
@@ -108,6 +133,26 @@ vi.mock('@/lib/api/contracts/hooks', () => ({
         },
       },
     },
+  }),
+  useBrowseLoopWorkspaceDirectories: (path: string) => ({
+    data: {
+      body: {
+        data: {
+          path,
+          directories:
+            path === 'dofe'
+              ? [{ name: 'vibecoding', path: 'dofe/vibecoding' }]
+              : [{ name: 'dofe', path: 'dofe' }],
+        },
+      },
+    },
+    isLoading: false,
+    isError: mocks.directoryBrowserError,
+    refetch: mocks.refetchDirectories,
+  }),
+  useCreateLoopWorkspaceFromDirectory: () => ({
+    mutate: mocks.createWorkspace,
+    isPending: false,
   }),
 }));
 
@@ -175,5 +220,33 @@ describe('AppSidebar', () => {
     expect(mocks.setOpenMobile).toHaveBeenCalledWith(false);
     await user.click(screen.getByRole('button', { name: 'Sign Out' }));
     expect(mocks.logout).toHaveBeenCalledOnce();
+  });
+
+  it('creates a workspace by selecting a server-browsed local folder', async () => {
+    const user = userEvent.setup();
+    renderSidebar();
+
+    await user.click(screen.getByRole('button', { name: 'Choose local folder' }));
+    expect(screen.getByText('dofe')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'dofe' }));
+    await user.click(screen.getByRole('button', { name: 'vibecoding' }));
+    await user.click(screen.getByRole('button', { name: 'Use this folder' }));
+
+    expect(mocks.createWorkspace).toHaveBeenCalledWith(
+      { body: { path: 'dofe/vibecoding', makeDefault: true } },
+      expect.any(Object),
+    );
+  });
+
+  it('retries only the folder browser when the directory query fails', async () => {
+    const user = userEvent.setup();
+    mocks.directoryBrowserError = true;
+    renderSidebar();
+
+    await user.click(screen.getByRole('button', { name: 'Choose local folder' }));
+    await user.click(screen.getByRole('button', { name: 'Retry folder list' }));
+
+    expect(mocks.refetchDirectories).toHaveBeenCalledOnce();
+    mocks.directoryBrowserError = false;
   });
 });

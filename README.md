@@ -56,7 +56,7 @@ Loops 的产品假设是：**把大需求拆成小上下文，用规划/审查 a
 | Loops API          | 已实现 `/loops/issues`、`/spec`、`/decompose`、`/tests`、`/implementation`、`/review`、`/run`、`/global-review`、`/reloop`、`/finalize`、`/interventions`、`/doctor`、`/cost`、`/logs`、`/notifications`、`/resume`。 |
 | SSO 登录闭环       | 已实现 `/login`、`/auth/oidc/callback`、后端 OIDC authorize/callback/token/logout/revoke；真实浏览器 E2E 已验证 login → callback → refresh → logout。                                                                 |
 | SSO 文件边界       | 本项目不再保留本地 uploader 和 FileSource 真源；前端通过 `@dofe/file-sdk-web` + `/api/proxy/sso` 访问 SSO 文件能力。                                                                                                  |
-| RBAC 最小门禁      | Loops HTTP 端点已按 `read/create/operate/admin` 权限分组，无权限返回 403。                                                                                                                                            |
+| 登录即用           | Vibecoding 的所有页面和 Loops 操作仅要求有效登录；不再依赖模块 RBAC、超级管理员或 SSO 租户成员权限。                                                                                                                  |
 | 可观测性           | 已提供 doctor、cost guard、不可变 logs、notifications、resume 等运维入口。                                                                                                                                            |
 | 回归矩阵           | 已固化 `pnpm regression:docs0620`，覆盖质量门禁、类型检查、包测试、Loops Jest、doctor/db-doctor 和 build。                                                                                                            |
 

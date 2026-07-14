@@ -2,14 +2,10 @@ import { applyDecorators } from '@nestjs/common';
 import { Auth } from '../auth';
 import { RequireSuperAdmin } from './rbac.decorator';
 /**
- * 管理员权限预设
- *
- * @param requireSuper 是否要求系统超级管理员（默认 false，只要求团队管理员）
+ * Authenticated-user preset retained for legacy handlers named as admin routes.
  *
  * @example
- * @AdminAuth() // 团队管理员
- *
- * @AdminAuth(true) // 系统超级管理员
+ * @AdminAuth()
  * async systemSettings() {}
  */
 export function AdminAuth() {

@@ -19,9 +19,9 @@ export default function GlobalError({
     <html>
       <body>
         <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 bg-background">
-          <p className="text-destructive text-lg">Something went wrong</p>
+          <p className="text-destructive text-lg">页面发生错误</p>
           <Button variant="outline" onClick={reset} className="rounded-lg">
-            Try again
+            重试
           </Button>
         </div>
       </body>

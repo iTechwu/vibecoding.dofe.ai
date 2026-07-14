@@ -398,6 +398,28 @@ describe('Schemas', () => {
         expect(result.success).toBe(true);
       });
 
+      it('accepts only relative paths for local workspace directory selection', () => {
+        expect(
+          schemas.BrowseLoopWorkspaceDirectoriesQuerySchema.safeParse({ path: 'dofe/vibecoding' })
+            .success,
+        ).toBe(true);
+        expect(
+          schemas.CreateLoopWorkspaceFromDirectoryRequestSchema.safeParse({
+            path: 'dofe/vibecoding',
+            makeDefault: true,
+          }).success,
+        ).toBe(true);
+        expect(
+          schemas.CreateLoopWorkspaceFromDirectoryRequestSchema.safeParse({
+            path: '/Users/example/project',
+          }).success,
+        ).toBe(false);
+        expect(loopsContract.browseWorkspaceDirectories.path).toBe('/loops/workspaces/directories');
+        expect(loopsContract.createWorkspaceFromDirectory.path).toBe(
+          '/loops/workspaces/from-directory',
+        );
+      });
+
       it('should validate learning governance requests', () => {
         expect(
           schemas.LoopLearningGovernanceRequestSchema.safeParse({
@@ -646,7 +668,7 @@ describe('Schemas', () => {
             tenantId: 'tenant-1',
             teamId: 'team-1',
             actorId: 'sso-user-42',
-            sourcePermission: 'tenant:member',
+            sourcePermission: 'authenticated',
             requestedAt: '2026-06-24T00:00:00.000Z',
             reason: 'promote tenant recipe',
             evidenceRefs: ['loop-1'],

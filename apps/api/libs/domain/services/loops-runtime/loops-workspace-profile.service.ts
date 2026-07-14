@@ -1,4 +1,5 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import type {
@@ -49,6 +50,31 @@ interface PersistedWorkspace {
 interface PersistedProfile {
   current?: string;
   workspaces?: PersistedWorkspace[];
+}
+
+export interface BrowseLoopWorkspaceDirectoriesInput {
+  path?: string;
+}
+
+export interface CreateLoopWorkspaceFromDirectoryInput {
+  path: string;
+  makeDefault?: boolean;
+}
+
+export interface LoopWorkspaceDirectoryEntry {
+  name: string;
+  path: string;
+}
+
+export interface BrowseLoopWorkspaceDirectoriesResult {
+  path: string;
+  directories: LoopWorkspaceDirectoryEntry[];
+}
+
+export interface CreatedLoopWorkspaceFromDirectory {
+  workspaceId: string;
+  root: string;
+  workspaces: LoopWorkspacesResponse;
 }
 
 const AGENT_KEYS: LoopAgentKind[] = ['codex', 'claude-code'];
@@ -132,6 +158,80 @@ export class LoopsWorkspaceProfileService {
 
     await this.write(profile);
     return this.list();
+  }
+
+  /**
+   * Lists selectable local project folders without exposing arbitrary server paths.
+   * The request path is always relative to `LOOPS_DIRECTORY_BROWSER_ROOT`.
+   */
+  async browseDirectories(
+    input: BrowseLoopWorkspaceDirectoriesInput = {},
+  ): Promise<BrowseLoopWorkspaceDirectoriesResult> {
+    const directory = await this.resolveDirectoryWithinBrowserRoot(input.path ?? '');
+    const entries = await fs.readdir(directory.root, { withFileTypes: true });
+    const directories = await Promise.all(
+      entries.map(async (entry): Promise<LoopWorkspaceDirectoryEntry | undefined> => {
+        if (!entry.isDirectory() && !entry.isSymbolicLink()) return undefined;
+        try {
+          const child = await this.resolveDirectoryWithinBrowserRoot(
+            this.toBrowserRelativePath(path.join(directory.path, entry.name)),
+          );
+          return { name: entry.name, path: child.path };
+        } catch {
+          // Ignore unreadable entries and symlinks that leave the allowed root.
+          return undefined;
+        }
+      }),
+    );
+
+    return {
+      path: directory.path,
+      directories: directories
+        .filter((entry): entry is LoopWorkspaceDirectoryEntry => Boolean(entry))
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    };
+  }
+
+  /**
+   * Creates a workspace from a server-validated directory. The canonical root
+   * is the uniqueness key; callers never supply a workspace id or absolute path.
+   */
+  async createFromDirectory(
+    input: CreateLoopWorkspaceFromDirectoryInput,
+  ): Promise<CreatedLoopWorkspaceFromDirectory> {
+    const directory = await this.resolveDirectoryWithinBrowserRoot(input.path);
+    const profile = await this.readWithDefault();
+    const matchingWorkspace = await this.findWorkspaceByCanonicalRoot(profile, directory.root);
+    const workspaceId = matchingWorkspace?.workspaceId ?? this.workspaceIdForRoot(directory.root);
+    const existingIdx = profile.workspaces.findIndex((ws) => ws.workspaceId === workspaceId);
+    const workspace: PersistedWorkspace =
+      existingIdx >= 0
+        ? { ...profile.workspaces[existingIdx], root: directory.root }
+        : {
+            workspaceId,
+            root: directory.root,
+            containerWorkdir: DEFAULT_CONTAINER_WORKDIR,
+            agents: {
+              codex: { mode: 'local-cli' },
+              'claude-code': { mode: 'local-cli' },
+            },
+          };
+
+    if (existingIdx >= 0) {
+      profile.workspaces[existingIdx] = workspace;
+    } else {
+      profile.workspaces.push(workspace);
+    }
+    if (input.makeDefault || !profile.current) {
+      profile.current = workspaceId;
+    }
+    await this.write(profile);
+
+    return {
+      workspaceId,
+      root: directory.root,
+      workspaces: await this.list(),
+    };
   }
 
   async setCurrent(workspaceId: string): Promise<LoopWorkspacesResponse> {
@@ -253,6 +353,77 @@ export class LoopsWorkspaceProfileService {
       return profile.current;
     }
     return workspaces[0]?.workspaceId ?? DEFAULT_WORKSPACE_ID;
+  }
+
+  private async resolveDirectoryWithinBrowserRoot(
+    requestedPath: string,
+  ): Promise<{ root: string; path: string }> {
+    if (path.isAbsolute(requestedPath)) {
+      throw new Error('Selected directory is outside the configured project root.');
+    }
+    const configuredRoot = path.resolve(
+      process.env.LOOPS_DIRECTORY_BROWSER_ROOT ?? path.resolve(findLoopsWorkspaceRoot(), '../..'),
+    );
+    let browserRoot: string;
+    try {
+      browserRoot = await fs.realpath(configuredRoot);
+    } catch {
+      throw new Error('Configured project root is unavailable.');
+    }
+
+    const candidate = path.resolve(browserRoot, requestedPath || '.');
+    if (!this.isInsideBrowserRoot(browserRoot, candidate)) {
+      throw new Error('Selected directory is outside the configured project root.');
+    }
+
+    let canonicalRoot: string;
+    try {
+      canonicalRoot = await fs.realpath(candidate);
+      const stat = await fs.stat(canonicalRoot);
+      if (!stat.isDirectory()) throw new Error('not a directory');
+    } catch {
+      throw new Error('Selected directory is unavailable.');
+    }
+    if (!this.isInsideBrowserRoot(browserRoot, canonicalRoot)) {
+      throw new Error('Selected directory is outside the configured project root.');
+    }
+    return {
+      root: canonicalRoot,
+      path: this.toBrowserRelativePath(path.relative(browserRoot, canonicalRoot)),
+    };
+  }
+
+  private isInsideBrowserRoot(browserRoot: string, candidate: string): boolean {
+    return candidate === browserRoot || candidate.startsWith(`${browserRoot}${path.sep}`);
+  }
+
+  private toBrowserRelativePath(value: string): string {
+    return value === '.' ? '' : value.split(path.sep).join('/');
+  }
+
+  private async findWorkspaceByCanonicalRoot(
+    profile: Required<Pick<PersistedProfile, 'workspaces'>> & PersistedProfile,
+    root: string,
+  ): Promise<PersistedWorkspace | undefined> {
+    for (const workspace of profile.workspaces) {
+      try {
+        if ((await fs.realpath(workspace.root)) === root) return workspace;
+      } catch {
+        if (path.resolve(workspace.root) === root) return workspace;
+      }
+    }
+    return undefined;
+  }
+
+  private workspaceIdForRoot(root: string): string {
+    const folderName = path.basename(root);
+    const slug =
+      folderName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'workspace';
+    const fingerprint = createHash('sha256').update(root).digest('hex').slice(0, 8);
+    return `${slug}-${fingerprint}`;
   }
 
   private async readWithDefault(): Promise<

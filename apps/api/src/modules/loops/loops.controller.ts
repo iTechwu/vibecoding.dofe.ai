@@ -808,6 +808,12 @@ export class LoopsController {
       return success(await this.loopsService.listWorkspaces());
     });
   }
+  @TsRestHandler(c.browseWorkspaceDirectories)
+  async browseWorkspaceDirectories() {
+    return tsRestHandler(c.browseWorkspaceDirectories, async ({ query }) => {
+      return success(await this.loopsService.browseWorkspaceDirectories(query));
+    });
+  }
   @RequireSuperAdmin()
   @TsRestHandler(c.governLearning)
   async governLearning(@Req() req: AuthenticatedRequest) {
@@ -868,6 +874,24 @@ export class LoopsController {
         makeDefault: body.makeDefault ?? false,
       });
       return success(result);
+    });
+  }
+  @TsRestHandler(c.createWorkspaceFromDirectory)
+  async createWorkspaceFromDirectory(@Req() req: AuthenticatedRequest) {
+    return tsRestHandler(c.createWorkspaceFromDirectory, async ({ body }) => {
+      const createdWorkspace = await this.loopsService.createWorkspaceFromDirectory(body);
+      await this.auditLog(
+        req,
+        'CREATE',
+        'loops_workspace',
+        createdWorkspace.workspaceId,
+        'createWorkspaceFromDirectory',
+        {
+          root: createdWorkspace.root,
+          makeDefault: body.makeDefault ?? false,
+        },
+      );
+      return success(createdWorkspace.workspaces);
     });
   }
   @TsRestHandler(c.detectWorkspaceRuntime)
@@ -1272,7 +1296,7 @@ export class LoopsController {
         'adminGetTenantEvalAggregation',
         {
           targetTenantId: params.tenantId,
-          authorizationSource: 'sso-superadmin',
+          authorizationSource: 'authenticated-user',
           source: result.source,
           total: result.total,
         } as Prisma.InputJsonObject,
@@ -1457,7 +1481,7 @@ export class LoopsController {
       const result = await this.loopsService.archiveTenant({ ...body, tenantId: params.tenantId });
       await this.auditLog(req, 'CREATE', 'loops_archive', result.archiveId, 'adminArchiveTenant', {
         targetTenantId: params.tenantId,
-        authorizationSource: 'sso-superadmin',
+        authorizationSource: 'authenticated-user',
         fileCount: result.fileCount,
       } as Prisma.InputJsonObject);
       return success(result);
@@ -1471,7 +1495,7 @@ export class LoopsController {
       const result = await this.loopsService.listArchives(params.tenantId);
       await this.auditLog(req, 'UPDATE', 'loops_archive', params.tenantId, 'adminListArchives', {
         targetTenantId: params.tenantId,
-        authorizationSource: 'sso-superadmin',
+        authorizationSource: 'authenticated-user',
       } as Prisma.InputJsonObject);
       return success(result);
     });
@@ -1490,7 +1514,7 @@ export class LoopsController {
         'adminRefreshArchiveUrl',
         {
           targetTenantId: params.tenantId,
-          authorizationSource: 'sso-superadmin',
+          authorizationSource: 'authenticated-user',
         } as Prisma.InputJsonObject,
       );
       return success(result);
@@ -1509,7 +1533,7 @@ export class LoopsController {
         'historical-tenant-backfill',
         'backfill',
         {
-          authorizationSource: 'sso-superadmin',
+          authorizationSource: 'authenticated-user',
           dryRun: result.dryRun,
           examined: result.examined,
           updated: result.updated,

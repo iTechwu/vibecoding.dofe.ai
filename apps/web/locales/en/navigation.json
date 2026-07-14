@@ -18,6 +18,20 @@
   },
   "groupMain": "Core",
   "groupProjects": "Workspaces",
+  "workspacePicker": {
+    "open": "Choose local folder",
+    "title": "Choose a local project folder",
+    "description": "Only folders below the configured local project root are available.",
+    "current": "Current folder",
+    "root": "Project root",
+    "up": "Up one folder",
+    "choose": "Use this folder",
+    "cancel": "Cancel",
+    "empty": "No folders in this location.",
+    "loading": "Loading folders...",
+    "unavailable": "The local folder list is unavailable.",
+    "retry": "Retry folder list"
+  },
   "team": "Team: {team}",
   "groupSettings": "Settings",
   "breadcrumb": {

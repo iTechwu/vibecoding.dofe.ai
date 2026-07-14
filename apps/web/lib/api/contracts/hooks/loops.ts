@@ -25,6 +25,7 @@ export const loopsKeys = {
   ciChecks: () => [...loopsKeys.all, 'ci-checks'] as const,
   ciCheckPublications: (id: string) => [...loopsKeys.ciChecks(), id, 'publications'] as const,
   workspaces: () => [...loopsKeys.all, 'workspaces'] as const,
+  workspaceDirectories: (path: string) => [...loopsKeys.workspaces(), 'directories', path] as const,
   logs: (query: Record<string, unknown>) => [...loopsKeys.all, 'logs', query] as const,
   notifications: (query: Record<string, unknown>) =>
     [...loopsKeys.all, 'notifications', query] as const,
@@ -378,6 +379,16 @@ export function useLoopsWorkspaces() {
   return tsRestClient.loops.listWorkspaces.useQuery(queryKey, {}, { queryKey, staleTime: 0 });
 }
 
+/** Browse directories within the server-configured local project root. */
+export function useBrowseLoopWorkspaceDirectories(path: string, enabled = true) {
+  const queryKey = loopsKeys.workspaceDirectories(path);
+  return tsRestClient.loops.browseWorkspaceDirectories.useQuery(
+    queryKey,
+    { query: { path } },
+    { enabled, queryKey, staleTime: 0 },
+  );
+}
+
 /**
  * Create / update a workspace, detect runtime, or pull an image. All invalidate
  * the workspaces + agent-runtime queries so the console reflects the new state.
@@ -394,6 +405,12 @@ function useInvalidateWorkspaceRuntime() {
 export function useUpsertLoopsWorkspace() {
   const invalidate = useInvalidateWorkspaceRuntime();
   return tsRestClient.loops.upsertWorkspace.useMutation({ onSuccess: invalidate });
+}
+
+/** Create or reuse a workspace from a server-validated local directory. */
+export function useCreateLoopWorkspaceFromDirectory() {
+  const invalidate = useInvalidateWorkspaceRuntime();
+  return tsRestClient.loops.createWorkspaceFromDirectory.useMutation({ onSuccess: invalidate });
 }
 
 /** Dismiss or merge a reusable Loop learning memory item. */

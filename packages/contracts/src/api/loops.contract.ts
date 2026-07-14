@@ -64,6 +64,9 @@ import {
   LoopReviewSpecRequestSchema,
   PullLoopImageRequestSchema,
   PullLoopImageResponseSchema,
+  BrowseLoopWorkspaceDirectoriesQuerySchema,
+  BrowseLoopWorkspaceDirectoriesResponseSchema,
+  CreateLoopWorkspaceFromDirectoryRequestSchema,
   UpsertLoopWorkspaceRequestSchema,
   LoopWorkspacesResponseSchema,
   LoopWebhookTriggerSchema,
@@ -196,7 +199,7 @@ export const loopsContract = c.router(
         200: ApiResponseSchema(LoopAssetPermissionsResponseSchema),
       },
       summary:
-        'Get tenant-membership-derived Loops access for workspace, runtime, tools, eval, triggers, MCP, remote runner, and CI checks',
+        'Get authenticated-user Loops access for workspace, runtime, tools, eval, triggers, MCP, remote runner, and CI checks',
     },
     // --- Runtime Backend Registry (P0-2) ---
     listRuntimeBackends: {
@@ -256,8 +259,7 @@ export const loopsContract = c.router(
       responses: {
         200: ApiResponseSchema(LoopRemoteRunnerLeaseSchema),
       },
-      summary:
-        'Acquire a control-plane lease for a remote runner slot after tenant membership verification',
+      summary: 'Acquire a control-plane lease for a remote runner slot',
     },
     releaseRemoteRunnerLease: {
       method: 'POST',
@@ -267,7 +269,7 @@ export const loopsContract = c.router(
       responses: {
         200: ApiResponseSchema(LoopRemoteRunnerLeaseSchema),
       },
-      summary: 'Release a control-plane remote runner lease after tenant membership verification',
+      summary: 'Release a control-plane remote runner lease',
     },
     runRemoteRunnerJob: {
       method: 'POST',
@@ -277,8 +279,7 @@ export const loopsContract = c.router(
       responses: {
         200: ApiResponseSchema(LoopRemoteRunnerJobSchema),
       },
-      summary:
-        'Run a remote runner worker job and persist artifact metadata after tenant membership verification',
+      summary: 'Run a remote runner worker job and persist artifact metadata',
     },
     // --- MCP Server Registry (P1-2) ---
     listMcpServers: {
@@ -298,7 +299,7 @@ export const loopsContract = c.router(
       responses: {
         200: ApiResponseSchema(LoopMcpServerSchema),
       },
-      summary: 'Connect an MCP server configuration after tenant membership verification',
+      summary: 'Connect an MCP server configuration',
     },
     disconnectMcpServer: {
       method: 'POST',
@@ -308,7 +309,7 @@ export const loopsContract = c.router(
       responses: {
         200: ApiResponseSchema(LoopMcpServerSchema),
       },
-      summary: 'Disconnect an MCP server configuration after tenant membership verification',
+      summary: 'Disconnect an MCP server configuration',
     },
     testMcpServer: {
       method: 'POST',
@@ -338,7 +339,7 @@ export const loopsContract = c.router(
       responses: {
         200: ApiResponseSchema(LoopCiCheckIntegrationSchema),
       },
-      summary: 'Connect a CI check integration after tenant membership verification',
+      summary: 'Connect a CI check integration',
     },
     disconnectCiCheck: {
       method: 'POST',
@@ -348,7 +349,7 @@ export const loopsContract = c.router(
       responses: {
         200: ApiResponseSchema(LoopCiCheckIntegrationSchema),
       },
-      summary: 'Disconnect a CI check integration after tenant membership verification',
+      summary: 'Disconnect a CI check integration',
     },
     testCiCheck: {
       method: 'POST',
@@ -377,8 +378,7 @@ export const loopsContract = c.router(
       responses: {
         200: ApiResponseSchema(LoopRecipeAdminActionResponseSchema),
       },
-      summary:
-        'Request a tenant-scoped recipe admin action and persist an auditable artifact after tenant membership verification',
+      summary: 'Request a recipe admin action and persist an auditable artifact',
     },
     // --- Eval Suite / Eval Run (P0-3) ---
     listEvalSuites: {
@@ -445,7 +445,7 @@ export const loopsContract = c.router(
       pathParams: z.object({ tenantId: z.string().trim().min(1).max(128) }),
       query: EvalAggregationQuerySchema,
       responses: { 200: ApiResponseSchema(EvalAggregationResponseSchema) },
-      summary: 'SSO super-admin eval aggregation for an explicit target tenant',
+      summary: 'Get eval aggregation for an explicit target workspace',
     },
     runEvalAggregationWorker: {
       method: 'POST',
@@ -639,7 +639,7 @@ export const loopsContract = c.router(
           }),
         ),
       },
-      summary: 'SSO super-admin archive for an explicit target tenant',
+      summary: 'Archive an explicit target workspace',
     },
     adminListArchives: {
       method: 'GET',
@@ -662,7 +662,7 @@ export const loopsContract = c.router(
           }),
         ),
       },
-      summary: 'SSO super-admin archive list for an explicit target tenant',
+      summary: 'List archives for an explicit target workspace',
     },
     adminRefreshArchiveUrl: {
       method: 'POST',
@@ -681,7 +681,7 @@ export const loopsContract = c.router(
           }),
         ),
       },
-      summary: 'SSO super-admin refresh for an explicit target tenant archive',
+      summary: 'Refresh an explicit target workspace archive URL',
     },
     adminBackfillTenantScopes: {
       method: 'POST',
@@ -710,7 +710,7 @@ export const loopsContract = c.router(
           }),
         ),
       },
-      summary: 'SSO super-admin dry-run or audited backfill for historical LoopIssue tenant scope',
+      summary: 'Dry-run or apply a historical LoopIssue workspace-scope backfill',
     },
     // R36: Remote Runner external artifact upload
     uploadRemoteRunnerArtifacts: {
@@ -1081,6 +1081,15 @@ export const loopsContract = c.router(
       },
       summary: 'List configured Loops workspaces and the active workspace',
     },
+    browseWorkspaceDirectories: {
+      method: 'GET',
+      path: '/workspaces/directories',
+      query: BrowseLoopWorkspaceDirectoriesQuerySchema,
+      responses: {
+        200: ApiResponseSchema(BrowseLoopWorkspaceDirectoriesResponseSchema),
+      },
+      summary: 'Browse local project directories below the configured server-side root',
+    },
     governLearning: {
       method: 'POST',
       path: '/learnings/:learningId/governance',
@@ -1119,6 +1128,15 @@ export const loopsContract = c.router(
         200: ApiResponseSchema(LoopWorkspacesResponseSchema),
       },
       summary: 'Create or update a Loops workspace profile (root, agent modes)',
+    },
+    createWorkspaceFromDirectory: {
+      method: 'POST',
+      path: '/workspaces/from-directory',
+      body: CreateLoopWorkspaceFromDirectoryRequestSchema,
+      responses: {
+        200: ApiResponseSchema(LoopWorkspacesResponseSchema),
+      },
+      summary: 'Create or reuse a Loops workspace from a selected local project directory',
     },
     detectWorkspaceRuntime: {
       method: 'POST',

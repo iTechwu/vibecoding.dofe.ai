@@ -147,7 +147,15 @@
       "hint": "Configure the default workflow recipe applied when creating new Loops of each kind.",
       "loading": "Loading workspace recipes.",
       "empty": "No workspace recipe defaults recorded yet.",
-      "recipeMeta": "{kind} · {steps} steps · {usage} uses"
+      "recipeMeta": "{kind} · {steps} steps · {usage} uses",
+      "options": {
+        "default": "Default v1 (7-step)",
+        "fastFix": "Fast Fix (minimal gates)",
+        "riskyRelease": "Risky Release (all gates)",
+        "visualChange": "Visual Change (browser QA focused)",
+        "securitySensitive": "Security Sensitive (security first)"
+      },
+      "stepCount": "{count} steps"
     },
     "workforce": {
       "title": "Software Delivery Workforce",
@@ -689,9 +697,9 @@
       "tools": "{count} tools",
       "owners": "{count} owners",
       "assetPermissions": {
-        "title": "Tenant Access",
-        "summary": "{granted} granted · {blocked} blocked · source: tenant membership",
-        "loading": "Loading tenant access.",
+        "title": "Access",
+        "summary": "{granted} granted · {blocked} blocked · source: authenticated user",
+        "loading": "Loading access.",
         "granted": "Granted",
         "blocked": "Blocked"
       },

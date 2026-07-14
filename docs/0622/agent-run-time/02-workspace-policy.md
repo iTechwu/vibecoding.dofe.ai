@@ -55,6 +55,21 @@ containerWorkdir: /workspace
 - 默认目标 repo；
 - issue intake 默认值。
 
+### 本地文件夹选择与路径唯一性
+
+登录后的工作台通过侧栏工作区标题旁的文件夹选择器新建项目。用户只在
+受限的本地目录树中逐层选择文件夹，不输入 `workspaceId` 或绝对路径。
+
+- API 仅接受相对 `path`；`LOOPS_DIRECTORY_BROWSER_ROOT` 是可选的服务端
+  配置根。未配置时，开发环境从当前 Loops workspace 推导到代码目录根。
+  本机可显式设置为
+  `LOOPS_DIRECTORY_BROWSER_ROOT=/Users/techwu/Documents/codes`。
+- 服务端以 `realpath` 规范化被选目录，拒绝 `..`、绝对路径和逃逸到根目录
+  外的符号链接。
+- 规范化后的绝对目录是唯一键；重复选择同一目录会复用现有 workspace。
+  `workspaceId` 由服务端根据目录名和路径指纹生成，仅作为稳定内部标识。
+- 浏览接口只返回受限根下的相对目录项，不把任意服务器文件系统暴露给浏览器。
+
 ## 挂载规则
 
 Docker 命令只允许挂载 workspace root：

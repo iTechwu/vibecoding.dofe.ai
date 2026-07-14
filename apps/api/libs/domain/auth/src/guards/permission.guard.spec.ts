@@ -4,16 +4,6 @@ import type { ExecutionContext } from '@nestjs/common';
 import { CommonErrorCode } from '@repo/contracts/errors';
 import { PermissionGuard } from './permission.guard';
 import { RequireModulePermission, RequireSuperAdmin } from '../decorators/rbac.decorator';
-import type { PermissionService } from '../permission.service';
-
-function createLogger() {
-  return {
-    warn: jest.fn(),
-    error: jest.fn(),
-    info: jest.fn(),
-    debug: jest.fn(),
-  };
-}
 
 function createContext(
   handler: () => void,
@@ -31,7 +21,29 @@ function createContext(
 }
 
 describe('PermissionGuard', () => {
-  it('checks module permissions through the SSO-backed permission service', async () => {
+  it('allows every authenticated user through module and super-admin route metadata', async () => {
+    class HandlerHost {
+      @RequireSuperAdmin()
+      @RequireModulePermission('vibecoding', 'loops', 'admin')
+      handler() {
+        return undefined;
+      }
+    }
+
+    const guard = new PermissionGuard(new Reflector());
+
+    await expect(
+      guard.canActivate(
+        createContext(HandlerHost.prototype.handler, {
+          userId: 'authenticated-user',
+          isAdmin: false,
+          url: '/loops/doctor',
+        }),
+      ),
+    ).resolves.toBe(true);
+  });
+
+  it('allows an authenticated user through module permission metadata', async () => {
     class HandlerHost {
       @RequireModulePermission('vibecoding', 'loops', 'read')
       handler() {
@@ -39,11 +51,7 @@ describe('PermissionGuard', () => {
       }
     }
 
-    const service = {
-      isSuperAdmin: jest.fn().mockReturnValue(false),
-      checkModulePermission: jest.fn().mockResolvedValue(true),
-    } as unknown as PermissionService;
-    const guard = new PermissionGuard(new Reflector(), service, createLogger() as never);
+    const guard = new PermissionGuard(new Reflector());
 
     await expect(
       guard.canActivate(
@@ -54,16 +62,9 @@ describe('PermissionGuard', () => {
         }),
       ),
     ).resolves.toBe(true);
-    expect(service.checkModulePermission).toHaveBeenCalledWith(
-      '264656bc-8a28-4a00-bcd0-32b2fce051f5',
-      'vibecoding',
-      'loops',
-      'read',
-      undefined,
-    );
   });
 
-  it('denies missing SSO permissions with a generic unauthorized error', async () => {
+  it('allows an authenticated user without an SSO module permission', async () => {
     class HandlerHost {
       @RequireModulePermission('vibecoding', 'loops', 'operate')
       handler() {
@@ -71,11 +72,7 @@ describe('PermissionGuard', () => {
       }
     }
 
-    const service = {
-      isSuperAdmin: jest.fn().mockReturnValue(false),
-      checkModulePermission: jest.fn().mockResolvedValue(false),
-    } as unknown as PermissionService;
-    const guard = new PermissionGuard(new Reflector(), service, createLogger() as never);
+    const guard = new PermissionGuard(new Reflector());
 
     await expect(
       guard.canActivate(
@@ -85,10 +82,10 @@ describe('PermissionGuard', () => {
           url: '/loops/issues/issue-1/run',
         }),
       ),
-    ).rejects.toThrow(expect.objectContaining({ errorCode: CommonErrorCode.UnAuthorized }));
+    ).resolves.toBe(true);
   });
 
-  it('allows SSO-synced super admins to bypass module permission lookups', async () => {
+  it('allows SSO-synced super admins', async () => {
     class HandlerHost {
       @RequireModulePermission('vibecoding', 'loops', 'admin')
       handler() {
@@ -96,11 +93,7 @@ describe('PermissionGuard', () => {
       }
     }
 
-    const service = {
-      isSuperAdmin: jest.fn().mockReturnValue(true),
-      checkModulePermission: jest.fn(),
-    } as unknown as PermissionService;
-    const guard = new PermissionGuard(new Reflector(), service, createLogger() as never);
+    const guard = new PermissionGuard(new Reflector());
 
     await expect(
       guard.canActivate(
@@ -111,10 +104,9 @@ describe('PermissionGuard', () => {
         }),
       ),
     ).resolves.toBe(true);
-    expect(service.checkModulePermission).not.toHaveBeenCalled();
   });
 
-  it('enforces explicit super admin routes', async () => {
+  it('allows a regular authenticated user through legacy super-admin metadata', async () => {
     class HandlerHost {
       @RequireSuperAdmin()
       handler() {
@@ -122,10 +114,7 @@ describe('PermissionGuard', () => {
       }
     }
 
-    const service = {
-      isSuperAdmin: jest.fn().mockReturnValue(false),
-    } as unknown as PermissionService;
-    const guard = new PermissionGuard(new Reflector(), service, createLogger() as never);
+    const guard = new PermissionGuard(new Reflector());
 
     await expect(
       guard.canActivate(
@@ -135,6 +124,14 @@ describe('PermissionGuard', () => {
           url: '/admin',
         }),
       ),
+    ).resolves.toBe(true);
+  });
+
+  it('still rejects an unauthenticated request', async () => {
+    const guard = new PermissionGuard(new Reflector());
+
+    await expect(
+      guard.canActivate(createContext(() => undefined, { url: '/loops' })),
     ).rejects.toThrow(expect.objectContaining({ errorCode: CommonErrorCode.UnAuthorized }));
   });
 });

@@ -8,7 +8,7 @@
     "newIssue": "新建 Issue",
     "issues": {
       "eyebrow": "交付工作",
-      "title": "Issue",
+      "title": "工作项",
       "loading": "正在加载 Issue",
       "error": "无法加载 Issue。",
       "retry": "重试",
@@ -144,10 +144,18 @@
     },
     "workspaceRecipeAdmin": {
       "title": "工作区配方默认配置",
-      "hint": "配置每种 Loop 类型创建时默认应用的 Workflow Recipe。",
+      "hint": "配置每种流程类型创建时默认应用的工作流配方。",
       "loading": "正在加载工作区配方。",
       "empty": "暂无工作区默认配方记录。",
-      "recipeMeta": "{kind} · {steps} 步 · 使用 {usage} 次"
+      "recipeMeta": "{kind} · {steps} 步 · 使用 {usage} 次",
+      "options": {
+        "default": "默认版本（7 步）",
+        "fastFix": "快速修复（最少关卡）",
+        "riskyRelease": "高风险发布（全部关卡）",
+        "visualChange": "视觉变更（侧重浏览器质量检查）",
+        "securitySensitive": "安全敏感（安全优先）"
+      },
+      "stepCount": "{count} 步"
     },
     "workforce": {
       "title": "软件交付工作力",
@@ -216,8 +224,8 @@
       "okBadge": "正常",
       "attentionBadge": "需关注",
       "loadingBadge": "加载中",
-      "loops": "Loops",
-      "issues": "Issues",
+      "loops": "交付流程",
+      "issues": "工作项",
       "problems": "问题"
     },
     "guide": {
@@ -464,7 +472,7 @@
         "spec": "规格",
         "implementation": "实现",
         "review": "审阅",
-        "qa": "QA"
+        "qa": "质量检查"
       }
     },
     "ciEvidence": {
@@ -475,7 +483,7 @@
       "defaultCheck": "DofeAI 交付证据",
       "noHeadSha": "未记录 head SHA",
       "artifact": "产物",
-      "checkRun": "GitHub Check Run",
+      "checkRun": "GitHub 检查运行",
       "evidence": "Evidence 反向链接",
       "workPackages": "Work Package commit 映射",
       "noCommits": "尚未附加 Work Package commit。",
@@ -507,7 +515,7 @@
         "secondOpinionPassed": "二次审查",
         "browserQaPassed": "浏览器QA",
         "docsUpdated": "文档",
-        "prReady": "PR",
+        "prReady": "合并请求",
         "rollbackNote": "回滚",
         "canaryPassed": "灰度"
       }
@@ -570,9 +578,9 @@
       "loading": "正在加载运行时后端。",
       "empty": "暂无运行时后端探测结果。",
       "permissions": "权限",
-      "workspace": "Workspace",
+      "workspace": "工作区",
       "cost": "成本",
-      "fallback": "Fallback",
+      "fallback": "备用方案",
       "readyEvidence": "就绪证据：{evidence}",
       "status": {
         "ready": "就绪",
@@ -621,7 +629,7 @@
       }
     },
     "workspace": {
-      "title": "Workspace",
+      "title": "工作区",
       "loading": "正在加载 workspace。",
       "current": "{id}（当前）",
       "runtimeSummary": "运行时：Codex {codex} · Claude {claude}",
@@ -689,9 +697,9 @@
       "tools": "{count} 个工具",
       "owners": "{count} 个负责人",
       "assetPermissions": {
-        "title": "SSO 资产权限",
-        "summary": "{granted} 个已授权 · {blocked} 个阻断 · 来源：SSO",
-        "loading": "正在加载 SSO 资产权限。",
+        "title": "访问权限",
+        "summary": "{granted} 个已授权 · {blocked} 个阻断 · 来源：已登录用户",
+        "loading": "正在加载访问权限。",
         "granted": "已授权",
         "blocked": "阻断"
       },
@@ -742,7 +750,7 @@
       "global": "全局"
     },
     "table": {
-      "issue": "Issue",
+      "issue": "工作项",
       "status": "状态",
       "phase": "阶段",
       "priority": "优先级",
@@ -780,11 +788,11 @@
           "title": "告诉 Dofe 要改变什么"
         },
         "spec": {
-          "label": "02 Spec",
+          "label": "02 规格",
           "title": "审阅生成的交付框架"
         },
         "continue": {
-          "label": "03 Loop",
+          "label": "03 流程",
           "title": "带证据继续推进 Loop"
         }
       }
@@ -809,7 +817,7 @@
       "requestPlaceholder": "例如：为 Codex 运行时增加 Docker 兜底，并在控制台显示诊断",
       "requestHint": "至少 10 个字。先写一句需求，创建后可在详情页补充细节。",
       "requestError": "请至少用 10 个字描述需求。",
-      "workspaceLabel": "Workspace",
+      "workspaceLabel": "工作区",
       "workspaceLoading": "正在加载 workspace...",
       "workspaceEmpty": "暂无可用 workspace",
       "workspaceCurrent": "{id}（当前）",
@@ -821,7 +829,7 @@
         "title": "创建就绪度",
         "requestReady": "需求：已就绪",
         "requestPending": "需求：还需补充",
-        "workspaceReady": "Workspace：{workspace}",
+        "workspaceReady": "工作区：{workspace}",
         "workspacePending": "Workspace：缺失",
         "tenantReady": "租户：{tenant}",
         "tenantPending": "租户：未提供 — 将使用 workspace 范围",
@@ -911,7 +919,7 @@
     },
     "templates": {
       "feature": {
-        "label": "功能 Loop",
+        "label": "功能流程",
         "description": "规划并交付面向用户的能力，覆盖 UX、API 与测试证据。",
         "bestFor": "新的产品流程或明确的用户价值",
         "body": "背景：\n-\n\n用户目标：\n-\n\n范围：\n-\n\n不在范围内：\n-",
@@ -923,7 +931,7 @@
         ]
       },
       "bugfix": {
-        "label": "修复 Loop",
+        "label": "修复流程",
         "description": "记录复现路径、定位根因，并要求回归覆盖。",
         "bestFor": "生产缺陷或行为回归",
         "body": "观察到的行为：\n-\n\n预期行为：\n-\n\n复现步骤：\n1.\n2.\n3.\n\n影响：\n-",
@@ -935,7 +943,7 @@
         ]
       },
       "refactor": {
-        "label": "重构 Loop",
+        "label": "重构流程",
         "description": "在保护公开行为和合约的前提下调整内部实现。",
         "bestFor": "不改变产品行为的复杂度治理",
         "body": "当前痛点：\n-\n\n重构目标：\n-\n\n必须保持不变的行为：\n-\n\n风险区域：\n-",
@@ -947,7 +955,7 @@
         ]
       },
       "docs": {
-        "label": "文档 Loop",
+        "label": "文档流程",
         "description": "更新产品、架构或实现文档，并使用明确状态标签。",
         "bestFor": "规格、运行手册和发布说明工作",
         "body": "读者：\n-\n\n文档目标：\n-\n\n事实来源：\n-\n\n需要更新的页面或文件：\n-",
@@ -959,20 +967,20 @@
         ]
       },
       "integration": {
-        "label": "集成 Loop",
+        "label": "集成流程",
         "description": "定义外部系统边界、凭据、失败处理和证据。",
-        "bestFor": "Git provider、飞书、worker 或第三方 API 工作",
+        "bestFor": "Git 服务提供方、飞书、处理器或第三方 API 工作",
         "body": "外部系统：\n-\n\n触发器或数据流：\n-\n\n所需凭据或环境：\n-\n\n失败处理：\n-",
         "criteria": [
           "集成客户端边界与服务逻辑隔离",
           "缺失凭据或外部失败时能够安全降级",
-          "成功与失败路径由测试或文档化 smoke check 覆盖",
+          "成功与失败路径由测试或文档化冒烟检查覆盖",
           "运行日志避免输出原始敏感值"
         ]
       },
       "flow": {
-        "label": "流程 Loop",
-        "description": "建模有状态 agent 工作流，包含触发器、人工关卡、恢复和追踪。",
+        "label": "工作流程",
+        "description": "建模有状态智能体工作流，包含触发器、人工关卡、恢复和追踪。",
         "bestFor": "CrewAI 风格 Flow、审批或恢复工作流",
         "body": "触发器：\n-\n\n状态转换：\n-\n\n人工介入关卡：\n-\n\n恢复点：\n-\n\n可观测性：\n-",
         "criteria": [
@@ -988,20 +996,20 @@
   "conversation": {
     "eyebrow": "执行工作区",
     "title": "与 VibeCoding 协作",
-    "subtitle": "描述要推进的工作。每条新消息都会创建一个 Issue，并在这里持续呈现执行状态。",
+    "subtitle": "描述要推进的工作。每条新消息都会创建一个工作项，并在这里持续呈现执行状态。",
     "connection": "实时更新",
-    "historyLabel": "Issue 对话",
+    "historyLabel": "工作项对话",
     "emptyTitle": "从你要交付的工作开始",
-    "emptyDescription": "发送清晰的需求。VibeCoding 会创建 Issue、组织执行，并在这里返回进度。",
+    "emptyDescription": "发送清晰的需求。VibeCoding 会创建工作项、组织执行，并在这里返回进度。",
     "requestLabel": "你的需求",
-    "issueCreated": "Issue 已创建",
-    "issueMeta": "Issue {id} · {priority}",
+    "issueCreated": "工作项已创建",
+    "issueMeta": "工作项 {id} · {priority}",
     "openIssue": "打开详情",
     "composerLabel": "描述要执行的工作",
     "composerPlaceholder": "描述你想构建、修复或优化的内容...",
     "composerHint": "Enter 发送 · Shift + Enter 换行",
     "send": "发送需求",
-    "createError": "无法创建 Issue。请检查网络后重试。",
+    "createError": "无法创建工作项。请检查网络后重试。",
     "tracking": {
       "analysis": "需求分析",
       "blocked": "已阻塞",
@@ -1029,11 +1037,11 @@
     }
   },
   "detail": {
-    "loading": "正在加载 issue...",
-    "notFound": "未找到 issue。",
+    "loading": "正在加载工作项...",
+    "notFound": "未找到工作项。",
     "back": "返回队列",
     "actions": {
-      "advance": "继续推进 Loop",
+      "advance": "继续推进流程",
       "generateSpec": "生成规格",
       "runStep": "继续推进",
       "globalReview": "最终审阅",
@@ -1044,9 +1052,9 @@
     "stats": {
       "round": "轮次",
       "spec": "规格",
-      "shards": "Shards",
+      "shards": "分片",
       "calls": "调用",
-      "tokens": "Tokens",
+      "tokens": "令牌",
       "paused": "已暂停",
       "yes": "是",
       "no": "否"
@@ -1069,33 +1077,33 @@
       "currentPhase": "当前流程",
       "currentAgent": "当前执行者",
       "runtimeMode": "运行方式",
-      "activeShard": "当前 Shard",
+      "activeShard": "当前分片",
       "latestEvent": "最近事件",
-      "liveRuntime": "已匹配到此 issue",
+      "liveRuntime": "已匹配到此工作项",
       "inferredRuntime": "未匹配运行态，按阶段推断",
       "humanGateMuted": "需要人工审阅",
       "humanGateRuntime": "批准后恢复",
-      "noWorkspace": "未上报 workspace",
+      "noWorkspace": "未上报工作区",
       "notReported": "未上报",
-      "noShard": "尚未拆分 Shard",
+      "noShard": "尚未拆分分片",
       "noEvents": "暂无事件"
     },
     "handoff": {
-      "title": "Agent 交接时间线",
+      "title": "智能体交接时间线",
       "summary": "当前：{current} → 下一步：{next}",
       "blocked": "交接已阻塞。请先解决异常，下一个角色才能接管。",
       "current": "当前",
       "next": "下一步",
       "humanGate": "人工关卡",
       "evidence": "证据",
-      "noCurrent": "无进行中的角色 — Loop 已交付或尚未开始。"
+      "noCurrent": "无进行中的角色，流程已交付或尚未开始。"
     },
     "deliveryEvidence": {
       "title": "交付证据",
-      "summary": "基于本 Loop 的规格、工作、测试、审阅和成本生成的 PR 交付证据摘要。",
+      "summary": "基于本流程的规格、工作、测试、审阅和成本生成的合并请求交付证据摘要。",
       "loading": "正在加载交付证据。",
-      "prReady": "可发起 PR",
-      "prNotReady": "暂未达到 PR 标准",
+      "prReady": "可发起合并请求",
+      "prNotReady": "暂未达到合并请求标准",
       "globalVerdict": "整体结论",
       "spec": "规格",
       "workPackages": "工作包",
@@ -1103,11 +1111,11 @@
       "reviews": "审阅",
       "risks": "风险",
       "cost": "成本",
-      "prStatus": "PR 状态",
-      "prComment": "PR 评论预览",
-      "openPr": "打开 PR",
-      "noConvergencePr": "暂无收敛 PR — 完成 Loop 交付后将发布证据。",
-      "costSummary": "{tokens} tokens · {calls} 次调用 · {budget}",
+      "prStatus": "合并请求状态",
+      "prComment": "合并请求评论预览",
+      "openPr": "打开合并请求",
+      "noConvergencePr": "暂无收敛合并请求，完成流程交付后将发布证据。",
+      "costSummary": "{tokens} 个令牌 · {calls} 次调用 · {budget}",
       "testsSummary": "{passed}/{total} 通过 · {failed} 失败 · 覆盖率 {coverage}",
       "reviewsSummary": "{shardReviews} 次分片审阅 · {findings} 个发现",
       "workPackageCount": "{count} 个工作包"
@@ -1147,7 +1155,7 @@
         "waiveBatch": "批量豁免冲突"
       },
       "browserQa": {
-        "title": "Browser QA",
+        "title": "浏览器质量检查",
         "targetUrl": "目标 URL",
         "checkedFlows": "检查流程",
         "viewports": "视口",
@@ -1157,15 +1165,15 @@
         "viewportAll": "所有视口",
         "authSessionRef": "登录会话引用",
         "notes": "备注",
-        "run": "运行 Browser QA",
+        "run": "运行浏览器质量检查",
         "sessionPolicy": "会话策略",
         "authMode": "登录模式",
         "testAccountRef": "测试账号引用",
         "saveSessionPolicy": "保存会话策略",
-        "artifactsTitle": "最新 QA 产物",
+        "artifactsTitle": "最新质量检查产物",
         "screenshots": "截图",
-        "traces": "Trace",
-        "handoffs": "Handoff",
+        "traces": "追踪记录",
+        "handoffs": "交接记录",
         "ignoredFailures": "已忽略导航取消",
         "visualDiffs": "视觉差异",
         "handoffTitle": "浏览器接手",
@@ -1177,28 +1185,28 @@
         "save": "保存必需关卡"
       },
       "releaseCanary": {
-        "title": "发布 canary",
+        "title": "发布灰度验证",
         "status": "状态",
         "targetUrl": "目标 URL",
         "environment": "环境",
         "environmentOwner": "环境负责人",
         "reason": "原因",
         "rollbackNote": "回滚说明",
-        "record": "记录 canary"
+        "record": "记录灰度验证"
       },
       "runtimeOverride": {
-        "title": "运行时 override",
+        "title": "运行时覆盖",
         "scope": "范围",
         "reason": "原因",
         "expiresAt": "过期时间",
-        "record": "记录 override"
+        "record": "记录覆盖"
       },
       "governance": {
         "title": "治理状态",
-        "browserQa": "Browser QA 登录：{mode}",
+        "browserQa": "浏览器质量检查登录：{mode}",
         "secondOpinion": "二次审查必需：{required}",
-        "canary": "Canary：{status}",
-        "runtimeOverrides": "{count} 个运行时 override"
+        "canary": "灰度验证：{status}",
+        "runtimeOverrides": "{count} 个运行时覆盖"
       },
       "releaseChecklist": {
         "specApproved": "规格已批准",
@@ -1206,15 +1214,15 @@
         "testsPassed": "测试",
         "requiredReviewsPassed": "审阅",
         "secondOpinionPassed": "二次审查",
-        "browserQaPassed": "Browser QA",
+        "browserQaPassed": "浏览器质量检查",
         "docsUpdated": "文档",
-        "prReady": "PR",
+        "prReady": "合并请求",
         "rollbackNote": "回滚",
-        "canaryPassed": "Canary"
+        "canaryPassed": "灰度验证"
       }
     },
     "exceptions": {
-      "title": "Issue 异常",
+      "title": "工作项异常",
       "evidence": "证据",
       "runtime": "运行态",
       "round": "第 {round} 轮",
@@ -1225,21 +1233,21 @@
         "priority": "{priority} 优先级"
       },
       "owners": {
-        "operator": "Loop 操作人",
+        "operator": "流程操作人",
         "reviewer": "审阅人",
         "product": "产品负责人"
       },
       "actions": {
-        "resume": "恢复 loop 或分配恢复处理",
-        "reviewEvidence": "审阅失败证据并启动 re-loop",
+        "resume": "恢复流程或分配恢复处理",
+        "reviewEvidence": "审阅失败证据并启动返工流程",
         "monitorBudget": "监控预算；如触发保护则缩短范围"
       }
     },
     "nextAction": {
       "title": "下一步动作",
       "resume": {
-        "label": "恢复 loop",
-        "body": "此 issue 已暂停。继续运行 agent 步骤前请先恢复。"
+        "label": "恢复流程",
+        "body": "此工作项已暂停。继续运行智能体步骤前请先恢复。"
       },
       "generateSpec": {
         "label": "生成规格",
@@ -1251,19 +1259,19 @@
       },
       "decompose": {
         "label": "规划工作",
-        "body": "将已批准规格拆成自包含的实现 shards。"
+        "body": "将已批准规格拆成自包含的实现分片。"
       },
       "globalReview": {
         "label": "最终审阅",
-        "body": "在最终标注和交付前执行跨 shard 审阅。"
+        "body": "在最终标注和交付前执行跨分片审阅。"
       },
       "reloop": {
-        "label": "启动 re-loop",
+        "label": "启动返工流程",
         "body": "全局审阅发现剩余工作。创建下一版规格。"
       },
       "finalize": {
         "label": "完成交付",
-        "body": "关闭 issue，并展示可审计的交付证据。"
+        "body": "关闭工作项，并展示可审计的交付证据。"
       },
       "closed": {
         "label": "已关闭",
@@ -1271,7 +1279,7 @@
       },
       "runStep": {
         "label": "继续推进",
-        "body": "推进下一个可运行 shard，完成实现、测试与审阅。"
+        "body": "推进下一个可运行分片，完成实现、测试与审阅。"
       }
     },
     "tabs": {
@@ -1282,28 +1290,28 @@
     },
     "runDiagnostics": {
       "ready": "准备继续推进 {shard}。",
-      "paused": "Loop 当前已暂停。请先恢复，再继续推进。",
-      "closed": "此 issue 已关闭。",
+      "paused": "流程当前已暂停。请先恢复，再继续推进。",
+      "closed": "此工作项已关闭。",
       "spec": "调度器运行前需要先批准规格。",
       "shards": "已批准规格正在等待规划。继续推进会创建工作计划。",
       "complete": "所有执行单元已完成。继续推进会执行最终审阅或完成交付。",
-      "recovering": "{shard} 已中断或处于进行中。继续推进会自动恢复它并继续调度。",
+      "recovering": "{shard} 已中断或处于进行中。继续推进会自动恢复并继续调度。",
       "reviewSpec": "唯一必要的人工关卡是规格审阅。请在规格区域批准或要求修改。",
-      "reloop": "全局审阅发现剩余工作。请使用 re-loop 面板创建下一版规格。",
-      "dependencies": "下一个 TODO shard 正在等待依赖完成。",
+      "reloop": "全局审阅发现剩余工作。请使用返工面板创建下一版规格。",
+      "dependencies": "下一个待办分片正在等待依赖完成。",
       "none": "当前没有可自动推进的工作，通常是依赖尚未完成。"
     },
     "humanGateChecklist": {
       "title": "人工关卡检查清单",
       "items": {
         "readSpec": "阅读生成的规格和验收标准。",
-        "decide": "批准或请求修改后，agent 才会继续。",
-        "resume": "批准后，继续推进 Loop 会恢复自动化。"
+        "decide": "批准或请求修改后，智能体才会继续。",
+        "resume": "批准后，继续推进流程会恢复自动化。"
       }
     },
     "evidence": {
       "title": "证据覆盖",
-      "summary": "{shards} 个 shards · {annotations} 条标注",
+      "summary": "{shards} 个分片 · {annotations} 条标注",
       "missingTitle": "缺失证据",
       "completeTitle": "证据完整",
       "complete": "所有必需证据均已记录。",
@@ -1315,7 +1323,7 @@
     },
     "learningMemory": {
       "title": "学习记忆",
-      "summary": "此 Loop 沉淀 {count} 条可复用 learning",
+      "summary": "此流程沉淀 {count} 条可复用经验",
       "confidence": "{value}% 置信度",
       "evidence": "{count} 条证据链接",
       "kind": {
@@ -1328,13 +1336,13 @@
       }
     },
     "reloop": {
-      "title": "Re-loop",
+      "title": "返工流程",
       "body": "全局结论为 {verdict}。创建下一版规格并送回人工审阅。",
       "placeholder": "修订说明",
-      "start": "启动 Re-loop"
+      "start": "启动返工流程"
     },
     "intake": {
-      "title": "Issue 录入",
+      "title": "工作项录入",
       "submitter": "提交人",
       "targetRepo": "目标仓库",
       "rawPayload": "原始载荷",
@@ -1343,7 +1351,7 @@
       "ruleSnapshot": "规则快照",
       "ruleSnapshotMeta": "{present}/{total} 条规则 · {status}",
       "ruleSnapshotCaptured": "捕获于 {time}",
-      "agentReadable": "Agent 可读",
+      "agentReadable": "智能体可读",
       "notAgentReadable": "需要规则"
     },
     "requirements": {
@@ -1351,7 +1359,7 @@
       "summary": "{accepted}/{total} 已接受 · {percent}%",
       "covered": "已覆盖",
       "needsWork": "需处理",
-      "meta": "规格 {spec} · shards {shards} · 测试 {tests} · 审阅 {reviews}"
+      "meta": "规格 {spec} · 分片 {shards} · 测试 {tests} · 审阅 {reviews}"
     },
     "specReview": {
       "title": "规格审阅",
@@ -1372,8 +1380,8 @@
       "diffRemovedPreview": "移除行"
     },
     "shards": {
-      "title": "Shards",
-      "empty": "暂无 shards。",
+      "title": "分片",
+      "empty": "暂无分片。",
       "meta": "预估上下文 {context} · 依赖 {depends}",
       "latestTest": "最近测试：{status} · 第 {round} 轮",
       "latestReview": "最近审阅：{verdict} · 第 {round} 轮",
@@ -1386,27 +1394,27 @@
         "queued": {
           "title": "等待自动调度",
           "owner": "调度器",
-          "body": "依赖满足后，Loop 引擎会自动选择这个 shard。"
+          "body": "依赖满足后，流程引擎会自动选择这个分片。"
         },
         "implement": {
           "title": "可自动实现",
           "owner": "Claude Code",
-          "body": "实现、测试执行和 shard 审阅都由自动化 loop 完成。"
+          "body": "实现、测试执行和分片审阅都由自动化流程完成。"
         },
         "testing": {
           "title": "自动化进行中",
-          "owner": "Loop 引擎",
-          "body": "引擎正在为此 shard 收集实现、测试和审阅证据。"
+          "owner": "流程引擎",
+          "body": "引擎正在为此分片收集实现、测试和审阅证据。"
         },
         "done": {
-          "title": "Shard 已完成",
+          "title": "分片已完成",
           "owner": "Codex",
           "body": "所需的实现、测试和审阅证据已记录。"
         },
         "attention": {
           "title": "需要自动恢复",
           "owner": "调度器",
-          "body": "继续推进会尽可能恢复中断工作，或重新进入 shard loop。"
+          "body": "继续推进会尽可能恢复中断工作，或重新进入分片流程。"
         }
       }
     },
@@ -1454,7 +1462,7 @@
       "labels": {
         "specRevision": "规格修订",
         "requirements": "需求",
-        "shards": "Shards",
+        "shards": "分片",
         "tests": "测试"
       },
       "values": {

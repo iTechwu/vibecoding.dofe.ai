@@ -225,14 +225,9 @@ export function clearAll(): void {
 // Tenant Storage Operations
 // ============================================================================
 //
-// IMPORTANT — non-authoritative UI cache only (P1-1, SSO single-source):
-// The tenant snapshot persisted here is a display/UI hint mirrored from the SSO
-// session for offline rendering and as the `x-current-tenant` *candidate* on
-// requests. It is NOT an ownership or authorization source. The server resolves
-// the authoritative tenant from the verified SSO subject (SsoScopeService) and
-// ignores any client-supplied value that is not in the user's SSO scope. These
-// helpers must never be treated as ground truth and must not re-enter any
-// mutation body as the tenant owner.
+// The tenant snapshot is a display/UI cache mirrored from the SSO session and
+// sent as a Loops workspace selection hint. It is not an authorization source;
+// Vibecoding grants product access to every authenticated user.
 
 export function setCurrentTenantId(tenantId: string): void {
   if (typeof window === 'undefined') return;

@@ -304,7 +304,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     return target.reviewSpec(created.issue.id, { action: 'approve', reviewer: 'tester' });
   }
 
-  it('derives Loops asset permissions from verified tenant membership', async () => {
+  it('derives Loops asset permissions from authenticated access', async () => {
     const snapshot = await service.assetPermissions({
       userId: 'sso-user-42',
       teamId: 'team-1',
@@ -312,8 +312,8 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
       isAdmin: false,
     });
 
-    expect(snapshot.source).toBe('tenant-membership');
-    expect(snapshot.permissions).toEqual(['tenant:member']);
+    expect(snapshot.source).toBe('authenticated-user');
+    expect(snapshot.permissions).toEqual(['authenticated']);
     expect(snapshot.identity).toMatchObject({
       userId: 'sso-user-42',
       teamId: 'team-1',
@@ -337,7 +337,17 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(snapshot.summary).toEqual({ total: 9, granted: 9, blocked: 0 });
   });
 
-  it('blocks runtime backend operations without verified tenant membership', async () => {
+  it('grants every Loops asset operation to an authenticated user without a tenant context', async () => {
+    const snapshot = await service.assetPermissions({
+      userId: 'authenticated-user',
+      isAdmin: false,
+    });
+
+    expect(snapshot.assets.every((asset) => asset.granted)).toBe(true);
+    expect(snapshot.summary.blocked).toBe(0);
+  });
+
+  it('allows runtime backend operations without a selected workspace', async () => {
     const scopedService = new LoopsService(
       store,
       createFakeRunner(),
@@ -376,7 +386,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
           isAdmin: false,
         },
       ),
-    ).rejects.toThrow('Verified tenant membership is required for runtime-backend');
+    ).resolves.toMatchObject({ permissionProfile: 'read-only' });
   });
 
   it('allows runtime backend operations for a verified tenant member', async () => {
@@ -530,7 +540,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     );
   });
 
-  it('blocks remote runner leases without verified tenant membership', async () => {
+  it('allows remote runner leases without a selected workspace', async () => {
     const { scopedService } = createTenantScopedLoopsService(store);
 
     await expect(
@@ -549,7 +559,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
           isAdmin: false,
         },
       ),
-    ).rejects.toThrow('Verified tenant membership is required for remote-runner');
+    ).resolves.toMatchObject({ status: 'leased' });
   });
 
   it('acquires and releases remote runner control-plane leases for a tenant member', async () => {
@@ -601,7 +611,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     });
   });
 
-  it('blocks remote runner jobs without verified tenant membership', async () => {
+  it('allows remote runner jobs without a selected workspace', async () => {
     const { scopedService } = createTenantScopedLoopsService(store);
 
     await expect(
@@ -620,7 +630,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
           isAdmin: false,
         },
       ),
-    ).rejects.toThrow('Verified tenant membership is required for remote-runner');
+    ).resolves.toMatchObject({ status: 'succeeded' });
   });
 
   it('runs a remote runner worker job and persists artifact metadata', async () => {
@@ -717,7 +727,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     );
   });
 
-  it('blocks MCP server lifecycle actions without verified tenant membership', async () => {
+  it('allows MCP server lifecycle actions without a selected workspace', async () => {
     const { scopedService } = createTenantScopedLoopsService(store);
 
     await expect(
@@ -731,7 +741,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
           isAdmin: false,
         },
       ),
-    ).rejects.toThrow('Verified tenant membership is required for mcp-server');
+    ).resolves.toMatchObject({ status: 'connected' });
   });
 
   it('connects MCP server configs for a tenant member', async () => {
@@ -823,7 +833,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     ).toBe(true);
   });
 
-  it('blocks CI check lifecycle actions without verified tenant membership', async () => {
+  it('allows CI check lifecycle actions without a selected workspace', async () => {
     const { scopedService } = createTenantScopedLoopsService(store);
 
     await expect(
@@ -837,7 +847,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
           isAdmin: false,
         },
       ),
-    ).rejects.toThrow('Verified tenant membership is required for ci-check');
+    ).resolves.toMatchObject({ status: 'connected' });
   });
 
   it('connects CI check integrations for a tenant member', async () => {
@@ -1052,7 +1062,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     });
   });
 
-  it('blocks recipe admin action requests without verified tenant membership', async () => {
+  it('allows recipe admin action requests without a selected workspace', async () => {
     const { scopedService } = createTenantScopedLoopsService(store);
 
     await expect(
@@ -1070,7 +1080,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
           isAdmin: false,
         },
       ),
-    ).rejects.toThrow('Verified tenant membership is required for blueprint');
+    ).resolves.toMatchObject({ status: 'requested' });
   });
 
   it('records tenant-scoped recipe admin action artifacts', async () => {
@@ -1102,7 +1112,7 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
       tenantId: 'tenant-1',
       teamId: 'team-1',
       actorId: 'sso-user-42',
-      sourcePermission: 'tenant:member',
+      sourcePermission: 'authenticated',
       reason: 'rollback failed recipe',
       evidenceRefs: ['issue-1'],
       message:

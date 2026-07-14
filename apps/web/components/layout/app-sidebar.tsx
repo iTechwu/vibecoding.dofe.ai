@@ -5,6 +5,12 @@ import {
   AvatarFallback,
   AvatarImage,
   Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -26,22 +32,30 @@ import {
 } from '@repo/ui';
 import {
   Bot,
+  ChevronLeft,
   Ellipsis,
   FolderKanban,
+  FolderPlus,
   House,
   Inbox,
   LayoutDashboard,
   ListTodo,
   LogOut,
   Plus,
+  RefreshCw,
   Search,
   Settings,
   User,
 } from 'lucide-react';
+import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Link, usePathname } from '@/i18n/navigation';
-import { useLoopsWorkspaces } from '@/lib/api/contracts/hooks';
+import {
+  useBrowseLoopWorkspaceDirectories,
+  useCreateLoopWorkspaceFromDirectory,
+  useLoopsWorkspaces,
+} from '@/lib/api/contracts/hooks';
 import { useApp, useAuth } from '@/providers';
 import { getSelectedWorkspace, workspaceLabel } from '@/components/workbench/workspace-context';
 
@@ -58,11 +72,16 @@ function getInitials(nickname: string | null | undefined): string {
 export function AppSidebar() {
   const t = useTranslations('navigation');
   const pathname = usePathname() || '/';
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { brandName } = useApp();
   const { user, logout } = useAuth();
   const { isMobile, setOpenMobile } = useSidebar();
   const workspacesQuery = useLoopsWorkspaces();
+  const [directoryPickerOpen, setDirectoryPickerOpen] = useState(false);
+  const [directoryPath, setDirectoryPath] = useState('');
+  const directoryQuery = useBrowseLoopWorkspaceDirectories(directoryPath, directoryPickerOpen);
+  const createWorkspace = useCreateLoopWorkspaceFromDirectory();
   const initials = getInitials(user?.nickname);
   const workspaces = workspacesQuery.data?.body.data.workspaces ?? [];
   const selectedWorkspace = getSelectedWorkspace(
@@ -85,6 +104,22 @@ export function AppSidebar() {
   };
   const closeMobileSidebar = () => {
     if (isMobile) setOpenMobile(false);
+  };
+  const browseResult = directoryQuery.data?.body.data;
+  const browserPath = browseResult?.path ?? directoryPath;
+  const parentDirectoryPath = browserPath.split('/').filter(Boolean).slice(0, -1).join('/');
+  const selectCurrentDirectory = () => {
+    createWorkspace.mutate(
+      { body: { path: browserPath || '.', makeDefault: true } },
+      {
+        onSuccess: (result) => {
+          const workspaceId = result.body.data.current;
+          setDirectoryPickerOpen(false);
+          closeMobileSidebar();
+          router.push(`/loops?workspace=${encodeURIComponent(workspaceId)}`);
+        },
+      },
+    );
   };
 
   return (
@@ -142,7 +177,22 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
-          <SidebarGroupLabel>{t('groupProjects')}</SidebarGroupLabel>
+          <SidebarGroupLabel className="flex items-center justify-between gap-1">
+            <span>{t('groupProjects')}</span>
+            <Button
+              aria-label={t('workspacePicker.open')}
+              className="size-6 p-0"
+              onClick={() => {
+                setDirectoryPath('');
+                setDirectoryPickerOpen(true);
+              }}
+              size="icon"
+              title={t('workspacePicker.open')}
+              variant="ghost"
+            >
+              <FolderPlus className="size-4" />
+            </Button>
+          </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="px-2">
               {workspaces.map((workspace) => {
@@ -167,6 +217,80 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+
+      <Dialog open={directoryPickerOpen} onOpenChange={setDirectoryPickerOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('workspacePicker.title')}</DialogTitle>
+            <DialogDescription>{t('workspacePicker.description')}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex min-h-9 items-center gap-2 rounded-md border px-2 text-sm">
+              <FolderKanban className="size-4 shrink-0 text-muted-foreground" />
+              <span className="truncate" title={browserPath || t('workspacePicker.root')}>
+                {browserPath || t('workspacePicker.root')}
+              </span>
+            </div>
+            <div className="max-h-72 overflow-y-auto rounded-md border p-1">
+              <Button
+                aria-label={t('workspacePicker.up')}
+                className="mb-1 w-full justify-start"
+                disabled={!browserPath || directoryQuery.isLoading}
+                onClick={() => setDirectoryPath(parentDirectoryPath)}
+                size="sm"
+                title={t('workspacePicker.up')}
+                variant="ghost"
+              >
+                <ChevronLeft className="size-4" />
+                <span>{t('workspacePicker.up')}</span>
+              </Button>
+              {directoryQuery.isLoading ? (
+                <p className="px-2 py-4 text-sm text-muted-foreground">
+                  {t('workspacePicker.loading')}
+                </p>
+              ) : directoryQuery.isError ? (
+                <div className="space-y-2 px-2 py-4">
+                  <p className="text-sm text-destructive">{t('workspacePicker.unavailable')}</p>
+                  <Button
+                    className="w-full justify-start"
+                    onClick={() => void directoryQuery.refetch()}
+                    size="sm"
+                    variant="outline"
+                  >
+                    <RefreshCw className="size-4" />
+                    <span>{t('workspacePicker.retry')}</span>
+                  </Button>
+                </div>
+              ) : browseResult?.directories.length ? (
+                browseResult.directories.map((directory) => (
+                  <Button
+                    className="w-full justify-start"
+                    key={directory.path}
+                    onClick={() => setDirectoryPath(directory.path)}
+                    size="sm"
+                    variant="ghost"
+                  >
+                    <FolderKanban className="size-4" />
+                    <span className="truncate">{directory.name}</span>
+                  </Button>
+                ))
+              ) : (
+                <p className="px-2 py-4 text-sm text-muted-foreground">
+                  {t('workspacePicker.empty')}
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setDirectoryPickerOpen(false)} variant="outline">
+              {t('workspacePicker.cancel')}
+            </Button>
+            <Button disabled={createWorkspace.isPending} onClick={selectCurrentDirectory}>
+              {t('workspacePicker.choose')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <SidebarFooter className="border-t border-sidebar-border">
         <SidebarMenu>

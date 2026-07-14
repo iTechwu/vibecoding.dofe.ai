@@ -18,7 +18,6 @@ import { AuthGuard } from './auth.guard';
 import { AuthService } from './auth.service';
 import { AuthValidationService } from './auth-validation.service';
 import { PermissionGuard } from './guards/permission.guard';
-import { PermissionService } from './permission.service';
 import { SsoScopeService } from './sso-scope.service';
 import { UserSyncService } from './user-sync.service';
 import { VibecodingSsoAuthHooks } from './sso-auth-hooks';
@@ -74,7 +73,6 @@ import { IS_PUBLIC_KEY } from './auth';
     // Existing providers
     AuthValidationService,
     UserSyncService,
-    PermissionService,
     SsoScopeService,
     PermissionGuard,
     {
@@ -91,7 +89,6 @@ import { IS_PUBLIC_KEY } from './auth';
     AuthService,
     AuthValidationService,
     UserSyncService,
-    PermissionService,
     SsoScopeService,
     PermissionGuard,
     JwtModule,

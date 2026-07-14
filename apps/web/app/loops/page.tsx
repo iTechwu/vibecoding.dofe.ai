@@ -1983,26 +1983,30 @@ function LoopsOperationsDashboard() {
                   className="flex items-center gap-3 rounded-md border bg-muted/20 p-2"
                   key={kind}
                 >
-                  <span className="w-20 shrink-0 font-medium capitalize">{kind}</span>
+                  <span className="w-20 shrink-0 font-medium">
+                    {t(`recipeAdmin.kind.${kind}`)}
+                  </span>
                   <select
                     className="h-7 flex-1 rounded border bg-background px-2 text-xs"
                     defaultValue="default-v1"
                     name={`recipe-default-${kind}`}
                   >
-                    <option value="default-v1">Default v1 (7-step)</option>
-                    <option value="fast-fix">Fast Fix (minimal gates)</option>
-                    <option value="risky-release">Risky Release (all gates)</option>
-                    <option value="visual-change">Visual Change (browser QA focused)</option>
+                    <option value="default-v1">{t('workspaceRecipeAdmin.options.default')}</option>
+                    <option value="fast-fix">{t('workspaceRecipeAdmin.options.fastFix')}</option>
+                    <option value="risky-release">
+                      {t('workspaceRecipeAdmin.options.riskyRelease')}
+                    </option>
+                    <option value="visual-change">
+                      {t('workspaceRecipeAdmin.options.visualChange')}
+                    </option>
                     <option value="security-sensitive">
-                      Security Sensitive (security first)
+                      {t('workspaceRecipeAdmin.options.securitySensitive')}
                     </option>
                   </select>
                   <span className="shrink-0 rounded bg-background px-2 py-0.5 text-muted-foreground">
-                    {['feature'].includes(kind)
-                      ? '7 steps'
-                      : kind === 'bugfix'
-                        ? '5 steps'
-                        : '6 steps'}
+                    {t('workspaceRecipeAdmin.stepCount', {
+                      count: kind === 'feature' ? 7 : kind === 'bugfix' ? 5 : 6,
+                    })}
                   </span>
                 </div>
               ))}

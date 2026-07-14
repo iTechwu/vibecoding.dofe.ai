@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import type { LoopsDockerClient } from './loops-docker.client';
@@ -16,6 +16,7 @@ describe('LoopsWorkspaceProfileService (0622 · B2)', () => {
     writeFileSync(join(workspace, 'AGENTS.md'), '# Agent rules\nFollow project guidance.');
     writeFileSync(join(workspace, 'CLAUDE.md'), '# Claude rules\nUse service boundaries.');
     previousEnv.LOOPS_WORKSPACE_ROOT = process.env.LOOPS_WORKSPACE_ROOT;
+    previousEnv.LOOPS_DIRECTORY_BROWSER_ROOT = process.env.LOOPS_DIRECTORY_BROWSER_ROOT;
     process.env.LOOPS_WORKSPACE_ROOT = workspace;
     service = new LoopsWorkspaceProfileService();
   });
@@ -26,7 +27,77 @@ describe('LoopsWorkspaceProfileService (0622 · B2)', () => {
     } else {
       process.env.LOOPS_WORKSPACE_ROOT = previousEnv.LOOPS_WORKSPACE_ROOT;
     }
+    if (previousEnv.LOOPS_DIRECTORY_BROWSER_ROOT === undefined) {
+      delete process.env.LOOPS_DIRECTORY_BROWSER_ROOT;
+    } else {
+      process.env.LOOPS_DIRECTORY_BROWSER_ROOT = previousEnv.LOOPS_DIRECTORY_BROWSER_ROOT;
+    }
     rmSync(workspace, { recursive: true, force: true });
+  });
+
+  it('browses only directories below the configured local project root', async () => {
+    const browserRoot = mkdtempSync(join(tmpdir(), 'loops-directory-browser-'));
+    try {
+      mkdirSync(join(browserRoot, 'dofe', 'vibecoding'), { recursive: true });
+      mkdirSync(join(browserRoot, 'dofe', 'infra'), { recursive: true });
+      writeFileSync(join(browserRoot, 'README.md'), 'not a directory');
+      process.env.LOOPS_DIRECTORY_BROWSER_ROOT = browserRoot;
+
+      const root = await service.browseDirectories({ path: '' });
+      expect(root.path).toBe('');
+      expect(root.directories).toEqual([{ name: 'dofe', path: 'dofe' }]);
+
+      const nested = await service.browseDirectories({ path: 'dofe' });
+      expect(nested.directories).toEqual([
+        { name: 'infra', path: 'dofe/infra' },
+        { name: 'vibecoding', path: 'dofe/vibecoding' },
+      ]);
+    } finally {
+      rmSync(browserRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects directory browser traversal and symlink escapes', async () => {
+    const browserRoot = mkdtempSync(join(tmpdir(), 'loops-directory-browser-'));
+    const outsideRoot = mkdtempSync(join(tmpdir(), 'loops-directory-outside-'));
+    try {
+      mkdirSync(join(browserRoot, 'safe'), { recursive: true });
+      symlinkSync(outsideRoot, join(browserRoot, 'escape'));
+      process.env.LOOPS_DIRECTORY_BROWSER_ROOT = browserRoot;
+
+      await expect(service.browseDirectories({ path: '../' })).rejects.toThrow(
+        'outside the configured project root',
+      );
+      await expect(service.browseDirectories({ path: 'escape' })).rejects.toThrow(
+        'outside the configured project root',
+      );
+    } finally {
+      rmSync(browserRoot, { recursive: true, force: true });
+      rmSync(outsideRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('creates and reuses a workspace by canonical selected directory path', async () => {
+    const browserRoot = mkdtempSync(join(tmpdir(), 'loops-directory-browser-'));
+    try {
+      mkdirSync(join(browserRoot, 'product', 'vibecoding'), { recursive: true });
+      process.env.LOOPS_DIRECTORY_BROWSER_ROOT = browserRoot;
+
+      const created = await service.createFromDirectory({
+        path: 'product/vibecoding',
+        makeDefault: true,
+      });
+      const repeated = await service.createFromDirectory({ path: 'product/vibecoding' });
+
+      expect(created.workspaceId).toMatch(/^vibecoding-/);
+      expect(repeated.workspaceId).toBe(created.workspaceId);
+      expect(
+        repeated.workspaces.workspaces.filter((item) => item.root === created.root),
+      ).toHaveLength(1);
+      expect(repeated.workspaces.current).toBe(created.workspaceId);
+    } finally {
+      rmSync(browserRoot, { recursive: true, force: true });
+    }
   });
 
   it('returns a default workspace derived from LOOPS_WORKSPACE_ROOT when no profile exists', async () => {

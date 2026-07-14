@@ -13,6 +13,87 @@ export type LoopListItem = LoopListResponse['list'][number];
 export type RiskLevel = 'critical' | 'warning' | 'info';
 
 // ============================================================================
+// i18n: 数据模型层无法调用 useTranslations()，因此所有面向展示的文案以
+// `LocalizableText` 节点返回——`key` 是相对 `loops` 命名空间的点分路径，
+// `params` 为可选插值（值可以是原始值，也可以是嵌套的 LocalizableText，
+// 由 `tx()` 递归解析）。组件层用 `tx(node, t)` 渲染。
+// ============================================================================
+export interface LocalizableText {
+  key: string;
+  params?: Record<string, string | number | LocalizableText>;
+}
+
+export function L(
+  key: string,
+  params?: Record<string, string | number | LocalizableText>,
+): LocalizableText {
+  return params ? { key, params } : { key };
+}
+
+/** 把已经是最终文案（后端返回或已本地化）的字符串包装为节点，原样透传。 */
+export function raw(value: string | number): LocalizableText {
+  return L('dashboard.model.raw', { value });
+}
+
+/** 渲染助手：递归解析嵌套的 LocalizableText 参数后交给 next-intl 翻译。 */
+export function tx(
+  node: LocalizableText | undefined | null,
+  t: (key: string, params?: Record<string, unknown>) => string,
+): string {
+  if (!node) return '';
+  const params =
+    node.params &&
+    Object.fromEntries(
+      Object.entries(node.params).map(([k, v]) => [
+        k,
+        typeof v === 'object' && v !== null && 'key' in v ? tx(v, t) : v,
+      ]),
+    );
+  return params ? t(node.key, params) : t(node.key);
+}
+
+const PHASE_KEYS: Record<string, string> = {
+  PHASE_0_INTAKE: 'dashboard.model.phases.intake',
+  PHASE_1_SPEC: 'dashboard.model.phases.spec',
+  PHASE_2_REVIEW: 'dashboard.model.phases.specReview',
+  PHASE_3_DECOMPOSE: 'dashboard.model.phases.plan',
+  PHASE_4_IMPLEMENT: 'dashboard.model.phases.build',
+  PHASE_5_REVIEW: 'dashboard.model.phases.test',
+  PHASE_6_CONVERGE: 'dashboard.model.phases.converge',
+  PHASE_7_GLOBAL_REVIEW: 'dashboard.model.phases.globalReview',
+  PHASE_8_ANNOTATE: 'dashboard.model.phases.annotate',
+  CLOSED: 'dashboard.model.phases.close',
+  PAUSED: 'dashboard.model.phases.paused',
+};
+
+/** 把内部 phase 枚举映射为可本地化的阶段文案节点。 */
+export function phaseL(phase: string | undefined | null): LocalizableText {
+  return L(PHASE_KEYS[phase ?? ''] ?? 'dashboard.model.phases.intake');
+}
+
+const STATUS_KEYS: Record<string, string> = {
+  APPROVED: 'dashboard.model.statuses.approved',
+  ARCHIVED: 'dashboard.model.statuses.archived',
+  BLOCKED: 'dashboard.model.statuses.blocked',
+  CLOSED: 'dashboard.model.statuses.closed',
+  DRAFT: 'dashboard.model.statuses.draft',
+  FAILED: 'dashboard.model.statuses.failed',
+  FINALIZED: 'dashboard.model.statuses.finalized',
+  IN_LOOP: 'dashboard.model.statuses.inLoop',
+  IN_PROGRESS: 'dashboard.model.statuses.inProgress',
+  OPEN: 'dashboard.model.statuses.open',
+  PAUSED: 'dashboard.model.statuses.paused',
+  PENDING: 'dashboard.model.statuses.pending',
+  REJECTED: 'dashboard.model.statuses.rejected',
+};
+
+/** 把 loop 状态枚举映射为可本地化文案节点（无匹配时回退为原值字面量）。 */
+export function statusL(status: string | undefined | null): LocalizableText {
+  const key = STATUS_KEYS[status ?? ''];
+  return key ? L(key) : L('dashboard.model.raw', { value: status ?? '' });
+}
+
+// ============================================================================
 // Software Delivery Workforce (P0-1, 0623 · CrewAI gap 1).
 // Maps the internal phase state machine to Crews/Personas so users read
 // "who is doing what" without learning PHASE_4 / shards. Runtime execution
@@ -66,7 +147,7 @@ export interface HandoffStep {
   state: HandoffStepState;
   runtimeBackend: 'codex-cli' | 'claude-code-cli' | 'human' | 'system';
   humanGate: boolean;
-  evidence: string;
+  evidence: LocalizableText;
 }
 
 export interface AgentHandoffTimeline {
@@ -277,18 +358,23 @@ export function buildAgentHandoffTimeline(
           ? 'current'
           : 'waiting';
 
-    let evidence = '';
+    let evidence: LocalizableText = L('dashboard.model.evidence.empty');
     if (persona === 'builder' && detail.shards && detail.shards.length) {
       const done = detail.shards.filter((s) => s.status === 'DONE').length;
-      evidence = `${done}/${detail.shards.length} shards`;
+      evidence = L('dashboard.model.evidence.shards', { done, total: detail.shards.length });
     } else if (persona === 'test-runner' && detail.testRecords && detail.testRecords.length) {
       const passed = detail.testRecords.filter((t) => t.status === 'TEST-PASS').length;
-      evidence = `${passed}/${detail.testRecords.length} tests`;
+      evidence = L('dashboard.model.evidence.tests', { passed, total: detail.testRecords.length });
     } else if (persona === 'code-reviewer' && detail.reviewRecords && detail.reviewRecords.length) {
       const passed = detail.reviewRecords.filter((r) => r.verdict === 'PASS').length;
-      evidence = `${passed}/${detail.reviewRecords.length} reviews`;
+      evidence = L('dashboard.model.evidence.reviews', {
+        passed,
+        total: detail.reviewRecords.length,
+      });
     } else if (persona === 'evidence-curator') {
-      evidence = finalized ? 'Delivery evidence curated' : 'Pending finalization';
+      evidence = finalized
+        ? L('dashboard.model.delivery.curated')
+        : L('dashboard.model.delivery.pendingFinalization');
     }
 
     return {
@@ -326,8 +412,8 @@ export interface RiskItem {
   title: string;
   href: string;
   level: RiskLevel;
-  reason: string;
-  meta: string;
+  reason: LocalizableText;
+  meta: LocalizableText;
 }
 
 export interface AgingItem {
@@ -347,9 +433,9 @@ export interface ReviewInboxItem {
   source: 'action' | 'notification';
   priority: RiskLevel;
   gateKind: ReviewGateKind;
-  label: string;
-  meta: string;
-  owner?: string;
+  label: LocalizableText;
+  meta: LocalizableText;
+  owner?: LocalizableText;
   slaHours?: number;
   ageHours?: number;
   evidence?: string;
@@ -375,13 +461,13 @@ export interface LoopBoardItem {
   title: string;
   href: string;
   priority: string;
-  mode: 'Plan' | 'Code' | 'Review' | 'Recovery' | 'Delivered';
-  humanGate: 'Spec review' | 'Exception' | 'Release' | 'None' | 'Done';
-  evidence: string;
+  mode: LocalizableText;
+  humanGate: LocalizableText;
+  evidence: LocalizableText;
   gitRef: string;
-  prState: string;
-  blocker?: string;
-  meta: string;
+  prState: LocalizableText;
+  blocker?: LocalizableText;
+  meta: LocalizableText;
 }
 
 export interface LoopBoardColumn {
@@ -400,15 +486,15 @@ export type ExceptionSource =
 
 export interface ExceptionCenterItem {
   id: string;
-  title: string;
+  title: LocalizableText;
   href: string;
   level: RiskLevel;
-  reason: string;
-  owner: string;
-  action: string;
-  evidence: string;
-  impact: string;
-  retryAction: string;
+  reason: LocalizableText;
+  owner: LocalizableText;
+  action: LocalizableText;
+  evidence: LocalizableText;
+  impact: LocalizableText;
+  retryAction: LocalizableText;
   evidenceHref: string;
   source: ExceptionSource;
 }
@@ -432,8 +518,8 @@ export interface OperatorFocusItem {
   kind: OperatorFocusKind;
   title: string;
   href: string;
-  label: string;
-  meta: string;
+  label: LocalizableText;
+  meta: LocalizableText;
   level: RiskLevel;
 }
 
@@ -773,8 +859,8 @@ export function buildRiskQueue(items: LoopListItem[], cost?: LoopCostResponse): 
           title: item.issue.title,
           href,
           level: 'critical',
-          reason: 'Paused',
-          meta: item.state.phase,
+          reason: L('dashboard.model.reasons.paused'),
+          meta: phaseL(item.state.phase),
         });
       }
       if (costItem?.tripped) {
@@ -783,8 +869,8 @@ export function buildRiskQueue(items: LoopListItem[], cost?: LoopCostResponse): 
           title: item.issue.title,
           href,
           level: 'critical',
-          reason: 'Cost guard tripped',
-          meta: `${costItem.callsRemaining} calls remaining`,
+          reason: L('dashboard.model.reasons.costGuardTripped'),
+          meta: L('dashboard.model.evidence.callsRemaining', { calls: costItem.callsRemaining }),
         });
       }
       if (item.state?.globalVerdict && item.state.globalVerdict !== 'PASS') {
@@ -793,8 +879,8 @@ export function buildRiskQueue(items: LoopListItem[], cost?: LoopCostResponse): 
           title: item.issue.title,
           href,
           level: 'warning',
-          reason: 'Global review needs work',
-          meta: `round ${item.state.round}`,
+          reason: L('dashboard.model.reasons.globalReviewNeedsWork'),
+          meta: L('dashboard.model.evidence.round', { round: item.state.round ?? 0 }),
         });
       }
       if (item.issue.priority === 'P0' || item.issue.priority === 'P1') {
@@ -803,8 +889,8 @@ export function buildRiskQueue(items: LoopListItem[], cost?: LoopCostResponse): 
           title: item.issue.title,
           href,
           level: item.issue.priority === 'P0' ? 'critical' : 'warning',
-          reason: `${item.issue.priority} priority`,
-          meta: item.issue.status,
+          reason: L('dashboard.model.evidence.priority', { priority: item.issue.priority }),
+          meta: statusL(item.issue.status),
         });
       }
       return risks;
@@ -861,8 +947,11 @@ export function buildReviewInbox(
           label: item.label,
           phase: item.phase,
         }),
-        label: item.label,
-        meta: `${formatPhase(item.phase ?? 'PHASE_0_INTAKE')} · ${item.priority}`,
+        label: raw(item.label),
+        meta: L('dashboard.model.meta.phasePriority', {
+          phase: phaseL(item.phase ?? 'PHASE_0_INTAKE'),
+          priority: item.priority,
+        }),
       }),
     );
 
@@ -882,8 +971,11 @@ export function buildReviewInbox(
             ? 'critical'
             : 'warning',
         gateKind: inferReviewGateKind({ kind: item.kind, label: item.title }),
-        label: formatLoopLabel(item.kind, locale),
-        meta: `${formatLoopStatus(item.status, locale)} · ${item.created}`,
+        label: raw(formatLoopLabel(item.kind, locale)),
+        meta: L('dashboard.model.meta.statusCreated', {
+          status: raw(formatLoopStatus(item.status, locale)),
+          created: item.created,
+        }),
       }),
     );
 
@@ -956,7 +1048,10 @@ export function buildOperatorFocus(input: {
       title: topException.title,
       href: topException.href,
       label: topException.action,
-      meta: `${topException.owner} · ${topException.reason}`,
+      meta: L('dashboard.model.meta.ownerReason', {
+        owner: topException.owner,
+        reason: topException.reason,
+      }),
       level: topException.level,
     };
   }
@@ -967,8 +1062,11 @@ export function buildOperatorFocus(input: {
       kind: 'continue',
       title: topAction.title,
       href: topAction.href,
-      label: topAction.label,
-      meta: `${formatPhase(topAction.phase ?? 'PHASE_0_INTAKE')} · ${topAction.priority}`,
+      label: raw(topAction.label),
+      meta: L('dashboard.model.meta.phasePriority', {
+        phase: phaseL(topAction.phase ?? 'PHASE_0_INTAKE'),
+        priority: topAction.priority,
+      }),
       level: 'info',
     };
   }
@@ -977,8 +1075,8 @@ export function buildOperatorFocus(input: {
     kind: 'create',
     title: '',
     href: '/loops/new',
-    label: '',
-    meta: '',
+    label: raw(''),
+    meta: raw(''),
     level: 'info',
   };
 }
@@ -1019,9 +1117,13 @@ export function buildSecondOpinionConflictItems(
         source: 'action' as const,
         priority: ageHours >= slaHours ? ('critical' as RiskLevel) : ('warning' as RiskLevel),
         gateKind: 'release' as ReviewGateKind,
-        label: 'Second opinion conflict',
-        meta: `Phase ${formatPhase(item.state?.phase ?? '')} · ${conflictCount} conflict(s) · SLA ${slaHours}h`,
-        owner: 'Release reviewer',
+        label: L('dashboard.model.review.secondOpinionConflict'),
+        meta: L('dashboard.model.meta.secondOpinion', {
+          phase: phaseL(item.state?.phase),
+          conflicts: conflictCount,
+          sla: slaHours,
+        }),
+        owner: L('dashboard.model.owners.releaseReviewer'),
         slaHours,
         ageHours,
         evidence: item.releaseGate?.blocker ?? item.releaseGate?.id,
@@ -1104,22 +1206,22 @@ function isReadyToShipCandidate(item: LoopListItem) {
 function inferMode(item: LoopListItem): LoopBoardItem['mode'] {
   const phase = item.state?.phase;
   if (item.issue.status === 'CLOSED' || phase === 'CLOSED' || item.state?.finalized) {
-    return 'Delivered';
+    return L('dashboard.model.modes.delivered');
   }
   if (item.state?.paused || item.state?.globalVerdict === 'FAIL') {
-    return 'Recovery';
+    return L('dashboard.model.modes.recovery');
   }
   if (phase === 'PHASE_0_INTAKE' || phase === 'PHASE_1_SPEC' || phase === 'PHASE_3_DECOMPOSE') {
-    return 'Plan';
+    return L('dashboard.model.modes.plan');
   }
   if (
     phase === 'PHASE_2_REVIEW' ||
     phase === 'PHASE_6_CONVERGE' ||
     phase === 'PHASE_7_GLOBAL_REVIEW'
   ) {
-    return 'Review';
+    return L('dashboard.model.modes.review');
   }
-  return 'Code';
+  return L('dashboard.model.modes.code');
 }
 
 function inferHumanGate(
@@ -1127,29 +1229,32 @@ function inferHumanGate(
   costItem?: LoopCostResponse['loops'][number],
 ): LoopBoardItem['humanGate'] {
   if (item.issue.status === 'CLOSED' || item.state?.phase === 'CLOSED' || item.state?.finalized) {
-    return 'Done';
+    return L('dashboard.model.humanGates.done');
   }
   if (
     item.state?.paused ||
     costItem?.tripped ||
     (item.state?.globalVerdict && item.state.globalVerdict !== 'PASS')
   ) {
-    return 'Exception';
+    return L('dashboard.model.humanGates.exception');
   }
   if (item.state?.phase === 'PHASE_2_REVIEW') {
-    return 'Spec review';
+    return L('dashboard.model.humanGates.specReview');
   }
   if (isReadyToShipCandidate(item)) {
-    return 'Release';
+    return L('dashboard.model.humanGates.release');
   }
-  return 'None';
+  return L('dashboard.model.humanGates.none');
 }
 
-function inferBlocker(item: LoopListItem, costItem?: LoopCostResponse['loops'][number]) {
-  if (costItem?.tripped) return 'Cost guard';
-  if (item.state?.paused) return 'Paused';
+function inferBlocker(
+  item: LoopListItem,
+  costItem?: LoopCostResponse['loops'][number],
+): LocalizableText | undefined {
+  if (costItem?.tripped) return L('dashboard.model.reasons.costGuard');
+  if (item.state?.paused) return L('dashboard.model.reasons.paused');
   if (item.state?.globalVerdict && item.state.globalVerdict !== 'PASS') {
-    return `Global ${item.state.globalVerdict}`;
+    return L('dashboard.model.reasons.globalVerdict', { verdict: item.state.globalVerdict });
   }
   return undefined;
 }
@@ -1180,16 +1285,22 @@ export function buildLoopBoard(items: LoopListItem[], cost?: LoopCostResponse): 
       priority: item.issue.priority,
       mode: inferMode(item),
       humanGate: inferHumanGate(item, costItem),
-      evidence: shardsTotal > 0 ? `${shardsDone}/${shardsTotal} shards` : 'No shards yet',
+      evidence:
+        shardsTotal > 0
+          ? L('dashboard.model.evidence.shards', { done: shardsDone, total: shardsTotal })
+          : L('dashboard.model.evidence.noShards'),
       gitRef: `loops/${item.issue.id}`,
       prState:
         item.issue.status === 'CLOSED' || item.state?.finalized
-          ? 'Ready for audit'
+          ? L('dashboard.model.prState.readyForAudit')
           : isReadyToShipCandidate(item)
-            ? 'Ready to ship'
-            : 'Pending PR',
+            ? L('dashboard.model.prState.readyToShip')
+            : L('dashboard.model.prState.pendingPr'),
       blocker: inferBlocker(item, costItem),
-      meta: `${formatPhase(phase)} · round ${item.state?.round ?? 0}`,
+      meta: L('dashboard.model.meta.phaseRound', {
+        phase: phaseL(phase),
+        round: item.state?.round ?? 0,
+      }),
     });
   }
 
@@ -1233,15 +1344,18 @@ export function buildExceptionCenter(
     if (costItem?.tripped) {
       exceptions.push({
         id: `${item.issue.id}-cost`,
-        title: item.issue.title,
+        title: raw(item.issue.title),
         href,
         level: 'critical',
-        reason: 'Cost guard tripped',
-        owner: 'Product owner',
-        action: 'Adjust budget or reduce scope',
-        evidence: `${costItem.callsRemaining} calls · ${costItem.tokensRemaining} tokens remaining`,
-        impact: 'Loop is paused before more agent calls are allowed',
-        retryAction: 'Raise cap or split scope, then continue the loop',
+        reason: L('dashboard.model.reasons.costGuardTripped'),
+        owner: L('dashboard.model.owners.productOwner'),
+        action: L('dashboard.model.actions.adjustBudget'),
+        evidence: L('dashboard.model.evidence.callsTokensRemaining', {
+          calls: costItem.callsRemaining,
+          tokens: costItem.tokensRemaining,
+        }),
+        impact: L('dashboard.model.impact.costGuard'),
+        retryAction: L('dashboard.model.retryAction.costGuard'),
         evidenceHref: href,
         source: 'cost',
       });
@@ -1250,15 +1364,18 @@ export function buildExceptionCenter(
     if (item.state?.paused) {
       exceptions.push({
         id: `${item.issue.id}-paused`,
-        title: item.issue.title,
+        title: raw(item.issue.title),
         href,
         level: 'critical',
-        reason: 'Paused',
-        owner: 'Loop operator',
-        action: 'Resume or assign recovery',
-        evidence: `${formatPhase(item.state.phase)} · round ${item.state.round}`,
-        impact: 'Delivery is stopped until an operator resumes work',
-        retryAction: 'Resume the loop after checking the latest checkpoint',
+        reason: L('dashboard.model.reasons.paused'),
+        owner: L('dashboard.model.owners.loopOperator'),
+        action: L('dashboard.model.actions.resumeRecovery'),
+        evidence: L('dashboard.model.meta.phaseRound', {
+          phase: phaseL(item.state.phase),
+          round: item.state.round ?? 0,
+        }),
+        impact: L('dashboard.model.impact.paused'),
+        retryAction: L('dashboard.model.retryAction.paused'),
         evidenceHref: href,
         source: 'pause',
       });
@@ -1267,15 +1384,15 @@ export function buildExceptionCenter(
     if (item.state?.globalVerdict && item.state.globalVerdict !== 'PASS') {
       exceptions.push({
         id: `${item.issue.id}-global-verdict`,
-        title: item.issue.title,
+        title: raw(item.issue.title),
         href,
         level: item.state.globalVerdict === 'FAIL' ? 'warning' : 'info',
-        reason: `Global ${item.state.globalVerdict}`,
-        owner: 'Reviewer',
-        action: 'Review failure evidence',
-        evidence: `round ${item.state.round}`,
-        impact: 'Delivery cannot finalize until review findings are resolved',
-        retryAction: 'Open issue evidence and start a re-loop if needed',
+        reason: L('dashboard.model.reasons.globalVerdict', { verdict: item.state.globalVerdict }),
+        owner: L('dashboard.model.owners.reviewer'),
+        action: L('dashboard.model.actions.reviewFailure'),
+        evidence: L('dashboard.model.evidence.round', { round: item.state.round ?? 0 }),
+        impact: L('dashboard.model.impact.globalVerdict'),
+        retryAction: L('dashboard.model.retryAction.globalVerdict'),
         evidenceHref: href,
         source: 'review',
       });
@@ -1284,15 +1401,15 @@ export function buildExceptionCenter(
     for (const runtimeSecurity of item.runtimeSecurityExceptions ?? []) {
       exceptions.push({
         id: runtimeSecurity.id,
-        title: item.issue.title,
+        title: raw(item.issue.title),
         href,
         level: runtimeSecurity.level,
-        reason: runtimeSecurity.reason,
-        owner: 'Runtime security',
-        action: 'Review command evidence',
-        evidence: runtimeSecurity.command ?? runtimeSecurity.evidence,
-        impact: 'Test execution was blocked or redacted by runtime policy',
-        retryAction: 'Adjust the command or split the work, then rerun tests',
+        reason: raw(runtimeSecurity.reason),
+        owner: L('dashboard.model.owners.runtimeSecurity'),
+        action: L('dashboard.model.actions.reviewCommand'),
+        evidence: raw(runtimeSecurity.command ?? runtimeSecurity.evidence),
+        impact: L('dashboard.model.impact.runtimeSecurity'),
+        retryAction: L('dashboard.model.retryAction.runtimeSecurity'),
         evidenceHref: href,
         source: 'runtime-security',
       });
@@ -1305,15 +1422,15 @@ export function buildExceptionCenter(
     options.runtime?.diagnostics.map(
       (diagnostic): ExceptionCenterItem => ({
         id: `runtime-${diagnostic.id}`,
-        title: diagnostic.title,
+        title: raw(diagnostic.title),
         href: diagnostic.href,
         level: diagnostic.level,
-        reason: diagnostic.reason,
-        owner: diagnostic.agentId,
-        action: 'Open diagnostic',
-        evidence: diagnostic.meta,
-        impact: 'Agent runtime may be unable to pick up queued work',
-        retryAction: 'Open runtime diagnostics and retry detection',
+        reason: raw(diagnostic.reason),
+        owner: raw(diagnostic.agentId),
+        action: L('dashboard.model.actions.openDiagnostic'),
+        evidence: raw(diagnostic.meta),
+        impact: L('dashboard.model.impact.runtime'),
+        retryAction: L('dashboard.model.retryAction.runtime'),
         evidenceHref: diagnostic.href,
         source: 'runtime',
       }),
@@ -1323,15 +1440,15 @@ export function buildExceptionCenter(
     options.health?.problems.map(
       (problem, index): ExceptionCenterItem => ({
         id: `doctor-${index}`,
-        title: 'Runtime health',
+        title: L('dashboard.model.titles.runtimeHealth'),
         href: '/loops',
         level: 'warning',
-        reason: problem,
-        owner: 'Runtime owner',
-        action: 'Run doctor or re-index',
-        evidence: options.health?.root ?? 'Loops state',
-        impact: 'Dashboard state may be stale or incomplete',
-        retryAction: 'Run doctor after fixing the reported state problem',
+        reason: raw(problem),
+        owner: L('dashboard.model.owners.runtimeOwner'),
+        action: L('dashboard.model.actions.runDoctor'),
+        evidence: raw(options.health?.root ?? ''),
+        impact: L('dashboard.model.impact.doctor'),
+        retryAction: L('dashboard.model.retryAction.doctor'),
         evidenceHref: '/loops',
         source: 'doctor',
       }),
@@ -1342,24 +1459,27 @@ export function buildExceptionCenter(
       .map(
         (check): ExceptionCenterItem => ({
           id: `eval-${check.id}`,
-          title: 'Eval hard gate',
+          title: L('dashboard.model.titles.evalHardGate'),
           href: '/loops#eval-plan',
           level: check.status === 'blocked' ? 'critical' : 'warning',
           reason:
             check.status === 'blocked'
-              ? `Eval gate blocked: ${check.id}`
-              : `Eval gate needs evidence: ${check.id}`,
-          owner: 'Eval owner',
-          action: check.status === 'blocked' ? 'Resolve hard gate' : 'Collect evidence',
-          evidence: check.evidence,
+              ? L('dashboard.model.reasons.evalBlocked', { id: check.id })
+              : L('dashboard.model.reasons.evalNeedsEvidence', { id: check.id }),
+          owner: L('dashboard.model.owners.evalOwner'),
+          action:
+            check.status === 'blocked'
+              ? L('dashboard.model.actions.resolveHardGate')
+              : L('dashboard.model.actions.collectEvidence'),
+          evidence: raw(check.evidence),
           impact:
             check.status === 'blocked'
-              ? 'Release readiness is blocked by eval evidence'
-              : 'Release readiness needs more eval evidence before final review',
+              ? L('dashboard.model.impact.evalBlocked')
+              : L('dashboard.model.impact.evalNeedsEvidence'),
           retryAction:
             check.status === 'blocked'
-              ? 'Open the failing loop evidence, fix the gate, then rerun review'
-              : 'Collect the missing test, runtime, or review evidence',
+              ? L('dashboard.model.retryAction.evalBlocked')
+              : L('dashboard.model.retryAction.evalNeedsEvidence'),
           evidenceHref: '/loops#eval-plan',
           source: 'eval',
         }),
@@ -1385,8 +1505,7 @@ export function buildExceptionCenter(
       .sort(
         (a, b) =>
           exceptionSeverityRank(a.level) - exceptionSeverityRank(b.level) ||
-          a.title.localeCompare(b.title) ||
-          a.reason.localeCompare(b.reason),
+          a.id.localeCompare(b.id),
       )
       .slice(0, 8),
   };
@@ -2230,8 +2349,8 @@ export function buildRecipeAdminSummary(
       id: 'createVersion',
       state: canCreateRecipe ? 'ready' : 'blocked',
       evidence: canCreateRecipe
-        ? `${sourcePermission ?? 'tenant:member'} grants recipe version changes`
-        : 'Verified tenant membership required',
+        ? `${sourcePermission ?? 'authenticated'} grants recipe version changes`
+        : 'Authenticated access required',
       sourcePermission,
     },
     {

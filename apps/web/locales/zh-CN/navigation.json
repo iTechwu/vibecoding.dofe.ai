@@ -18,6 +18,20 @@
   },
   "groupMain": "核心",
   "groupProjects": "工作区",
+  "workspacePicker": {
+    "open": "选择本地文件夹",
+    "title": "选择本地项目文件夹",
+    "description": "仅显示配置的本地项目根目录内的文件夹。",
+    "current": "当前文件夹",
+    "root": "项目根目录",
+    "up": "返回上级文件夹",
+    "choose": "使用此文件夹",
+    "cancel": "取消",
+    "empty": "当前位置没有可选文件夹。",
+    "loading": "正在加载文件夹...",
+    "unavailable": "本地文件夹列表暂不可用。",
+    "retry": "重新加载文件夹"
+  },
   "team": "团队：{team}",
   "groupSettings": "设置",
   "breadcrumb": {

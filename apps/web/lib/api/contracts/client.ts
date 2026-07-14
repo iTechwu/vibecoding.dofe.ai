@@ -135,8 +135,8 @@ const baseFetch = async (
     [VERSION_HEADERS.APP_BUILD]: APP_VERSION.appBuild,
   };
 
-  // This is only a selection hint. The API resolves it against SSO membership
-  // before it becomes Loop ownership metadata.
+  // This is a workspace selection hint used to group Loops data. It is not an
+  // authorization input; any authenticated user can use the product.
   const tenantId = getCurrentTenantSnapshot()?.tenantId;
   if (tenantId) {
     headers[CURRENT_TENANT_HEADER] = tenantId;

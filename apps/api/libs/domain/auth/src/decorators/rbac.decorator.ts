@@ -1,10 +1,11 @@
 import { SetMetadata } from '@nestjs/common';
 
-// 超级管理员检查装饰器
+// Legacy metadata retained for API compatibility. PermissionGuard grants every
+// authenticated Vibecoding user access regardless of this metadata.
 export const RequireSuperAdmin = () => SetMetadata('superAdmin', true);
 
 /**
- * 细粒度模块权限装饰器
+ * Legacy module-permission metadata retained for API compatibility.
  */
 export interface ModulePermissionMeta {
   module: string;
