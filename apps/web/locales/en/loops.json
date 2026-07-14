@@ -17,6 +17,17 @@
       "noMatchesTitle": "No matching issues.",
       "noMatchesDescription": "Try a different issue title or ID."
     },
+    "scheduled": {
+      "eyebrow": "Delivery inbox",
+      "title": "Scheduled",
+      "subtitle": "Work ordered by the next useful action.",
+      "searchLabel": "Search issues",
+      "searchPlaceholder": "Search issue title or ID",
+      "loading": "Loading scheduled work",
+      "error": "Unable to load scheduled work.",
+      "retry": "Retry",
+      "empty": "No scheduled work."
+    },
     "operations": {
       "eyebrow": "Control plane",
       "title": "Operations",

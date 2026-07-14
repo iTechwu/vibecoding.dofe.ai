@@ -17,6 +17,17 @@
       "noMatchesTitle": "没有匹配的 Issue。",
       "noMatchesDescription": "请尝试其他 Issue 标题或 ID。"
     },
+    "scheduled": {
+      "eyebrow": "交付收件箱",
+      "title": "已安排",
+      "subtitle": "按下一项最有价值的动作排序。",
+      "searchLabel": "搜索 Issue",
+      "searchPlaceholder": "搜索 Issue 标题或 ID",
+      "loading": "正在加载已安排的工作",
+      "error": "无法加载已安排的工作。",
+      "retry": "重试",
+      "empty": "暂无已安排的工作。"
+    },
     "operations": {
       "eyebrow": "控制平面",
       "title": "运营",
