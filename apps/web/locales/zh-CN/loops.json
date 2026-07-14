@@ -774,6 +774,285 @@
     "riskReasons": {
       "Paused": "已暂停",
       "Cost guard tripped": "触发成本保护"
+    },
+    "model": {
+      "raw": "{value}",
+      "empty": "",
+      "evidence": {
+        "empty": "",
+        "shards": "{done}/{total} 个分片",
+        "tests": "{passed}/{total} 个测试",
+        "reviews": "{passed}/{total} 次审阅",
+        "noShards": "暂无分片",
+        "callsRemaining": "剩余 {calls} 次调用",
+        "callsTokensRemaining": "剩余 {calls} 次调用 · {tokens} 个 token",
+        "round": "第 {round} 轮",
+        "priority": "{priority} 优先级",
+        "detected": "已检测",
+        "agentsTools": "{agents} 个 agent · {tools} 个工具",
+        "agentsRunTests": "{count} 个 agent 可执行测试",
+        "noShellTest": "无 shell/测试权限",
+        "compatPlanned": "已规划 {count} 个第三方工具兼容",
+        "noNetworkDeclared": "未声明网络/提供商扩展",
+        "agentsRequireApproval": "{count} 个 agent 需要人工审批",
+        "noApprovalDeclared": "未声明人工审批关卡"
+      },
+      "reasons": {
+        "paused": "已暂停",
+        "costGuardTripped": "成本保护已触发",
+        "costGuard": "成本保护",
+        "globalVerdict": "全局 {verdict}",
+        "globalReviewNeedsWork": "全局审阅需要返工",
+        "needsReview": "需要审阅",
+        "evalBlocked": "评估关卡受阻：{id}",
+        "evalNeedsEvidence": "评估关卡需要证据：{id}"
+      },
+      "owners": {
+        "releaseReviewer": "发布审阅人",
+        "productOwner": "产品负责人",
+        "loopOperator": "Loop 操作员",
+        "reviewer": "审阅人",
+        "runtimeSecurity": "运行时安全",
+        "runtimeOwner": "运行时负责人",
+        "evalOwner": "评估负责人"
+      },
+      "actions": {
+        "adjustBudget": "调整预算或缩减范围",
+        "resumeRecovery": "恢复或指派修复",
+        "reviewFailure": "审阅失败证据",
+        "reviewCommand": "审阅命令证据",
+        "openDiagnostic": "打开诊断",
+        "runDoctor": "运行诊断或重建索引",
+        "resolveHardGate": "解决硬性关卡",
+        "collectEvidence": "收集证据"
+      },
+      "titles": {
+        "runtimeHealth": "运行时健康",
+        "evalHardGate": "评估硬性关卡"
+      },
+      "impact": {
+        "costGuard": "在允许更多 agent 调用前 Loop 已暂停",
+        "paused": "在操作员恢复前交付已停止",
+        "globalVerdict": "解决审阅意见前无法完成交付",
+        "runtimeSecurity": "测试执行被运行时策略阻止或脱敏",
+        "runtime": "Agent 运行时可能无法接收排队任务",
+        "doctor": "看板状态可能已过期或不完整",
+        "evalBlocked": "发布就绪被评估证据阻塞",
+        "evalNeedsEvidence": "最终审阅前发布就绪需要更多评估证据"
+      },
+      "retryAction": {
+        "costGuard": "提高上限或拆分范围后继续 Loop",
+        "paused": "检查最新检查点后恢复 Loop",
+        "globalVerdict": "打开 Issue 证据，必要时重新进入 Loop",
+        "runtimeSecurity": "调整命令或拆分工作后重新运行测试",
+        "runtime": "打开运行时诊断并重试检测",
+        "doctor": "修复报告的状态问题后运行诊断",
+        "evalBlocked": "打开失败 Loop 证据，修复关卡后重新审阅",
+        "evalNeedsEvidence": "补齐缺失的测试、运行时或审阅证据"
+      },
+      "modes": {
+        "delivered": "已交付",
+        "plan": "规划",
+        "code": "编码",
+        "review": "审阅",
+        "recovery": "恢复"
+      },
+      "humanGates": {
+        "done": "已完成",
+        "exception": "异常",
+        "specReview": "规格审阅",
+        "release": "发布",
+        "none": "无"
+      },
+      "prState": {
+        "readyForAudit": "可接受审计",
+        "readyToShip": "可交付发布",
+        "pendingPr": "待提交 PR"
+      },
+      "meta": {
+        "phaseRound": "{phase} · 第 {round} 轮",
+        "phasePriority": "{phase} · {priority}",
+        "statusCreated": "{status} · {created}",
+        "ownerReason": "{owner} · {reason}",
+        "secondOpinion": "阶段 {phase} · {conflicts} 处冲突 · SLA {sla} 小时",
+        "phaseShards": "{phase} · {done}/{total} 个分片"
+      },
+      "review": {
+        "secondOpinionConflict": "二次意见冲突"
+      },
+      "statuses": {
+        "approved": "已批准",
+        "archived": "已归档",
+        "blocked": "受阻",
+        "closed": "已关闭",
+        "draft": "草稿",
+        "failed": "失败",
+        "finalized": "已交付",
+        "inLoop": "执行中",
+        "inProgress": "进行中",
+        "open": "待处理",
+        "paused": "已暂停",
+        "pending": "待处理",
+        "rejected": "已拒绝"
+      },
+      "runtime": {
+        "codexPermission": "读取/审阅/测试设计；仅写入 Loops 产物",
+        "codexWorkspace": "使用所选工作区配置与目标仓库范围",
+        "claudePermission": "在已批准的工作包内读取/写入/测试",
+        "claudeWorkspace": "Docker 模式需要已批准的工作区挂载",
+        "sharedCostGuard": "共享按 Loop 的调用/token 用量保护",
+        "fallbackDeterministic": "回退到确定性审阅关卡",
+        "fallbackPauseRecovery": "暂停并请求运行时恢复"
+      },
+      "stages": {
+        "intake": "录入",
+        "spec": "规格",
+        "planning": "规划",
+        "review": "审阅",
+        "release": "发布",
+        "implementation": "实现",
+        "testExecution": "测试执行",
+        "secondOpinion": "二次意见"
+      },
+      "eval": {
+        "architectureAttention": "{count} 个活跃 Loop 仍需架构/审阅证据",
+        "architectureClear": "所有活跃架构关卡均已通过",
+        "deliveryBlocked": "{count} 个 Loop 在发布前受阻",
+        "deliveryMoving": "{count} 个 Loop 仍在推进至发布",
+        "deliveryClear": "无活跃的交付阻塞",
+        "runtimeExceptions": "已记录 {count} 个运行时安全例外",
+        "runtimeClear": "运行时安全策略无记录的例外",
+        "testFailed": "{count} 个 Loop 未通过全局审阅或测试",
+        "testCollecting": "{count} 个 Loop 仍在收集测试/审阅证据",
+        "testPassed": "所有已完成 Loop 均有通过证据",
+        "costTripped": "{count} 个 Loop 触发了支出保护",
+        "costClear": "支出保护在策略范围内"
+      },
+      "gates": {
+        "specsNeedDecision": "{count} 个规格待决策",
+        "specClear": "规格关卡已通过",
+        "decomposed": "{count} 个 Loop 已拆解或实现",
+        "waitingDecomposition": "等待拆解",
+        "blockedException": "{count} 个因异常受阻",
+        "reviewsNeedChanges": "{count} 次审阅需要修改",
+        "codePending": "代码审阅关卡待处理",
+        "deliveredReadyAudit": "{count} 个已交付 Loop 可接受审计",
+        "securityPlanned": "已规划安全审阅"
+      },
+      "recipe": {
+        "grantsVersion": "{permission} 授予配方版本变更权限",
+        "authRequired": "需要已认证访问",
+        "blockedNeedApproval": "{count} 个受阻 Loop 需要审批审阅",
+        "noBlockedApproval": "无受阻配方 Loop 需要审批",
+        "rollbackBaseline": "{count} 种配方有回滚基线",
+        "noRollbackBaseline": "无可用配方基线"
+      },
+      "loopTypes": {
+        "bugfix": "缺陷修复 Loop",
+        "feature": "功能 Loop",
+        "refactor": "重构 Loop",
+        "documentation": "文档 Loop",
+        "integration": "集成 Loop",
+        "flow": "流程 Loop",
+        "securityPatch": "安全补丁 Loop",
+        "dependencyUpgrade": "依赖升级 Loop"
+      },
+      "loopDescription": {
+        "bugfix": "根因隔离、复现修复与回归覆盖。",
+        "feature": "规划并交付面向用户的能力，含 UX、API 与测试证据。",
+        "refactor": "在保护对外行为与契约的前提下调整内部实现。",
+        "documentation": "更新规格、运维手册与发布说明，并标注状态。",
+        "integration": "界定外部系统边界，含安全审阅与客户端隔离。",
+        "flow": "建模有状态 agent 工作流，含触发器、人工关卡与恢复。",
+        "securityPatch": "安全敏感修复，强制人工安全审阅。",
+        "dependencyUpgrade": "依赖升级，含 lockfile 校验与测试矩阵检查。"
+      },
+      "rules": {
+        "dbAccessOnly": "仅通过 DB Service 访问数据库",
+        "zodContracts": "Zod 优先的 API 契约",
+        "externalApisClient": "外部 API 经由 Client 层",
+        "winstonLogger": "Winston 日志（禁用 console.log）",
+        "pathPolicy": "路径策略已强制执行",
+        "networkDeny": "网络默认拒绝",
+        "secretCanary": "密钥金丝雀检测",
+        "testsBeforeFinalize": "完成交付前测试必须通过",
+        "coverageReported": "覆盖率必须上报",
+        "workspaceMount": "工作区挂载策略",
+        "targetRepoWrite": "目标仓库写入范围",
+        "claudeAgents": "存在 CLAUDE.md / AGENTS.md"
+      },
+      "ruleEvidence": {
+        "architectureLayering": "由 CLAUDE.md 中的架构分层规则强制执行",
+        "contractFirst": "由契约优先约定强制执行",
+        "httpService": "由 @nestjs/axios HttpService 要求强制执行",
+        "winstonProvider": "由 WINSTON_MODULE_PROVIDER 注入强制执行",
+        "pathPolicyRuntime": "运行时由 loops-path-policy.util.ts 强制执行",
+        "networkSnapshot": "定义于运行时安全策略快照",
+        "canaryTracked": "按测试记录跟踪金丝雀状态",
+        "releaseGateChecklist": "由发布关卡清单强制执行",
+        "softSignal": "软信号；非硬性关卡",
+        "allRuntimesReady": "所有运行时就绪",
+        "runtimeChecksPending": "运行时检查待处理",
+        "runtimeWritePolicy": "由运行时写入策略强制执行",
+        "capturedAtIntake": "按 Loop 在录入时捕获"
+      },
+      "securityStrategy": {
+        "commandAllowlist": "命令白名单",
+        "networkDeny": "网络：默认拒绝",
+        "writeScoped": "写入：工作区范围",
+        "secretCanary": "密钥金丝雀：环境变量 token"
+      },
+      "workflow": {
+        "blocked": "{count} 个受阻",
+        "loops": "{count} 个 Loop",
+        "browserQaPlanned": "已规划浏览器 QA 关卡",
+        "releasePlanned": "已规划发布关卡",
+        "noLoops": "无 Loop"
+      },
+      "deliveryFlow": {
+        "pipeline": "录入 → 规格 → 规格审阅 → 规划 → 构建 → 测试 → 收敛 → 全局审阅 → 标注 → 关闭",
+        "steps": {
+          "intake": "录入",
+          "spec": "规格",
+          "review": "规格审阅",
+          "decompose": "规划",
+          "implement": "构建",
+          "test": "测试",
+          "converge": "收敛",
+          "globalReview": "全局审阅",
+          "annotate": "标注",
+          "close": "关闭"
+        }
+      },
+      "aging": {
+        "slaPolicy": "停滞 {warning} 小时警告；{critical} 小时严重。"
+      }
+    },
+    "personas": {
+      "intake-analyst": "需求录入分析师",
+      "spec-writer": "规格撰写人",
+      "human-gatekeeper": "人工把关人",
+      "work-planner": "工作规划人",
+      "builder": "构建者",
+      "test-runner": "测试执行人",
+      "code-reviewer": "代码审阅人",
+      "release-reviewer": "发布审阅人",
+      "evidence-curator": "证据整理人"
+    },
+    "evalChecks": {
+      "architecture": "架构",
+      "delivery": "交付",
+      "runtimeSafety": "运行时安全",
+      "testEvidence": "测试证据",
+      "costPolicy": "成本策略"
+    },
+    "gates": {
+      "specReview": "规格审阅",
+      "codeReview": "代码审阅",
+      "releaseGate": "发布关卡",
+      "regressionTest": "回归测试",
+      "securityReview": "安全审阅",
+      "humanApproval": "人工审批"
     }
   },
   "newIssue": {

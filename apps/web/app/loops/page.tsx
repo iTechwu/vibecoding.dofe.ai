@@ -95,7 +95,9 @@ import {
   buildTriggerPortfolio,
   buildWorkforceOverview,
   buildWorkflowRecipe,
+  tx,
   type EvalCheckStatus,
+  type LocalizableText,
   type RuntimeBackendStatus,
   type WorkforcePersona,
   type WorkforcePersonaStatus,
@@ -245,6 +247,11 @@ function WorkbenchStat({
 function LoopsOperationsDashboard() {
   const locale = useLocale();
   const t = useTranslations('loops.dashboard');
+  const tRoot = useTranslations('loops');
+  const displayText = (value: LocalizableText | string | undefined | null) =>
+    typeof value === 'string'
+      ? value
+      : tx(value, (key, params) => tRoot(key, params as Record<string, string | number>));
   const formatDashboardPhase = (phase: string) => {
     if (
       [
@@ -265,7 +272,8 @@ function LoopsOperationsDashboard() {
     }
     return formatLoopLabel(formatPhase(phase), locale);
   };
-  const formatRiskReason = (reason: string) => {
+  const formatRiskReason = (reason: string | LocalizableText) => {
+    if (typeof reason !== 'string') return displayText(reason);
     if (reason === 'Paused' || reason === 'Cost guard tripped') {
       return t(`riskReasons.${reason}`);
     }
@@ -665,7 +673,9 @@ function LoopsOperationsDashboard() {
                     </span>
                     <span className="text-muted-foreground">{focusLoop.priority}</span>
                   </div>
-                  <p className="mt-3 line-clamp-2 text-muted-foreground">{focusLoop.evidence}</p>
+                  <p className="mt-3 line-clamp-2 text-muted-foreground">
+                    {displayText(focusLoop.evidence)}
+                  </p>
                   <p className="mt-2 truncate text-muted-foreground">{focusLoop.gitRef}</p>
                 </Link>
               ) : null}
@@ -817,21 +827,22 @@ function LoopsOperationsDashboard() {
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase">{t('operatorFocus.eyebrow')}</p>
               <h2 className="mt-1 truncate text-base font-semibold" id="operator-focus-title">
-                {operatorFocus.title || t(`operatorFocus.title.${operatorFocus.kind}`)}
+                {displayText(operatorFocus.title) || t(`operatorFocus.title.${operatorFocus.kind}`)}
               </h2>
               <p className="mt-1 truncate text-sm opacity-80">
-                {operatorFocus.meta || t(`operatorFocus.meta.${operatorFocus.kind}`)}
+                {displayText(operatorFocus.meta) || t(`operatorFocus.meta.${operatorFocus.kind}`)}
               </p>
             </div>
             <Link
               aria-label={t('operatorFocus.ctaLabel', {
-                action: operatorFocus.label || t(`operatorFocus.action.${operatorFocus.kind}`),
-                title: operatorFocus.title || t(`operatorFocus.title.${operatorFocus.kind}`),
+                action: displayText(operatorFocus.label) || t(`operatorFocus.action.${operatorFocus.kind}`),
+                title:
+                  displayText(operatorFocus.title) || t(`operatorFocus.title.${operatorFocus.kind}`),
               })}
               className="inline-flex h-9 shrink-0 items-center justify-center rounded-md border bg-background/70 px-3 text-sm font-medium hover:bg-background"
               href={operatorFocus.href}
             >
-              {operatorFocus.label || t(`operatorFocus.action.${operatorFocus.kind}`)}
+              {displayText(operatorFocus.label) || t(`operatorFocus.action.${operatorFocus.kind}`)}
             </Link>
           </div>
         </section>
@@ -1003,7 +1014,9 @@ function LoopsOperationsDashboard() {
               <h2 className="text-sm font-semibold" id="delivery-flow-title">
                 {t('deliveryFlow.title')}
               </h2>
-              <p className="mt-1 text-sm text-muted-foreground">{deliveryFlow.pipelineLabel}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {displayText(deliveryFlow.pipelineLabel)}
+              </p>
             </div>
             <Workflow className="size-4 text-muted-foreground" />
           </div>
@@ -1020,7 +1033,7 @@ function LoopsOperationsDashboard() {
                           : 'border-border bg-muted/20 text-muted-foreground'
                     }`}
                   >
-                    <p className="truncate font-medium">{step.label}</p>
+                    <p className="truncate font-medium">{displayText(step.label)}</p>
                     <p className="mt-0.5 truncate text-[10px] opacity-70">
                       {step.runtimeOwner === 'codex'
                         ? 'Codex'
@@ -1122,7 +1135,7 @@ function LoopsOperationsDashboard() {
               >
                 <div className="flex items-center justify-between gap-1">
                   <span className="truncate font-medium">
-                    {t(`rulesCenter.rules.${rule.id}`, { defaultValue: rule.label })}
+                    {displayText(rule.label)}
                   </span>
                   <span className="shrink-0 rounded-md border bg-background/70 px-1.5 py-0.5">
                     {t(`rulesCenter.categories.${rule.category}`, {
@@ -1130,7 +1143,7 @@ function LoopsOperationsDashboard() {
                     })}
                   </span>
                 </div>
-                <p className="mt-1 truncate opacity-80">{rule.evidence}</p>
+                <p className="mt-1 truncate opacity-80">{displayText(rule.evidence)}</p>
                 <p className="mt-1 truncate text-right font-medium">
                   {rule.enforced ? t('rulesCenter.enforced') : t('rulesCenter.attention')}
                 </p>
@@ -1475,7 +1488,7 @@ function LoopsOperationsDashboard() {
                       {t(`evalPlan.status.${check.status}`)}
                     </span>
                   </div>
-                  <p className="mt-2 line-clamp-2 opacity-80">{check.evidence}</p>
+                  <p className="mt-2 line-clamp-2 opacity-80">{displayText(check.evidence)}</p>
                   <p className="mt-2 truncate font-medium">
                     {check.hardGate ? t('evalPlan.hardGate') : t('evalPlan.softSignal')}
                   </p>
@@ -1555,7 +1568,7 @@ function LoopsOperationsDashboard() {
                       <span className="truncate font-medium">{risk.title}</span>
                       <span className="shrink-0 text-xs">{formatRiskReason(risk.reason)}</span>
                     </div>
-                    <p className="mt-1 truncate text-xs opacity-80">{risk.meta}</p>
+                    <p className="mt-1 truncate text-xs opacity-80">{displayText(risk.meta)}</p>
                   </Link>
                 ))
               )}
@@ -1689,16 +1702,16 @@ function LoopsOperationsDashboard() {
                     </div>
                     <div className="rounded-md bg-background/70 px-2 py-1.5">
                       <p className="text-muted-foreground">{t('repoContext.latest')}</p>
-                      <p className="truncate font-medium">{repo.latest}</p>
+                      <p className="truncate font-medium">{displayText(repo.latest)}</p>
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {repo.phases.map((phase) => (
                       <span
                         className="rounded-md bg-background px-2 py-1 text-xs"
-                        key={phase.phase}
+                        key={phase.phase.key}
                       >
-                        {phase.phase} · {phase.count}
+                        {displayText(phase.phase)} · {phase.count}
                       </span>
                     ))}
                   </div>
@@ -1711,9 +1724,11 @@ function LoopsOperationsDashboard() {
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="truncate font-medium">{item.title}</span>
-                          <span className="shrink-0 text-muted-foreground">{item.status}</span>
+                          <span className="shrink-0 text-muted-foreground">
+                            {displayText(item.status)}
+                          </span>
                         </div>
-                        <p className="mt-1 text-muted-foreground">{item.phase}</p>
+                        <p className="mt-1 text-muted-foreground">{displayText(item.phase)}</p>
                       </Link>
                     ))}
                   </div>
@@ -1770,17 +1785,23 @@ function LoopsOperationsDashboard() {
                             </span>
                           </div>
                           <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
-                            <span className="rounded-md bg-muted px-1.5 py-0.5">{item.mode}</span>
                             <span className="rounded-md bg-muted px-1.5 py-0.5">
-                              {item.humanGate}
+                              {displayText(item.mode)}
+                            </span>
+                            <span className="rounded-md bg-muted px-1.5 py-0.5">
+                              {displayText(item.humanGate)}
                             </span>
                           </div>
-                          <p className="mt-2 truncate text-muted-foreground">{item.evidence}</p>
+                          <p className="mt-2 truncate text-muted-foreground">
+                            {displayText(item.evidence)}
+                          </p>
                           <p className="mt-1 truncate text-muted-foreground">{item.gitRef}</p>
-                          <p className="mt-1 truncate text-muted-foreground">{item.prState}</p>
+                          <p className="mt-1 truncate text-muted-foreground">
+                            {displayText(item.prState)}
+                          </p>
                           {item.blocker ? (
                             <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100">
-                              {item.blocker}
+                              {displayText(item.blocker)}
                             </p>
                           ) : null}
                         </Link>
@@ -1835,7 +1856,7 @@ function LoopsOperationsDashboard() {
                   <p className="mt-2 truncate text-muted-foreground">
                     {t(`workflowRecipe.gate.${step.gate}`)}
                   </p>
-                  <p className="mt-1 truncate font-medium">{step.evidence}</p>
+                  <p className="mt-1 truncate font-medium">{displayText(step.evidence)}</p>
                 </div>
               ))}
             </div>
@@ -1901,7 +1922,7 @@ function LoopsOperationsDashboard() {
                     {t(`recipeAdmin.actionState.${action.state}`)}
                   </span>
                 </div>
-                <p className="mt-1 text-muted-foreground">{action.evidence}</p>
+                <p className="mt-1 text-muted-foreground">{displayText(action.evidence)}</p>
                 <button
                   className="mt-2 inline-flex h-7 items-center gap-1 rounded-md border px-2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={action.state !== 'ready' || recipeAdminAction.isPending}
@@ -1910,7 +1931,7 @@ function LoopsOperationsDashboard() {
                       body: {
                         actionId: action.id,
                         blueprintId: 'delivery-blueprints',
-                        reason: action.evidence,
+                        reason: displayText(action.evidence),
                         evidenceRefs: [],
                       },
                     })
@@ -2059,12 +2080,14 @@ function LoopsOperationsDashboard() {
                 key={bp.id}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate font-medium">{bp.label}</span>
+                  <span className="truncate font-medium">{displayText(bp.label)}</span>
                   <span className="shrink-0 rounded-md border bg-background px-1.5 py-0.5">
                     {bp.defaultPriority}
                   </span>
                 </div>
-                <p className="mt-2 line-clamp-2 text-muted-foreground">{bp.description}</p>
+                <p className="mt-2 line-clamp-2 text-muted-foreground">
+                  {displayText(bp.description)}
+                </p>
                 <div className="mt-2 flex flex-wrap gap-1 text-muted-foreground">
                   <span>{bp.personaCount} personas</span>
                   <span>· {bp.evalCount} evals</span>
@@ -2110,7 +2133,9 @@ function LoopsOperationsDashboard() {
                       {t(`reviewGates.status.${gate.status}`)}
                     </span>
                   </div>
-                  <p className="mt-2 line-clamp-2 text-muted-foreground">{gate.evidence}</p>
+                  <p className="mt-2 line-clamp-2 text-muted-foreground">
+                    {displayText(gate.evidence)}
+                  </p>
                 </div>
               ))}
             </div>
@@ -2180,12 +2205,7 @@ function LoopsOperationsDashboard() {
                       >
                         <span className="line-clamp-2 font-medium">{blocker.title}</span>
                         <p className="mt-1 truncate text-muted-foreground">
-                          {t(
-                            `releaseGatePanel.blockerReasons.${blocker.reason.replace(/ /g, '_')}`,
-                            {
-                              defaultValue: blocker.reason,
-                            },
-                          )}
+                          {displayText(blocker.reason)}
                         </p>
                       </Link>
                     ))
@@ -2232,7 +2252,7 @@ function LoopsOperationsDashboard() {
                       {t(`releaseReadiness.state.${item.state}`)}
                     </span>
                   </div>
-                  <p className="mt-2 truncate text-xs opacity-80">{item.evidence}</p>
+                  <p className="mt-2 truncate text-xs opacity-80">{displayText(item.evidence)}</p>
                   <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
                     {(['spec', 'implementation', 'review', 'qa'] as const).map((key) => (
                       <span
@@ -2286,8 +2306,8 @@ function LoopsOperationsDashboard() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate font-medium">{item.title}</p>
-                      <p className="mt-1 truncate text-xs opacity-80">{item.reason}</p>
+                      <p className="truncate font-medium">{displayText(item.title)}</p>
+                      <p className="mt-1 truncate text-xs opacity-80">{displayText(item.reason)}</p>
                     </div>
                     <span className="shrink-0 rounded-md bg-background/70 px-2 py-1 text-xs">
                       {item.source}
@@ -2296,23 +2316,23 @@ function LoopsOperationsDashboard() {
                   <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2 xl:grid-cols-4">
                     <div className="min-w-0 rounded-md bg-background/60 px-2 py-1.5">
                       <p className="opacity-70">{t('exceptionCenter.owner')}</p>
-                      <p className="truncate font-medium">{item.owner}</p>
+                      <p className="truncate font-medium">{displayText(item.owner)}</p>
                     </div>
                     <div className="min-w-0 rounded-md bg-background/60 px-2 py-1.5">
                       <p className="opacity-70">{t('exceptionCenter.action')}</p>
-                      <p className="truncate font-medium">{item.action}</p>
+                      <p className="truncate font-medium">{displayText(item.action)}</p>
                     </div>
                     <div className="min-w-0 rounded-md bg-background/60 px-2 py-1.5">
                       <p className="opacity-70">{t('exceptionCenter.evidence')}</p>
-                      <p className="truncate font-medium">{item.evidence}</p>
+                      <p className="truncate font-medium">{displayText(item.evidence)}</p>
                     </div>
                     <div className="min-w-0 rounded-md bg-background/60 px-2 py-1.5">
                       <p className="opacity-70">{t('exceptionCenter.impact')}</p>
-                      <p className="truncate font-medium">{item.impact}</p>
+                      <p className="truncate font-medium">{displayText(item.impact)}</p>
                     </div>
                     <div className="min-w-0 rounded-md bg-background/60 px-2 py-1.5 sm:col-span-2 xl:col-span-4">
                       <p className="opacity-70">{t('exceptionCenter.retryAction')}</p>
-                      <p className="truncate font-medium">{item.retryAction}</p>
+                      <p className="truncate font-medium">{displayText(item.retryAction)}</p>
                     </div>
                   </div>
                 </Link>
@@ -2362,32 +2382,41 @@ function LoopsOperationsDashboard() {
                   <div className="mt-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
                     <div className="rounded-md bg-background/60 px-2 py-1.5">
                       <p className="opacity-70">{t('runtimeBackends.permissions')}</p>
-                      <p className="line-clamp-2 font-medium">{backend.permissionProfile}</p>
+                      <p className="line-clamp-2 font-medium">
+                        {displayText(backend.permissionProfile)}
+                      </p>
                     </div>
                     <div className="rounded-md bg-background/60 px-2 py-1.5">
                       <p className="opacity-70">{t('runtimeBackends.workspace')}</p>
-                      <p className="line-clamp-2 font-medium">{backend.workspacePolicy}</p>
+                      <p className="line-clamp-2 font-medium">
+                        {displayText(backend.workspacePolicy)}
+                      </p>
                     </div>
                     <div className="rounded-md bg-background/60 px-2 py-1.5">
                       <p className="opacity-70">{t('runtimeBackends.cost')}</p>
-                      <p className="line-clamp-2 font-medium">{backend.costPolicy}</p>
+                      <p className="line-clamp-2 font-medium">{displayText(backend.costPolicy)}</p>
                     </div>
                     <div className="rounded-md bg-background/60 px-2 py-1.5">
                       <p className="opacity-70">{t('runtimeBackends.fallback')}</p>
-                      <p className="line-clamp-2 font-medium">{backend.fallbackPolicy}</p>
+                      <p className="line-clamp-2 font-medium">
+                        {displayText(backend.fallbackPolicy)}
+                      </p>
                     </div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
                     {backend.supportedStages.map((stage) => (
-                      <span className="rounded-md border bg-background/60 px-2 py-1" key={stage}>
-                        {stage}
+                      <span
+                        className="rounded-md border bg-background/60 px-2 py-1"
+                        key={stage.key}
+                      >
+                        {displayText(stage)}
                       </span>
                     ))}
                   </div>
                   <p className="mt-3 truncate text-xs opacity-80">
                     {backend.healthChecks.length
                       ? backend.healthChecks[0]
-                      : t('runtimeBackends.readyEvidence', { evidence: backend.evidence })}
+                      : t('runtimeBackends.readyEvidence', { evidence: displayText(backend.evidence) })}
                   </p>
                 </div>
               ))}
@@ -2644,10 +2673,10 @@ function LoopsOperationsDashboard() {
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/70 dark:bg-emerald-950/20 dark:text-emerald-100'
                         : 'border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/70 dark:bg-amber-950/20 dark:text-amber-100'
                     }`}
-                    key={policy.strategy}
+                    key={policy.strategy.key}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="truncate font-medium">{policy.strategy}</span>
+                      <span className="truncate font-medium">{displayText(policy.strategy)}</span>
                       <span className="shrink-0 rounded-md border bg-background/70 px-1.5 py-0.5">
                         {policy.violations === 0
                           ? t('runtimeSecurityPanel.clear')
@@ -3040,13 +3069,13 @@ function LoopsOperationsDashboard() {
                           >
                             <div className="flex items-center justify-between gap-3">
                               <span className="truncate font-medium">{item.title}</span>
-                              <span className="shrink-0 text-xs">{item.label}</span>
+                              <span className="shrink-0 text-xs">{displayText(item.label)}</span>
                             </div>
-                            <p className="mt-1 truncate text-xs opacity-80">{item.meta}</p>
+                            <p className="mt-1 truncate text-xs opacity-80">{displayText(item.meta)}</p>
                             {item.owner || item.slaHours !== undefined ? (
                               <p className="mt-1 truncate text-xs opacity-80">
                                 {t('reviewInbox.slaMeta', {
-                                  owner: item.owner ?? 'human',
+                                  owner: displayText(item.owner) || 'human',
                                   age: item.ageHours ?? 0,
                                   sla: item.slaHours ?? 0,
                                 })}
@@ -3269,7 +3298,9 @@ function LoopsOperationsDashboard() {
                         {t(`capabilities.permissionProfile.state.${mode.state}`)}
                       </span>
                     </div>
-                    <p className="mt-2 line-clamp-2 text-muted-foreground">{mode.evidence}</p>
+                    <p className="mt-2 line-clamp-2 text-muted-foreground">
+                      {displayText(mode.evidence)}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -3413,7 +3444,7 @@ function LoopsOperationsDashboard() {
                   {t('agingQueue.title')}
                 </h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {AGING_QUEUE_SLA_POLICY.label}
+                  {displayText(AGING_QUEUE_SLA_POLICY.label)}
                 </p>
               </div>
               <AlertTriangle className="size-4 text-muted-foreground" />

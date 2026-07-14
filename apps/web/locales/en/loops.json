@@ -774,6 +774,285 @@
     "riskReasons": {
       "Paused": "Paused",
       "Cost guard tripped": "Cost guard tripped"
+    },
+    "model": {
+      "raw": "{value}",
+      "empty": "",
+      "evidence": {
+        "empty": "",
+        "shards": "{done}/{total} shards",
+        "tests": "{passed}/{total} tests",
+        "reviews": "{passed}/{total} reviews",
+        "noShards": "No shards yet",
+        "callsRemaining": "{calls} calls remaining",
+        "callsTokensRemaining": "{calls} calls · {tokens} tokens remaining",
+        "round": "round {round}",
+        "priority": "{priority} priority",
+        "detected": "detected",
+        "agentsTools": "{agents} agents · {tools} tools",
+        "agentsRunTests": "{count} agents can run tests",
+        "noShellTest": "No shell/test permission",
+        "compatPlanned": "{count} third-party tool compatibilities planned",
+        "noNetworkDeclared": "No network/provider extension declared",
+        "agentsRequireApproval": "{count} agents require human approval",
+        "noApprovalDeclared": "No human approval gate declared"
+      },
+      "reasons": {
+        "paused": "Paused",
+        "costGuardTripped": "Cost guard tripped",
+        "costGuard": "Cost guard",
+        "globalVerdict": "Global {verdict}",
+        "globalReviewNeedsWork": "Global review needs work",
+        "needsReview": "Needs review",
+        "evalBlocked": "Eval gate blocked: {id}",
+        "evalNeedsEvidence": "Eval gate needs evidence: {id}"
+      },
+      "owners": {
+        "releaseReviewer": "Release reviewer",
+        "productOwner": "Product owner",
+        "loopOperator": "Loop operator",
+        "reviewer": "Reviewer",
+        "runtimeSecurity": "Runtime security",
+        "runtimeOwner": "Runtime owner",
+        "evalOwner": "Eval owner"
+      },
+      "actions": {
+        "adjustBudget": "Adjust budget or reduce scope",
+        "resumeRecovery": "Resume or assign recovery",
+        "reviewFailure": "Review failure evidence",
+        "reviewCommand": "Review command evidence",
+        "openDiagnostic": "Open diagnostic",
+        "runDoctor": "Run doctor or re-index",
+        "resolveHardGate": "Resolve hard gate",
+        "collectEvidence": "Collect evidence"
+      },
+      "titles": {
+        "runtimeHealth": "Runtime health",
+        "evalHardGate": "Eval hard gate"
+      },
+      "impact": {
+        "costGuard": "Loop is paused before more agent calls are allowed",
+        "paused": "Delivery is stopped until an operator resumes work",
+        "globalVerdict": "Delivery cannot finalize until review findings are resolved",
+        "runtimeSecurity": "Test execution was blocked or redacted by runtime policy",
+        "runtime": "Agent runtime may be unable to pick up queued work",
+        "doctor": "Dashboard state may be stale or incomplete",
+        "evalBlocked": "Release readiness is blocked by eval evidence",
+        "evalNeedsEvidence": "Release readiness needs more eval evidence before final review"
+      },
+      "retryAction": {
+        "costGuard": "Raise cap or split scope, then continue the loop",
+        "paused": "Resume the loop after checking the latest checkpoint",
+        "globalVerdict": "Open issue evidence and start a re-loop if needed",
+        "runtimeSecurity": "Adjust the command or split the work, then rerun tests",
+        "runtime": "Open runtime diagnostics and retry detection",
+        "doctor": "Run doctor after fixing the reported state problem",
+        "evalBlocked": "Open the failing loop evidence, fix the gate, then rerun review",
+        "evalNeedsEvidence": "Collect the missing test, runtime, or review evidence"
+      },
+      "modes": {
+        "delivered": "Delivered",
+        "plan": "Plan",
+        "code": "Code",
+        "review": "Review",
+        "recovery": "Recovery"
+      },
+      "humanGates": {
+        "done": "Done",
+        "exception": "Exception",
+        "specReview": "Spec review",
+        "release": "Release",
+        "none": "None"
+      },
+      "prState": {
+        "readyForAudit": "Ready for audit",
+        "readyToShip": "Ready to ship",
+        "pendingPr": "Pending PR"
+      },
+      "meta": {
+        "phaseRound": "{phase} · round {round}",
+        "phasePriority": "{phase} · {priority}",
+        "statusCreated": "{status} · {created}",
+        "ownerReason": "{owner} · {reason}",
+        "secondOpinion": "Phase {phase} · {conflicts} conflict(s) · SLA {sla}h",
+        "phaseShards": "{phase} · {done}/{total} shards"
+      },
+      "review": {
+        "secondOpinionConflict": "Second opinion conflict"
+      },
+      "statuses": {
+        "approved": "Approved",
+        "archived": "Archived",
+        "blocked": "Blocked",
+        "closed": "Closed",
+        "draft": "Draft",
+        "failed": "Failed",
+        "finalized": "Finalized",
+        "inLoop": "In loop",
+        "inProgress": "In progress",
+        "open": "Open",
+        "paused": "Paused",
+        "pending": "Pending",
+        "rejected": "Rejected"
+      },
+      "runtime": {
+        "codexPermission": "read/review/test design; write only Loops artifacts",
+        "codexWorkspace": "uses selected workspace profile and target repo scope",
+        "claudePermission": "read/write/test within approved work package",
+        "claudeWorkspace": "requires approved workspace mount for Docker mode",
+        "sharedCostGuard": "shares per-loop call/token guard",
+        "fallbackDeterministic": "Fallback to deterministic review gate",
+        "fallbackPauseRecovery": "Pause and ask for runtime recovery"
+      },
+      "stages": {
+        "intake": "Intake",
+        "spec": "Spec",
+        "planning": "Planning",
+        "review": "Review",
+        "release": "Release",
+        "implementation": "Implementation",
+        "testExecution": "Test execution",
+        "secondOpinion": "Second opinion"
+      },
+      "eval": {
+        "architectureAttention": "{count} active loops still need architecture/review evidence",
+        "architectureClear": "All active architecture gates are clear",
+        "deliveryBlocked": "{count} loops blocked before release",
+        "deliveryMoving": "{count} loops still moving toward release",
+        "deliveryClear": "No active delivery blockers",
+        "runtimeExceptions": "{count} runtime security exceptions recorded",
+        "runtimeClear": "Runtime security policy has no recorded exceptions",
+        "testFailed": "{count} loops failed global review or tests",
+        "testCollecting": "{count} loops still collecting test/review evidence",
+        "testPassed": "All completed loops have passing evidence",
+        "costTripped": "{count} loops tripped spend guard",
+        "costClear": "Spend guard is within policy"
+      },
+      "gates": {
+        "specsNeedDecision": "{count} specs need decision",
+        "specClear": "Spec gate clear",
+        "decomposed": "{count} loops decomposed or implemented",
+        "waitingDecomposition": "Waiting for decomposition",
+        "blockedException": "{count} blocked by exception",
+        "reviewsNeedChanges": "{count} reviews need changes",
+        "codePending": "Code review gate pending",
+        "deliveredReadyAudit": "{count} delivered loops ready for audit",
+        "securityPlanned": "Security review planned"
+      },
+      "recipe": {
+        "grantsVersion": "{permission} grants recipe version changes",
+        "authRequired": "Authenticated access required",
+        "blockedNeedApproval": "{count} blocked loops need approval review",
+        "noBlockedApproval": "No blocked recipe loops require approval",
+        "rollbackBaseline": "{count} recipe kinds have rollback baseline",
+        "noRollbackBaseline": "No active recipe baseline available"
+      },
+      "loopTypes": {
+        "bugfix": "Bugfix Loop",
+        "feature": "Feature Loop",
+        "refactor": "Refactor Loop",
+        "documentation": "Documentation Loop",
+        "integration": "Integration Loop",
+        "flow": "Flow Loop",
+        "securityPatch": "Security Patch Loop",
+        "dependencyUpgrade": "Dependency Upgrade Loop"
+      },
+      "loopDescription": {
+        "bugfix": "Root-cause isolation, reproduction fix, and regression coverage.",
+        "feature": "Plan and deliver a user-facing capability with UX, API, and test evidence.",
+        "refactor": "Change internals while protecting public behavior and contracts.",
+        "documentation": "Update specs, runbooks, and release notes with status labeling.",
+        "integration": "Define external system boundaries with security review and client isolation.",
+        "flow": "Model stateful agent workflows with triggers, HITL gates, and resume.",
+        "securityPatch": "Security-sensitive fixes with mandatory human security review.",
+        "dependencyUpgrade": "Dependency updates with lockfile validation and test matrix checks."
+      },
+      "rules": {
+        "dbAccessOnly": "DB access only via DB Service",
+        "zodContracts": "Zod-first API contracts",
+        "externalApisClient": "External APIs via Client layer",
+        "winstonLogger": "Winston Logger (no console.log)",
+        "pathPolicy": "Path policy enforced",
+        "networkDeny": "Network deny-by-default",
+        "secretCanary": "Secret canary detection",
+        "testsBeforeFinalize": "Tests must pass before finalize",
+        "coverageReported": "Coverage must be reported",
+        "workspaceMount": "Workspace mount policy",
+        "targetRepoWrite": "Target repo write scope",
+        "claudeAgents": "CLAUDE.md / AGENTS.md present"
+      },
+      "ruleEvidence": {
+        "architectureLayering": "Enforced by architecture layering rules in CLAUDE.md",
+        "contractFirst": "Enforced by contract-first convention",
+        "httpService": "Enforced by @nestjs/axios HttpService requirement",
+        "winstonProvider": "Enforced by WINSTON_MODULE_PROVIDER injection",
+        "pathPolicyRuntime": "Enforced by loops-path-policy.util.ts at runtime",
+        "networkSnapshot": "Defined in runtime security policy snapshot",
+        "canaryTracked": "Canary status tracked per test record",
+        "releaseGateChecklist": "Enforced by release gate checklist",
+        "softSignal": "Soft signal; not a hard gate",
+        "allRuntimesReady": "All runtimes ready",
+        "runtimeChecksPending": "Runtime checks pending",
+        "runtimeWritePolicy": "Enforced by runtime write policy",
+        "capturedAtIntake": "Captured at intake per loop"
+      },
+      "securityStrategy": {
+        "commandAllowlist": "Command allowlist",
+        "networkDeny": "Network: deny-by-default",
+        "writeScoped": "Write: workspace-scoped",
+        "secretCanary": "Secret canary: env-token"
+      },
+      "workflow": {
+        "blocked": "{count} blocked",
+        "loops": "{count} loops",
+        "browserQaPlanned": "Browser QA gate planned",
+        "releasePlanned": "Release gate planned",
+        "noLoops": "No loops"
+      },
+      "deliveryFlow": {
+        "pipeline": "Intake → Spec → Spec Review → Plan → Build → Test → Converge → Global Review → Annotate → Close",
+        "steps": {
+          "intake": "Intake",
+          "spec": "Spec",
+          "review": "Spec Review",
+          "decompose": "Plan",
+          "implement": "Build",
+          "test": "Test",
+          "converge": "Converge",
+          "globalReview": "Global Review",
+          "annotate": "Annotate",
+          "close": "Close"
+        }
+      },
+      "aging": {
+        "slaPolicy": "Warning at {warning}h stale; critical at {critical}h stale."
+      }
+    },
+    "personas": {
+      "intake-analyst": "Intake Analyst",
+      "spec-writer": "Spec Writer",
+      "human-gatekeeper": "Human Gatekeeper",
+      "work-planner": "Work Planner",
+      "builder": "Builder",
+      "test-runner": "Test Runner",
+      "code-reviewer": "Code Reviewer",
+      "release-reviewer": "Release Reviewer",
+      "evidence-curator": "Evidence Curator"
+    },
+    "evalChecks": {
+      "architecture": "Architecture",
+      "delivery": "Delivery",
+      "runtimeSafety": "Runtime safety",
+      "testEvidence": "Test evidence",
+      "costPolicy": "Cost policy"
+    },
+    "gates": {
+      "specReview": "Spec review",
+      "codeReview": "Code review",
+      "releaseGate": "Release gate",
+      "regressionTest": "Regression test",
+      "securityReview": "Security review",
+      "humanApproval": "Human approval"
     }
   },
   "newIssue": {

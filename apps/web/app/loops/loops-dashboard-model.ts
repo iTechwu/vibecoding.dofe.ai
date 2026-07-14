@@ -38,37 +38,40 @@ export function raw(value: string | number): LocalizableText {
 /** 渲染助手：递归解析嵌套的 LocalizableText 参数后交给 next-intl 翻译。 */
 export function tx(
   node: LocalizableText | undefined | null,
-  t: (key: string, params?: Record<string, unknown>) => string,
+  t: (key: string, params?: Record<string, string | number | Date>) => string,
 ): string {
   if (!node) return '';
-  const params =
+  const params: Record<string, string | number | Date> | undefined =
     node.params &&
-    Object.fromEntries(
+    (Object.fromEntries(
       Object.entries(node.params).map(([k, v]) => [
         k,
         typeof v === 'object' && v !== null && 'key' in v ? tx(v, t) : v,
       ]),
-    );
+    ) as Record<string, string | number | Date>);
   return params ? t(node.key, params) : t(node.key);
 }
 
-const PHASE_KEYS: Record<string, string> = {
-  PHASE_0_INTAKE: 'dashboard.model.phases.intake',
-  PHASE_1_SPEC: 'dashboard.model.phases.spec',
-  PHASE_2_REVIEW: 'dashboard.model.phases.specReview',
-  PHASE_3_DECOMPOSE: 'dashboard.model.phases.plan',
-  PHASE_4_IMPLEMENT: 'dashboard.model.phases.build',
-  PHASE_5_REVIEW: 'dashboard.model.phases.test',
-  PHASE_6_CONVERGE: 'dashboard.model.phases.converge',
-  PHASE_7_GLOBAL_REVIEW: 'dashboard.model.phases.globalReview',
-  PHASE_8_ANNOTATE: 'dashboard.model.phases.annotate',
-  CLOSED: 'dashboard.model.phases.close',
-  PAUSED: 'dashboard.model.phases.paused',
-};
+const KNOWN_PHASES = new Set([
+  'PHASE_0_INTAKE',
+  'PHASE_1_SPEC',
+  'PHASE_2_REVIEW',
+  'PHASE_3_DECOMPOSE',
+  'PHASE_4_IMPLEMENT',
+  'PHASE_5_REVIEW',
+  'PHASE_6_CONVERGE',
+  'PHASE_7_GLOBAL_REVIEW',
+  'PHASE_8_ANNOTATE',
+  'CLOSED',
+  'PAUSED',
+]);
 
-/** 把内部 phase 枚举映射为可本地化的阶段文案节点。 */
+/** 把内部 phase 枚举映射为可本地化的阶段文案节点（复用既有 `dashboard.phaseLabels.*`）。 */
 export function phaseL(phase: string | undefined | null): LocalizableText {
-  return L(PHASE_KEYS[phase ?? ''] ?? 'dashboard.model.phases.intake');
+  const key = phase ?? '';
+  return KNOWN_PHASES.has(key)
+    ? L(`dashboard.phaseLabels.${key}`)
+    : L('dashboard.model.raw', { value: key });
 }
 
 const STATUS_KEYS: Record<string, string> = {
@@ -516,7 +519,7 @@ export type OperatorFocusKind = 'review' | 'exception' | 'continue' | 'create';
 
 export interface OperatorFocusItem {
   kind: OperatorFocusKind;
-  title: string;
+  title: LocalizableText;
   href: string;
   label: LocalizableText;
   meta: LocalizableText;
@@ -538,7 +541,7 @@ export type PermissionProfileState = 'enabled' | 'restricted' | 'planned';
 export interface PermissionProfileMode {
   id: PermissionProfileModeId;
   state: PermissionProfileState;
-  evidence: string;
+  evidence: LocalizableText;
 }
 
 export interface PermissionProfile {
@@ -576,13 +579,13 @@ export interface RuntimeBackendItem {
   kind: 'codex-cli' | 'claude-code-cli';
   mode: string;
   status: RuntimeBackendStatus;
-  supportedStages: string[];
-  permissionProfile: string;
-  workspacePolicy: string;
-  costPolicy: string;
-  fallbackPolicy: string;
+  supportedStages: LocalizableText[];
+  permissionProfile: LocalizableText;
+  workspacePolicy: LocalizableText;
+  costPolicy: LocalizableText;
+  fallbackPolicy: LocalizableText;
   healthChecks: string[];
-  evidence: string;
+  evidence: LocalizableText;
 }
 
 export interface RuntimeBackends {
@@ -615,7 +618,7 @@ export interface EvalCheck {
     | 'cost-policy';
   status: EvalCheckStatus;
   hardGate: boolean;
-  evidence: string;
+  evidence: LocalizableText;
 }
 
 export interface EvalPlan {
@@ -655,7 +658,7 @@ export interface TriggerPortfolio {
 }
 
 export interface RepoContextPhase {
-  phase: string;
+  phase: LocalizableText;
   count: number;
 }
 
@@ -664,7 +667,7 @@ export interface RepoContextRecentItem {
   title: string;
   href: string;
   status: string;
-  phase: string;
+  phase: LocalizableText;
 }
 
 export interface RepoContextItem {
@@ -701,7 +704,7 @@ export interface WorkflowRecipeStep {
   state: WorkflowRecipeStepState;
   gate: WorkflowRecipeGate;
   count: number;
-  evidence: string;
+  evidence: LocalizableText;
 }
 
 export interface WorkflowRecipe {
@@ -727,7 +730,7 @@ export interface ReviewGateItem {
   kind: ReviewGateKind;
   status: ReviewGateStatus;
   count: number;
-  evidence: string;
+  evidence: LocalizableText;
 }
 
 export interface ReviewGatePortfolio {
@@ -753,7 +756,7 @@ export interface ReleaseReadinessItem {
     review: boolean;
     qa: boolean;
   };
-  evidence: string;
+  evidence: LocalizableText;
 }
 
 export interface ReleaseReadiness {
@@ -784,8 +787,8 @@ const HUMAN_NOTIFICATION_KINDS = new Set<LoopNotification['kind']>([
 export const AGING_QUEUE_SLA_POLICY = {
   warningHours: 24,
   criticalHours: 72,
-  label: 'Warning at 24h stale; critical at 72h stale.',
-} as const;
+  label: L('dashboard.model.aging.slaPolicy', { warning: 24, critical: 72 }),
+};
 
 export const PHASE_LABELS: Record<string, string> = {
   PHASE_0_INTAKE: 'Intake',
@@ -1033,7 +1036,7 @@ export function buildOperatorFocus(input: {
   if (topReview) {
     return {
       kind: 'review',
-      title: topReview.title,
+      title: raw(topReview.title),
       href: topReview.href,
       label: topReview.label,
       meta: topReview.meta,
@@ -1060,7 +1063,7 @@ export function buildOperatorFocus(input: {
   if (topAction) {
     return {
       kind: 'continue',
-      title: topAction.title,
+      title: raw(topAction.title),
       href: topAction.href,
       label: raw(topAction.label),
       meta: L('dashboard.model.meta.phasePriority', {
@@ -1073,7 +1076,7 @@ export function buildOperatorFocus(input: {
 
   return {
     kind: 'create',
-    title: '',
+    title: raw(''),
     href: '/loops/new',
     label: raw(''),
     meta: raw(''),
@@ -1471,7 +1474,7 @@ export function buildExceptionCenter(
             check.status === 'blocked'
               ? L('dashboard.model.actions.resolveHardGate')
               : L('dashboard.model.actions.collectEvidence'),
-          evidence: raw(check.evidence),
+          evidence: check.evidence,
           impact:
             check.status === 'blocked'
               ? L('dashboard.model.impact.evalBlocked')
@@ -1502,11 +1505,20 @@ export function buildExceptionCenter(
       capacity: options.runtime?.summary.total ?? items.length,
     },
     items: [...loopItems, ...evalItems, ...runtimeItems, ...doctorItems]
-      .sort(
-        (a, b) =>
-          exceptionSeverityRank(a.level) - exceptionSeverityRank(b.level) ||
-          a.id.localeCompare(b.id),
-      )
+      .sort((a, b) => {
+        const severity = exceptionSeverityRank(a.level) - exceptionSeverityRank(b.level);
+        if (severity !== 0) return severity;
+        const SOURCE_RANK: Record<ExceptionSource, number> = {
+          cost: 0,
+          pause: 1,
+          review: 2,
+          'runtime-security': 3,
+          runtime: 4,
+          eval: 5,
+          doctor: 6,
+        };
+        return SOURCE_RANK[a.source] - SOURCE_RANK[b.source] || a.id.localeCompare(b.id);
+      })
       .slice(0, 8),
   };
 }
@@ -1590,31 +1602,39 @@ export function buildPermissionProfile(registry?: LoopAgentToolRegistry): Permis
       {
         id: 'read',
         state: readAgents || readTools ? 'enabled' : 'planned',
-        evidence: `${readAgents} agents · ${readTools} tools`,
+        evidence: L('dashboard.model.evidence.agentsTools', {
+          agents: readAgents,
+          tools: readTools,
+        }),
       },
       {
         id: 'write',
         state: writeAgents || writeTools ? 'enabled' : 'planned',
-        evidence: `${writeAgents} agents · ${writeTools} tools`,
+        evidence: L('dashboard.model.evidence.agentsTools', {
+          agents: writeAgents,
+          tools: writeTools,
+        }),
       },
       {
         id: 'shell',
         state: testAgents ? 'restricted' : 'planned',
-        evidence: testAgents ? `${testAgents} agents can run tests` : 'No shell/test permission',
+        evidence: testAgents
+          ? L('dashboard.model.evidence.agentsRunTests', { count: testAgents })
+          : L('dashboard.model.evidence.noShellTest'),
       },
       {
         id: 'network',
         state: plannedCompatibility ? 'planned' : 'restricted',
         evidence: plannedCompatibility
-          ? `${plannedCompatibility} third-party tool compatibilities planned`
-          : 'No network/provider extension declared',
+          ? L('dashboard.model.evidence.compatPlanned', { count: plannedCompatibility })
+          : L('dashboard.model.evidence.noNetworkDeclared'),
       },
       {
         id: 'approval',
         state: approvalAgents ? 'enabled' : 'planned',
         evidence: approvalAgents
-          ? `${approvalAgents} agents require human approval`
-          : 'No human approval gate declared',
+          ? L('dashboard.model.evidence.agentsRequireApproval', { count: approvalAgents })
+          : L('dashboard.model.evidence.noApprovalDeclared'),
       },
     ],
   };
@@ -1702,21 +1722,31 @@ const RUNTIME_BACKEND_BLUEPRINTS: Record<
     id: 'runtime-backend-codex',
     name: 'Codex CLI',
     kind: 'codex-cli',
-    supportedStages: ['Intake', 'Spec', 'Planning', 'Review', 'Release'],
-    permissionProfile: 'read/review/test design; write only Loops artifacts',
-    workspacePolicy: 'uses selected workspace profile and target repo scope',
-    costPolicy: 'shares per-loop call/token guard',
-    fallbackPolicy: 'Fallback to deterministic review gate',
+    supportedStages: [
+      L('dashboard.model.stages.intake'),
+      L('dashboard.model.stages.spec'),
+      L('dashboard.model.stages.planning'),
+      L('dashboard.model.stages.review'),
+      L('dashboard.model.stages.release'),
+    ],
+    permissionProfile: L('dashboard.model.runtime.codexPermission'),
+    workspacePolicy: L('dashboard.model.runtime.codexWorkspace'),
+    costPolicy: L('dashboard.model.runtime.sharedCostGuard'),
+    fallbackPolicy: L('dashboard.model.runtime.fallbackDeterministic'),
   },
   'claude-code': {
     id: 'runtime-backend-claude-code',
     name: 'Claude Code CLI',
     kind: 'claude-code-cli',
-    supportedStages: ['Implementation', 'Test execution', 'Second opinion'],
-    permissionProfile: 'read/write/test within approved work package',
-    workspacePolicy: 'requires approved workspace mount for Docker mode',
-    costPolicy: 'shares per-loop call/token guard',
-    fallbackPolicy: 'Pause and ask for runtime recovery',
+    supportedStages: [
+      L('dashboard.model.stages.implementation'),
+      L('dashboard.model.stages.testExecution'),
+      L('dashboard.model.stages.secondOpinion'),
+    ],
+    permissionProfile: L('dashboard.model.runtime.claudePermission'),
+    workspacePolicy: L('dashboard.model.runtime.claudeWorkspace'),
+    costPolicy: L('dashboard.model.runtime.sharedCostGuard'),
+    fallbackPolicy: L('dashboard.model.runtime.fallbackPauseRecovery'),
   },
 };
 
@@ -1741,7 +1771,10 @@ export function buildRuntimeBackends(runtime?: LoopAgentRuntimeResponse): Runtim
         mode: selected?.mode ?? runtimeItem.preferredMode,
         status: runtimeBackendStatus(runtimeItem),
         healthChecks: runtimeItem.checks.map((check) => check.message),
-        evidence: selected?.version ?? selected?.image ?? runtime?.workspaceId ?? 'detected',
+        evidence: (() => {
+          const detected = selected?.version ?? selected?.image ?? runtime?.workspaceId;
+          return detected ? raw(detected) : L('dashboard.model.evidence.detected');
+        })(),
       };
     })
     .sort((a, b) => {
@@ -1833,26 +1866,26 @@ export function buildEvalPlan(items: LoopListItem[], cost?: LoopCostResponse): E
       status: active.length > 0 ? 'attention' : 'passed',
       hardGate: true,
       evidence: active.length
-        ? `${active.length} active loops still need architecture/review evidence`
-        : 'All active architecture gates are clear',
+        ? L('dashboard.model.eval.architectureAttention', { count: active.length })
+        : L('dashboard.model.eval.architectureClear'),
     },
     {
       id: 'delivery-readiness',
       status: blockedLoops.length > 0 ? 'blocked' : active.length > 0 ? 'attention' : 'passed',
       hardGate: true,
       evidence: blockedLoops.length
-        ? `${blockedLoops.length} loops blocked before release`
+        ? L('dashboard.model.eval.deliveryBlocked', { count: blockedLoops.length })
         : active.length
-          ? `${active.length} loops still moving toward release`
-          : 'No active delivery blockers',
+          ? L('dashboard.model.eval.deliveryMoving', { count: active.length })
+          : L('dashboard.model.eval.deliveryClear'),
     },
     {
       id: 'runtime-safety',
       status: runtimeSecurityExceptions > 0 ? 'attention' : 'passed',
       hardGate: true,
       evidence: runtimeSecurityExceptions
-        ? `${runtimeSecurityExceptions} runtime security exceptions recorded`
-        : 'Runtime security policy has no recorded exceptions',
+        ? L('dashboard.model.eval.runtimeExceptions', { count: runtimeSecurityExceptions })
+        : L('dashboard.model.eval.runtimeClear'),
     },
     {
       id: 'test-evidence',
@@ -1860,18 +1893,18 @@ export function buildEvalPlan(items: LoopListItem[], cost?: LoopCostResponse): E
         failedEvidenceLoops.length > 0 ? 'blocked' : active.length > 0 ? 'attention' : 'passed',
       hardGate: true,
       evidence: failedEvidenceLoops.length
-        ? `${failedEvidenceLoops.length} loops failed global review or tests`
+        ? L('dashboard.model.eval.testFailed', { count: failedEvidenceLoops.length })
         : active.length
-          ? `${active.length} loops still collecting test/review evidence`
-          : 'All completed loops have passing evidence',
+          ? L('dashboard.model.eval.testCollecting', { count: active.length })
+          : L('dashboard.model.eval.testPassed'),
     },
     {
       id: 'cost-policy',
       status: costTripped > 0 ? 'blocked' : 'passed',
       hardGate: true,
       evidence: costTripped
-        ? `${costTripped} loops tripped spend guard`
-        : 'Spend guard is within policy',
+        ? L('dashboard.model.eval.costTripped', { count: costTripped })
+        : L('dashboard.model.eval.costClear'),
     },
   ];
 
@@ -1949,7 +1982,7 @@ export function buildRepoContextMap(
   for (const item of items) {
     const { issue, state } = item;
     const repo = issue.targetRepo || 'unassigned';
-    const phase = formatPhase(state?.phase ?? issue.status);
+    const phase = state?.phase ?? issue.status;
     const existing = repoMap.get(repo) ?? {
       repo,
       issues: 0,
@@ -1970,7 +2003,7 @@ export function buildRepoContextMap(
       title: issue.title,
       href: `/loops/${issue.id}`,
       status: issue.status,
-      phase,
+      phase: phaseL(phase),
       updated: issue.updated,
     });
     repoMap.set(repo, existing);
@@ -1983,8 +2016,8 @@ export function buildRepoContextMap(
       blocked: repo.blocked,
       latest: repo.latest,
       phases: [...repo.phases.entries()]
-        .map(([phase, count]) => ({ phase, count }))
-        .sort((a, b) => b.count - a.count || a.phase.localeCompare(b.phase)),
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .map(([phase, count]) => ({ phase: phaseL(phase), count })),
       recent: repo.recent
         .sort((a, b) => b.updated.localeCompare(a.updated) || a.title.localeCompare(b.title))
         .slice(0, 3)
@@ -2048,20 +2081,20 @@ function workflowEvidence(
   step: (typeof WORKFLOW_RECIPE_STEPS)[number],
   count: number,
   blocked: number,
-) {
+): LocalizableText {
   if (blocked > 0 && step.id === 'codeReview') {
-    return `${blocked} blocked`;
+    return L('dashboard.model.workflow.blocked', { count: blocked });
   }
   if (count > 0) {
-    return `${count} loops`;
+    return L('dashboard.model.workflow.loops', { count });
   }
   if (step.id === 'browserQa') {
-    return 'Browser QA gate planned';
+    return L('dashboard.model.workflow.browserQaPlanned');
   }
   if (step.id === 'release') {
-    return 'Release gate planned';
+    return L('dashboard.model.workflow.releasePlanned');
   }
-  return 'No loops';
+  return L('dashboard.model.workflow.noLoops');
 }
 
 export function buildWorkflowRecipe(
@@ -2143,7 +2176,10 @@ export function buildReviewGatePortfolio(
       kind: 'product',
       status: specPending > 0 ? 'pending' : activeItems.length > 0 ? 'passed' : 'pending',
       count: specPending,
-      evidence: specPending > 0 ? `${specPending} specs need decision` : 'Spec gate clear',
+      evidence:
+        specPending > 0
+          ? L('dashboard.model.gates.specsNeedDecision', { count: specPending })
+          : L('dashboard.model.gates.specClear'),
     },
     {
       kind: 'architecture',
@@ -2151,8 +2187,8 @@ export function buildReviewGatePortfolio(
       count: architectureReady,
       evidence:
         architectureReady > 0
-          ? `${architectureReady} loops decomposed or implemented`
-          : 'Waiting for decomposition',
+          ? L('dashboard.model.gates.decomposed', { count: architectureReady })
+          : L('dashboard.model.gates.waitingDecomposition'),
     },
     {
       kind: 'code',
@@ -2160,17 +2196,19 @@ export function buildReviewGatePortfolio(
       count: codeNeedsChanges + blocked,
       evidence:
         blocked > 0
-          ? `${blocked} blocked by exception`
+          ? L('dashboard.model.gates.blockedException', { count: blocked })
           : codeNeedsChanges > 0
-            ? `${codeNeedsChanges} reviews need changes`
-            : 'Code review gate pending',
+            ? L('dashboard.model.gates.reviewsNeedChanges', { count: codeNeedsChanges })
+            : L('dashboard.model.gates.codePending'),
     },
     {
       kind: 'security',
       status: closed > 0 ? 'passed' : 'pending',
       count: closed,
       evidence:
-        closed > 0 ? `${closed} delivered loops ready for audit` : 'Security review planned',
+        closed > 0
+          ? L('dashboard.model.gates.deliveredReadyAudit', { count: closed })
+          : L('dashboard.model.gates.securityPlanned'),
     },
   ];
 
@@ -2218,7 +2256,11 @@ export function buildReleaseReadiness(
         href: `/loops/${item.issue.id}`,
         state: blocked ? 'blocked' : ready ? 'ready' : 'attention',
         checklist,
-        evidence: `${formatPhase(phase)} · ${shardsDone}/${shardsTotal} shards`,
+        evidence: L('dashboard.model.meta.phaseShards', {
+          phase: phaseL(phase),
+          done: shardsDone,
+          total: shardsTotal,
+        }),
       };
     })
     .sort((a, b) => {
@@ -2251,7 +2293,7 @@ export type RecipeAdminActionId = 'createVersion' | 'reviewApproval' | 'rollback
 export interface RecipeAdminAction {
   id: RecipeAdminActionId;
   state: 'ready' | 'blocked';
-  evidence: string;
+  evidence: LocalizableText;
   sourcePermission?: string;
 }
 
@@ -2349,8 +2391,10 @@ export function buildRecipeAdminSummary(
       id: 'createVersion',
       state: canCreateRecipe ? 'ready' : 'blocked',
       evidence: canCreateRecipe
-        ? `${sourcePermission ?? 'authenticated'} grants recipe version changes`
-        : 'Authenticated access required',
+        ? L('dashboard.model.recipe.grantsVersion', {
+            permission: raw(sourcePermission ?? 'authenticated'),
+          })
+        : L('dashboard.model.recipe.authRequired'),
       sourcePermission,
     },
     {
@@ -2358,8 +2402,8 @@ export function buildRecipeAdminSummary(
       state: canCreateRecipe && totalBlocked > 0 ? 'ready' : 'blocked',
       evidence:
         totalBlocked > 0
-          ? `${totalBlocked} blocked loops need approval review`
-          : 'No blocked recipe loops require approval',
+          ? L('dashboard.model.recipe.blockedNeedApproval', { count: totalBlocked })
+          : L('dashboard.model.recipe.noBlockedApproval'),
       sourcePermission,
     },
     {
@@ -2367,8 +2411,8 @@ export function buildRecipeAdminSummary(
       state: canCreateRecipe && items_out.length > 0 ? 'ready' : 'blocked',
       evidence:
         items_out.length > 0
-          ? `${items_out.length} recipe kinds have rollback baseline`
-          : 'No active recipe baseline available',
+          ? L('dashboard.model.recipe.rollbackBaseline', { count: items_out.length })
+          : L('dashboard.model.recipe.noRollbackBaseline'),
       sourcePermission,
     },
   ];
@@ -2404,8 +2448,8 @@ export function formatPhase(phase: string) {
 
 export interface BlueprintMarketplaceItem {
   id: string;
-  label: string;
-  description: string;
+  label: LocalizableText;
+  description: LocalizableText;
   personaCount: number;
   evalCount: number;
   gateCount: number;
@@ -2422,8 +2466,8 @@ export interface BlueprintMarketplace {
 const BLUEPRINTS: Omit<BlueprintMarketplaceItem, 'activeUse'>[] = [
   {
     id: 'bugfix',
-    label: 'Bugfix Loop',
-    description: 'Root-cause isolation, reproduction fix, and regression coverage.',
+    label: L('dashboard.model.loopTypes.bugfix'),
+    description: L('dashboard.model.loopDescription.bugfix'),
     personaCount: 6,
     evalCount: 5,
     gateCount: 4,
@@ -2433,8 +2477,8 @@ const BLUEPRINTS: Omit<BlueprintMarketplaceItem, 'activeUse'>[] = [
   },
   {
     id: 'feature',
-    label: 'Feature Loop',
-    description: 'Plan and deliver a user-facing capability with UX, API, and test evidence.',
+    label: L('dashboard.model.loopTypes.feature'),
+    description: L('dashboard.model.loopDescription.feature'),
     personaCount: 9,
     evalCount: 5,
     gateCount: 3,
@@ -2444,8 +2488,8 @@ const BLUEPRINTS: Omit<BlueprintMarketplaceItem, 'activeUse'>[] = [
   },
   {
     id: 'refactor',
-    label: 'Refactor Loop',
-    description: 'Change internals while protecting public behavior and contracts.',
+    label: L('dashboard.model.loopTypes.refactor'),
+    description: L('dashboard.model.loopDescription.refactor'),
     personaCount: 9,
     evalCount: 5,
     gateCount: 3,
@@ -2455,8 +2499,8 @@ const BLUEPRINTS: Omit<BlueprintMarketplaceItem, 'activeUse'>[] = [
   },
   {
     id: 'docs',
-    label: 'Documentation Loop',
-    description: 'Update specs, runbooks, and release notes with status labeling.',
+    label: L('dashboard.model.loopTypes.documentation'),
+    description: L('dashboard.model.loopDescription.documentation'),
     personaCount: 4,
     evalCount: 3,
     gateCount: 2,
@@ -2466,8 +2510,8 @@ const BLUEPRINTS: Omit<BlueprintMarketplaceItem, 'activeUse'>[] = [
   },
   {
     id: 'integration',
-    label: 'Integration Loop',
-    description: 'Define external system boundaries with security review and client isolation.',
+    label: L('dashboard.model.loopTypes.integration'),
+    description: L('dashboard.model.loopDescription.integration'),
     personaCount: 9,
     evalCount: 5,
     gateCount: 4,
@@ -2477,8 +2521,8 @@ const BLUEPRINTS: Omit<BlueprintMarketplaceItem, 'activeUse'>[] = [
   },
   {
     id: 'flow',
-    label: 'Flow Loop',
-    description: 'Model stateful agent workflows with triggers, HITL gates, and resume.',
+    label: L('dashboard.model.loopTypes.flow'),
+    description: L('dashboard.model.loopDescription.flow'),
     personaCount: 9,
     evalCount: 5,
     gateCount: 4,
@@ -2488,8 +2532,8 @@ const BLUEPRINTS: Omit<BlueprintMarketplaceItem, 'activeUse'>[] = [
   },
   {
     id: 'security',
-    label: 'Security Patch Loop',
-    description: 'Security-sensitive fixes with mandatory human security review.',
+    label: L('dashboard.model.loopTypes.securityPatch'),
+    description: L('dashboard.model.loopDescription.securityPatch'),
     personaCount: 6,
     evalCount: 5,
     gateCount: 4,
@@ -2499,8 +2543,8 @@ const BLUEPRINTS: Omit<BlueprintMarketplaceItem, 'activeUse'>[] = [
   },
   {
     id: 'dependency',
-    label: 'Dependency Upgrade Loop',
-    description: 'Dependency updates with lockfile validation and test matrix checks.',
+    label: L('dashboard.model.loopTypes.dependencyUpgrade'),
+    description: L('dashboard.model.loopDescription.dependencyUpgrade'),
     personaCount: 3,
     evalCount: 5,
     gateCount: 3,
@@ -2628,11 +2672,11 @@ export function buildFleetHealth(
 
 export interface RuleCenterItem {
   id: string;
-  label: string;
+  label: LocalizableText;
   category: 'architecture' | 'security' | 'testing' | 'workspace';
   enforced: boolean;
   violations: number;
-  evidence: string;
+  evidence: LocalizableText;
 }
 
 export interface RulesCenter {
@@ -2653,99 +2697,101 @@ export function buildRulesCenter(
   const rules: RuleCenterItem[] = [
     {
       id: 'db-service-layer',
-      label: 'DB access only via DB Service',
+      label: L('dashboard.model.rules.dbAccessOnly'),
       category: 'architecture',
       enforced: true,
       violations: 0,
-      evidence: 'Enforced by architecture layering rules in CLAUDE.md',
+      evidence: L('dashboard.model.ruleEvidence.architectureLayering'),
     },
     {
       id: 'zod-contracts',
-      label: 'Zod-first API contracts',
+      label: L('dashboard.model.rules.zodContracts'),
       category: 'architecture',
       enforced: true,
       violations: 0,
-      evidence: 'Enforced by contract-first convention',
+      evidence: L('dashboard.model.ruleEvidence.contractFirst'),
     },
     {
       id: 'client-layer',
-      label: 'External APIs via Client layer',
+      label: L('dashboard.model.rules.externalApisClient'),
       category: 'architecture',
       enforced: true,
       violations: 0,
-      evidence: 'Enforced by @nestjs/axios HttpService requirement',
+      evidence: L('dashboard.model.ruleEvidence.httpService'),
     },
     {
       id: 'winston-logger',
-      label: 'Winston Logger (no console.log)',
+      label: L('dashboard.model.rules.winstonLogger'),
       category: 'architecture',
       enforced: true,
       violations: 0,
-      evidence: 'Enforced by WINSTON_MODULE_PROVIDER injection',
+      evidence: L('dashboard.model.ruleEvidence.winstonProvider'),
     },
     {
       id: 'path-policy',
-      label: 'Path policy enforced',
+      label: L('dashboard.model.rules.pathPolicy'),
       category: 'security',
       enforced: true,
       violations: 0,
-      evidence: 'Enforced by loops-path-policy.util.ts at runtime',
+      evidence: L('dashboard.model.ruleEvidence.pathPolicyRuntime'),
     },
     {
       id: 'network-policy',
-      label: 'Network deny-by-default',
+      label: L('dashboard.model.rules.networkDeny'),
       category: 'security',
       enforced: true,
       violations: 0,
-      evidence: 'Defined in runtime security policy snapshot',
+      evidence: L('dashboard.model.ruleEvidence.networkSnapshot'),
     },
     {
       id: 'secret-canary',
-      label: 'Secret canary detection',
+      label: L('dashboard.model.rules.secretCanary'),
       category: 'security',
       enforced: true,
       violations: 0,
-      evidence: 'Canary status tracked per test record',
+      evidence: L('dashboard.model.ruleEvidence.canaryTracked'),
     },
     {
       id: 'test-required',
-      label: 'Tests must pass before finalize',
+      label: L('dashboard.model.rules.testsBeforeFinalize'),
       category: 'testing',
       enforced: true,
       violations: 0,
-      evidence: 'Enforced by release gate checklist',
+      evidence: L('dashboard.model.ruleEvidence.releaseGateChecklist'),
     },
     {
       id: 'coverage-required',
-      label: 'Coverage must be reported',
+      label: L('dashboard.model.rules.coverageReported'),
       category: 'testing',
       enforced: false,
       violations: 0,
-      evidence: 'Soft signal; not a hard gate',
+      evidence: L('dashboard.model.ruleEvidence.softSignal'),
     },
     {
       id: 'workspace-mount',
-      label: 'Workspace mount policy',
+      label: L('dashboard.model.rules.workspaceMount'),
       category: 'workspace',
       enforced: hasRuntimeChecks,
       violations: allRuntimeReady ? 0 : 1,
-      evidence: allRuntimeReady ? 'All runtimes ready' : 'Runtime checks pending',
+      evidence: allRuntimeReady
+        ? L('dashboard.model.ruleEvidence.allRuntimesReady')
+        : L('dashboard.model.ruleEvidence.runtimeChecksPending'),
     },
     {
       id: 'target-repo-scope',
-      label: 'Target repo write scope',
+      label: L('dashboard.model.rules.targetRepoWrite'),
       category: 'security',
       enforced: true,
       violations: 0,
-      evidence: 'Enforced by runtime write policy',
+      evidence: L('dashboard.model.ruleEvidence.runtimeWritePolicy'),
     },
     {
       id: 'rule-snapshot',
-      label: 'CLAUDE.md / AGENTS.md present',
+      label: L('dashboard.model.rules.claudeAgents'),
       category: 'workspace',
       enforced: true,
       violations: 0,
-      evidence: 'Captured at intake per loop',
+      evidence: L('dashboard.model.ruleEvidence.capturedAtIntake'),
     },
   ];
 
@@ -2766,7 +2812,7 @@ export function buildRulesCenter(
 // ============================================================================
 
 export interface RuntimeSecurityPolicyStatus {
-  strategy: string;
+  strategy: LocalizableText;
   active: boolean;
   violations: number;
   overrides: number;
@@ -2822,7 +2868,7 @@ export function buildRuntimeSecurityPanel(
   // Policy status based on detection data.
   const policies: RuntimeSecurityPolicyStatus[] = [
     {
-      strategy: 'Command allowlist',
+      strategy: L('dashboard.model.securityStrategy.commandAllowlist'),
       active: true,
       violations: active.filter((item) =>
         (item.runtimeSecurityExceptions ?? []).some(
@@ -2832,7 +2878,7 @@ export function buildRuntimeSecurityPanel(
       overrides: 0,
     },
     {
-      strategy: 'Network: deny-by-default',
+      strategy: L('dashboard.model.securityStrategy.networkDeny'),
       active: true,
       violations: active.filter((item) =>
         (item.runtimeSecurityExceptions ?? []).some((ex) => ex.reason.includes('network')),
@@ -2840,7 +2886,7 @@ export function buildRuntimeSecurityPanel(
       overrides: 0,
     },
     {
-      strategy: 'Write: workspace-scoped',
+      strategy: L('dashboard.model.securityStrategy.writeScoped'),
       active: true,
       violations: active.filter((item) =>
         (item.runtimeSecurityExceptions ?? []).some(
@@ -2850,7 +2896,7 @@ export function buildRuntimeSecurityPanel(
       overrides: 0,
     },
     {
-      strategy: 'Secret canary: env-token',
+      strategy: L('dashboard.model.securityStrategy.secretCanary'),
       active: true,
       violations: active.filter((item) =>
         (item.runtimeSecurityExceptions ?? []).some(
@@ -3005,7 +3051,7 @@ export interface ReleaseGateBlocker {
   issueId: string;
   title: string;
   href: string;
-  reason: string;
+  reason: LocalizableText;
 }
 
 export interface ReleaseGatePanel {
@@ -3075,13 +3121,13 @@ export function buildReleaseGatePanel(
     issueId: item.issue.id,
     title: item.issue.title,
     href: `/loops/${item.issue.id}`,
-    reason:
-      item.releaseGate?.blocker ??
-      (item.state?.paused
-        ? 'Paused'
+    reason: item.releaseGate?.blocker
+      ? raw(item.releaseGate.blocker)
+      : item.state?.paused
+        ? L('dashboard.model.reasons.paused')
         : item.state?.globalVerdict
-          ? `Global ${item.state.globalVerdict}`
-          : 'Needs review'),
+          ? L('dashboard.model.reasons.globalVerdict', { verdict: item.state.globalVerdict })
+          : L('dashboard.model.reasons.needsReview'),
   }));
 
   return {
@@ -3270,7 +3316,7 @@ export function buildTriggerLifecycle(items: LoopListItem[]): TriggerLifecycle {
 
 export interface DeliveryFlowStep {
   id: string;
-  label: string;
+  label: LocalizableText;
   phases: string[];
   runtimeOwner: 'codex' | 'claude-code' | 'human' | 'system';
   gateKind: 'none' | 'human' | 'agent' | 'release';
@@ -3281,82 +3327,71 @@ export interface DeliveryFlowStep {
 export interface DeliveryFlow {
   summary: { totalSteps: number; activeSteps: number; blockedSteps: number };
   steps: DeliveryFlowStep[];
-  pipelineLabel: string;
+  pipelineLabel: LocalizableText;
 }
 
 const DELIVERY_FLOW_PIPELINE: Array<{
   id: string;
-  label: string;
   phases: string[];
   runtimeOwner: 'codex' | 'claude-code' | 'human' | 'system';
   gateKind: 'none' | 'human' | 'agent' | 'release';
 }> = [
   {
     id: 'intake',
-    label: 'Intake',
     phases: ['PHASE_0_INTAKE'],
     runtimeOwner: 'system',
     gateKind: 'none',
   },
   {
     id: 'spec',
-    label: 'Spec',
     phases: ['PHASE_1_SPEC'],
     runtimeOwner: 'codex',
     gateKind: 'none',
   },
   {
     id: 'review',
-    label: 'Spec Review',
     phases: ['PHASE_2_REVIEW'],
     runtimeOwner: 'human',
     gateKind: 'human',
   },
   {
     id: 'decompose',
-    label: 'Plan',
     phases: ['PHASE_3_DECOMPOSE'],
     runtimeOwner: 'codex',
     gateKind: 'none',
   },
   {
     id: 'implement',
-    label: 'Build',
     phases: ['PHASE_4_IMPLEMENT'],
     runtimeOwner: 'claude-code',
     gateKind: 'agent',
   },
   {
     id: 'test',
-    label: 'Test',
     phases: ['PHASE_5_REVIEW'],
     runtimeOwner: 'codex',
     gateKind: 'agent',
   },
   {
     id: 'converge',
-    label: 'Converge',
     phases: ['PHASE_6_CONVERGE'],
     runtimeOwner: 'codex',
     gateKind: 'agent',
   },
   {
     id: 'globalReview',
-    label: 'Global Review',
     phases: ['PHASE_7_GLOBAL_REVIEW'],
     runtimeOwner: 'codex',
     gateKind: 'agent',
   },
   {
     id: 'annotate',
-    label: 'Annotate',
     phases: ['PHASE_8_ANNOTATE'],
     runtimeOwner: 'codex',
     gateKind: 'none',
   },
   {
     id: 'close',
-    label: 'Close',
     phases: ['CLOSED'],
     runtimeOwner: 'system',
     gateKind: 'release',
@@ -3381,7 +3416,12 @@ export function buildDeliveryFlow(items: LoopListItem[]): DeliveryFlow {
         }
       }
     }
-    return { ...def, loopCount, blockedCount };
+    return {
+      ...def,
+      label: L(`dashboard.model.deliveryFlow.steps.${def.id}`),
+      loopCount,
+      blockedCount,
+    };
   });
 
   return {
@@ -3391,7 +3431,6 @@ export function buildDeliveryFlow(items: LoopListItem[]): DeliveryFlow {
       blockedSteps: steps.filter((s) => s.blockedCount > 0).length,
     },
     steps,
-    pipelineLabel:
-      'Intake → Spec → Spec Review → Plan → Build → Test → Converge → Global Review → Annotate → Close',
+    pipelineLabel: L('dashboard.model.deliveryFlow.pipeline'),
   };
 }

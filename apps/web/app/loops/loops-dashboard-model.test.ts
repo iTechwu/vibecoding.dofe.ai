@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
 import type {
   LoopAgentRuntimeResponse,
   LoopCostResponse,
@@ -33,7 +35,36 @@ import {
   buildWorkforceOverview,
   buildWorkflowRecipe,
   formatPhase,
+  tx,
+  type LocalizableText,
 } from './loops-dashboard-model';
+
+// Resolve a LocalizableText node back to its English string using the en locale
+// messages, so tests can keep asserting readable strings through the full
+// key → message → interpolation chain.
+const enMessages = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, '../../locales/en/loops.json'), 'utf8'),
+) as Record<string, unknown>;
+
+function lookupMessage(key: string): string {
+  const value = key.split('.').reduce<unknown>((acc, seg) => {
+    if (acc && typeof acc === 'object') return (acc as Record<string, unknown>)[seg];
+    return undefined;
+  }, enMessages);
+  return typeof value === 'string' ? value : key;
+}
+
+function tFn(key: string, params?: Record<string, unknown>): string {
+  let message = lookupMessage(key);
+  if (params) {
+    for (const [name, value] of Object.entries(params)) {
+      message = message.replaceAll(`{${name}}`, String(value));
+    }
+  }
+  return message;
+}
+
+const resolve = (node: LocalizableText | undefined | null): string => tx(node, tFn);
 
 const list: LoopListResponse = {
   list: [
@@ -243,7 +274,7 @@ describe('loops-dashboard-model', () => {
   it('prioritizes paused, cost, verdict, and high-priority risks', () => {
     const risks = buildRiskQueue(list.list, cost);
 
-    expect(risks.map((risk) => risk.reason)).toEqual([
+    expect(risks.map((risk) => resolve(risk.reason))).toEqual([
       'P0 priority',
       'Paused',
       'Cost guard tripped',
@@ -265,6 +296,9 @@ describe('loops-dashboard-model', () => {
       warningHours: 24,
       criticalHours: 72,
     });
+    expect(resolve(AGING_QUEUE_SLA_POLICY.label)).toBe(
+      'Warning at 24h stale; critical at 72h stale.',
+    );
 
     const warningAging = buildAgingQueue(list.list, new Date('2026-06-21T01:00:00.000Z'));
 
@@ -436,56 +470,41 @@ describe('loops-dashboard-model', () => {
       },
     ];
 
-    expect(
-      buildOperatorFocus({
-        reviewInbox,
-        exceptionItems: exceptionCenter.items,
-        actionQueue,
-      }),
-    ).toMatchObject({
-      kind: 'review',
-      title: 'Spec needs approval',
-      label: 'Review spec',
-      level: 'warning',
+    const reviewFocus = buildOperatorFocus({
+      reviewInbox,
+      exceptionItems: exceptionCenter.items,
+      actionQueue,
     });
+    expect(reviewFocus).toMatchObject({ kind: 'review', level: 'warning' });
+    expect(resolve(reviewFocus.title)).toBe('Spec needs approval');
+    expect(resolve(reviewFocus.label)).toBe('Review spec');
 
-    expect(
-      buildOperatorFocus({
-        reviewInbox: [],
-        exceptionItems: exceptionCenter.items,
-        actionQueue: [],
-      }),
-    ).toMatchObject({
-      kind: 'exception',
-      label: 'Adjust budget or reduce scope',
-      level: 'critical',
+    const exceptionFocus = buildOperatorFocus({
+      reviewInbox: [],
+      exceptionItems: exceptionCenter.items,
+      actionQueue: [],
     });
+    expect(exceptionFocus).toMatchObject({ kind: 'exception', level: 'critical' });
+    expect(resolve(exceptionFocus.label)).toBe('Adjust budget or reduce scope');
 
-    expect(
-      buildOperatorFocus({
-        reviewInbox: [],
-        exceptionItems: [],
-        actionQueue,
-      }),
-    ).toMatchObject({
-      kind: 'continue',
-      title: 'Continue docs',
-      label: 'Continue loop',
+    const continueFocus = buildOperatorFocus({
+      reviewInbox: [],
+      exceptionItems: [],
+      actionQueue,
     });
+    expect(continueFocus).toMatchObject({ kind: 'continue' });
+    expect(resolve(continueFocus.title)).toBe('Continue docs');
+    expect(resolve(continueFocus.label)).toBe('Continue loop');
 
-    expect(
-      buildOperatorFocus({
-        reviewInbox: [],
-        exceptionItems: [],
-        actionQueue: [],
-      }),
-    ).toMatchObject({
-      kind: 'create',
-      href: '/loops/new',
-      title: '',
-      label: '',
-      meta: '',
+    const createFocus = buildOperatorFocus({
+      reviewInbox: [],
+      exceptionItems: [],
+      actionQueue: [],
     });
+    expect(createFocus).toMatchObject({ kind: 'create', href: '/loops/new' });
+    expect(resolve(createFocus.title)).toBe('');
+    expect(resolve(createFocus.label)).toBe('');
+    expect(resolve(createFocus.meta)).toBe('');
   });
 
   it('uses next action category before internal action codes for human decisions', () => {
@@ -538,17 +557,17 @@ describe('loops-dashboard-model', () => {
       new Date('2026-06-21T02:00:00.000Z'),
     );
 
-    expect(queue).toEqual([
-      expect.objectContaining({
-        id: 'issue-2-second-opinion-conflict',
-        owner: 'Release reviewer',
-        priority: 'critical',
-        slaHours: 24,
-        ageHours: 26,
-        evidence: 'Second opinion has unresolved conflicts',
-        meta: expect.stringContaining('1 conflict(s)'),
-      }),
-    ]);
+    expect(queue).toHaveLength(1);
+    const conflict = queue[0]!;
+    expect(conflict).toMatchObject({
+      id: 'issue-2-second-opinion-conflict',
+      priority: 'critical',
+      slaHours: 24,
+      ageHours: 26,
+      evidence: 'Second opinion has unresolved conflicts',
+    });
+    expect(resolve(conflict.owner)).toBe('Release reviewer');
+    expect(resolve(conflict.meta)).toEqual(expect.stringContaining('1 conflict(s)'));
   });
 
   it('builds a loop board with user-facing stages, modes, and delivery signals', () => {
@@ -597,29 +616,23 @@ describe('loops-dashboard-model', () => {
     ]);
 
     const running = board.find((column) => column.id === 'running')?.items[0];
-    expect(running).toMatchObject({
-      mode: 'Code',
-      humanGate: 'None',
-      evidence: '1/3 shards',
-      gitRef: 'loops/issue-1',
-      prState: 'Pending PR',
-    });
+    expect(running && resolve(running.mode)).toBe('Code');
+    expect(running && resolve(running.humanGate)).toBe('None');
+    expect(running && resolve(running.evidence)).toBe('1/3 shards');
+    expect(running).toMatchObject({ gitRef: 'loops/issue-1' });
+    expect(running && resolve(running.prState)).toBe('Pending PR');
 
     const blocked = board.find((column) => column.id === 'blocked')?.items[0];
-    expect(blocked).toMatchObject({
-      mode: 'Recovery',
-      humanGate: 'Exception',
-      blocker: 'Cost guard',
-      evidence: '2/2 shards',
-    });
+    expect(blocked && resolve(blocked.mode)).toBe('Recovery');
+    expect(blocked && resolve(blocked.humanGate)).toBe('Exception');
+    expect(blocked && resolve(blocked.blocker)).toBe('Cost guard');
+    expect(blocked && resolve(blocked.evidence)).toBe('2/2 shards');
 
     const ready = board.find((column) => column.id === 'readyToShip')?.items[0];
-    expect(ready).toMatchObject({
-      mode: 'Review',
-      humanGate: 'Release',
-      evidence: '1/1 shards',
-      prState: 'Ready to ship',
-    });
+    expect(ready && resolve(ready.mode)).toBe('Review');
+    expect(ready && resolve(ready.humanGate)).toBe('Release');
+    expect(ready && resolve(ready.evidence)).toBe('1/1 shards');
+    expect(ready && resolve(ready.prState)).toBe('Ready to ship');
   });
 
   it('builds an exception center with owners, actions, evidence, eval gates, and capacity', () => {
@@ -647,7 +660,14 @@ describe('loops-dashboard-model', () => {
       failed: 2,
       capacity: 4,
     });
-    expect(center.items.map((item) => [item.reason, item.level, item.owner, item.action])).toEqual(
+    expect(
+      center.items.map((item) => [
+        resolve(item.reason),
+        item.level,
+        resolve(item.owner),
+        resolve(item.action),
+      ]),
+    ).toEqual(
       expect.arrayContaining([
         ['Cost guard tripped', 'critical', 'Product owner', 'Adjust budget or reduce scope'],
         ['Paused', 'critical', 'Loop operator', 'Resume or assign recovery'],
@@ -675,15 +695,16 @@ describe('loops-dashboard-model', () => {
         evidenceHref: '/loops#eval-plan',
       }),
     );
-    expect(center.items[0]).toMatchObject({
-      title: 'Docs reloop',
+    const firstItem = center.items[0]!;
+    expect(resolve(firstItem.title)).toBe('Docs reloop');
+    expect(firstItem).toMatchObject({
       href: '/loops/issue-2',
-      evidence: '0 calls · 0 tokens remaining',
-      impact: 'Loop is paused before more agent calls are allowed',
-      retryAction: 'Raise cap or split scope, then continue the loop',
       evidenceHref: '/loops/issue-2',
       source: 'cost',
     });
+    expect(resolve(firstItem.evidence)).toBe('0 calls · 0 tokens remaining');
+    expect(resolve(firstItem.impact)).toBe('Loop is paused before more agent calls are allowed');
+    expect(resolve(firstItem.retryAction)).toBe('Raise cap or split scope, then continue the loop');
   });
 
   it('builds a dashboard guide that orients first-time users to the next action', () => {
@@ -727,7 +748,7 @@ describe('loops-dashboard-model', () => {
       activeTools: 2,
       plannedCompatibility: 2,
     });
-    expect(profile.modes.map((mode) => [mode.id, mode.state, mode.evidence])).toEqual([
+    expect(profile.modes.map((mode) => [mode.id, mode.state, resolve(mode.evidence)])).toEqual([
       ['read', 'enabled', '2 agents · 1 tools'],
       ['write', 'enabled', '1 agents · 1 tools'],
       ['shell', 'restricted', '2 agents can run tests'],
@@ -810,8 +831,8 @@ describe('loops-dashboard-model', () => {
         item.id,
         item.status,
         item.mode,
-        item.permissionProfile,
-        item.fallbackPolicy,
+        resolve(item.permissionProfile),
+        resolve(item.fallbackPolicy),
       ]),
     ).toEqual([
       [
@@ -848,7 +869,7 @@ describe('loops-dashboard-model', () => {
       ['test-evidence', 'blocked', true],
       ['cost-policy', 'blocked', true],
     ]);
-    expect(evalPlan.checks.map((check) => check.evidence)).toEqual([
+    expect(evalPlan.checks.map((check) => resolve(check.evidence))).toEqual([
       '2 active loops still need architecture/review evidence',
       '1 loops blocked before release',
       '1 runtime security exceptions recorded',
@@ -865,7 +886,7 @@ describe('loops-dashboard-model', () => {
       activeSteps: 2,
       blockedSteps: 1,
     });
-    expect(flow.pipelineLabel).toBe(
+    expect(resolve(flow.pipelineLabel)).toBe(
       'Intake → Spec → Spec Review → Plan → Build → Test → Converge → Global Review → Annotate → Close',
     );
     expect(
@@ -1059,8 +1080,18 @@ describe('loops-dashboard-model', () => {
       ['/repo/app', 1, 0, '2026-06-20T00:00:00.000Z'],
       ['/repo/docs', 1, 1, '2026-06-20T00:00:00.000Z'],
     ]);
-    expect(context.repos[0]?.phases).toEqual([{ phase: 'Implement', count: 1 }]);
-    expect(context.repos[1]?.recent).toEqual([
+    expect(context.repos[0]?.phases.map((entry) => [resolve(entry.phase), entry.count])).toEqual([
+      ['Implement', 1],
+    ]);
+    expect(
+      context.repos[1]?.recent.map((item) => ({
+        id: item.id,
+        title: item.title,
+        href: item.href,
+        status: item.status,
+        phase: resolve(item.phase),
+      })),
+    ).toEqual([
       {
         id: 'issue-2',
         title: 'Docs reloop',
@@ -1089,7 +1120,7 @@ describe('loops-dashboard-model', () => {
       ['release', 'waiting', 'release', 0],
       ['reflect', 'waiting', 'none', 0],
     ]);
-    expect(recipe.steps.map((step) => step.evidence)).toEqual([
+    expect(recipe.steps.map((step) => resolve(step.evidence))).toEqual([
       'No loops',
       'No loops',
       '1 loops',
@@ -1157,7 +1188,9 @@ describe('loops-dashboard-model', () => {
       pending: 1,
       blocked: 1,
     });
-    expect(gates.gates.map((gate) => [gate.kind, gate.status, gate.count, gate.evidence])).toEqual([
+    expect(
+      gates.gates.map((gate) => [gate.kind, gate.status, gate.count, resolve(gate.evidence)]),
+    ).toEqual([
       ['product', 'passed', 0, 'Spec gate clear'],
       ['architecture', 'passed', 1, '1 loops decomposed or implemented'],
       ['code', 'blocked', 2, '1 blocked by exception'],
@@ -1207,10 +1240,12 @@ describe('loops-dashboard-model', () => {
       attention: 0,
       blocked: 1,
     });
-    expect(readiness.items.map((item) => [item.title, item.state, item.evidence])).toEqual([
-      ['Docs reloop', 'blocked', 'Converge · 2/2 shards'],
-      ['Ready release', 'ready', 'Closed · 1/1 shards'],
-    ]);
+    expect(readiness.items.map((item) => [item.title, item.state, resolve(item.evidence)])).toEqual(
+      [
+        ['Docs reloop', 'blocked', 'Converge · 2/2 shards'],
+        ['Ready release', 'ready', 'Closed · 1/1 shards'],
+      ],
+    );
     expect(readiness.items[1]?.checklist).toEqual({
       spec: true,
       implementation: true,
@@ -1290,7 +1325,7 @@ describe('loops-dashboard-model', () => {
     expect(timeline.nextPersona).toBe('test-runner');
     const builder = timeline.steps.find((step) => step.persona === 'builder');
     expect(builder).toMatchObject({ state: 'current', runtimeBackend: 'claude-code-cli' });
-    expect(builder?.evidence).toBe('1/3 shards');
+    expect(resolve(builder?.evidence)).toBe('1/3 shards');
     const testRunner = timeline.steps.find((step) => step.persona === 'test-runner');
     expect(testRunner?.state).toBe('next');
     const gatekeeper = timeline.steps.find((step) => step.persona === 'human-gatekeeper');

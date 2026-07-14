@@ -10,7 +10,7 @@ import {
   useLoopsMetrics,
   useLoopsNotifications,
 } from '@/lib/api/contracts/hooks';
-import { buildReviewInbox } from '@/app/loops/loops-dashboard-model';
+import { buildReviewInbox, tx, type LocalizableText } from '@/app/loops/loops-dashboard-model';
 import { formatLoopLabel } from '@/app/loops/loops-display';
 import { useState } from 'react';
 import { IssueRequestComposer } from './issue-request-composer';
@@ -48,6 +48,11 @@ export function HomeWorkbench() {
   const locale = useLocale();
   const t = useTranslations('loops.dashboard.home');
   const conversation = useTranslations('loops.conversation');
+  const tRoot = useTranslations('loops');
+  const displayText = (value: LocalizableText | string | undefined | null) =>
+    typeof value === 'string'
+      ? value
+      : tx(value, (key, params) => tRoot(key, params as Record<string, string | number>));
   const router = useRouter();
   const listQuery = useLoopsList({ page: 1, limit: 20 });
   const metricsQuery = useLoopsMetrics();
@@ -220,7 +225,7 @@ export function HomeWorkbench() {
                   >
                     <p className="truncate text-sm font-medium">{item.title}</p>
                     <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {item.label} · {item.meta}
+                      {displayText(item.label)} · {displayText(item.meta)}
                     </p>
                   </Link>
                 </li>

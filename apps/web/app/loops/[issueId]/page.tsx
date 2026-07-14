@@ -38,7 +38,12 @@ import {
   getBrowserQaArtifactUrl,
 } from '@/lib/api/contracts/hooks';
 import { useLoopAdvanceSSE } from '@/hooks/useLoopAdvanceSSE';
-import { buildAgentHandoffTimeline, type WorkforcePersonaId } from '../loops-dashboard-model';
+import {
+  buildAgentHandoffTimeline,
+  tx,
+  type LocalizableText,
+  type WorkforcePersonaId,
+} from '../loops-dashboard-model';
 import {
   formatLoopEvent,
   formatLoopLabel,
@@ -787,7 +792,12 @@ function buildIssueExceptions(
 export default function LoopIssueDetailPage() {
   const locale = useLocale();
   const t = useTranslations('loops.detail');
+  const tRoot = useTranslations('loops');
   const tracking = useTranslations('loops.conversation.tracking');
+  const displayText = (value: LocalizableText | string | undefined | null) =>
+    typeof value === 'string'
+      ? value
+      : tx(value, (key, params) => tRoot(key, params as Record<string, string | number>));
   const { issueId } = useParams<{ issueId: string }>();
   const detailQuery = useLoopIssue(issueId);
   const advanceStatusQuery = useLoopAdvanceStatus(issueId);
@@ -1085,7 +1095,7 @@ export default function LoopIssueDetailPage() {
                           {step.humanGate ? ` · ${t('handoff.humanGate')}` : ''}
                         </p>
                         {step.evidence ? (
-                          <p className="mt-1 truncate font-medium">{step.evidence}</p>
+                          <p className="mt-1 truncate font-medium">{displayText(step.evidence)}</p>
                         ) : null}
                       </div>
                     );
