@@ -991,6 +991,22 @@
     "composerHint": "Enter 发送 · Shift + Enter 换行",
     "send": "发送需求",
     "createError": "无法创建 Issue。请检查网络后重试。",
+    "tracking": {
+      "analysis": "需求分析",
+      "blocked": "已阻塞",
+      "changes": "变更",
+      "complete": "已完成",
+      "current": "执行中",
+      "deliveryProgress": "交付进度",
+      "deliveryTracking": "交付追踪",
+      "environment": "环境",
+      "environmentUnavailable": "暂无环境数据",
+      "execution": "实现",
+      "plan": "工作计划",
+      "upcoming": "待执行",
+      "validation": "验证",
+      "validationPending": "等待验证"
+    },
     "status": {
       "queued": "等待执行",
       "active": "执行中",

@@ -7,36 +7,68 @@ export interface TaskContextStage {
   status: TaskContextStageStatus;
 }
 
+export interface TaskContextRailLabels {
+  blocked: string;
+  changes: string;
+  complete: string;
+  current: string;
+  deliveryProgress: string;
+  deliveryTracking: string;
+  environment: string;
+  upcoming: string;
+  validation: string;
+}
+
 interface TaskContextRailProps {
   changes?: { added: number; removed: number };
   environment: string;
+  labels?: Partial<TaskContextRailLabels>;
   stages: TaskContextStage[];
   validation: string;
 }
 
+const defaultLabels: TaskContextRailLabels = {
+  blocked: 'Blocked',
+  changes: 'Changes',
+  complete: 'Complete',
+  current: 'Current',
+  deliveryProgress: 'Delivery progress',
+  deliveryTracking: 'Delivery tracking',
+  environment: 'Environment',
+  upcoming: 'Upcoming',
+  validation: 'Validation',
+};
+
 const statusPresentation: Record<
   TaskContextStageStatus,
-  { Icon: typeof Check; label: string; className: string }
+  {
+    Icon: typeof Check;
+    labelKey: keyof Pick<TaskContextRailLabels, 'blocked' | 'complete' | 'current' | 'upcoming'>;
+    className: string;
+  }
 > = {
-  complete: { Icon: Check, label: 'Complete', className: 'text-emerald-600' },
-  current: { Icon: CircleDot, label: 'Current', className: 'text-foreground' },
-  upcoming: { Icon: Circle, label: 'Upcoming', className: 'text-muted-foreground' },
-  blocked: { Icon: TriangleAlert, label: 'Blocked', className: 'text-amber-700' },
+  complete: { Icon: Check, labelKey: 'complete', className: 'text-emerald-600' },
+  current: { Icon: CircleDot, labelKey: 'current', className: 'text-foreground' },
+  upcoming: { Icon: Circle, labelKey: 'upcoming', className: 'text-muted-foreground' },
+  blocked: { Icon: TriangleAlert, labelKey: 'blocked', className: 'text-amber-700' },
 };
 
 export function TaskContextRail({
   changes,
   environment,
+  labels: labelsInput,
   stages,
   validation,
 }: TaskContextRailProps) {
+  const labels = { ...defaultLabels, ...labelsInput };
+
   return (
     <aside
-      aria-label="Delivery tracking"
+      aria-label={labels.deliveryTracking}
       className="w-full border-t border-border bg-muted/20 p-4 lg:w-72 lg:border-t-0 lg:border-l"
     >
-      <h2 className="text-sm font-semibold text-foreground">Delivery tracking</h2>
-      <ol className="mt-4 space-y-2" aria-label="Delivery progress">
+      <h2 className="text-sm font-semibold text-foreground">{labels.deliveryTracking}</h2>
+      <ol className="mt-4 space-y-2" aria-label={labels.deliveryProgress}>
         {stages.map((stage) => {
           const presentation = statusPresentation[stage.status];
           return (
@@ -46,7 +78,7 @@ export function TaskContextRail({
                 className={`size-4 ${presentation.className}`}
               />
               <span className="min-w-0 flex-1 truncate">{stage.label}</span>
-              <span className="text-xs text-muted-foreground">{presentation.label}</span>
+              <span className="text-xs text-muted-foreground">{labels[presentation.labelKey]}</span>
             </li>
           );
         })}
@@ -57,7 +89,7 @@ export function TaskContextRail({
         aria-labelledby="task-context-environment"
       >
         <h3 className="text-xs font-medium text-muted-foreground" id="task-context-environment">
-          Environment
+          {labels.environment}
         </h3>
         <p className="mt-1 break-words text-sm text-foreground">{environment}</p>
       </section>
@@ -68,7 +100,7 @@ export function TaskContextRail({
           aria-labelledby="task-context-changes"
         >
           <h3 className="text-xs font-medium text-muted-foreground" id="task-context-changes">
-            Changes
+            {labels.changes}
           </h3>
           <p className="mt-1 text-sm">
             <span className="text-emerald-700">+{changes.added}</span>{' '}
@@ -82,7 +114,7 @@ export function TaskContextRail({
         aria-labelledby="task-context-validation"
       >
         <h3 className="text-xs font-medium text-muted-foreground" id="task-context-validation">
-          Validation
+          {labels.validation}
         </h3>
         <p className="mt-1 text-sm text-foreground">{validation}</p>
       </section>

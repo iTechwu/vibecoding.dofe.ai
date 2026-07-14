@@ -991,6 +991,22 @@
     "composerHint": "Enter to send · Shift + Enter for a new line",
     "send": "Send request",
     "createError": "Unable to create the Issue. Check your connection and try again.",
+    "tracking": {
+      "analysis": "Analysis",
+      "blocked": "Blocked",
+      "changes": "Changes",
+      "complete": "Complete",
+      "current": "Running",
+      "deliveryProgress": "Delivery progress",
+      "deliveryTracking": "Delivery tracking",
+      "environment": "Environment",
+      "environmentUnavailable": "No environment data",
+      "execution": "Execution",
+      "plan": "Plan",
+      "upcoming": "Upcoming",
+      "validation": "Validation",
+      "validationPending": "Waiting for validation"
+    },
     "status": {
       "queued": "Queued",
       "active": "Running",

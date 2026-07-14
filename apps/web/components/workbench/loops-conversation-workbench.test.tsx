@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import loopsMessages from '@/locales/en/loops.json';
@@ -78,7 +78,17 @@ describe('LoopsConversationWorkbench', () => {
 
     expect(screen.getByText('Improve the checkout error path.')).toBeInTheDocument();
     expect(screen.getByText('Fix checkout flow')).toBeInTheDocument();
-    expect(screen.getByText('Running')).toBeInTheDocument();
+    expect(screen.getAllByText('Running').length).toBeGreaterThan(0);
+  });
+
+  it('shows the selected issue delivery context beside the conversation', () => {
+    renderWorkbench();
+
+    const context = screen.getByRole('complementary', { name: 'Delivery tracking' });
+    expect(context).toBeInTheDocument();
+    expect(within(context).getByText('Execution')).toBeInTheDocument();
+    expect(within(context).getByText('No environment data')).toBeInTheDocument();
+    expect(within(context).getAllByText('Running').length).toBeGreaterThan(0);
   });
 
   it('creates one simple issue from a sent request and keeps the conversation context', async () => {

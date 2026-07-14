@@ -37,4 +37,28 @@ describe('TaskContextRail', () => {
     expect(screen.getByText('Blocked')).toBeInTheDocument();
     expect(screen.getByText('Unavailable')).toBeInTheDocument();
   });
+
+  it('accepts page-level labels for the default Chinese experience', () => {
+    render(
+      <TaskContextRail
+        environment="不可用"
+        labels={{
+          changes: '变更',
+          complete: '已完成',
+          current: '进行中',
+          deliveryProgress: '交付进度',
+          deliveryTracking: '交付追踪',
+          environment: '环境',
+          upcoming: '待执行',
+          validation: '验证',
+        }}
+        stages={[{ label: '实现', status: 'current' }]}
+        validation="等待验证"
+      />,
+    );
+
+    expect(screen.getByRole('complementary', { name: '交付追踪' })).toBeInTheDocument();
+    expect(screen.getByText('进行中')).toBeInTheDocument();
+    expect(screen.getByText('环境')).toBeInTheDocument();
+  });
 });
