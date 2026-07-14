@@ -6,6 +6,8 @@ import loopsMessages from '@/locales/en/loops.json';
 import { HomeWorkbench } from './home-workbench';
 
 const refetch = vi.fn();
+const createIssue = vi.fn();
+const push = vi.fn();
 
 const queryState = {
   list: {
@@ -80,6 +82,10 @@ const queryState = {
 };
 
 vi.mock('@/lib/api/contracts/hooks', () => ({
+  useCreateSimpleLoopIssue: () => ({
+    mutateAsync: createIssue,
+    isPending: false,
+  }),
   useLoopsList: () => queryState.list,
   useLoopsMetrics: () => queryState.metrics,
   useLoopsNotifications: () => queryState.notifications,
@@ -91,6 +97,7 @@ vi.mock('@/i18n/navigation', () => ({
       {children}
     </a>
   ),
+  useRouter: () => ({ push }),
 }));
 
 vi.mock('@repo/ui', () => ({
@@ -161,6 +168,33 @@ describe('HomeWorkbench', () => {
     expect(
       screen.getByRole('link', { name: 'Open review: Review onboarding copy' }),
     ).toHaveAttribute('href', '/loops/review');
+  });
+
+  it('combines the continuation with an actionable inbox and request composer', () => {
+    renderWorkbench();
+
+    expect(screen.getByRole('region', { name: 'Continue' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Scheduled' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Describe the work to run' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Open review: Review onboarding copy' }),
+    ).toHaveAttribute('href', '/loops/review');
+  });
+
+  it('keeps the draft visible when creating an issue fails', async () => {
+    createIssue.mockRejectedValueOnce(new Error('offline'));
+    renderWorkbench();
+
+    const draft = 'Improve checkout recovery for intermittent mobile networks.';
+    fireEvent.change(screen.getByRole('textbox', { name: 'Describe the work to run' }), {
+      target: { value: draft },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send request' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Unable to create the Issue. Check your connection and try again.',
+    );
+    expect(screen.getByRole('textbox', { name: 'Describe the work to run' })).toHaveValue(draft);
   });
 
   it('shows a skeleton while its workbench data is unresolved', () => {

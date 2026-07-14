@@ -108,6 +108,21 @@ describe('LoopsIssuesView', () => {
 });
 
 describe('LoopsOperationsView', () => {
+  it('can expose management content immediately for the dedicated Operations route', () => {
+    window.history.replaceState(null, '', '/loops?view=operations');
+    renderWithIntl(
+      <LoopsOperationsView defaultOpen>
+        <section aria-label="Review Inbox">Review Inbox</section>
+      </LoopsOperationsView>,
+    );
+
+    expect(screen.getByRole('region', { name: 'Review Inbox' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Operations' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+  });
+
   it('only exposes aria-controls while the controlled content is mounted', () => {
     window.history.replaceState(null, '', '/loops');
     renderWithIntl(

@@ -39,6 +39,9 @@ export { LoadingSpinner, ErrorState, EmptyState, PageLoading, PageError } from '
 export { AppShell, AppSidebar, AppNavbar, LocaleSwitcher } from './layout';
 
 export { LoopsConversationWorkbench } from './workbench/loops-conversation-workbench';
+export { IssueRequestComposer } from './workbench/issue-request-composer';
+export { TaskContextRail } from './workbench/task-context-rail';
+export { ScheduledIssuesWorkbench } from './workbench/scheduled-issues-workbench';
 
 // Decorative UI components
 export { DecorativeGlow, PageContainer, PageTitle } from './ui/decorative';

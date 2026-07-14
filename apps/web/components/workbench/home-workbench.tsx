@@ -3,10 +3,17 @@
 import { useLocale, useTranslations } from 'next-intl';
 import { ArrowRight, ClipboardCheck, Clock3, Plus, RefreshCw } from 'lucide-react';
 import { Button, Skeleton } from '@repo/ui';
-import { Link } from '@/i18n/navigation';
-import { useLoopsList, useLoopsMetrics, useLoopsNotifications } from '@/lib/api/contracts/hooks';
+import { Link, useRouter } from '@/i18n/navigation';
+import {
+  useCreateSimpleLoopIssue,
+  useLoopsList,
+  useLoopsMetrics,
+  useLoopsNotifications,
+} from '@/lib/api/contracts/hooks';
 import { buildReviewInbox } from '@/app/loops/loops-dashboard-model';
 import { formatLoopLabel } from '@/app/loops/loops-display';
+import { useState } from 'react';
+import { IssueRequestComposer } from './issue-request-composer';
 import { PageHeader } from './page-header';
 import { selectActionableIssues, selectContinuationIssue } from './workbench-selectors';
 
@@ -40,15 +47,49 @@ function HomeWorkbenchSkeleton({ label }: { label: string }) {
 export function HomeWorkbench() {
   const locale = useLocale();
   const t = useTranslations('loops.dashboard.home');
+  const conversation = useTranslations('loops.conversation');
+  const router = useRouter();
   const listQuery = useLoopsList({ page: 1, limit: 20 });
   const metricsQuery = useLoopsMetrics();
   const notificationsQuery = useLoopsNotifications({ limit: 8 });
+  const createIssue = useCreateSimpleLoopIssue();
+  const [draft, setDraft] = useState('');
+  const [submitError, setSubmitError] = useState<string>();
 
   const reviewIsLoading = metricsQuery.isLoading || notificationsQuery.isLoading;
   const reviewUnavailable = metricsQuery.isError || notificationsQuery.isError;
   const retryList = () => {
     void listQuery.refetch();
   };
+
+  const createFromRequest = async (request: string) => {
+    setSubmitError(undefined);
+    try {
+      const result = await createIssue.mutateAsync({ body: { request } });
+      setDraft('');
+      router.push(`/loops/${result.body.data.issue.id}`);
+    } catch {
+      setSubmitError(conversation('createError'));
+    }
+  };
+
+  const composer = (
+    <div className="mt-8 border-t border-border pt-5">
+      <IssueRequestComposer
+        draft={draft}
+        error={submitError}
+        labels={{
+          label: conversation('composerLabel'),
+          placeholder: conversation('composerPlaceholder'),
+          hint: conversation('composerHint'),
+          send: conversation('send'),
+        }}
+        onChange={setDraft}
+        onSubmit={(request) => void createFromRequest(request)}
+        pending={createIssue.isPending}
+      />
+    </div>
+  );
 
   if (listQuery.isError) {
     return (
@@ -94,6 +135,7 @@ export function HomeWorkbench() {
               {t('newIssue')}
             </Link>
           </Button>
+          {composer}
         </section>
       </div>
     );
@@ -191,9 +233,9 @@ export function HomeWorkbench() {
           )}
         </section>
 
-        <section aria-labelledby="recent-heading">
-          <h2 id="recent-heading" className="mb-2 text-sm font-medium">
-            {t('recentTitle')}
+        <section aria-labelledby="scheduled-heading">
+          <h2 id="scheduled-heading" className="mb-2 text-sm font-medium">
+            {t('scheduledTitle')}
           </h2>
           <ul className="divide-y divide-border border-y border-border">
             {recentIssues.map((item) => (
@@ -216,6 +258,7 @@ export function HomeWorkbench() {
           </ul>
         </section>
       </div>
+      {composer}
     </div>
   );
 }

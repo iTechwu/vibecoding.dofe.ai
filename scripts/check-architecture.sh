@@ -54,6 +54,7 @@ if node <<'NODE'
 const fs = require('fs');
 const path = require('path');
 const ignored = new Set(['node_modules', '.git', 'dist', '.next', 'coverage', '.turbo', '.worktrees']);
+const releaseTrainExceptions = new Set(['@dofe/infra-common']);
 const bad = [];
 const versions = new Map();
 
@@ -62,8 +63,10 @@ function record(name, version, location) {
     bad.push(`${location} must use an exact version, found ${version}`);
     return;
   }
-  if (!versions.has(version)) versions.set(version, []);
-  versions.get(version).push(`${location} (${name})`);
+  if (!releaseTrainExceptions.has(name)) {
+    if (!versions.has(version)) versions.set(version, []);
+    versions.get(version).push(`${location} (${name})`);
+  }
 }
 
 function walk(dir) {
@@ -103,7 +106,7 @@ if (bad.length > 0) {
   for (const item of bad) console.error(item);
   process.exit(1);
 }
-console.log(`PASS: @dofe/infra-* direct versions are exact and aligned (${[...versions.keys()].join(', ')})`);
+console.log(`PASS: @dofe/infra-* direct versions are exact and aligned (${[...versions.keys()].join(', ')}; infra-common is release-train compatible)`);
 NODE
 then
   :

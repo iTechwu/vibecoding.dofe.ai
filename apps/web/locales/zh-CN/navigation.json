@@ -4,6 +4,7 @@
     "dashboard": "仪表盘",
     "issues": "问题",
     "workspace": "工作台",
+    "scheduled": "已安排",
     "review": "审查",
     "runtime": "运行时",
     "newIssue": "新建任务",
@@ -16,7 +17,7 @@
     "logout": "退出登录"
   },
   "groupMain": "核心",
-  "groupProjects": "项目",
+  "groupProjects": "工作区",
   "team": "团队：{team}",
   "groupSettings": "设置",
   "breadcrumb": {

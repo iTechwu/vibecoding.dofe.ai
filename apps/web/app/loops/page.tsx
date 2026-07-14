@@ -105,7 +105,8 @@ import {
 import { formatLoopEvent, formatLoopLabel, formatLoopStatus } from './loops-display';
 import { LoopsIssuesView } from './loops-issues-view';
 import { LoopsOperationsView } from './loops-operations-view';
-import { LoopsConversationWorkbench } from '@/components';
+import { LoopsConversationWorkbench } from '@/components/workbench/loops-conversation-workbench';
+import { ScheduledIssuesWorkbench } from '@/components/workbench/scheduled-issues-workbench';
 
 const WORKBENCH_NAV_ITEMS = [
   { href: '#loop-board', labelKey: 'board', icon: KanbanSquare },
@@ -514,9 +515,9 @@ function LoopsOperationsDashboard() {
   }, []);
 
   return (
-    <main className="dark min-h-screen bg-[#0b0b0d] px-4 py-4 text-foreground sm:px-6">
+    <main className="min-h-screen bg-background px-4 py-4 text-foreground sm:px-6">
       <div className="mx-auto flex max-w-[1560px] flex-col gap-4">
-        <header className="overflow-hidden rounded-lg border border-white/10 bg-card/80">
+        <header className="overflow-hidden border border-border bg-background">
           <div className="flex flex-col gap-4 border-b border-border/70 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
@@ -548,7 +549,7 @@ function LoopsOperationsDashboard() {
           </div>
 
           <div className="p-4">
-            <div className="rounded-lg border border-border bg-background/80 p-3">
+            <div className="border border-border bg-muted/20 p-3">
               <label className="flex items-center gap-2 text-sm" htmlFor="loop-command-input">
                 <Search className="size-4 text-muted-foreground" />
                 <span className="sr-only">{t('command.placeholder')}</span>
@@ -587,7 +588,7 @@ function LoopsOperationsDashboard() {
         />
 
         {/* prettier-ignore */}
-        <LoopsOperationsView>
+        <LoopsOperationsView defaultOpen>
           <div className="grid grid-cols-1 gap-0 rounded-lg border lg:grid-cols-[220px_minmax(0,1fr)_320px]">
             <aside className="border-b border-border/70 p-3 lg:border-b-0 lg:border-r">
               <div className="flex items-center gap-2 px-2 py-1 text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
@@ -3587,9 +3588,28 @@ function LoopsOperationsDashboard() {
 export default function LoopsPage() {
   const searchParams = useSearchParams();
 
+  if (searchParams.get('view') === 'scheduled') {
+    return <ScheduledLoopsPage />;
+  }
+
   if (searchParams.get('view') !== 'operations') {
     return <LoopsConversationWorkbench />;
   }
 
   return <LoopsOperationsDashboard />;
+}
+
+function ScheduledLoopsPage() {
+  const listQuery = useLoopsList({ page: 1, limit: 50 });
+
+  return (
+    <ScheduledIssuesWorkbench
+      isError={listQuery.isError}
+      isLoading={listQuery.isLoading}
+      items={listQuery.data?.body.data.list ?? []}
+      onRetry={() => {
+        void listQuery.refetch();
+      }}
+    />
+  );
 }

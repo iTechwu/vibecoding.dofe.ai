@@ -36,10 +36,7 @@ export function LoopsIssuesView({
   const t = useTranslations('loops.dashboard.issues');
 
   return (
-    <section
-      aria-labelledby="issues-title"
-      className="rounded-lg border border-white/10 bg-card/80 p-4"
-    >
+    <section aria-labelledby="issues-title" className="border-y border-border bg-background p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">

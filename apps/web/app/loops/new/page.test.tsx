@@ -30,8 +30,8 @@ describe('NewLoopIssuePage', () => {
       (key: string) =>
         ({
           eyebrow: 'Web Issue Intake',
-          title: 'New Issue',
-          back: 'Back to Issues',
+          title: 'New task',
+          back: 'Back to Scheduled',
           'workbench.subtitle': 'Describe the delivery intent once.',
         })[key] ?? key,
     );
@@ -40,9 +40,12 @@ describe('NewLoopIssuePage', () => {
   it('composes one page title, return link, and simple form', async () => {
     render(await NewLoopIssuePage());
 
-    expect(screen.getByRole('heading', { name: 'New Issue' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'New task' })).toBeInTheDocument();
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
-    expect(screen.getByRole('link', { name: 'Back to Issues' })).toHaveAttribute('href', '/loops');
+    expect(screen.getByRole('link', { name: 'Back to Scheduled' })).toHaveAttribute(
+      'href',
+      '/loops?view=scheduled',
+    );
     expect(screen.getByTestId('simple-loop-issue-form')).toBeInTheDocument();
   });
 });

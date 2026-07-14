@@ -17,6 +17,17 @@
       "noMatchesTitle": "没有匹配的 Issue。",
       "noMatchesDescription": "请尝试其他 Issue 标题或 ID。"
     },
+    "scheduled": {
+      "eyebrow": "交付收件箱",
+      "title": "已安排",
+      "subtitle": "按下一项最有价值的动作排序。",
+      "searchLabel": "搜索 Issue",
+      "searchPlaceholder": "搜索 Issue 标题或 ID",
+      "loading": "正在加载已安排的工作",
+      "error": "无法加载已安排的工作。",
+      "retry": "重试",
+      "empty": "暂无已安排的工作。"
+    },
     "operations": {
       "eyebrow": "控制平面",
       "title": "运营",
@@ -44,6 +55,7 @@
       "continueAction": "继续 Loop",
       "reviewTitle": "审阅队列",
       "recentTitle": "近期 Issue",
+      "scheduledTitle": "已安排",
       "viewAll": "查看全部",
       "reviewEmpty": "当前没有待审阅的决策。",
       "reviewLoading": "正在加载审阅决策。",
@@ -758,8 +770,8 @@
   },
   "newIssue": {
     "eyebrow": "Web Issue 录入",
-    "title": "新建 Issue",
-    "back": "返回 Issue 列表",
+    "title": "新建任务",
+    "back": "返回已安排",
     "workbench": {
       "subtitle": "只描述一次交付意图，Dofe 会生成可审阅的 issue、spec 路径、关卡和证据计划。",
       "steps": {
@@ -990,6 +1002,22 @@
     "composerHint": "Enter 发送 · Shift + Enter 换行",
     "send": "发送需求",
     "createError": "无法创建 Issue。请检查网络后重试。",
+    "tracking": {
+      "analysis": "需求分析",
+      "blocked": "已阻塞",
+      "changes": "变更",
+      "complete": "已完成",
+      "current": "执行中",
+      "deliveryProgress": "交付进度",
+      "deliveryTracking": "交付追踪",
+      "environment": "环境",
+      "environmentUnavailable": "暂无环境数据",
+      "execution": "实现",
+      "plan": "工作计划",
+      "upcoming": "待执行",
+      "validation": "验证",
+      "validationPending": "等待验证"
+    },
     "status": {
       "queued": "等待执行",
       "active": "执行中",

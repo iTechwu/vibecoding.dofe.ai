@@ -6,8 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import loopsMessages from '@/locales/en/loops.json';
 import LoopsPage from './page';
 
+const searchParamsState = vi.hoisted(() => ({ view: 'operations' }));
+
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => new URLSearchParams({ view: 'operations' }),
+  useSearchParams: () => new URLSearchParams({ view: searchParamsState.view }),
 }));
 
 vi.mock('@/i18n/navigation', () => ({
@@ -44,8 +46,17 @@ const pullImageMutate = vi.fn().mockResolvedValue({
   },
 });
 const retryAgentRuntime = vi.fn();
+const createSimpleLoopIssue = vi.fn();
+
+vi.mock('@/hooks/useLoopAdvanceSSE', () => ({
+  useLoopAdvanceSSE: () => ({ status: undefined }),
+}));
 
 vi.mock('@/lib/api/contracts/hooks', () => ({
+  useCreateSimpleLoopIssue: () => ({
+    mutateAsync: createSimpleLoopIssue,
+    isPending: false,
+  }),
   useLoopsList: () => ({
     data: {
       body: {
@@ -832,7 +843,10 @@ function renderWithIntl(ui: React.ReactElement) {
 }
 
 function openOperations() {
-  fireEvent.click(screen.getByRole('button', { name: 'Operations' }));
+  const trigger = screen.getByRole('button', { name: 'Operations' });
+  if (trigger.getAttribute('aria-expanded') !== 'true') {
+    fireEvent.click(trigger);
+  }
 }
 
 describe('LoopsPage', () => {
@@ -864,6 +878,7 @@ describe('LoopsPage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    searchParamsState.view = 'operations';
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-23T01:00:00.000Z'));
     window.history.replaceState(null, '', '/loops');
@@ -871,6 +886,23 @@ describe('LoopsPage', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('renders the conversation workbench by default', () => {
+    searchParamsState.view = '';
+
+    renderWithIntl(<LoopsPage />);
+
+    expect(screen.getByRole('heading', { name: 'Work with VibeCoding' })).toBeInTheDocument();
+  });
+
+  it('renders the scheduled delivery inbox when requested', () => {
+    searchParamsState.view = 'scheduled';
+
+    renderWithIntl(<LoopsPage />);
+
+    expect(screen.getByRole('heading', { name: 'Scheduled' })).toBeInTheDocument();
+    expect(screen.getByText('Update docs')).toBeInTheDocument();
   });
 
   it('focuses the loop command input for its hash target', () => {

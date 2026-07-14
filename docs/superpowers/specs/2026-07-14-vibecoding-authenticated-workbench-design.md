@@ -283,6 +283,13 @@ and readable workspace context only; this redesign adds no preference API.
 
 ## Usability Validation
 
+### Automated Browser Validation (2026-07-14)
+
+- `workbench-navigation.spec.ts` passed in Chromium with the synthetic authenticated session.
+- Desktop core navigation and More-menu destinations rendered without horizontal overflow.
+- The default Chinese route preserved unprefixed destinations.
+- The 320px mobile Sheet closed after Scheduled navigation and exposed the destination page.
+
 Run a five-person usability check after the first implementation slice: two
 Loop owners, two reviewers, and one operator. Ask each participant to resume a
 task, create a task, locate a pending review, and inspect a runtime exception.

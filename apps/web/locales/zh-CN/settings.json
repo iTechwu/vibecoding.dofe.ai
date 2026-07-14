@@ -3,6 +3,8 @@
   "general": "通用",
   "account": "账户",
   "email": "邮箱",
+  "workspace": "工作区",
+  "workspaceUnavailable": "暂无活动工作区",
   "language": "语言",
   "notAvailable": "暂无信息",
   "security": "安全",

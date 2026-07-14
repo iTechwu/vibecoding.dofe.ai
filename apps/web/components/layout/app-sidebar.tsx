@@ -1,6 +1,5 @@
 'use client';
 
-import type { ComponentType } from 'react';
 import {
   Avatar,
   AvatarFallback,
@@ -20,10 +19,10 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarTrigger,
+  useSidebar,
 } from '@repo/ui';
 import {
   Bot,
@@ -35,56 +34,61 @@ import {
   ListTodo,
   LogOut,
   Plus,
+  Search,
   Settings,
   User,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { useSearchParams } from 'next/navigation';
 import { Link, usePathname } from '@/i18n/navigation';
+import { useLoopsWorkspaces } from '@/lib/api/contracts/hooks';
 import { useApp, useAuth } from '@/providers';
+import { getSelectedWorkspace, workspaceLabel } from '@/components/workbench/workspace-context';
 
 interface NavItem {
-  titleKey: 'home' | 'workspace' | 'review';
+  titleKey: 'home' | 'scheduled' | 'search';
   href: string;
-  icon: ComponentType<{ className?: string }>;
-  count?: number;
-}
-
-interface AppSidebarProps {
-  reviewCount?: number;
+  icon: typeof House;
 }
 
 function getInitials(nickname: string | null | undefined): string {
   return nickname?.charAt(0).toUpperCase() ?? '';
 }
 
-export function AppSidebar({ reviewCount = 0 }: AppSidebarProps) {
+export function AppSidebar() {
   const t = useTranslations('navigation');
   const pathname = usePathname() || '/';
+  const searchParams = useSearchParams();
   const { brandName } = useApp();
   const { user, logout } = useAuth();
+  const { isMobile, setOpenMobile } = useSidebar();
+  const workspacesQuery = useLoopsWorkspaces();
   const initials = getInitials(user?.nickname);
+  const workspaces = workspacesQuery.data?.body.data.workspaces ?? [];
+  const selectedWorkspace = getSelectedWorkspace(
+    workspaces,
+    searchParams.get('workspace'),
+    workspacesQuery.data?.body.data.current,
+  );
   const items: NavItem[] = [
     { titleKey: 'home', href: '/', icon: House },
-    { titleKey: 'workspace', href: '/loops', icon: ListTodo },
-    {
-      titleKey: 'review',
-      href: '/loops?view=operations#review-inbox',
-      icon: Inbox,
-      count: reviewCount,
-    },
+    { titleKey: 'scheduled', href: '/loops?view=scheduled', icon: ListTodo },
+    { titleKey: 'search', href: '/loops?view=scheduled#scheduled-search', icon: Search },
   ];
 
   const isActive = (href: NavItem['href']) => {
-    const [targetPath, fragment] = href.split('#');
-    if (fragment) return false;
+    if (href === '/') return pathname === '/';
+    if (href.includes('view=scheduled'))
+      return pathname === '/loops' && searchParams.get('view') === 'scheduled';
 
-    return targetPath === '/'
-      ? pathname === '/'
-      : pathname === targetPath || pathname.startsWith(`${targetPath}/`);
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
+  const closeMobileSidebar = () => {
+    if (isMobile) setOpenMobile(false);
   };
 
   return (
-    <Sidebar collapsible="icon" variant="sidebar">
+    <Sidebar className="bg-[#eef0e9]" collapsible="icon" variant="sidebar">
       <SidebarHeader className="border-b border-sidebar-border">
         <span className="px-2 text-sm font-semibold group-data-[collapsible=icon]:hidden">
           {brandName}
@@ -96,21 +100,6 @@ export function AppSidebar({ reviewCount = 0 }: AppSidebarProps) {
 
       <SidebarContent className="pt-2">
         <SidebarGroup>
-          <SidebarGroupLabel>{t('groupProjects')}</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu className="px-2">
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={pathname === '/loops'} tooltip={brandName}>
-                  <Link href="/loops">
-                    <FolderKanban />
-                    <span>{brandName}</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarGroup>
           <SidebarGroupLabel>{t('groupMain')}</SidebarGroupLabel>
           <SidebarGroupContent>
             <div className="px-2 pb-2">
@@ -121,6 +110,7 @@ export function AppSidebar({ reviewCount = 0 }: AppSidebarProps) {
                 <Link
                   href="/loops#loops-conversation-composer"
                   aria-label={t('menu.newIssue')}
+                  onClick={closeMobileSidebar}
                   title={t('menu.newIssue')}
                 >
                   <Plus className="size-4" />
@@ -136,14 +126,40 @@ export function AppSidebar({ reviewCount = 0 }: AppSidebarProps) {
                 return (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton asChild isActive={active} tooltip={title}>
-                      <Link href={item.href} aria-current={active ? 'page' : undefined}>
+                      <Link
+                        aria-current={active ? 'page' : undefined}
+                        href={item.href}
+                        onClick={closeMobileSidebar}
+                      >
                         <item.icon />
                         <span>{title}</span>
                       </Link>
                     </SidebarMenuButton>
-                    {item.count && item.count > 0 ? (
-                      <SidebarMenuBadge>{item.count}</SidebarMenuBadge>
-                    ) : null}
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel>{t('groupProjects')}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu className="px-2">
+              {workspaces.map((workspace) => {
+                const isSelected = workspace.workspaceId === selectedWorkspace?.workspaceId;
+                const label = workspaceLabel(workspace);
+                return (
+                  <SidebarMenuItem key={workspace.workspaceId}>
+                    <SidebarMenuButton asChild isActive={isSelected} tooltip={label}>
+                      <Link
+                        aria-current={isSelected ? 'page' : undefined}
+                        href={`/loops?workspace=${encodeURIComponent(workspace.workspaceId)}`}
+                        onClick={closeMobileSidebar}
+                      >
+                        <FolderKanban />
+                        <span>{label}</span>
+                      </Link>
+                    </SidebarMenuButton>
                   </SidebarMenuItem>
                 );
               })}
@@ -166,20 +182,26 @@ export function AppSidebar({ reviewCount = 0 }: AppSidebarProps) {
                 <DropdownMenuLabel>{t('menu.more')}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href="/loops?view=operations#agent-runtime">
+                  <Link href="/loops?view=operations#review-inbox" onClick={closeMobileSidebar}>
+                    <Inbox className="mr-2 size-4" />
+                    {t('menu.review')}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/loops?view=operations#agent-runtime" onClick={closeMobileSidebar}>
                     <Bot className="mr-2 size-4" />
                     {t('menu.runtime')}
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>
-                  <Link href="/loops?view=operations">
+                  <Link href="/loops?view=operations" onClick={closeMobileSidebar}>
                     <LayoutDashboard className="mr-2 size-4" />
                     {t('menu.dashboard')}
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href="/settings">
+                  <Link href="/settings" onClick={closeMobileSidebar}>
                     <Settings className="mr-2 size-4" />
                     {t('menu.settings')}
                   </Link>
@@ -202,7 +224,7 @@ export function AppSidebar({ reviewCount = 0 }: AppSidebarProps) {
                 <DropdownMenuLabel>{user?.nickname || t('menu.account')}</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem asChild>
-                  <Link href="/">
+                  <Link href="/" onClick={closeMobileSidebar}>
                     <LayoutDashboard className="mr-2 size-4" />
                     {t('menu.dashboard')}
                   </Link>

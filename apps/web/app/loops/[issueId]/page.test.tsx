@@ -653,6 +653,10 @@ describe('LoopIssueDetailPage', () => {
     const header = screen.getByRole('heading', { name: 'Ship trace timeline' }).closest('header');
     expect(header).not.toBeNull();
     expect(within(header!).getByRole('button', { name: 'Continue Loop' })).toBeInTheDocument();
+
+    const tracking = screen.getByRole('complementary', { name: 'Delivery tracking' });
+    expect(within(tracking).getByText('/repo/app')).toBeInTheDocument();
+    expect(within(tracking).getByText('Waiting for validation')).toBeInTheDocument();
   });
 
   it('shows the durable queued advance status in the issue header', () => {
@@ -667,6 +671,13 @@ describe('LoopIssueDetailPage', () => {
     renderWithIntl(<LoopIssueDetailPage />);
 
     expect(screen.getByText('Execution queue: Queued')).toBeInTheDocument();
+  });
+
+  it('localizes the delivery tracking rail for Chinese workspaces', () => {
+    renderWithIntl(<LoopIssueDetailPage />, { locale: 'zh-CN', messages: zhLoopsMessages });
+
+    const tracking = screen.getByRole('complementary', { name: '交付追踪' });
+    expect(within(tracking).getByText('等待验证')).toBeInTheDocument();
   });
 
   it('opens Evidence and scrolls delivery controls for its deep link', async () => {

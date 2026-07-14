@@ -17,6 +17,17 @@
       "noMatchesTitle": "No matching issues.",
       "noMatchesDescription": "Try a different issue title or ID."
     },
+    "scheduled": {
+      "eyebrow": "Delivery inbox",
+      "title": "Scheduled",
+      "subtitle": "Work ordered by the next useful action.",
+      "searchLabel": "Search issues",
+      "searchPlaceholder": "Search issue title or ID",
+      "loading": "Loading scheduled work",
+      "error": "Unable to load scheduled work.",
+      "retry": "Retry",
+      "empty": "No scheduled work."
+    },
     "operations": {
       "eyebrow": "Control plane",
       "title": "Operations",
@@ -44,6 +55,7 @@
       "continueAction": "Continue Loop",
       "reviewTitle": "Review queue",
       "recentTitle": "Recent issues",
+      "scheduledTitle": "Scheduled",
       "viewAll": "View all",
       "reviewEmpty": "No review decisions are waiting.",
       "reviewLoading": "Loading review decisions.",
@@ -758,8 +770,8 @@
   },
   "newIssue": {
     "eyebrow": "Web Issue Intake",
-    "title": "New Issue",
-    "back": "Back to Issues",
+    "title": "New task",
+    "back": "Back to Scheduled",
     "workbench": {
       "subtitle": "Describe the delivery intent once; Dofe turns it into a reviewable issue, spec path, gates, and evidence plan.",
       "steps": {
@@ -990,6 +1002,22 @@
     "composerHint": "Enter to send · Shift + Enter for a new line",
     "send": "Send request",
     "createError": "Unable to create the Issue. Check your connection and try again.",
+    "tracking": {
+      "analysis": "Analysis",
+      "blocked": "Blocked",
+      "changes": "Changes",
+      "complete": "Complete",
+      "current": "Running",
+      "deliveryProgress": "Delivery progress",
+      "deliveryTracking": "Delivery tracking",
+      "environment": "Environment",
+      "environmentUnavailable": "No environment data",
+      "execution": "Execution",
+      "plan": "Plan",
+      "upcoming": "Upcoming",
+      "validation": "Validation",
+      "validationPending": "Waiting for validation"
+    },
     "status": {
       "queued": "Queued",
       "active": "Running",
