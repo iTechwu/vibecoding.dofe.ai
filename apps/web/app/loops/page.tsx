@@ -109,6 +109,7 @@ import { LoopsIssuesView } from './loops-issues-view';
 import { LoopsOperationsView } from './loops-operations-view';
 import { LoopsConversationWorkbench } from '@/components/workbench/loops-conversation-workbench';
 import { ScheduledIssuesWorkbench } from '@/components/workbench/scheduled-issues-workbench';
+import { useWorkspaceIssueQuery } from '@/components/workbench/use-workspace-issue-query';
 
 const WORKBENCH_NAV_ITEMS = [
   { href: '#loop-board', labelKey: 'board', icon: KanbanSquare },
@@ -3635,7 +3636,8 @@ export default function LoopsPage() {
 }
 
 function ScheduledLoopsPage() {
-  const listQuery = useLoopsList({ page: 1, limit: 50 });
+  const { listQuery: workspaceListQuery } = useWorkspaceIssueQuery();
+  const listQuery = useLoopsList({ page: 1, limit: 50, ...workspaceListQuery });
 
   return (
     <ScheduledIssuesWorkbench

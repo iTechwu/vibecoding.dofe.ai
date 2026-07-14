@@ -91,7 +91,7 @@ export class LoopsIssuesService {
    * port 直接消费本 service，不再依赖 legacy facade。
    */
   async createIssue(
-    input: CreateLoopIssueRequest & { tenantContext?: LoopTenantContext },
+    input: CreateLoopIssueRequest & { tenantContext?: LoopTenantContext; workspaceId?: string },
     authUser?: AuthUserInfo,
   ): Promise<{
     issue: LoopIssue;
@@ -127,7 +127,7 @@ export class LoopsIssuesService {
       rawPayloadRef,
       ...(tenantContext ? { tenantContext } : {}),
     };
-    const ruleSnapshot = await this.captureRuleSnapshot(targetRepo, now);
+    const ruleSnapshot = await this.captureRuleSnapshot(targetRepo, now, input.workspaceId);
     const intake: LoopIntake = {
       id: intakeId,
       issueId,
@@ -242,12 +242,13 @@ export class LoopsIssuesService {
   async captureRuleSnapshot(
     targetRepo: string,
     capturedAt: string,
+    workspaceId?: string,
   ): Promise<LoopRuleSnapshot | undefined> {
     if (!this.workspaceProfile) {
       return undefined;
     }
 
-    const workspace = await this.workspaceProfile.resolve();
+    const workspace = await this.workspaceProfile.resolve(workspaceId);
     const rules = await this.workspaceProfile.scanRules(workspace.root);
     const agentReadableRules = rules.rules.filter(
       (rule) => rule.status === 'present' && ['agents', 'claude', 'cline-rules'].includes(rule.id),

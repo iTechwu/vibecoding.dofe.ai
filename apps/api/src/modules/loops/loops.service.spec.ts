@@ -2125,6 +2125,34 @@ describe('LoopsService v1 main chain (file-only smoke)', () => {
     expect(created.issue.acceptanceCriteria.length).toBeGreaterThan(0);
   });
 
+  it('forwards the requested workspace to Issue creation for rule snapshot capture', async () => {
+    const runtimeService = buildRuntimeService([]);
+    const authUser = {
+      id: 'sso-user-7',
+      nickname: 'Grace',
+      code: 'grace',
+      isAdmin: false,
+      isAnonymity: false,
+    };
+    const createIssue = jest
+      .spyOn(runtimeService, 'createIssue')
+      .mockResolvedValue({} as Awaited<ReturnType<typeof runtimeService.createIssue>>);
+
+    await runtimeService.createSimpleIssue(
+      {
+        request: '修复登录后跳转异常。需要回归测试。',
+        template: 'auto',
+        workspaceId: 'default',
+      },
+      authUser,
+    );
+
+    expect(createIssue).toHaveBeenCalledWith(
+      expect.objectContaining({ targetRepo: workspace, workspaceId: 'default' }),
+      authUser,
+    );
+  });
+
   it('listWorkspaces returns the default workspace and agentRuntime surfaces detection facts', async () => {
     const stubRuntimes: LoopRuntimeDetection[] = [
       {

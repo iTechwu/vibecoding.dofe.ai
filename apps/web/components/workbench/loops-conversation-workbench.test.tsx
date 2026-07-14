@@ -6,6 +6,7 @@ import { LoopsConversationWorkbench } from './loops-conversation-workbench';
 
 const createIssue = vi.fn();
 const refetch = vi.fn();
+const listQueries = vi.hoisted(() => vi.fn());
 
 vi.mock('@/i18n/navigation', () => ({
   Link: ({ children, href, ...props }: React.PropsWithChildren<{ href: string }>) => (
@@ -16,34 +17,44 @@ vi.mock('@/i18n/navigation', () => ({
 }));
 
 vi.mock('@/lib/api/contracts/hooks', () => ({
-  useLoopsList: () => ({
-    data: {
-      body: {
-        data: {
-          list: [
-            {
-              issue: {
-                id: 'issue-1',
-                title: 'Fix checkout flow',
-                body: 'Improve the checkout error path.',
-                status: 'IN_LOOP',
-                priority: 'P1',
-                updated: '2026-07-13T00:00:00.000Z',
+  useLoopsList: (query: unknown) => {
+    listQueries(query);
+    return {
+      data: {
+        body: {
+          data: {
+            list: [
+              {
+                issue: {
+                  id: 'issue-1',
+                  title: 'Fix checkout flow',
+                  body: 'Improve the checkout error path.',
+                  status: 'IN_LOOP',
+                  priority: 'P1',
+                  updated: '2026-07-13T00:00:00.000Z',
+                },
+                state: { phase: 'PHASE_4_IMPLEMENT', paused: false },
               },
-              state: { phase: 'PHASE_4_IMPLEMENT', paused: false },
-            },
-          ],
-          total: 1,
-          page: 1,
-          limit: 20,
+            ],
+            total: 1,
+            page: 1,
+            limit: 20,
+          },
         },
       },
-    },
-    isLoading: false,
-    isError: false,
-    refetch,
-  }),
+      isLoading: false,
+      isError: false,
+      refetch,
+    };
+  },
   useCreateSimpleLoopIssue: () => ({ mutateAsync: createIssue, isPending: false, isError: false }),
+}));
+
+vi.mock('./use-workspace-issue-query', () => ({
+  useWorkspaceIssueQuery: () => ({
+    workspace: { workspaceId: 'api' },
+    listQuery: { targetRepo: '/code/api-service' },
+  }),
 }));
 
 vi.mock('@/hooks/useLoopAdvanceSSE', () => ({
@@ -71,6 +82,7 @@ describe('LoopsConversationWorkbench', () => {
   beforeEach(() => {
     createIssue.mockReset();
     refetch.mockReset();
+    listQueries.mockReset();
   });
 
   it('renders each existing issue as a request followed by an execution response', () => {
@@ -102,7 +114,10 @@ describe('LoopsConversationWorkbench', () => {
 
     await waitFor(() => {
       expect(createIssue).toHaveBeenCalledWith({
-        body: { request: 'Improve the checkout error path for mobile payments.' },
+        body: {
+          request: 'Improve the checkout error path for mobile payments.',
+          workspaceId: 'api',
+        },
       });
     });
     expect(refetch).toHaveBeenCalledOnce();
@@ -110,5 +125,15 @@ describe('LoopsConversationWorkbench', () => {
     expect(
       screen.getByText('Improve the checkout error path for mobile payments.'),
     ).toBeInTheDocument();
+  });
+
+  it('scopes the Issue list to the selected workspace root', () => {
+    renderWorkbench();
+
+    expect(listQueries).toHaveBeenCalledWith({
+      page: 1,
+      limit: 30,
+      targetRepo: '/code/api-service',
+    });
   });
 });

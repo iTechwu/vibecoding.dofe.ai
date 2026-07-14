@@ -464,7 +464,7 @@ export class LoopsService implements LoopsIssueCreationPort {
   }
 
   async createIssue(
-    input: CreateLoopIssueRequest & { tenantContext?: LoopTenantContext },
+    input: CreateLoopIssueRequest & { tenantContext?: LoopTenantContext; workspaceId?: string },
     authUser?: AuthUserInfo,
   ) {
     // 结构优化 nextstep Step N3：issue intake 完整编排已下沉到
@@ -500,6 +500,7 @@ export class LoopsService implements LoopsIssueCreationPort {
         priority: normalised.priority,
         acceptanceCriteria: normalised.acceptanceCriteria,
         tenantContext: input.tenantContext,
+        workspaceId: input.workspaceId,
       },
       authUser,
     );

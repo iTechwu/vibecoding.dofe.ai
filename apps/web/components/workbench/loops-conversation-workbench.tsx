@@ -8,6 +8,7 @@ import { useLoopAdvanceSSE } from '@/hooks/useLoopAdvanceSSE';
 import { useTranslations } from 'next-intl';
 import { IssueRequestComposer } from './issue-request-composer';
 import { TaskContextRail, type TaskContextStageStatus } from './task-context-rail';
+import { useWorkspaceIssueQuery } from './use-workspace-issue-query';
 
 function formatIssueRequest(issue: { body?: string; title: string }) {
   return issue.body?.trim() || issue.title;
@@ -15,7 +16,8 @@ function formatIssueRequest(issue: { body?: string; title: string }) {
 
 export function LoopsConversationWorkbench() {
   const t = useTranslations('loops.conversation');
-  const listQuery = useLoopsList({ page: 1, limit: 30 });
+  const { listQuery: workspaceListQuery, workspace } = useWorkspaceIssueQuery();
+  const listQuery = useLoopsList({ page: 1, limit: 30, ...workspaceListQuery });
   const createIssue = useCreateSimpleLoopIssue();
   const issues = useMemo(() => listQuery.data?.body.data.list ?? [], [listQuery.data]);
   const [draft, setDraft] = useState('');
@@ -41,7 +43,12 @@ export function LoopsConversationWorkbench() {
   const submitRequest = async (request: string) => {
     setSubmitError(undefined);
     try {
-      const result = await createIssue.mutateAsync({ body: { request } });
+      const result = await createIssue.mutateAsync({
+        body: {
+          request,
+          ...(workspace ? { workspaceId: workspace.workspaceId } : {}),
+        },
+      });
       setSubmittedRequests((current) => [...current, request]);
       setDraft('');
       setSelectedIssueId(result.body.data.issue.id);

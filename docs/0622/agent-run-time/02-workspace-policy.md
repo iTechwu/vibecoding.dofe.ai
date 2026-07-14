@@ -192,3 +192,17 @@ POST /loops/workspaces/:workspaceId/detect-runtime
 - ✅ 前端体验：dashboard 顶部 workspace switcher + Runtime 摘要（`apps/web/app/loops/page.tsx`）；issue 创建页 workspace 选择（`simple-loop-issue-form.tsx`）。
 - ✅ 后端接口：`GET/POST /loops/workspaces`、`POST /loops/workspaces/:id/detect-runtime`、`POST /loops/workspaces/:id/pull-image` 已落地（超越「最小实现」）。
 - ✅ CLI token redaction 边界：当前不托管 token，因此 doctor 无需输出或脱敏 token；若未来引入 token 托管，需要在同一轮补充敏感标记与 doctor redaction。
+
+## 工作台闭环复审（2026-07-14）
+
+### 已实施
+
+- ✅ **工作区 URL 连续性**：侧栏选中的 `workspace` 会保留到“新建任务”“已安排”和“搜索”入口；会话与已安排列表将该工作区的规范化根目录映射为既有 `targetRepo` 查询，而“更多”中的运行时、审阅和管理页仍保持全局控制面。
+- ✅ **创建路径一致性**：会话输入框创建简单 Issue 时携带选中的 `workspaceId`；服务端继续以 workspace profile 解析受限目录，而不是相信浏览器提供的路径。
+- ✅ **规则快照一致性**：简单 Issue 的规则快照以请求工作区调用 profile `resolve(workspaceId)`。因此同时打开多个项目时，目标目录、agent 规则和运行时上下文来自同一个 workspace。
+- ✅ **回归覆盖**：工作区选择回退、Issue 列表过滤、简单创建参数、侧栏链接连续性和规则快照解析均已有定向自动化测试；合成登录的 Playwright 用例进一步覆盖桌面、中文默认与移动侧栏在多个工作区状态下的 URL 连续性。
+
+### 已知边界与下一步
+
+- **唯一阻断项（外部）**：真实 SSO 租户验收仍等待 `sso.ixicai.cn` 为 OAuth 客户端放行 `openid profile email tenant offline_access`。该配置完成后，按 `docs/0712/uiux-opz/NEXT-STEPS.md` 重跑真实登录、工作区选择、Issue 创建、Continue Loop 和 Runtime 验收。
+- **非阻断增强**：GitHub、Linear、Slack 等外部触发器的专用映射与告警仍需要各 provider 的 OAuth/webhook 设计；不以本地前端占位实现替代外部授权和审计边界。

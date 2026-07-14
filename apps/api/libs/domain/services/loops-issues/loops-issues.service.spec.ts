@@ -145,3 +145,32 @@ describe('LoopsIssuesService.createIssue orchestration', () => {
     await expect(service.createIssue(baseInput)).rejects.toThrow('LoopsEvidenceService');
   });
 });
+
+describe('LoopsIssuesService workspace rule snapshots', () => {
+  it('reads rules from the requested workspace instead of the service current workspace', async () => {
+    const workspaceProfile = {
+      resolve: jest.fn().mockResolvedValue({ workspaceId: 'api', root: '/code/api-service' }),
+      scanRules: jest.fn().mockResolvedValue({
+        present: 1,
+        total: 1,
+        diagnostics: [],
+        rules: [{ id: 'agents', path: 'AGENTS.md', status: 'present' }],
+      }),
+    };
+    const service = new LoopsIssuesService(
+      {} as never,
+      undefined,
+      workspaceProfile as never,
+      undefined,
+    );
+
+    const snapshot = await service.captureRuleSnapshot(
+      '/code/api-service',
+      '2026-07-14T00:00:00.000Z',
+      'api',
+    );
+
+    expect(workspaceProfile.resolve).toHaveBeenCalledWith('api');
+    expect(snapshot).toMatchObject({ workspaceId: 'api', root: '/code/api-service' });
+  });
+});

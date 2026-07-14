@@ -89,10 +89,24 @@ export function AppSidebar() {
     searchParams.get('workspace'),
     workspacesQuery.data?.body.data.current,
   );
+  const selectedWorkspaceQuery = selectedWorkspace
+    ? `&workspace=${encodeURIComponent(selectedWorkspace.workspaceId)}`
+    : '';
+  const newWorkHref = selectedWorkspace
+    ? `/loops?workspace=${encodeURIComponent(selectedWorkspace.workspaceId)}#loops-conversation-composer`
+    : '/loops#loops-conversation-composer';
   const items: NavItem[] = [
     { titleKey: 'home', href: '/', icon: House },
-    { titleKey: 'scheduled', href: '/loops?view=scheduled', icon: ListTodo },
-    { titleKey: 'search', href: '/loops?view=scheduled#scheduled-search', icon: Search },
+    {
+      titleKey: 'scheduled',
+      href: `/loops?view=scheduled${selectedWorkspaceQuery}`,
+      icon: ListTodo,
+    },
+    {
+      titleKey: 'search',
+      href: `/loops?view=scheduled${selectedWorkspaceQuery}#scheduled-search`,
+      icon: Search,
+    },
   ];
 
   const isActive = (href: NavItem['href']) => {
@@ -143,7 +157,7 @@ export function AppSidebar() {
                 className="w-full justify-start group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
               >
                 <Link
-                  href="/loops#loops-conversation-composer"
+                  href={newWorkHref}
                   aria-label={t('menu.newIssue')}
                   onClick={closeMobileSidebar}
                   title={t('menu.newIssue')}

@@ -183,11 +183,11 @@ describe('AppSidebar', () => {
     expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute('href', '/');
     expect(screen.getByRole('link', { name: 'Scheduled' })).toHaveAttribute(
       'href',
-      '/loops?view=scheduled',
+      '/loops?view=scheduled&workspace=web',
     );
     expect(screen.getByRole('link', { name: 'Search' })).toHaveAttribute(
       'href',
-      '/loops?view=scheduled#scheduled-search',
+      '/loops?view=scheduled&workspace=web#scheduled-search',
     );
     expect(screen.getByRole('link', { name: 'storefront' })).toHaveAttribute(
       'href',
@@ -212,7 +212,7 @@ describe('AppSidebar', () => {
     );
     expect(screen.getByRole('link', { name: 'New work' })).toHaveAttribute(
       'href',
-      '/loops#loops-conversation-composer',
+      '/loops?workspace=web#loops-conversation-composer',
     );
     expect(screen.getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/settings');
     expect(screen.getByRole('button', { name: 'Account' })).toBeInTheDocument();
