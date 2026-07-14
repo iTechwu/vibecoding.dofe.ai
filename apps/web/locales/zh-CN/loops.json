@@ -1801,6 +1801,7 @@
         "convergencePr": "继续推进以完成交付",
         "fallback": "补充缺失工件"
       }
-    }
+    },
+    "tabsAriaLabel": "Issue 详情分区"
   }
 }

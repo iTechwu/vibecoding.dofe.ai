@@ -9,6 +9,7 @@ export type IssueDetailTab = 'overview' | 'plan' | 'execution' | 'evidence';
 interface IssueDetailTabsProps {
   children: ReactNode;
   labels: Record<IssueDetailTab, string>;
+  ariaLabel?: string;
 }
 
 interface IssueDetailTabPanelProps {
@@ -32,7 +33,7 @@ function tabForHash(hash: string): IssueDetailTab {
   return anchorTabs[hash.replace(/^#/, '')] ?? 'overview';
 }
 
-export function IssueDetailTabs({ children, labels }: IssueDetailTabsProps) {
+export function IssueDetailTabs({ children, labels, ariaLabel }: IssueDetailTabsProps) {
   const [value, setValue] = useState<IssueDetailTab>('overview');
 
   useEffect(() => {
@@ -54,7 +55,7 @@ export function IssueDetailTabs({ children, labels }: IssueDetailTabsProps) {
   return (
     <Tabs onValueChange={(nextValue) => setValue(nextValue as IssueDetailTab)} value={value}>
       <TabsList
-        aria-label="Issue detail sections"
+        aria-label={ariaLabel ?? labels.overview}
         className="h-auto w-full flex-wrap justify-start gap-1"
       >
         <TabsTrigger

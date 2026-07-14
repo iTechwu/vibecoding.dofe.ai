@@ -1801,6 +1801,7 @@
         "convergencePr": "Continue Loop to finish delivery",
         "fallback": "Capture the missing artifact"
       }
-    }
+    },
+    "tabsAriaLabel": "Issue detail sections"
   }
 }

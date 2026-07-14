@@ -1042,6 +1042,7 @@ export default function LoopIssueDetailPage() {
 
         <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
           <IssueDetailTabs
+            ariaLabel={t('tabsAriaLabel')}
             labels={{
               overview: t('tabs.overview'),
               plan: t('tabs.plan'),
